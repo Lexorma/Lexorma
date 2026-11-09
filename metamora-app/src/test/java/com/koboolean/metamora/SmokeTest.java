@@ -185,7 +185,7 @@ class SmokeTest {
     @ParameterizedTest(name = "화면 {0}")
     @ValueSource(strings = {
             "/", "/account", "/notice", "/dataDictionary", "/tableManage", "/columnManage",
-            "/codeRule", "/codeRuleManage", "/designManage", "/testManage",
+            "/codeRule", "/codeRuleManage",
             "/userManage", "/systemLog", "/projectManage", "/help", "/denied"
     })
     @Order(10)
@@ -253,7 +253,7 @@ class SmokeTest {
 
         for (String path : new String[]{"/userManage", "/projectManage", "/systemLog", "/notice",
                 "/dataDictionary", "/tableManage", "/columnManage",
-                "/codeRuleManage", "/codeRule", "/designManage", "/testManage"}) {
+                "/codeRuleManage", "/codeRule"}) {
             assertThat(body).as(path).contains("href=\"" + path + "\"");
         }
     }
@@ -367,23 +367,6 @@ class SmokeTest {
             assertThat(row.get("abbreviation")).isEqualTo("SMK" + suffix + "_NM" + suffix);
             assertThat(row.get("domainName")).isEqualTo(domainName);
         });
-    }
-
-    @Test
-    @Order(24)
-    @DisplayName("설계서 엑셀 출력(전체) : 페이지 단위 조회로 정상 xlsx 를 내려준다")
-    void exportDesignAll() throws Exception {
-        HttpResponse<byte[]> response = client.send(HttpRequest.newBuilder(uri("/api/printDesign"))
-                .header("Content-Type", "application/json")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("X-XSRF-TOKEN", csrfToken())
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"formatType\":\"functionSpec\",\"formatText\":\"기능 정의서\",\"type\":\"all\",\"column\":\"functionGroup\",\"searchValue\":\"\"}",
-                        StandardCharsets.UTF_8))
-                .build(), HttpResponse.BodyHandlers.ofByteArray());
-
-        assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(new String(response.body(), 0, 2, StandardCharsets.US_ASCII)).as("xlsx(zip) 시그니처").isEqualTo("PK");
     }
 
     @Test

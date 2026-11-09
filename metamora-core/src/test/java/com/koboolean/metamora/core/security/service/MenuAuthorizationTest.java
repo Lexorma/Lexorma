@@ -43,8 +43,6 @@ class MenuAuthorizationTest {
 
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("code-rule")).isFalse();
-        assertThat(menuAuth.canView("design-manage")).isFalse();
-        assertThat(menuAuth.canView("test-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
 
         // 시스템 관리 메뉴는 DBA 이상
@@ -74,13 +72,12 @@ class MenuAuthorizationTest {
     }
 
     @Test
-    @DisplayName("USER 는 컬럼 관리·코드 규칙·설계서·시나리오까지 보이고 시스템 로그는 숨겨진다")
+    @DisplayName("USER 는 컬럼 관리·코드 규칙까지 보이고 시스템 로그는 숨겨진다")
     void user() {
         SecurityTestSupport.loginAs(1L, "2", "ROLE_USER");
 
         assertThat(menuAuth.canView("column-manage")).isTrue();
         assertThat(menuAuth.canView("code-rule")).isTrue();
-        assertThat(menuAuth.canView("test-manage")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 

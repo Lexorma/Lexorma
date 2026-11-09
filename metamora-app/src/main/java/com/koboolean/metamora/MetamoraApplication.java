@@ -6,10 +6,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
 @EnableJpaAuditing
-public class MetaMoraApplication {
+public class MetamoraApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(MetaMoraApplication.class, args);
+        SpringApplication.run(MetamoraApplication.class, args);
     }
 
 }

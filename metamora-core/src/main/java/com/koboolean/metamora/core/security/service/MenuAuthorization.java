@@ -42,9 +42,7 @@ public class MenuAuthorization {
 
             // 설계기반 관리
             Map.entry("code-rule-manage", "VIEWER"),
-            Map.entry("code-rule", "USER"),
-            Map.entry("design-manage", "USER"),
-            Map.entry("test-manage", "USER")
+            Map.entry("code-rule", "USER")
     );
 
     /** 1뎁스 메뉴 그룹 → 하위 메뉴 ID (하위 메뉴가 하나라도 보이면 그룹을 노출) */
@@ -52,7 +50,7 @@ public class MenuAuthorization {
             "system-management", new String[]{"user-manage", "project-manage", "system-log"},
             "operation-management", new String[]{"notice"},
             "data-management", new String[]{"data-dictionary", "table-manage", "column-manage"},
-            "design-test", new String[]{"code-rule-manage", "code-rule", "design-manage", "test-manage"}
+            "design-test", new String[]{"code-rule-manage", "code-rule"}
     );
 
     private final RoleHierarchy roleHierarchy;

@@ -1,6 +1,5 @@
-package com.koboolean.metamora.design.excel.util;
+package com.koboolean.metamora.data.excel.util;
 
-import com.koboolean.metamora.design.code.domain.dto.CodeRuleDetailDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
@@ -11,11 +10,10 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 설계서/테스트/데이터사전 엑셀 템플릿에 데이터를 채워 출력한다.
+ * 데이터사전 엑셀 템플릿에 데이터를 채워 출력한다.
  * (공통 엑셀 유틸은 common 의 ExcelUtils 사용)
  *
  * 메모리에 전체를 올리지 않도록 SXSSFWorkbook(스트리밍 쓰기)으로 데이터 행을 쓴다.
@@ -108,42 +106,6 @@ public class ExcelExportUtils {
                         dto.getUnit(),
                         dto.getAllowedValues()));
         });
-    }
-
-    /**
-     * 설계서/테스트 시나리오 출력
-     * @param fileName 템플릿 파일명 (functionSpec, interfaceSpec, technicalSpec, unitTest)
-     * @param rules    출력할 코드규칙
-     * @param data     열 순서대로 채울 필드명 (빈 문자열이면 빈 셀)
-     */
-    public static File loadAndCopyExcelFile(String fileName, RowSource<CodeRuleDetailDto> rules, List<String> data) throws IOException {
-        return export(fileName, fileName, workbook -> {
-            Sheet sheet = workbook.getSheetAt(0); // 첫 시트 사용
-            RowCounter rows = new RowCounter();
-
-            rules.forEach(dto -> {
-                String[] values = data.stream().map(fieldName -> fieldValue(dto, fieldName)).toArray(String[]::new);
-                writeRow(sheet, rows.next(), values);
-            });
-        });
-    }
-
-    private static String fieldValue(CodeRuleDetailDto dto, String fieldName) {
-        if (fieldName == null || fieldName.isEmpty()) return "";
-
-        return switch (fieldName) {
-            case "functionGroup" -> dto.getFunctionGroup();
-            case "methodKeyword" -> dto.getMethodKeyword();
-            case "templateName" -> dto.getTemplateName();
-            case "codeRuleName" -> dto.getCodeRuleName();
-            case "methodPurpose" -> dto.getMethodPurpose();
-            case "methodName" -> dto.getMethodName();
-            case "input" -> dto.getInput();
-            case "output" -> dto.getOutput();
-            case "exception" -> dto.getException();
-            case "methodKeyword|codeRuleName" -> dto.getMethodKeyword() + dto.getCodeRuleName();
-            default -> "";
-        };
     }
 
     /**

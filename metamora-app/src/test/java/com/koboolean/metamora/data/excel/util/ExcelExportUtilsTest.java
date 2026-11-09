@@ -1,9 +1,8 @@
-package com.koboolean.metamora.design.excel.util;
+package com.koboolean.metamora.data.excel.util;
 
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
-import com.koboolean.metamora.design.code.domain.dto.CodeRuleDetailDto;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -46,7 +45,7 @@ class ExcelExportUtilsTest {
     }
 
     @ParameterizedTest(name = "{0}.xlsx")
-    @ValueSource(strings = {"template", "functionSpec", "interfaceSpec", "technicalSpec", "unitTest"})
+    @ValueSource(strings = {"template"})
     @DisplayName("출력용 템플릿은 헤더(1행)만 가진다 : SXSSF 는 템플릿에 이미 있는 행 위치에 쓸 수 없다")
     void templatesHaveHeaderOnly(String templateName) throws IOException {
         try (InputStream in = getClass().getClassLoader().getResourceAsStream("static/excel/" + templateName + ".xlsx");
@@ -95,31 +94,6 @@ class ExcelExportUtilsTest {
 
             assertThat(workbook.getSheetAt(1).getRow(1).getCell(3).getStringCellValue()).isEqualTo("USER");
             assertThat(workbook.getSheetAt(2).getRow(1).getCell(7).getStringCellValue()).isEqualTo("100");
-        }
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"functionSpec", "interfaceSpec", "technicalSpec", "unitTest"})
-    @DisplayName("설계서/테스트 시나리오 : 필드 순서대로 열을 채우고 빈 필드명은 빈 셀로 둔다")
-    void designExport(String formatType) throws IOException {
-        List<CodeRuleDetailDto> rules = List.of(
-                CodeRuleDetailDto.builder().methodKeyword("user").codeRuleName("조회").methodName("selectUser")
-                        .methodPurpose("사용자를 조회한다").input("id").build(),
-                CodeRuleDetailDto.builder().methodName("deleteUser").build());
-
-        File file = ExcelExportUtils.loadAndCopyExcelFile(formatType, rules::forEach,
-                List.of("methodKeyword|codeRuleName", "methodName", "", "input"));
-
-        try (Workbook workbook = open(file)) {
-            Sheet sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getLastRowNum()).isEqualTo(2);
-
-            Row row = sheet.getRow(1);
-            assertThat(row.getCell(0).getStringCellValue()).isEqualTo("user조회");
-            assertThat(row.getCell(1).getStringCellValue()).isEqualTo("selectUser");
-            assertThat(row.getCell(2).getStringCellValue()).isEmpty();
-            assertThat(row.getCell(3).getStringCellValue()).isEqualTo("id");
-            assertThat(sheet.getRow(2).getCell(3).getStringCellValue()).as("null 은 빈 문자열").isEmpty();
         }
     }
 }

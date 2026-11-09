@@ -88,18 +88,6 @@ public class HomeController {
         return "pages/design/code_rule_manage";
     }
 
-    @PreAuthorize("hasRole('USER')") // 화면의 그리드 API 권한(USER)과 동일 (MenuAuthorization 참고)
-    @GetMapping("/designManage")
-    public String designTestManage() {
-        return "pages/design/design_manage";
-    }
-
-    @PreAuthorize("hasRole('USER')") // 화면의 그리드 API 권한(USER)과 동일 (MenuAuthorization 참고)
-    @GetMapping("/testManage")
-    public String testManage() {
-        return "pages/design/test_manage";
-    }
-
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/userManage")
     public String manage() {

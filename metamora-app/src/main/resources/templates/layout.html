@@ -13,11 +13,15 @@
     <!-- Open Graph 메타태그 (카카오톡, 페북 등 미리보기용) -->
     <meta property="og:title" content="MetaMora - 메타데이터 표준관리 플랫폼" />
     <meta property="og:description" content="데이터 표준화를 위한 설계부터 관리까지, MetaMora에서 한 번에 해결하세요!" />
-    <meta property="og:image" content="https://raw.githubusercontent.com/meta-gen/metagen/main/metamora-app/src/main/resources/static/images/metagen.png" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/koboolean/metamora/main/metamora-app/src/main/resources/static/images/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <!--<meta property="og:url" content="https://github.com/meta-gen/metagen" />-->
     <meta property="og:type" content="website" />
 
-    <link rel="icon" type="image/x-icon" href="/images/favicon.png">
+    <link rel="icon" type="image/svg+xml" th:href="@{/images/favicon.svg}">
+    <link rel="icon" type="image/png" th:href="@{/images/favicon.png}">
+    <link rel="apple-touch-icon" th:href="@{/images/apple-touch-icon.png}">
     <link rel="stylesheet" th:href="@{/css/layout.css}">
     <link rel="stylesheet" th:href="@{/css/bootstrap.css}">
     <link rel="stylesheet" th:href="@{/css/dataTables.dataTables.min.css}">

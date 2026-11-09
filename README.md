@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="metamora-app/src/main/resources/static/images/favicon.png" alt="MetaMora Logo" width="120" height="120">
 </p>
@@ -11,6 +12,7 @@
 MetaMora is an open-source web application designed to streamline database modeling, data standardization, and metadata management.
 
 It provides standardized data dictionaries (words, domains, and terms), rule-based naming conventions, and DDL generation to maintain consistency across database schemas.
+
 
 MetaMora aims to improve developer productivity by enforcing consistent naming standards and automating repetitive tasks in large-scale software development.
 
@@ -125,8 +127,8 @@ common ← core ← (system, operation, data) ← app
 | `metamora-system` | System administration, user management, project configuration, and system logs |
 | `metamora-operation` | Operational management and announcements |
 | `metamora-data` | Data dictionaries, tables, columns, reusable column sets, and Excel template downloads |
-| `metamora-app` | Executable application (`metamora.jar`), dashboard, UI resources, configuration, and Flyway migrations |
-
+| `metamora-design` | Naming conventions, code rule management, and method name generation |
+| `metamora-chat` | Real-time messaging |
 ---
 
 ## System Requirements
@@ -336,7 +338,6 @@ metamora-app/src/main/resources/db/migration/
 - Some migrations modify existing table structures.
 
 > **Important:** Back up production databases before upgrading, especially when applying structural migrations such as V6, which removes the term-to-column join table, and V10, which drops the tables of the removed messenger and code rule features.
-
 ---
 
 ## User Accounts

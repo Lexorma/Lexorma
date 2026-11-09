@@ -29,4 +29,20 @@ public class ProjectRepositoryImpl implements ProjectRepositoryCustom {
                 .where(projectMember.isActive.eq(true))
                 .fetch();
     }
+
+    @Override
+    public boolean isAccessibleProject(String username, Long projectId) {
+        QProject project = QProject.project;
+        QProjectMember projectMember = QProjectMember.projectMember;
+
+        return queryFactory
+                .selectOne()
+                .from(project)
+                .join(projectMember).on(project.id.eq(projectMember.project.id))
+                .where(project.id.eq(projectId))
+                .where(projectMember.account.username.eq(username))
+                .where(project.isActive.eq(true))
+                .where(projectMember.isActive.eq(true))
+                .fetchFirst() != null;
+    }
 }

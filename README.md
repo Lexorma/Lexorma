@@ -105,9 +105,9 @@ Newly registered users are assigned the `NOT_APPROVE` role until an administrato
 | Category | Technologies |
 |---|---|
 | Language / Build | Java 21, Gradle 9.8 (Wrapper included, multi-module project) |
-| Backend | Spring Boot 4.1, Spring Security, Spring Data JPA, QueryDSL 7 (OpenFeign) |
+| Backend | Spring Boot 4.1, Spring Security (session authentication), Spring Session JDBC, Spring Data JPA, QueryDSL 7 (OpenFeign) |
 | Database | PostgreSQL 18 (default), H2 (local development and testing), Flyway migrations |
-| Frontend | Thymeleaf, Thymeleaf Layout Dialect, jQuery, DataTables, GitHub Primer styling, Pretendard font |
+| Frontend | React 19 + TypeScript (CSR), Vite 6, React Router 7, TanStack Query 5, Primer Octicons / Lucide icons, GitHub Primer styling, Pretendard font — bundled into the Spring Boot JAR |
 | Additional Libraries | Apache POI 5 (SAX/SXSSF streaming for Excel), springdoc-openapi |
 
 ### Module Architecture
@@ -127,8 +127,8 @@ common ← core ← (system, operation, data) ← app
 | `metamora-system` | System administration, user management, project configuration, and system logs |
 | `metamora-operation` | Operational management and announcements |
 | `metamora-data` | Data dictionaries, tables, columns, reusable column sets, and Excel template downloads |
-| `metamora-design` | Naming conventions, code rule management, and method name generation |
-| `metamora-chat` | Real-time messaging |
+| `metamora-app` | Spring Boot application, dashboard API, SPA routing, Flyway migrations; packages the React build into `metamora.jar` |
+| `metamora-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `metamora-app` build |
 ---
 
 ## System Requirements
@@ -136,6 +136,7 @@ common ← core ← (system, operation, data) ← app
 | Component | Requirement |
 |---|---|
 | Java (JDK) | **21 or later** |
+| Node.js | **20.19 or later** (24 LTS recommended) — needed to build the frontend; not needed at runtime |
 | PostgreSQL | PostgreSQL 18 recommended (`postgres:18.6` in Docker Compose); not required when using the H2 profile |
 | Docker | Optional (Docker Compose v2) |
 | Application Port | `9940` |
@@ -178,14 +179,25 @@ Alternatively, install PostgreSQL from the [official website](https://www.postgr
 ### 3. Build and Run
 
 ```bash
-# Build and run tests
+# Build (npm ci + React build + JAR) and run tests
 ./gradlew clean build
 
-# Build without running tests
-./gradlew build -x test
+# Build the executable JAR only (React is built and included automatically)
+./gradlew :metamora-app:bootJar
+
+# Use an already built metamora-web/dist instead of running npm (fails if dist is missing)
+./gradlew :metamora-app:bootJar -PfrontendPrebuilt=true
 
 # Start with the local profile (PostgreSQL)
 ./gradlew bootRun
+```
+
+Frontend development with hot reload (run the backend with `bootRun` at the same time):
+
+```bash
+cd metamora-web
+npm ci
+npm run dev        # http://localhost:5173 — /api is proxied to http://localhost:9940
 ```
 
 To run MetaMora without PostgreSQL, use the H2 in-memory database:
@@ -194,7 +206,9 @@ To run MetaMora without PostgreSQL, use the H2 in-memory database:
 ./gradlew bootRun --args='--spring.profiles.active=h2-local'
 ```
 
-> The H2 in-memory database is reset whenever the application restarts.
+> The H2 in-memory database is reset whenever the application restarts (including login sessions).
+
+Login sessions are stored in the database (Spring Session JDBC, `SPRING_SESSION` tables created by the Flyway `V0__init.sql` migration), so a logged-in user stays logged in across application restarts and container re-creation as long as the database is kept and the session has not expired (30 minutes).
 
 The executable JAR is generated at:
 
@@ -252,7 +266,13 @@ If HTTPS is terminated by a reverse proxy such as Nginx, ensure that the proxy f
 | `koboolean/metamora:latest` | `Dockerfile` | `docker` (PostgreSQL) |
 | `koboolean/metamora:h2-latest` | `Dockerfile-h2` | `h2-docker` (file-based H2) |
 
-Both images are based on `eclipse-temurin:21-jdk`.
+Both images are built with a multi-stage Dockerfile from the repository root (`docker build -t koboolean/metamora:latest .`, `docker build -f Dockerfile-h2 -t koboolean/metamora:h2-latest .`):
+
+1. `node` stage — `npm ci` and `npm run build` (React)
+2. `eclipse-temurin:21-jdk` stage — Gradle builds `metamora.jar` with the React build included (`-PfrontendPrebuilt=true`)
+3. `eclipse-temurin:21-jre` runtime — runs `java -jar /app/metamora.jar` (Node.js is not included)
+
+A single container serves both the React UI and the REST API. Stop containers gracefully (`docker stop`) so the H2 file database is flushed; login sessions are kept in the database.
 
 ### PostgreSQL + Application (Docker Compose)
 

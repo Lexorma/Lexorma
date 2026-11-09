@@ -1,4 +1,7 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 // 실행 모듈 - 메뉴 모듈을 조립하고 실행 jar(build/libs/metamora.jar)를 만든다
+// React 화면(metamora-web) 빌드 결과(dist)를 jar 의 static/ 에 넣어 하나의 jar 로 배포한다.
 plugins {
     id 'org.springframework.boot'   // 버전은 루트 plugins 블록(libs.versions.toml)에서 지정
 }
@@ -8,9 +11,6 @@ dependencies {
     implementation project(':metamora-operation')
     implementation project(':metamora-data')
 
-    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-    implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
-    implementation 'nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect'
     // Boot 4는 모듈화되어 flyway-core만으로는 자동 설정이 동작하지 않는다 (누락 시 마이그레이션이 오류 없이 실행되지 않음)
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.flywaydb:flyway-database-postgresql'
@@ -31,4 +31,58 @@ bootJar {
 
 jar {
     enabled = false
+}
+
+// ---------------------------------------------------------------- React 빌드 (metamora-web)
+// ./gradlew :metamora-app:bootJar                          : npm ci → npm run build → dist 를 static/ 에 포함
+// ./gradlew :metamora-app:bootJar -PfrontendPrebuilt=true  : npm 을 실행하지 않고 이미 만든 dist 를 포함 (Docker Node 스테이지)
+def webDir = rootProject.layout.projectDirectory.dir('metamora-web')
+def webDist = webDir.dir('dist')
+def frontendPrebuilt = providers.gradleProperty('frontendPrebuilt').map { it.toBoolean() }.orElse(false)
+def npmCommand = Os.isFamily(Os.FAMILY_WINDOWS) ? 'npm.cmd' : 'npm'
+
+def npmCi = tasks.register('npmCi', Exec) {
+    group = 'frontend'
+    description = 'React 의존성 설치 (npm ci)'
+    onlyIf('frontendPrebuilt=true 이면 생략') { !frontendPrebuilt.get() }
+
+    workingDir webDir
+    commandLine npmCommand, 'ci', '--no-audit', '--no-fund'
+    inputs.files(webDir.file('package.json'), webDir.file('package-lock.json'))
+    outputs.dir(webDir.dir('node_modules'))
+}
+
+def buildFrontend = tasks.register('buildFrontend', Exec) {
+    group = 'frontend'
+    description = 'React 운영 빌드 (npm run build → metamora-web/dist)'
+    dependsOn npmCi
+    onlyIf('frontendPrebuilt=true 이면 생략') { !frontendPrebuilt.get() }
+
+    workingDir webDir
+    commandLine npmCommand, 'run', 'build'
+    inputs.dir(webDir.dir('src'))
+    inputs.dir(webDir.dir('public'))
+    inputs.files(webDir.file('index.html'), webDir.file('vite.config.ts'), webDir.file('package.json'),
+            webDir.file('package-lock.json'), webDir.file('tsconfig.json'))
+    outputs.dir(webDist)
+}
+
+// 빌드를 생략했든(prebuilt) 했든 jar 에 넣기 전에 dist/index.html 이 있어야 한다 : 없으면 화면 없는 jar 가 되므로 실패시킨다
+def verifyFrontendDist = tasks.register('verifyFrontendDist') {
+    group = 'frontend'
+    description = 'React 빌드 결과(dist/index.html) 확인'
+    dependsOn buildFrontend
+    def index = webDist.file('index.html').asFile
+    doLast {
+        if (!index.isFile()) {
+            throw new GradleException("React 빌드 결과가 없습니다: ${index} (metamora-web 에서 npm run build 를 실행하거나 -PfrontendPrebuilt 를 빼고 빌드하세요)")
+        }
+    }
+}
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn verifyFrontendDist
+    from(webDist) {
+        into 'static'
+    }
 }

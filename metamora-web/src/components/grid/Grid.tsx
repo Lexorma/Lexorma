@@ -1,0 +1,463 @@
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { formatDateTime } from '../../lib/format';
+import { useAuth } from '../../hooks/useAuth';
+import { useDialog } from '../dialog/DialogProvider';
+
+/**
+ * 서버 정의 컬럼 그리드 (예전 fragments/grid.html + DataTables)
+ *
+ * - GET {dataUrl}/column → 컬럼 정의(ColumnDto)
+ * - GET {dataUrl}/data?page&size&sort&searchColumn&searchQuery → { data, recordsTotal }
+ * - crudActions : C=추가, U=저장, M=수정, D=삭제, A=승인, N=승인취소, P=출력
+ *   소문자는 승인 권한(/api/auth/me 의 approvalAvailable)이 있을 때만 보인다.
+ */
+
+export type Row = Record<string, any>;
+
+export interface GridColumn {
+  columnName: string;
+  column: string;
+  columnType: 'STRING' | 'NUMBER' | 'DATE' | string;
+  rowType?: 'TEXT' | 'INPUT' | 'BUTTON' | 'SELECT' | 'DATE' | 'CHECKBOX' | string | null;
+  options?: string[] | null;
+  isSearch?: boolean;
+  isFilter?: boolean;
+  isVisible?: boolean;
+}
+
+export type GridAction = 'add' | 'save' | 'modified' | 'delete' | 'active' | 'unactive' | 'print';
+
+const ACTION_MAP: Record<string, GridAction> = { C: 'add', U: 'save', M: 'modified', D: 'delete', A: 'active', N: 'unactive', P: 'print' };
+
+const ACTION_BUTTONS: { action: GridAction; label: string; className: string }[] = [
+  { action: 'active', label: '승인', className: 'btn btn-primary' },
+  { action: 'unactive', label: '승인취소', className: 'btn btn-secondary' },
+  { action: 'add', label: '추가', className: 'btn btn-primary' },
+  { action: 'modified', label: '수정', className: 'btn btn-primary' },
+  { action: 'save', label: '저장', className: 'btn btn-primary' },
+  { action: 'delete', label: '삭제', className: 'btn btn-secondary' },
+  { action: 'print', label: '출력', className: 'btn btn-secondary' },
+];
+
+const PAGE_SIZES = [10, 25, 50, 100];
+
+export interface GridHandle {
+  /** 현재 조건으로 다시 조회 (체크 해제) */
+  reload: () => void;
+  /** 검색어를 비우고 다시 조회 */
+  resetSearch: () => void;
+  /** 체크된 행 */
+  getChecked: () => Row[];
+  /** 체크된 행 (없으면 알림 후 null) */
+  getCheckedOrAlert: () => Row[] | null;
+  /** 현재 페이지의 모든 행 (셀에서 고친 값 반영) */
+  getEditedRows: () => Row[];
+  columns: GridColumn[];
+}
+
+export interface GridProps {
+  id: string;
+  dataUrl: string;
+  crudActions?: string;
+  /** 버튼 그룹 앞에 붙는 화면 버튼 (예전 .grid-extra-actions) */
+  extraActions?: ReactNode;
+  onAction?: Partial<Record<GridAction, () => void>>;
+  /** 행 클릭 : (행, 컬럼 정의, 승인 권한 여부) */
+  onRowClick?: (row: Row, columns: GridColumn[], isManager: boolean) => void;
+  /** BUTTON 셀 클릭 */
+  onCellButton?: (field: string, row: Row) => void;
+  /** 셀 꾸미기 : undefined 를 반환하면 기본 표시 */
+  renderCell?: (field: string, row: Row) => ReactNode | undefined;
+  rowClassName?: (row: Row) => string | undefined;
+}
+
+interface PageData {
+  data: Row[];
+  recordsTotal: number;
+}
+
+export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
+  const { id, dataUrl, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName } = props;
+  const { approvalAvailable } = useAuth();
+  const dialog = useDialog();
+
+  const columnsQuery = useQuery({
+    queryKey: ['grid-column', dataUrl],
+    queryFn: () => api<GridColumn[]>(`${dataUrl}/column`),
+    staleTime: Infinity,
+  });
+  const columns = useMemo(() => columnsQuery.data ?? [], [columnsQuery.data]);
+  const visibleColumns = useMemo(() => columns.filter((c) => c.isVisible !== false), [columns]);
+  const searchColumns = useMemo(() => columns.filter((c) => c.isSearch), [columns]);
+
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(10);
+  // DataTables 기본 정렬 : 첫 컬럼 오름차순 (예: 컬럼 관리의 체크박스 컬럼은 sortOrder)
+  const [order, setOrder] = useState<{ index: number; dir: 'asc' | 'desc' } | null>({ index: 0, dir: 'asc' });
+  const [searchColumn, setSearchColumn] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState({ column: '', query: '' });
+  const [reloadKey, setReloadKey] = useState(0);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [edits, setEdits] = useState<Record<number, Row>>({});
+  const [selected, setSelected] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (searchColumns.length > 0 && !searchColumns.some((c) => c.column === searchColumn)) {
+      setSearchColumn(searchColumns[0].column);
+    }
+  }, [searchColumns, searchColumn]);
+
+  const sort = useMemo(() => {
+    if (!order) return '';
+    const col = columns[order.index];
+    if (!col) return '';
+    return `${col.column || 'timestamp'},${order.dir}`;
+  }, [order, columns]);
+
+  const dataQuery = useQuery({
+    queryKey: ['grid-data', dataUrl, page, size, sort, search.column, search.query, reloadKey],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), size: String(size), sort });
+      if (search.column) params.set('searchColumn', search.column);
+      params.set('searchQuery', search.query);
+      return api<PageData>(`${dataUrl}/data?${params}`);
+    },
+    enabled: columns.length > 0,
+    placeholderData: (prev) => prev,
+    staleTime: 0,
+  });
+
+  const rows = useMemo(() => dataQuery.data?.data ?? [], [dataQuery.data]);
+  const total = dataQuery.data?.recordsTotal ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / size));
+
+  const clearRowState = useCallback(() => {
+    setChecked(new Set());
+    setEdits({});
+    setSelected(null);
+  }, []);
+
+  // 새 데이터가 오면 체크 / 셀 편집 / 선택을 비운다 (DataTables 가 행을 다시 그리던 것과 같음)
+  useEffect(() => {
+    clearRowState();
+  }, [dataQuery.data, clearRowState]);
+
+  const reload = useCallback(() => {
+    clearRowState();
+    setReloadKey((k) => k + 1);
+  }, [clearRowState]);
+
+  const resetSearch = useCallback(() => {
+    clearRowState();
+    setSearchInput('');
+    setSearch((s) => ({ ...s, query: '' }));
+    setReloadKey((k) => k + 1);
+  }, [clearRowState]);
+
+  const editedRows = useCallback(() => rows.map((row, i) => ({ ...row, ...edits[i] })), [rows, edits]);
+
+  const getChecked = useCallback(() => rows.filter((_, i) => checked.has(i)), [rows, checked]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      reload,
+      resetSearch,
+      getChecked,
+      getCheckedOrAlert: () => {
+        const list = getChecked();
+        if (list.length > 0) return list;
+        dialog.alert('체크된 데이터가 존재하지 않습니다.');
+        return null;
+      },
+      getEditedRows: editedRows,
+      columns,
+    }),
+    [reload, resetSearch, getChecked, editedRows, columns, dialog],
+  );
+
+  // 버튼 표시 : 대문자는 항상, 소문자는 승인 권한이 있을 때만
+  const hasLowercase = crudActions.split('').some((a) => a === a.toLowerCase());
+  const isManager = hasLowercase ? approvalAvailable : false;
+  const visibleActions = new Set<GridAction>();
+  crudActions.split('').forEach((a) => {
+    const action = ACTION_MAP[a.toUpperCase()];
+    if (!action) return;
+    if (a !== a.toLowerCase() || approvalAvailable) visibleActions.add(action);
+  });
+
+  const selectedSearch = searchColumns.find((c) => c.column === searchColumn);
+  const isNumberSearch = selectedSearch?.columnType === 'NUMBER';
+
+  const doSearch = () => {
+    clearRowState();
+    setPage(0);
+    setSearch({ column: searchColumn, query: searchInput });
+    setReloadKey((k) => k + 1);
+  };
+
+  const toggleOrder = (index: number) => {
+    setPage(0);
+    setOrder((prev) => (prev && prev.index === index ? { index, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { index, dir: 'asc' }));
+  };
+
+  const allChecked = rows.length > 0 && checked.size === rows.length;
+
+  const renderValue = (col: GridColumn, row: Row, rowIndex: number): ReactNode => {
+    const custom = renderCell?.(col.column, row);
+    if (custom !== undefined) return custom;
+
+    const data = row[col.column];
+    const edited = edits[rowIndex]?.[col.column];
+    const setEdit = (value: string) =>
+      setEdits((prev) => ({ ...prev, [rowIndex]: { ...prev[rowIndex], [col.column]: value } }));
+
+    switch (col.rowType) {
+      case 'INPUT':
+      case 'DATE':
+        return (
+          <input
+            type="text"
+            className={`form-control ${col.rowType === 'DATE' ? 'datepicker' : 'edit-input'}`}
+            value={edited ?? data ?? ''}
+            onChange={(e) => setEdit(e.target.value)}
+          />
+        );
+      case 'BUTTON':
+        return (
+          <button type="button" className="btn btn-sm btn-primary action-btn" onClick={() => onCellButton?.(col.column, row)}>
+            {data}
+          </button>
+        );
+      case 'SELECT':
+        return (
+          <select className="form-control edit-select" value={edited ?? data ?? ''} onChange={(e) => setEdit(e.target.value)}>
+            {(col.options ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        );
+      case 'CHECKBOX':
+        return (
+          <input
+            type="checkbox"
+            className="row-checkbox"
+            checked={checked.has(rowIndex)}
+            onChange={(e) =>
+              setChecked((prev) => {
+                const next = new Set(prev);
+                if (e.target.checked) next.add(rowIndex);
+                else next.delete(rowIndex);
+                return next;
+              })
+            }
+          />
+        );
+      default:
+        if (col.columnType === 'DATE') return <p>{formatDateTime(data)}</p>;
+        if (col.columnType === 'STRING' && (data === 0 || data === '0')) return data;
+        return col.rowType === 'TEXT' ? <p>{data ?? ''}</p> : (data ?? '');
+    }
+  };
+
+  return (
+    <div>
+      <div className="grid-header">
+        {searchColumns.length > 0 && (
+          <div className="search-container">
+            <select className="search-column-select" value={searchColumn} onChange={(e) => { setSearchColumn(e.target.value); setSearchInput(''); }}>
+              {searchColumns.map((c) => (
+                <option key={c.column} value={c.column}>
+                  {c.columnName}
+                </option>
+              ))}
+            </select>
+            <input
+              type={isNumberSearch ? 'number' : 'text'}
+              className={`search-input ${isNumberSearch ? 'search-input-number' : 'search-input-text'}`}
+              placeholder={isNumberSearch ? '숫자만 입력하세요' : '검색어 입력'}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (isNumberSearch && ['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                if (e.key === 'Enter') doSearch();
+              }}
+            />
+            <button type="button" className="grd-select" onClick={doSearch}>
+              조회
+            </button>
+          </div>
+        )}
+
+        <div className="button-container">
+          {extraActions && <div className="grid-extra-actions">{extraActions}</div>}
+          {ACTION_BUTTONS.filter((b) => visibleActions.has(b.action)).map((b) => (
+            <button key={b.action} type="button" className={`grd-${b.action} ${b.className}`} onClick={() => onAction?.[b.action]?.()}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <hr className="grid-divider" />
+
+      <div className="dt-container">
+        <div className="dt-layout-row">
+          <div className="dt-layout-cell dt-layout-start">
+            <div className="dt-length">
+              <label>
+                페이지당{' '}
+                <select
+                  className="dt-input"
+                  value={size}
+                  onChange={(e) => {
+                    setSize(Number(e.target.value));
+                    setPage(0);
+                  }}
+                >
+                  {PAGE_SIZES.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>{' '}
+                행 표시
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="dt-layout-row dt-layout-table">
+          <div className="dt-layout-cell dt-layout-full">
+            <table id={id} className="table table-striped table-bordered dataTable">
+              <thead>
+                <tr>
+                  {visibleColumns.map((col) => {
+                    const index = columns.indexOf(col);
+                    const isCheckbox = col.rowType === 'CHECKBOX';
+                    const orderable = col.isFilter !== false && !isCheckbox;
+                    if (isCheckbox) {
+                      return (
+                        <th key={col.column} className="grid-checkbox-header text-center" style={{ width: 40 }}>
+                          <input type="checkbox" className="header-checkbox" checked={allChecked}
+                            onChange={(e) => setChecked(e.target.checked ? new Set(rows.map((_, i) => i)) : new Set())} />
+                        </th>
+                      );
+                    }
+                    const ordering = order?.index === index ? order.dir : null;
+                    const classes = ['text-start'];
+                    if (orderable) classes.push('dt-orderable-asc', 'dt-orderable-desc');
+                    else classes.push('no-sort');
+                    if (ordering) classes.push(`dt-ordering-${ordering}`);
+                    return (
+                      <th
+                        key={col.column}
+                        className={classes.join(' ')}
+                        onClick={orderable ? () => toggleOrder(index) : undefined}
+                        aria-sort={ordering === 'asc' ? 'ascending' : ordering === 'desc' ? 'descending' : undefined}
+                      >
+                        <div className="dt-column-header">
+                          <span className="dt-column-title">{col.columnName}</span>
+                          {orderable && <span className="dt-column-order" />}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={Math.max(visibleColumns.length, 1)} className="dt-empty">
+                      {columnsQuery.isPending || dataQuery.isPending
+                        ? '조회 중입니다.'
+                        : search.query
+                          ? '검색된 데이터가 없습니다.'
+                          : '조회된 데이터가 없습니다.'}
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row, rowIndex) => (
+                    <tr
+                      key={row.id ?? rowIndex}
+                      className={[selected === rowIndex ? 'selected' : '', rowClassName?.(row) ?? ''].filter(Boolean).join(' ') || undefined}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('input, button, select, label')) return; // 셀 입력은 행 선택 아님
+                        setSelected(rowIndex);
+                        onRowClick?.(row, columns, isManager);
+                      }}
+                    >
+                      {visibleColumns.map((col) => (
+                        <td key={col.column} className={col.rowType === 'CHECKBOX' ? 'text-center' : 'text-start'}>
+                          {renderValue(col, row, rowIndex)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="dt-layout-row">
+          <div className="dt-layout-cell dt-layout-end">
+            <Paging page={page} pageCount={pageCount} onChange={setPage} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+function Paging({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
+  const button = (label: ReactNode, target: number, disabled: boolean, current = false, key?: string) => (
+    <button
+      key={key ?? String(label)}
+      type="button"
+      className={`dt-paging-button${current ? ' current' : ''}${disabled ? ' disabled' : ''}`}
+      disabled={disabled}
+      aria-current={current ? 'page' : undefined}
+      onClick={() => onChange(target)}
+    >
+      {label}
+    </button>
+  );
+
+  // 최대 7칸 (DataTables 와 같은 생략 규칙)
+  const numbers: (number | 'gap')[] = [];
+  if (pageCount <= 7) {
+    for (let i = 0; i < pageCount; i++) numbers.push(i);
+  } else if (page < 4) {
+    numbers.push(0, 1, 2, 3, 4, 'gap', pageCount - 1);
+  } else if (page > pageCount - 5) {
+    numbers.push(0, 'gap', pageCount - 5, pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1);
+  } else {
+    numbers.push(0, 'gap', page - 1, page, page + 1, 'gap', pageCount - 1);
+  }
+
+  return (
+    <div className="dt-paging">
+      <nav aria-label="pagination">
+        {button('처음', 0, page === 0, false, 'first')}
+        {button('이전', page - 1, page === 0, false, 'prev')}
+        {numbers.map((n, i) =>
+          n === 'gap' ? (
+            <span key={`gap-${i}`} className="ellipsis">
+              …
+            </span>
+          ) : (
+            button(n + 1, n, false, n === page, `p-${n}`)
+          ),
+        )}
+        {button('다음', page + 1, page >= pageCount - 1, false, 'next')}
+        {button('마지막', pageCount - 1, page >= pageCount - 1, false, 'last')}
+      </nav>
+    </div>
+  );
+}

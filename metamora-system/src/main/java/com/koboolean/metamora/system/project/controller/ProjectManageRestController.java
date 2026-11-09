@@ -5,6 +5,7 @@ import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
 import com.koboolean.metamora.core.project.repository.ProjectMemberRepository;
+import com.koboolean.metamora.core.user.service.UserService;
 import com.koboolean.metamora.system.project.service.ProjectManageService;
 import com.koboolean.metamora.common.utils.PageableUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +30,20 @@ public class ProjectManageRestController {
 
     private final ProjectManageService projectManageService;
     private final ProjectMemberRepository projectMemberRepository;
+    private final UserService userService;
+
+    @Operation(summary = "관리 중인 프로젝트 목록", description = "프로젝트 관리 화면의 프로젝트 선택 목록. 프로젝트 관리자가 아니면 빈 목록(화면에서 접근 불가 안내)")
+    @PreAuthorize("hasRole('DBA')")
+    @GetMapping("/getProject/managed")
+    public ResponseEntity<List<Map<String, Object>>> getManagedProjects(@AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(userService.selectAllProjectsByUsernameProjectManager(accountDto).stream()
+                .map(project -> Map.<String, Object>of(
+                        "id", project.getId(),
+                        "projectName", project.getProjectName(),
+                        "isActive", Boolean.TRUE.equals(project.getIsActive()),
+                        "isAutoActive", Boolean.TRUE.equals(project.getIsAutoActive())))
+                .toList());
+    }
 
     @Operation(summary = "프로젝트 Member 컬럼 조회", description = "프로젝트 Member 테이블의 컬럼 목록을 조회합니다.")
     @PreAuthorize("hasRole('DBA')")

@@ -1,38 +1,45 @@
 package com.koboolean.metamora.core.security.conf;
 
-import com.koboolean.metamora.core.security.handler.FormAccessDeniedHandler;
 import com.koboolean.metamora.core.security.handler.FormAuthenticationFailureHandler;
 import com.koboolean.metamora.core.security.handler.FormAuthenticationSuccessHandler;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
+import com.koboolean.metamora.core.security.handler.JsonResponses;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationDetailsSource;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.SessionManagementConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfFilter;
-import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.session.HttpSessionEventPublisher;
-import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.WebUtils;
+import org.springframework.security.web.savedrequest.NullRequestCache;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
+import org.springframework.session.security.SpringSessionBackedSessionRegistry;
 
-import java.io.IOException;
-
+/**
+ * 인증 : Spring Security 세션 인증 (세션은 Spring Session JDBC 로 DB 에 저장)
+ * <p>
+ * 화면은 React(CSR) 이므로 Security 는 리다이렉트 대신 JSON(401/403) 으로 응답한다.
+ * <ul>
+ *     <li>/api/** 만 인증이 필요하다. 그 외(React index.html, assets, 이미지, 폰트)는 공개 정적 리소스다.</li>
+ *     <li>권한은 각 컨트롤러의 @PreAuthorize 로 제어한다. (@PreAuthorize 가 없는 /api 핸들러는 로그인한 모든 사용자에게 열린다)</li>
+ *     <li>CSRF 는 유지한다 : 토큰은 GET /api/auth/csrf 로 받아 X-XSRF-TOKEN 헤더로 보낸다. (로그인/로그아웃 포함)</li>
+ * </ul>
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -44,75 +51,66 @@ public class SecurityConfig {
     private final FormAuthenticationSuccessHandler successHandler;
     private final FormAuthenticationFailureHandler failureHandler;
     private final CustomOncePerRequestFilter customOncePerRequestFilter;
+    // 웹 서버 없이 띄우는 테스트 컨텍스트(web-application-type=none)에는 세션 저장소가 없다
+    private final ObjectProvider<FindByIndexNameSessionRepository<? extends Session>> sessionRepository;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
-
         http
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/css/**", "/js/**", "/images/**", "/h2-console/**"
-                                        , "/favicon.*", "/*/icon-*", "/fonts/**", "/error", "/denied", "/help"
-                                        , "/signup", "/login", "/fragments/grid", "/isApprovalAvailable","/jsons/**").permitAll()
+                        // 로그인 전 화면에서 호출 (익명 허용, 컨트롤러에서 @PreAuthorize로 제어)
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me", "/api/auth/csrf", "/api/auth/signup/projects").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/login/projects", "/api/login/password", "/api/auth/signup").permitAll()
 
-                        // 로그인 화면에서 호출 (익명 허용, 컨트롤러에서 @PreAuthorize로 제어)
-                        .requestMatchers(HttpMethod.POST, "/api/login/projects", "/api/login/password").permitAll()
+                        // 그 외 API 권한은 각 컨트롤러의 @PreAuthorize로 제어
+                        .requestMatchers("/api/**").authenticated()
 
-                        // 그 외 권한은 각 컨트롤러의 @PreAuthorize로 제어
-                        .anyRequest().authenticated())
+                        // React 화면(index.html / SPA 경로)과 정적 리소스, Swagger·H2 콘솔(로컬 프로필에서만 활성화)
+                        .anyRequest().permitAll())
                 .formLogin(form -> form
+                        // 화면이 없는 JSON 로그인 : POST /api/auth/login (username, password, project_id - form-urlencoded)
+                        // loginPage 를 지정해 Security 기본 로그인 화면(GET /login)을 만들지 않는다. (/login 은 React 경로)
                         .loginPage("/login")
+                        .loginProcessingUrl("/api/auth/login")
                         .authenticationDetailsSource(authenticationDetailsSource)
                         .successHandler(successHandler)
                         .failureHandler(failureHandler)
                         .permitAll())
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .csrfTokenRequestHandler(requestHandler)// CSRF 토큰 저장소 설정
-                )
-                //.csrf(AbstractHttpConfigurer::disable)
+                        // 토큰은 /api/auth/csrf 응답으로 받으므로 쿠키를 스크립트가 읽을 필요가 없다 (HttpOnly)
+                        .csrfTokenRepository(new CookieCsrfTokenRepository())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                // 로그인 후 이동할 화면은 React 가 정한다. 401 응답마다 요청을 세션에 저장(익명 세션 생성)하지 않는다.
+                .requestCache(cache -> cache.requestCache(new NullRequestCache()))
                 .authenticationProvider(authenticationProvider)
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            String requestedWith = request.getHeader("X-Requested-With");
-                            boolean isAjax = "XMLHttpRequest".equals(requestedWith);
-
-                            if (isAjax) {
-                                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); // 401
-                                response.setContentType("application/json;charset=UTF-8");
-                                response.getWriter().write("{\"message\": \"로그인이 필요합니다.\"}");
-                            } else {
-                                response.sendRedirect("/login");
-                            }
-                        })
+                        .authenticationEntryPoint((request, response, authException) ->
+                                JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다."))
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            String requestedWith = request.getHeader("X-Requested-With");
-                            boolean isAjax = "XMLHttpRequest".equals(requestedWith);
-
-                            if (isAjax) {
-                                response.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403
-                                response.setContentType("application/json;charset=UTF-8");
-                                response.getWriter().write("{\"message\": \"접근 권한이 없습니다.\"}");
+                            if (accessDeniedException instanceof CsrfException) {
+                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "CSRF_INVALID",
+                                        "보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.");
                             } else {
-                                // 일반 브라우저 요청은 기존처럼 /denied로 리다이렉트
-                                response.sendRedirect("/denied?exception=Access Denied");
+                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다.");
                             }
-                        })
-                ).sessionManagement(session -> session
-                        .sessionFixation(SessionManagementConfigurer.SessionFixationConfigurer::migrateSession)
-                        .invalidSessionUrl("/login")
+                        }))
+                .sessionManagement(session -> session
+                        .sessionFixation(SessionManagementConfigurer.SessionFixationConfigurer::changeSessionId)
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                         .maximumSessions(1)
                         .maxSessionsPreventsLogin(true)
-                        .expiredUrl("/login")
-                )
+                        // 동시 세션 제한도 세션 DB 기준 (재시작/여러 인스턴스에서도 같은 기준)
+                        .sessionRegistry(sessionRegistry())
+                        .expiredSessionStrategy(event -> JsonResponses.error(event.getResponse(), HttpServletResponse.SC_UNAUTHORIZED,
+                                "SESSION_EXPIRED", "세션이 만료되었습니다. 다시 로그인해주세요.")))
                 .addFilterBefore(customOncePerRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                // .addFilterAfter(customOncePerRequestFilter, CsrfFilter.class)
                 .logout(logout -> logout
-                        .logoutUrl("/logout")
-                        .logoutSuccessUrl("/login?logout")
-                        .deleteCookies("JSESSIONID")
+                        // POST + CSRF 토큰. 세션을 무효화하면 Spring Session 이 세션 쿠키도 만료시킨다.
+                        .logoutUrl("/api/auth/logout")
                         .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .logoutSuccessHandler((request, response, authentication) ->
+                                response.setStatus(HttpServletResponse.SC_NO_CONTENT))
                         .permitAll())
         ;
 
@@ -120,7 +118,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public HttpSessionEventPublisher httpSessionEventPublisher() {
-        return new HttpSessionEventPublisher();
+    public SessionRegistry sessionRegistry() {
+        FindByIndexNameSessionRepository<? extends Session> repository = sessionRepository.getIfAvailable();
+        return repository != null ? new SpringSessionBackedSessionRegistry<>(repository) : new SessionRegistryImpl();
     }
 }

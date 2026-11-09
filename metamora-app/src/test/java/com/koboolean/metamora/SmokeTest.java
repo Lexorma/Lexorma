@@ -20,7 +20,6 @@ import org.springframework.test.context.ActiveProfiles;
 import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
-import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,7 +33,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 스모크 테스트 : 실제 서버(랜덤 포트)를 띄워 로그인 → 주요 화면/API → 시스템 로그 저장까지 확인한다.
+ * 스모크 테스트 : 실제 서버(랜덤 포트)를 띄워 로그인(JSON) → React 화면 경로 / 주요 API → 시스템 로그 저장 → 로그아웃까지 확인한다.
  * <p>
  * 프레임워크 업그레이드(Boot 3.5 / 4.x) 시 테스트 자동 설정 모듈 변경의 영향을 받지 않도록
  * MockMvc/TestRestTemplate 대신 JDK HttpClient를 사용한다.
@@ -47,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SmokeTest {
 
     private static final String USERNAME = "admin";
-    /** 초기 비밀번호 (V2 초기 데이터) : 변경 전에는 로그인할 수 없다 */
+    /** 초기 비밀번호 (V0 초기 데이터) : 변경 전에는 로그인할 수 없다 */
     private static final String INITIAL_PASSWORD = "admin";
     /** 로그인 전 비밀번호 변경 단계에서 바꾼 비밀번호 */
     private static final String PASSWORD = "Smoke!Pass1";
@@ -62,8 +61,12 @@ class SmokeTest {
     @Autowired
     private jakarta.persistence.EntityManagerFactory entityManagerFactory;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private CookieManager cookieManager;
     private HttpClient client;
+    private String csrfToken;
 
     @BeforeAll
     void login() throws Exception {
@@ -74,9 +77,10 @@ class SmokeTest {
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
 
-        // 1. 로그인 화면 : CSRF 토큰 쿠키 발급
+        // 1. 로그인 화면(React) : 로그인 전에는 세션을 만들지 않는다 (CSRF 토큰은 쿠키 저장소)
         assertThat(get("/login", false).statusCode()).isEqualTo(200);
-        assertThat(csrfToken()).isNotBlank();
+        assertThat(refreshCsrf()).isNotBlank();
+        assertThat(get("/api/auth/me", true).body()).contains("\"authenticated\":false");
 
         // 2. 초기 비밀번호(admin/admin)로는 프로젝트 조회 단계에서 차단 → 비밀번호 변경 요구
         HttpResponse<String> blocked = postJson("/api/login/projects",
@@ -84,11 +88,11 @@ class SmokeTest {
         assertThat(blocked.statusCode()).isEqualTo(403);
         assertThat(blocked.body()).contains("PASSWORD_CHANGE_REQUIRED");
 
-        // 화면을 거치지 않고 폼 로그인을 직접 호출해도 차단된다
-        HttpResponse<String> blockedLogin = postForm("/login",
+        // 화면을 거치지 않고 로그인 API 를 직접 호출해도 차단된다
+        HttpResponse<String> blockedLogin = postForm("/api/auth/login",
                 "username=" + USERNAME + "&password=" + INITIAL_PASSWORD + "&project_id=" + PROJECT_ID);
-        assertThat(blockedLogin.statusCode()).isEqualTo(302);
-        assertThat(location(blockedLogin)).contains("/login?error=true");
+        assertThat(blockedLogin.statusCode()).isEqualTo(401);
+        assertThat(blockedLogin.body()).contains("\"code\":\"PASSWORD_CHANGE_REQUIRED\"");
 
         // 3. 로그인 전 비밀번호 변경 (규칙 위반은 거부)
         assertThat(postJson("/api/login/password", "{\"username\":\"" + USERNAME + "\",\"password\":\"" + INITIAL_PASSWORD
@@ -103,101 +107,157 @@ class SmokeTest {
         assertThat(projects.statusCode()).isEqualTo(200);
         assertThat(projects.body()).contains("\"projectName\":\"MAIN\"");
 
-        // 5. 폼 로그인 (선택한 프로젝트 포함) : 비밀번호 변경을 마쳤으므로 대시보드로 이동
-        HttpResponse<String> login = postForm("/login",
+        // 5. 로그인 (선택한 프로젝트 포함) : JSON 응답 + 세션 쿠키(HttpOnly)
+        HttpResponse<String> login = postForm("/api/auth/login",
                 "username=" + USERNAME + "&password=" + PASSWORD + "&project_id=" + PROJECT_ID);
-        assertThat(login.statusCode()).isEqualTo(302);
-        assertThat(location(login)).endsWith("/");
+        assertThat(login.statusCode()).as(login.body()).isEqualTo(200);
+        assertThat(login.body()).contains("\"authenticated\":true");
+        assertThat(login.headers().allValues("Set-Cookie")).anyMatch(c -> c.contains("HttpOnly") && c.contains("SameSite=Lax"));
 
-        // 대시보드 렌더링 확인
-        assertThat(get("/", false).statusCode()).isEqualTo(200);
+        // 로그인하면 CSRF 토큰이 바뀐다 (세션 고정 / 토큰 고정 방지) : 다시 받는다
+        refreshCsrf();
     }
 
     @AfterAll
     void logout() throws Exception {
-        if (client != null) {
-            get("/logout", false);
+        if (client != null && get("/api/auth/me", true).body().contains("\"authenticated\":true")) {
+            postJson("/api/auth/logout", "");
         }
     }
 
     @Test
     @Order(1)
-    @DisplayName("비로그인 요청 : AJAX는 401, 일반 요청은 /login 리다이렉트")
+    @DisplayName("로그인 정보 : 권한 계층 적용으로 ADMIN 은 모든 메뉴가 보이고 승인 권한이 있다")
+    void me() throws Exception {
+        HttpResponse<String> me = get("/api/auth/me", true);
+
+        assertThat(me.statusCode()).isEqualTo(200);
+        assertThat(me.body())
+                .contains("\"authenticated\":true")
+                .contains("\"username\":\"admin\"")
+                .contains("\"projectName\":\"MAIN\"")
+                .contains("\"approvalAvailable\":true")
+                .doesNotContain("\":false"); // 모든 메뉴 true
+    }
+
+    @Test
+    @Order(1)
+    @DisplayName("세션은 Spring Session JDBC 로 DB(SPRING_SESSION)에 저장된다")
+    void sessionStoredInDatabase() {
+        Integer sessions = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION WHERE PRINCIPAL_NAME = ?", Integer.class, USERNAME);
+        assertThat(sessions).isEqualTo(1);
+
+        Integer attributes = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION_ATTRIBUTES a JOIN SPRING_SESSION s"
+                + " ON a.SESSION_PRIMARY_ID = s.PRIMARY_ID WHERE s.PRINCIPAL_NAME = ? AND a.ATTRIBUTE_NAME = 'SPRING_SECURITY_CONTEXT'", Integer.class, USERNAME);
+        assertThat(attributes).isEqualTo(1);
+    }
+
+    @Test
+    @Order(1)
+    @DisplayName("비로그인 요청 : API 는 JSON 401, 화면 경로는 React index.html")
     void anonymousAccess() throws Exception {
         HttpClient anonymous = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
 
-        HttpResponse<String> ajax = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/column"))
-                .header("X-Requested-With", "XMLHttpRequest").GET().build(), HttpResponse.BodyHandlers.ofString());
-        assertThat(ajax.statusCode()).isEqualTo(401);
+        HttpResponse<String> api = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/column")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(api.statusCode()).isEqualTo(401);
+        assertThat(api.headers().firstValue("Content-Type").orElse("")).contains("application/json");
+        assertThat(api.body()).contains("\"code\":\"UNAUTHORIZED\"");
+        // 401 응답 때문에 익명 세션(DB 행)을 만들지 않는다
+        assertThat(api.headers().allValues("Set-Cookie")).noneMatch(c -> c.startsWith("SESSION="));
 
-        HttpResponse<String> page = anonymous.send(HttpRequest.newBuilder(uri("/tableManage")).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertThat(page.statusCode()).isEqualTo(302);
-        assertThat(location(page)).endsWith("/login");
+        HttpResponse<String> page = anonymous.send(HttpRequest.newBuilder(uri("/tableManage")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(page.statusCode()).isEqualTo(200);
+        assertThat(page.body()).contains("id=\"root\"");
     }
 
     @Test
     @Order(2)
-    @DisplayName("접근 권한이 없는 프로젝트로는 로그인할 수 없다")
+    @DisplayName("접근 권한이 없는 프로젝트로는 로그인할 수 없다 / CSRF 토큰 없는 로그인은 거부")
     void loginWithInaccessibleProject() throws Exception {
         CookieManager otherCookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
         HttpClient other = HttpClient.newBuilder().cookieHandler(otherCookies)
                 .followRedirects(HttpClient.Redirect.NEVER).build();
 
-        // 비로그인 상태의 로그인 / 회원가입 화면 렌더링
-        for (String path : new String[]{"/login", "/signup"}) {
-            HttpResponse<String> page = other.send(HttpRequest.newBuilder(uri(path)).GET().build(), HttpResponse.BodyHandlers.ofString());
-            assertThat(page.statusCode()).as(path).isEqualTo(200);
-            assertThat(page.body()).as(path).contains("class=\"auth-box\"").contains("</html>");
-        }
-        String token = cookie(otherCookies, "XSRF-TOKEN");
+        String body = "username=" + USERNAME + "&password=" + PASSWORD + "&project_id=99999";
 
-        HttpResponse<String> login = other.send(HttpRequest.newBuilder(uri("/login"))
+        // CSRF 토큰 없음 → 403
+        HttpResponse<String> noToken = other.send(HttpRequest.newBuilder(uri("/api/auth/login"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("username=" + USERNAME + "&password=" + PASSWORD
-                        + "&project_id=99999&_csrf=" + token))
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(403);
+        assertThat(noToken.body()).contains("\"code\":\"CSRF_INVALID\"");
+
+        String token = readCsrf(other);
+        HttpResponse<String> login = other.send(HttpRequest.newBuilder(uri("/api/auth/login"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("X-XSRF-TOKEN", token)
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertThat(login.statusCode()).isEqualTo(401);
+        assertThat(login.body()).contains("\"code\":\"PROJECT_ACCESS_DENIED\"");
+    }
+
+    @Test
+    @Order(3)
+    @DisplayName("로그인된 계정은 다른 곳에서 동시에 로그인할 수 없다 (maximumSessions=1, 세션 DB 기준)")
+    void concurrentLoginBlocked() throws Exception {
+        CookieManager otherCookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
+        HttpClient other = HttpClient.newBuilder().cookieHandler(otherCookies).followRedirects(HttpClient.Redirect.NEVER).build();
+
+        HttpResponse<String> login = other.send(HttpRequest.newBuilder(uri("/api/auth/login"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("X-XSRF-TOKEN", readCsrf(other))
+                .POST(HttpRequest.BodyPublishers.ofString("username=" + USERNAME + "&password=" + PASSWORD + "&project_id=" + PROJECT_ID))
                 .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(login.statusCode()).isEqualTo(302);
-        assertThat(location(login)).contains("/login?error=true");
+        assertThat(login.statusCode()).isEqualTo(401);
+        assertThat(login.body()).contains("\"code\":\"SESSION_LIMIT_EXCEEDED\"");
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("변경 요청은 CSRF 토큰이 있어야 한다")
+    void csrfRequired() throws Exception {
+        HttpResponse<String> response = client.send(HttpRequest.newBuilder(uri("/api/updateName"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"관리자\"}", StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(403);
+        assertThat(response.body()).contains("\"code\":\"CSRF_INVALID\"");
     }
 
     @ParameterizedTest(name = "화면 {0}")
     @ValueSource(strings = {
-            "/", "/account", "/notice", "/dataDictionary", "/tableManage", "/columnManage",
+            "/", "/login", "/signup", "/account", "/notice", "/dataDictionary", "/tableManage", "/columnManage",
             "/userManage", "/systemLog", "/projectManage", "/help", "/denied"
     })
     @Order(10)
-    @DisplayName("주요 화면 렌더링")
+    @DisplayName("React 화면 경로 : 직접 열거나 새로고침해도 index.html (no-cache)")
     void pages(String path) throws Exception {
         HttpResponse<String> response = get(path, false);
 
         assertThat(response.statusCode()).as(path).isEqualTo(200);
-        assertThat(response.body()).as(path).contains("</html>").contains("id=\"popupDialog\"");
+        assertThat(response.headers().firstValue("Content-Type").orElse("")).as(path).contains("text/html");
+        assertThat(response.body()).as(path).contains("id=\"root\"").contains("/assets/");
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).as(path).contains("no-cache");
     }
 
-    @ParameterizedTest(name = "팝업 다이얼로그 조각 {0}")
-    @ValueSource(strings = {
-            "/popup/columTableSearch/detail", "/popup/standardTermCreate", "/popup/tableDdl", "/popup/commonColumnSet"
-    })
+    @ParameterizedTest(name = "없는 경로 {0}")
+    @ValueSource(strings = {"/api/not-exists", "/api/selectTable/not/exists", "/assets/not-exists.js", "/images/none.png"})
     @Order(10)
-    @DisplayName("팝업은 다이얼로그에 넣을 화면 조각만 반환한다 (html/head 없음)")
-    void popupFragments(String path) throws Exception {
-        assertPopupFragment(path, get(path, true));
-    }
+    @DisplayName("없는 API / 정적 파일은 React HTML 이 아니라 JSON 404")
+    void notFound(String path) throws Exception {
+        HttpResponse<String> response = get(path, true);
 
-    private static void assertPopupFragment(String path, HttpResponse<String> response) {
-        assertThat(response.statusCode()).as(path).isEqualTo(200);
-        assertThat(response.body()).as(path)
-                .contains("popup-container")
-                .doesNotContain("<html")
-                .doesNotContain("<head>");
+        assertThat(response.statusCode()).as(path).isEqualTo(404);
+        assertThat(response.body()).as(path).doesNotContain("id=\"root\"").contains("\"status\":404");
     }
 
     @Test
     @Order(11)
-    @DisplayName("공지사항 등록 → 상세/등록/수정 팝업 다이얼로그 조각 렌더링")
-    void noticePopups() throws Exception {
+    @DisplayName("공지사항 등록 → 상세(조회자 기록) / 대상 프로젝트 / 관리 권한 API")
+    void noticeApis() throws Exception {
         String title = "smoke-notice-" + UUID.randomUUID();
         HttpResponse<String> save = postJson("/api/saveNotice",
                 "{\"title\":\"" + title + "\",\"content\":\"공지 내용\",\"projectIds\":[" + PROJECT_ID + "]}");
@@ -213,46 +273,35 @@ class SmokeTest {
         }
         assertThat(noticeId).as("등록한 공지사항이 목록에 있어야 한다").isNotBlank();
 
-        for (String path : new String[]{
-                "/popup/noticePopupDetail/" + noticeId,
-                "/popup/noticePopupSave?type=add",
-                "/popup/noticePopupSave?type=modify&id=" + noticeId}) {
-            assertPopupFragment(path, get(path, true));
-        }
+        HttpResponse<String> view = get("/api/selectNotice/view/" + noticeId, true);
+        assertThat(view.statusCode()).isEqualTo(200);
+        assertThat(view.body()).contains(title).contains("\"username\":\"admin\"");
 
-        assertThat(get("/popup/noticePopupDetail/" + noticeId, true).body()).contains(title);
-    }
-
-    @Test
-    @Order(11)
-    @DisplayName("사이드바 : 권한 계층 적용으로 ADMIN 은 모든 메뉴가 보인다")
-    void sidebarMenusForAdmin() throws Exception {
-        String body = get("/", false).body();
-
-        for (String path : new String[]{"/userManage", "/projectManage", "/systemLog", "/notice",
-                "/dataDictionary", "/tableManage", "/columnManage"}) {
-            assertThat(body).as(path).contains("href=\"" + path + "\"");
-        }
+        assertThat(get("/api/selectNotice/projects?type=add", true).body()).contains("\"projectName\":\"MAIN\"");
+        assertThat(get("/api/selectNotice/projects?type=modify&id=" + noticeId, true).body()).contains("\"isSelected\":true");
+        assertThat(get("/api/selectNotice/permission", true).body()).contains("\"isProjectManager\":true");
     }
 
     @Test
     @Order(12)
-    @DisplayName("폰트는 브라우저 캐시 허용 (페이지 이동마다 재다운로드 → 폰트 깜빡임 방지)")
-    void fontCacheable() throws Exception {
-        HttpResponse<String> font = get("/fonts/pretendard/PretendardVariable.woff2", false);
+    @DisplayName("정적 리소스 캐시 : 해시가 붙은 /assets 는 1년(immutable), 이미지는 7일, API 는 캐시하지 않음")
+    void staticCache() throws Exception {
+        String index = get("/", false).body();
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("/assets/[^\"]+\\.js").matcher(index);
+        assertThat(matcher.find()).as("index.html 의 JS").isTrue();
 
-        assertThat(font.statusCode()).isEqualTo(200);
-        String cacheControl = font.headers().firstValue("Cache-Control").orElse("");
-        assertThat(cacheControl).as("Cache-Control").contains("max-age=31536000").doesNotContain("no-store");
+        HttpResponse<String> js = get(matcher.group(), false);
+        assertThat(js.statusCode()).isEqualTo(200);
+        assertThat(js.headers().firstValue("Cache-Control").orElse("")).contains("max-age=31536000").contains("immutable").doesNotContain("no-store");
 
-        // CSS 는 캐시하되 매번 변경 여부를 확인한다 (배포 후 바로 반영)
-        HttpResponse<String> css = get("/css/primer.css", false);
-        assertThat(css.statusCode()).isEqualTo(200);
-        assertThat(css.headers().firstValue("Cache-Control").orElse("")).as("CSS Cache-Control")
-                .contains("no-cache").doesNotContain("no-store");
+        HttpResponse<String> image = get("/images/favicon.svg", false);
+        assertThat(image.statusCode()).isEqualTo(200);
+        assertThat(image.headers().firstValue("Cache-Control").orElse("")).contains("max-age=604800");
 
-        // 화면은 기존처럼 캐시하지 않는다 (로그인 사용자 정보 포함)
-        assertThat(get("/", false).headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        assertThat(get("/api/auth/me", true).headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+
+        // 엑셀 템플릿(classpath:/static/excel)은 URL 로 바로 열리지 않는다 (다운로드 API 로만)
+        assertThat(get("/excel/template.xlsx", false).statusCode()).isEqualTo(404);
     }
 
     @ParameterizedTest(name = "그리드 {0}")
@@ -274,7 +323,7 @@ class SmokeTest {
     }
 
     @ParameterizedTest(name = "API {0}")
-    @ValueSource(strings = {"/isApprovalAvailable", "/api/commonColumn", "/v3/api-docs"})
+    @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/auth/signup/projects", "/v3/api-docs"})
     @Order(21)
     @DisplayName("기타 주요 API")
     void apis(String path) throws Exception {
@@ -432,6 +481,21 @@ class SmokeTest {
                         || body.contains(PASSWORD))); // 로그인 전 비밀번호 변경의 newPassword 포함
     }
 
+    @Test
+    @Order(99)
+    @DisplayName("로그아웃 : 세션 무효화(DB 행 삭제) 후 기존 세션으로는 API 를 쓸 수 없다")
+    void logoutInvalidatesSession() throws Exception {
+        HttpResponse<String> logout = postJson("/api/auth/logout", "");
+        assertThat(logout.statusCode()).isEqualTo(204);
+
+        assertThat(get("/api/auth/me", true).body()).contains("\"authenticated\":false");
+        assertThat(get("/api/selectTable/column", true).statusCode()).isEqualTo(401);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION WHERE PRINCIPAL_NAME = ?", Integer.class, USERNAME)).isZero();
+
+        // 로그아웃 후에도 새 CSRF 토큰을 받을 수 있다
+        assertThat(refreshCsrf()).isNotBlank();
+    }
+
     // ===== helpers =====
 
     private long countLogs(String url) {
@@ -467,23 +531,26 @@ class SmokeTest {
     private HttpResponse<String> postForm(String path, String form) throws IOException, InterruptedException {
         return client.send(HttpRequest.newBuilder(uri(path))
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(form + "&_csrf=" + csrfToken()))
+                .header("X-XSRF-TOKEN", csrfToken())
+                .POST(HttpRequest.BodyPublishers.ofString(form))
                 .build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private String csrfToken() {
-        return cookie(cookieManager, "XSRF-TOKEN");
+        return csrfToken;
     }
 
-    private static String cookie(CookieManager manager, String name) {
-        return manager.getCookieStore().getCookies().stream()
-                .filter(c -> name.equals(c.getName()))
-                .reduce((first, second) -> second) // 갱신된 경우 마지막 값을 사용
-                .map(HttpCookie::getValue)
-                .orElse(null);
+    /** React 와 같은 방식 : GET /api/auth/csrf 응답의 토큰을 메모리에 들고 X-XSRF-TOKEN 헤더로 보낸다 */
+    private String refreshCsrf() throws IOException, InterruptedException {
+        csrfToken = readCsrf(client);
+        return csrfToken;
     }
 
-    private static String location(HttpResponse<?> response) {
-        return response.headers().firstValue("Location").orElse("");
+    private String readCsrf(HttpClient httpClient) throws IOException, InterruptedException {
+        HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder(uri("/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);
+        tools.jackson.databind.JsonNode json = tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.body());
+        assertThat(json.path("headerName").asString()).isEqualTo("X-XSRF-TOKEN");
+        return json.path("token").asString();
     }
 }

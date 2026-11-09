@@ -13,6 +13,8 @@ import com.koboolean.metamora.operation.board.domain.dto.BoardDto;
 import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.operation.notice.service.NoticeService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
+import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
+import com.koboolean.metamora.core.user.service.UserService;
 import com.koboolean.metamora.common.utils.PageableUtil;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +30,38 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class NoticeRestController {
 
     private final NoticeService noticeService;
+    private final UserService userService;
+
+    @Operation(summary = "공지사항 관리 권한", description = "현재 프로젝트의 프로젝트 관리자이면 공지사항 등록/삭제 버튼을 보여준다.")
+    @PreAuthorize("hasRole('NOT_APPROVE')")
+    @GetMapping("/selectNotice/permission")
+    public ResponseEntity<Map<String, Boolean>> getNoticePermission(@AuthenticationPrincipal AccountDto accountDto) {
+        // 프로젝트 ID가 포함되어있을 경우에만 공지사항 추가, 삭제가 가능하다.
+        boolean isProjectManager = userService.selectAllProjectsByUsernameProjectManager(accountDto).stream()
+                .anyMatch(project -> project.getId().equals(accountDto.getProjectId()));
+        return ResponseEntity.ok(Map.of("isProjectManager", isProjectManager));
+    }
+
+    @Operation(summary = "공지사항 상세 보기", description = "공지사항 상세와 조회자 목록을 조회하고, 현재 사용자를 조회자로 기록한다.")
+    @PreAuthorize("hasRole('NOT_APPROVE')")
+    @GetMapping("/selectNotice/view/{id}")
+    public ResponseEntity<BoardDto> getNoticeView(@PathVariable(name = "id") Long id, @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(noticeService.noticePopupMain(id, accountDto));
+    }
+
+    @Operation(summary = "공지 대상 프로젝트", description = "관리 중인 프로젝트 목록. 수정(type=modify)이면 해당 공지의 대상 프로젝트에 isSelected=true")
+    @PreAuthorize("hasRole('MANAGER')")
+    @GetMapping("/selectNotice/projects")
+    public ResponseEntity<List<ProjectDto>> getNoticeProjects(@AuthenticationPrincipal AccountDto accountDto,
+                                                             @RequestParam(value = "type") String type,
+                                                             @RequestParam(value = "id", required = false) Long id) {
+        List<ProjectDto> managedProjects = userService.selectAllProjectsByUsernameProjectManager(accountDto);
+        if (type.equals("add") || managedProjects.isEmpty()) {
+            return ResponseEntity.ok(managedProjects);
+        }
+        // 관리 중인 프로젝트 중 해당 공지의 대상 프로젝트에 체크 표시
+        return ResponseEntity.ok(noticeService.selectAllProjectsByUsernameProjectManagerChecked(id, Long.parseLong(accountDto.getId()), managedProjects));
+    }
 
     /**
      * 공지사항 리스트 데이터 조회
@@ -118,7 +152,7 @@ public class NoticeRestController {
     @Operation(summary = "공지사항 상세 조회", description = "선택된 공지사항의 상세정보를 조회한다.")
     @PreAuthorize("hasRole('NOT_APPROVE')")
     @GetMapping("/selectNotice/detail/{id}")
-    public ResponseEntity<Map<String, Object>> getNoticeDetail(@PathVariable Long id, @AuthenticationPrincipal AccountDto accountDto) {
+    public ResponseEntity<Map<String, Object>> getNoticeDetail(@PathVariable(name = "id") Long id, @AuthenticationPrincipal AccountDto accountDto) {
 
         BoardDto boardDto = noticeService.noticePopupMain(id, accountDto);
 

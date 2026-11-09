@@ -8,15 +8,18 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.time.Duration;
 
 /**
- * 정적 리소스 캐시 설정
+ * React 빌드 결과(metamora-web/dist → classpath:/static/) 정적 리소스
  * <p>
- * Spring Security 는 모든 응답에 {@code Cache-Control: no-cache, no-store} 를 붙이므로
- * 페이지를 이동할 때마다 폰트(약 2MB)를 다시 받아 기본 폰트 → Pretendard 로 바뀌며 화면이 깜빡였다.
- * 애플리케이션이 Cache-Control 을 먼저 지정하면 Spring Security 는 덮어쓰지 않는다.
+ * 기본 정적 매핑(/**)은 끈다(spring.web.resources.add-mappings=false). classpath:/static/excel 의 엑셀 템플릿은
+ * 다운로드 API(/api/downloadTemplate)로만 내려주고 URL 로 바로 열리지 않게 한다.
+ * <p>
+ * Spring Security 는 모든 응답에 {@code Cache-Control: no-cache, no-store} 를 붙이지만
+ * 애플리케이션이 Cache-Control 을 먼저 지정하면 덮어쓰지 않는다.
  * <ul>
- *     <li>폰트 : 파일이 바뀌지 않으므로 1년 캐시 (immutable)</li>
- *     <li>이미지 : 7일 캐시</li>
- *     <li>CSS / JS : 캐시는 하되 매번 변경 여부 확인(no-cache → 304) — 배포 후 바로 반영</li>
+ *     <li>/assets/** : Vite 가 파일명에 해시를 붙이므로 1년 캐시 (immutable) - JS/CSS/폰트</li>
+ *     <li>/images/** : 7일 캐시</li>
+ *     <li>/jsons/** : 매번 변경 여부 확인 (no-cache → 304)</li>
+ *     <li>index.html : SpaForwardController 가 no-cache 로 내려준다 (배포 후 바로 새 assets 를 받도록)</li>
  * </ul>
  */
 @Configuration
@@ -24,20 +27,16 @@ public class StaticResourceConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/fonts/**")
-                .addResourceLocations("classpath:/static/fonts/")
+        registry.addResourceHandler("/assets/**")
+                .addResourceLocations("classpath:/static/assets/")
                 .setCacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable());
 
         registry.addResourceHandler("/images/**")
                 .addResourceLocations("classpath:/static/images/")
                 .setCacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePublic());
 
-        registry.addResourceHandler("/css/**")
-                .addResourceLocations("classpath:/static/css/")
-                .setCacheControl(CacheControl.noCache());
-
-        registry.addResourceHandler("/js/**")
-                .addResourceLocations("classpath:/static/js/")
+        registry.addResourceHandler("/jsons/**")
+                .addResourceLocations("classpath:/static/jsons/")
                 .setCacheControl(CacheControl.noCache());
     }
 }

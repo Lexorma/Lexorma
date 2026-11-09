@@ -194,7 +194,7 @@ class ColumnManageServiceImplTest {
     }
 
     @Test
-    @DisplayName("미승인 컬럼 삭제 시 테이블/표준용어 연관에서도 제거한다 (테이블은 이름이 아닌 연관관계로 찾는다)")
+    @DisplayName("미승인 컬럼 삭제 시 테이블/표준용어 연관에서도 제거한다 (테이블/용어는 요청 값이 아닌 컬럼의 연관관계로 찾는다)")
     void deleteColumn() {
         ColumnInfo column = column(1L, false);
         TableInfo table = table();
@@ -202,12 +202,12 @@ class ColumnManageServiceImplTest {
         column.setTableInfo(table);
         StandardTerm term = term();
         term.getColumnInfos().add(column);
+        column.setStandardTerms(term);
         when(columnInfoRepository.findByProjectIdAndId(1L, 1L)).thenReturn(column);
-        when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term);
 
-        // 컬럼에 예전 테이블명이 남아있어도 삭제할 수 있어야 한다.
+        // 그리드에서 체크한 행에는 termId 가 없고, 예전 테이블명이 남아있어도 삭제할 수 있어야 한다.
         service.deleteColumn(AccountDto.builder().projectId(1L).build(),
-                List.of(ColumnInfoDto.builder().id(1L).tableName("TB_OLD_NAME").termId(20L).build()));
+                List.of(ColumnInfoDto.builder().id(1L).tableName("TB_OLD_NAME").build()));
 
         verify(columnInfoRepository).delete(column);
         assertThat(table.getColumns()).isEmpty();

@@ -81,6 +81,8 @@ export interface GridProps {
   /** 셀 꾸미기 : undefined 를 반환하면 기본 표시 */
   renderCell?: (field: string, row: Row) => ReactNode | undefined;
   rowClassName?: (row: Row) => string | undefined;
+  /** 처음 정렬 (서버 컬럼명). 없으면 DataTables 처럼 첫 컬럼 오름차순 */
+  defaultSort?: { column: string; desc?: boolean };
 }
 
 interface PageData {
@@ -89,7 +91,7 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName } = props;
+  const { id, dataUrl, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
@@ -102,7 +104,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   const searchColumns = useMemo(() => columns.filter((c) => c.isSearch), [columns]);
 
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
-  // null = DataTables 기본 정렬 : 첫 컬럼 오름차순 (숨김 컬럼이어도 기준이 된다. 예: 컬럼 관리의 sortOrder)
+  // null = 처음 정렬 : defaultSort, 없으면 첫 컬럼 오름차순 (숨김 컬럼이어도 기준이 된다. 예: 컬럼 관리의 sortOrder)
   const [sortingState, setSortingState] = useState<SortingState | null>(null);
   const [searchColumn, setSearchColumn] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -118,10 +120,14 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     }
   }, [searchColumns, searchColumn]);
 
-  const sorting = useMemo<SortingState>(
-    () => sortingState ?? (columns.length > 0 ? [{ id: columnId(columns[0], 0), desc: false }] : []),
-    [sortingState, columns],
-  );
+  const sorting = useMemo<SortingState>(() => {
+    if (sortingState) return sortingState;
+    if (columns.length === 0) return [];
+    const index = defaultSort ? columns.findIndex((c) => c.column === defaultSort.column) : -1;
+    return index >= 0
+      ? [{ id: columnId(columns[index], index), desc: !!defaultSort?.desc }]
+      : [{ id: columnId(columns[0], 0), desc: false }];
+  }, [sortingState, columns, defaultSort?.column, defaultSort?.desc]);
 
   const sort = useMemo(() => {
     const order = sorting[0];
@@ -445,9 +451,12 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   );
 });
 
-/** TanStack Table 컬럼 id (서버 컬럼명이 비어 있을 수 있어 순번으로 대신한다) */
+/**
+ * TanStack Table 컬럼 id : 순번을 붙여 항상 고유하게 만든다.
+ * 서버 컬럼명은 비어 있거나 겹칠 수 있다 (예: 컬럼 관리의 체크박스 컬럼과 숨김 '정렬 순서' 컬럼이 둘 다 sortOrder)
+ */
 function columnId(col: GridColumn, index: number) {
-  return col.column || `__col${index}`;
+  return `${index}:${col.column}`;
 }
 
 function Paging({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {

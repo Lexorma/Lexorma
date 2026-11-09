@@ -3,6 +3,8 @@ package com.koboolean.metamora.data.excel.util;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -58,10 +60,10 @@ class ExcelExportUtilsTest {
     }
 
     @Test
-    @DisplayName("데이터사전 : 메모리 유지 행 수(100)를 넘는 데이터도 순서대로 쓰고, 템플릿 헤더/열 너비를 유지한다")
+    @DisplayName("데이터사전 : 메모리 유지 행 수(100)를 넘는 데이터도 순서대로 쓰고, 공통표준용어 형식(헤더/열 너비/헤더 고정/열 서식)을 따른다")
     void dictionaryExport() throws IOException {
         List<StandardTermDto> terms = IntStream.rangeClosed(1, 250)
-                .mapToObj(i -> StandardTermDto.builder().id((long) i).commonStandardTermName("용어" + i)
+                .mapToObj(i -> StandardTermDto.builder().id((long) i).revisionNumber(5).commonStandardTermName("용어" + i)
                         .commonStandardTermAbbreviation("TERM_" + i).build())
                 .toList();
         List<StandardWordDto> words = List.of(StandardWordDto.builder().id(1L).commonStandardWordName("사용자")
@@ -85,15 +87,26 @@ class ExcelExportUtilsTest {
             assertThat(termSheet.getColumnWidth(2)).as("열 너비 유지").isEqualTo(widthBefore);
             assertThat(termSheet.getLastRowNum()).isEqualTo(250);
 
+            assertThat(termSheet.getPaneInformation().isFreezePane()).as("헤더 행 고정").isTrue();
+
             Row first = termSheet.getRow(1);
-            assertThat(first.getCell(0).getStringCellValue()).isEqualTo("1");
+            assertThat(first.getCell(0).getCellType()).as("번호는 숫자").isEqualTo(CellType.NUMERIC);
+            assertThat(first.getCell(0).getNumericCellValue()).isEqualTo(1d);
+            assertThat(first.getCell(1).getStringCellValue()).as("제정차수는 'N차'").isEqualTo("5차");
             assertThat(first.getCell(2).getStringCellValue()).isEqualTo("용어1");
             assertThat(first.getCell(3).getStringCellValue()).as("null 은 빈 문자열").isEmpty();
-            assertThat(first.getHeightInPoints()).as("데이터 행 높이").isEqualTo(15.75f);
             assertThat(termSheet.getRow(250).getCell(4).getStringCellValue()).isEqualTo("TERM_250");
 
+            // 데이터 셀 : 템플릿 열 서식(글꼴/정렬) + 얇은 테두리
+            var cellStyle = first.getCell(2).getCellStyle();
+            var columnStyle = termSheet.getColumnStyle(2);
+            assertThat(cellStyle.getAlignment()).isEqualTo(columnStyle.getAlignment());
+            assertThat(workbook.getFontAt(cellStyle.getFontIndex()).getFontName())
+                    .isEqualTo(workbook.getFontAt(columnStyle.getFontIndex()).getFontName());
+            assertThat(cellStyle.getBorderBottom()).isEqualTo(BorderStyle.THIN);
+
             assertThat(workbook.getSheetAt(1).getRow(1).getCell(3).getStringCellValue()).isEqualTo("USER");
-            assertThat(workbook.getSheetAt(2).getRow(1).getCell(7).getStringCellValue()).isEqualTo("100");
+            assertThat(workbook.getSheetAt(2).getRow(1).getCell(7).getNumericCellValue()).as("데이터길이는 숫자").isEqualTo(100d);
         }
     }
 }

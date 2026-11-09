@@ -8,6 +8,7 @@ import com.koboolean.metamora.data.dictionary.domain.entity.StandardWord;
 import com.koboolean.metamora.data.dictionary.repository.StandardDomainRepository;
 import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
 import com.koboolean.metamora.data.dictionary.repository.StandardWordRepository;
+import com.koboolean.metamora.core.project.repository.ProjectRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
@@ -34,6 +35,7 @@ public class StandardTermService {
     private final StandardWordService standardWordService;
     private final StandardWordRepository standardWordRepository;
     private final StandardDomainRepository standardDomainRepository;
+    private final ProjectRepository projectRepository;
     private final EntityManager entityManager;
 
     private static final int FIRST_ROW = 1;
@@ -120,6 +122,11 @@ public class StandardTermService {
         Map<String, List<StandardWord>> wordsByAbbreviation = new HashMap<>();
         Map<String, Long> domainIdByName = new HashMap<>();
 
+        // 프로젝트의 데이터 사전 약어 사용 여부 : 사용하면 엑셀의 영문약어명을 그대로, 아니면 단어 영문명으로 용어 영문명을 만든다
+        boolean isDicAbbrUsed = projectRepository.findById(projectId)
+                .map(project -> Boolean.TRUE.equals(project.getIsDicAbbrUsed()))
+                .orElse(true);
+
         // 청크(500행) 단위 : 단어/도메인은 청크당 IN 조회, 저장은 JDBC 배치(용어 + 매핑 + 이음동의어), 저장 후 영속성 컨텍스트 비우기
         ExcelUtils.readExcelRowsInChunks(file, 0, standardTermHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
             List<Map<String, String>> termRows = rows.stream()
@@ -130,7 +137,7 @@ public class StandardTermService {
 
             List<StandardTerm> standardTerms = new ArrayList<>();
             for (Map<String, String> standardTermEntry : termRows) {
-                standardTerms.add(buildUploadedTerm(projectId, isApprovalAvailable, standardTermEntry, wordsByAbbreviation, domainIdByName));
+                standardTerms.add(buildUploadedTerm(projectId, isApprovalAvailable, isDicAbbrUsed, standardTermEntry, wordsByAbbreviation, domainIdByName));
             }
 
             standardTermRepository.saveAll(standardTerms);
@@ -170,7 +177,7 @@ public class StandardTermService {
      * 엑셀 한 행으로 표준용어를 만든다. (단어 매핑 / 도메인은 조회 없이 ID 참조로 연결)
      * 검증 순서와 오류는 기존과 같다 : 단어 매핑(NOT_FOUND_WORD_DATA) → 도메인(NOT_FOUND_DOMAIN_DATA)
      */
-    private StandardTerm buildUploadedTerm(Long projectId, boolean isApprovalAvailable, Map<String, String> standardTermEntry,
+    private StandardTerm buildUploadedTerm(Long projectId, boolean isApprovalAvailable, boolean isDicAbbrUsed, Map<String, String> standardTermEntry,
                                            Map<String, List<StandardWord>> wordsByAbbreviation, Map<String, Long> domainIdByName) {
         String abbreviation = standardTermEntry.get("standardTermAbbreviation");
 
@@ -199,7 +206,7 @@ public class StandardTermService {
                 .commonStandardTermName(standardTermName)
                 .commonStandardTermDescription(description)
                 .termWordMappings(mappings)
-                .commonStandardTermAbbreviation(standardTermEntry.get("standardTermAbbreviation"))
+                .commonStandardTermAbbreviation(isDicAbbrUsed ? abbreviation : toEnglishTermName(resolved.words()))
                 .administrativeStandardCodeName(standardTermEntry.get("administrativeStandardCodeName"))
                 .responsibleOrganization(standardTermEntry.get("responsibleOrganization"))
                 .synonymList(List.of(standardTermEntry.get("synonyms").split(",")))
@@ -210,6 +217,22 @@ public class StandardTermService {
 
         mappings.forEach(mapping -> mapping.setStandardTerm(standardTerm));
         return standardTerm;
+    }
+
+    /**
+     * 데이터 사전 약어를 쓰지 않는 프로젝트의 용어 영문명 : 단어 영문명을 '_' 로 잇는다. (예: 사용_내역_관리 → USE_HISTORY_MANAGEMENT)
+     * 영문명이 여러 단어인 단어(약어 사용 단어, 예: IP = Internet Protocol)나 영문명이 없는 단어는 약어를 쓴다
+     * → 용어명과 단어 수가 같게 유지된다.
+     */
+    public static String toEnglishTermName(List<StandardWord> words) {
+        return words.stream()
+                .map(word -> {
+                    String englishName = word.getCommonStandardWordEnglishName() == null ? "" : word.getCommonStandardWordEnglishName().trim();
+                    boolean useAbbreviation = Boolean.TRUE.equals(word.getUseAbbreviation()) || englishName.isEmpty() || englishName.contains(" ");
+                    return useAbbreviation ? word.getCommonStandardWordAbbreviation() : englishName;
+                })
+                .map(name -> name.toUpperCase(Locale.ROOT))
+                .collect(Collectors.joining("_"));
     }
 
     private void getStandardTermDomain(Long projectId, String[] split, List<StandardTermWordMapping> mappings, String standardTermName) {

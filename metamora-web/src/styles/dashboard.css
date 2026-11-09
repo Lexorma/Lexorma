@@ -2,21 +2,21 @@
    대시보드 (GitHub Primer 스타일)
    ========================================================= */
 .dash {
-    --fg: #1f2328;
-    --fg-muted: #59636e;
-    --border: #d1d9e0;
-    --border-muted: #d1d9e0b3;
-    --canvas: #ffffff;
-    --canvas-subtle: #f6f8fa;
-    --accent: #0969da;
-    --accent-subtle: #ddf4ff;
-    --success: #1a7f37;
-    --success-subtle: #dafbe1;
-    --attention: #9a6700;
-    --attention-subtle: #fff8c5;
-    --done: #8250df;
-    --done-subtle: #fbefff;
-    --danger: #d1242f;
+    --fg: var(--gh-fg);
+    --fg-muted: var(--gh-fg-muted);
+    --border: var(--gh-border);
+    --border-muted: var(--gh-border-muted);
+    --canvas: var(--gh-canvas);
+    --canvas-subtle: var(--gh-canvas-subtle);
+    --accent: var(--gh-accent);
+    --accent-subtle: var(--gh-accent-subtle);
+    --success: var(--gh-success);
+    --success-subtle: var(--gh-success-subtle);
+    --attention: var(--gh-attention);
+    --attention-subtle: var(--gh-attention-subtle);
+    --done: var(--gh-done);
+    --done-subtle: var(--gh-done-subtle);
+    --danger: var(--gh-danger);
 
     color: var(--fg);
     font-family: var(--app-font);
@@ -108,7 +108,7 @@
     transition: border-color .15s ease, box-shadow .15s ease;
 }
 .dash-stat:hover {
-    border-color: #818b98;
+    border-color: var(--gh-fg-subtle);
     box-shadow: 0 3px 6px #25292e14;
     color: inherit;
 }
@@ -196,7 +196,7 @@
     box-shadow: 0 1px 0 #1f23280a;
 }
 .dash-btn:hover {
-    background: #eff2f5;
+    background: var(--gh-btn-hover);
     color: var(--fg);
 }
 

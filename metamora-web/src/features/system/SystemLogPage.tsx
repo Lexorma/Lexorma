@@ -63,6 +63,7 @@ export function SystemLogPage() {
         <Grid
           id="logTable"
           dataUrl="/api/getSystemLog"
+          defaultSort={{ column: 'id', desc: true }}
           onCellButton={openDetail}
           renderCell={(field, row) => {
             switch (field) {

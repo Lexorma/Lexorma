@@ -157,6 +157,21 @@ export function ProjectManagePage() {
           <span className={`gh-label gh-label-dot ${isInactive ? 'gh-label-danger' : 'gh-label-success'}`}>{isInactive ? '비활성' : '활성'}</span>
           {selected.isAutoActive && <span className="gh-label">사용자 자동 승인</span>}
         </div>
+        {/* 프로젝트 버튼 : 멤버 그리드 버튼과 구분되도록 프로젝트 바에 둔다 (수정은 비활성 프로젝트에서도 사용) */}
+        <div className="project-bar-actions">
+          <button type="button" id="btn-project-add" title="프로젝트 등록" aria-label="프로젝트 등록" className="btn" disabled={isInactive} onClick={() => openProjectForm('C', {})}>
+            <PlusIcon />
+            등록
+          </button>
+          <button type="button" id="btn-project-edit" title="프로젝트 수정" aria-label="프로젝트 수정" className="btn" onClick={editProject}>
+            <PencilIcon />
+            수정
+          </button>
+          <button type="button" id="btn-project-delete" title="프로젝트 삭제" aria-label="프로젝트 삭제" className="btn btn-danger" disabled={isInactive} onClick={deleteProject}>
+            <TrashIcon />
+            삭제
+          </button>
+        </div>
       </div>
 
       <div id="gridContainer" style={{ pointerEvents: isInactive ? 'none' : 'auto', opacity: isInactive ? 0.5 : 1 }}>
@@ -166,23 +181,6 @@ export function ProjectManagePage() {
           id="projectMemberGrid"
           dataUrl={`/api/getProject/${selected.id}`}
           crudActions={selected.isAutoActive ? 'cd' : 'ancd'}
-          extraActions={
-            // 수정 버튼은 비활성 프로젝트에서도 쓸 수 있어야 하므로 그리드 영역 밖처럼 클릭을 다시 허용한다
-            <span style={{ pointerEvents: 'auto', opacity: 1 }} className="d-inline-flex gap-2">
-              <button type="button" id="btn-project-add" className="btn" disabled={isInactive} onClick={() => openProjectForm('C', {})}>
-                <PlusIcon />
-                프로젝트 등록
-              </button>
-              <button type="button" id="btn-project-edit" className="btn" onClick={editProject}>
-                <PencilIcon />
-                프로젝트 수정
-              </button>
-              <button type="button" id="btn-project-delete" className="btn btn-danger" disabled={isInactive} onClick={deleteProject}>
-                <TrashIcon />
-                프로젝트 삭제
-              </button>
-            </span>
-          }
           onAction={{ add: addMember, active: () => saveIsActive(true), unactive: () => saveIsActive(false), delete: deleteMembers }}
           renderCell={(field, row) => {
             if (field === 'username') return <Mono>{row.username}</Mono>;

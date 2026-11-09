@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { ApiError } from './lib/api';
+import { followSystemTheme } from './lib/theme';
 
 // 스타일 순서는 예전 layout.html 과 같다 (bootstrap → dataTables → Primer 덮어쓰기 → 화면별)
 import './styles/layout.css';
@@ -24,6 +25,8 @@ import './styles/project_manage.css';
 window.addEventListener('unhandledrejection', (event) => {
   if (event.reason instanceof ApiError && event.reason.handled) event.preventDefault();
 });
+
+followSystemTheme();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

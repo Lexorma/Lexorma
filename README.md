@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="metamora-app/src/main/resources/static/images/favicon.png" alt="MetaMora Logo" width="120" height="120">
+  <img src="metamora-web/public/images/favicon.png" alt="MetaMora Logo" width="120" height="120">
 </p>
 
 <h1 align="center">MetaMora</h1>

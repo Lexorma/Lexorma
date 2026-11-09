@@ -45,7 +45,7 @@
 }
 
 .notice-view-sep {
-    color: #818b98;
+    color: var(--gh-fg-subtle);
 }
 
 /* ---------- 본문 + 조회자 ---------- */

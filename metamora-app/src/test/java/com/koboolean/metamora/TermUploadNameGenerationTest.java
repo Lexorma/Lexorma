@@ -72,7 +72,7 @@ class TermUploadNameGenerationTest {
                 new TermRow("GIS자료여부", "구분자 없는 용어명", "GIS_DATA_YN"),         // 구분자 없음 → 생성
                 new TermRow("HTML 사용 여부 플래그", "", "HTML_USE_YN")                 // 단어 수 다름 + 설명 없음 → 생성
         ));
-        AccountDto login = loginToNewProject("term-upload-generate");
+        AccountDto login = loginToNewProject("term-upload-generate", true);
 
         dataDictionaryService.uploadDictionaryExcelFile(file, login);
 
@@ -107,7 +107,7 @@ class TermUploadNameGenerationTest {
                 new TermRow("GIS_자료_여부", "정상 행", "GIS_DATA_YN"),
                 new TermRow("없는 용어", "", "NOT_EXISTS_ABBR_QQ")
         ));
-        AccountDto login = loginToNewProject("term-upload-cancel");
+        AccountDto login = loginToNewProject("term-upload-cancel", true);
 
         assertThatThrownBy(() -> dataDictionaryService.uploadDictionaryExcelFile(file, login))
                 .isInstanceOf(CustomException.class)
@@ -115,15 +115,29 @@ class TermUploadNameGenerationTest {
         assertThat(standardTermRepository.findAllByProjectId(login.getProjectId())).as("용어는 하나도 저장되지 않는다").isEmpty();
     }
 
+    @Test
+    @DisplayName("데이터 사전 약어를 쓰지 않는 프로젝트는 용어 영문명을 단어 영문명으로 만든다 (엑셀의 영문약어명 대신)")
+    void englishTermNameWhenDicAbbrNotUsed() throws IOException {
+        // 템플릿 단어 : SMS(영문명 여러 단어 → 약어) / 발송(Sending) / 여부(Yes or No → 약어)
+        MockMultipartFile file = templateWithTerms(List.of(new TermRow("SMS_발송_여부", "약어 미사용", "SMS_SNDNG_YN")));
+        AccountDto login = loginToNewProject("term-upload-english", false);
+
+        dataDictionaryService.uploadDictionaryExcelFile(file, login);
+
+        StandardTerm term = standardTermRepository.findAllByProjectId(login.getProjectId()).getFirst();
+        assertThat(term.getCommonStandardTermName()).isEqualTo("SMS_발송_여부");
+        assertThat(term.getCommonStandardTermAbbreviation()).isEqualTo("SMS_SENDING_YN");
+    }
+
     // ------------------------------------------------------------------ 보조
 
     private record TermRow(String name, String description, String abbreviation) {}
 
-    private AccountDto loginToNewProject(String projectName) {
+    private AccountDto loginToNewProject(String projectName, boolean isDicAbbrUsed) {
         Account admin = accountRepository.findAll().stream()
                 .filter(account -> "admin".equals(account.getUsername())).findFirst().orElseThrow();
         Project project = projectRepository.save(Project.builder()
-                .projectName(projectName).isActive(true).account(admin).build());
+                .projectName(projectName).isActive(true).isDicAbbrUsed(isDicAbbrUsed).account(admin).build());
         return SecurityTestSupport.loginAs(projectRepository, project.getId(), String.valueOf(admin.getId()), "ROLE_ADMIN");
     }
 

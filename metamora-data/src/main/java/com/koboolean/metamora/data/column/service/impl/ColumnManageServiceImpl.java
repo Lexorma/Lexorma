@@ -222,15 +222,18 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
 
             // 테이블명은 변경될 수 있으므로 이름이 아닌 연관관계(table_info_id)로 소속 테이블을 찾는다.
+            // 표준용어도 요청 값(그리드 행에는 termId 가 없다)이 아닌 컬럼의 연관관계로 찾는다. (일괄 저장의 삭제와 같음)
             TableInfo tableInfo = columnInfo.getTableInfo();
-            StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
+            StandardTerm standardTerm = columnInfo.getStandardTerms();
 
             columnInfoRepository.delete(columnInfo);
 
             if(tableInfo != null){
                 tableInfo.getColumns().remove(columnInfo);
             }
-            standardTerm.getColumnInfos().remove(columnInfo);
+            if (standardTerm != null && standardTerm.getColumnInfos() != null) {
+                standardTerm.getColumnInfos().remove(columnInfo);
+            }
         });
 
     }

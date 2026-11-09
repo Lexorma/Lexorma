@@ -81,7 +81,7 @@ dialog.popup-dialog .popup-dialog-body {
     padding: 5px 12px;
     border: 1px solid var(--gh-border, #d1d9e0);
     border-radius: 6px;
-    background-color: #ffffff;
+    background-color: var(--gh-canvas);
     color: var(--gh-fg, #1f2328);
     font-size: 14px;
     line-height: 20px;
@@ -153,7 +153,7 @@ dialog.popup-dialog .popup-dialog-body {
     margin: 24px auto 0;
     border: 1px solid var(--gh-border, #d1d9e0);
     border-radius: 6px;
-    background-color: #ffffff;
+    background-color: var(--gh-canvas);
     overflow: hidden;
 }
 
@@ -263,7 +263,7 @@ dialog.popup-dialog .popup-dialog-body {
     padding: 8px 12px 8px 28px;
     border: 1px solid #d4a72c66;
     border-radius: 6px;
-    background-color: #fff8c5;
+    background-color: var(--gh-attention-subtle);
     color: #7d4e00;
     font-size: 12px;
 }

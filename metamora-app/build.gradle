@@ -7,8 +7,6 @@ dependencies {
     implementation project(':metamora-system')
     implementation project(':metamora-operation')
     implementation project(':metamora-data')
-    implementation project(':metamora-design')
-    implementation project(':metamora-chat')
 
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
@@ -25,8 +23,6 @@ dependencies {
 
     testImplementation testFixtures(project(':metamora-core'))
     testImplementation 'org.springframework.security:spring-security-test'
-    // SmokeTest 의 STOMP 클라이언트
-    testImplementation 'org.springframework.boot:spring-boot-starter-websocket'
 }
 
 bootJar {

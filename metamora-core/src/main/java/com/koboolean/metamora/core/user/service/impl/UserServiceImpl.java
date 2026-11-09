@@ -3,7 +3,6 @@ package com.koboolean.metamora.core.user.service.impl;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
-import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
 import com.koboolean.metamora.core.project.domain.entity.Project;
 import com.koboolean.metamora.core.project.domain.entity.ProjectMember;
 import com.koboolean.metamora.core.security.domain.entity.Role;
@@ -137,21 +136,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public List<ProjectDto> selectAllProjectsIsActive() {
         return projectRepository.findByIsActive(true).stream().map(ProjectDto::fromEntity).collect(Collectors.toList());
-    }
-
-    @Override
-    public List<AccountDto> getAccountList() {
-        return userRepository.findAll().stream().map(AccountDto::fromEntity).collect(Collectors.toList());
-    }
-
-    @Override
-    public String getProjectName(Long projectId) {
-        return projectRepository.findById(projectId).orElse(Project.builder().projectName("NAN").build()).getProjectName();
-    }
-
-    @Override
-    public ProjectMemberDto getProjectRoleName(Long projectId, String username) {
-        return ProjectMemberDto.fromEntity(projectMemberRepository.findAllByProject_IdAndAccount_Username(projectId, username));
     }
 
     @Override

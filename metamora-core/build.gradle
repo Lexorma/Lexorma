@@ -4,7 +4,6 @@ apply plugin: 'java-test-fixtures'
 dependencies {
     api project(':metamora-common')
     api libs.modelmapper
-    implementation 'com.github.ben-manes.caffeine:caffeine'
 
     // 다른 모듈 테스트에서 공용으로 쓰는 픽스처 (src/testFixtures)
     testFixturesApi 'org.mockito:mockito-core'

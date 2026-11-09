@@ -3,7 +3,6 @@ package com.koboolean.metamora.core.login.controller;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.common.exception.CustomFormException;
-import com.koboolean.metamora.core.login.service.LoginUserCache;
 import com.koboolean.metamora.core.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -29,7 +28,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class LoginController {
 
     private final UserService userService;
-    private final LoginUserCache loginUserCache;
 
     /**
      * 로그인
@@ -69,8 +67,6 @@ public class LoginController {
     @GetMapping(value = "/logout")
     public String logout(@AuthenticationPrincipal AccountDto accountDto, HttpServletRequest request, HttpServletResponse response) {
         Authentication authentication = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
-
-        loginUserCache.remove(accountDto.getId());
 
         if (authentication != null) {
             new SecurityContextLogoutHandler().logout(request, response, authentication);

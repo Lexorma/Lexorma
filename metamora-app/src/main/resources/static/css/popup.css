@@ -240,27 +240,6 @@ dialog.popup-dialog .popup-dialog-body {
 }
 
 /* =========================================================
-   코드규칙 팝업 : 입력 → 변환 → 결과
-   ========================================================= */
-.code-rule-convert {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 24px !important;
-    margin-bottom: 8px !important;
-    padding: 12px 16px;
-    border: 1px solid var(--gh-border, #d1d9e0);
-    border-radius: 6px;
-    background-color: var(--gh-canvas-subtle, #f6f8fa);
-    font-size: 12px;
-}
-
-.code-rule-result .gh-method-name {
-    font-family: var(--app-font);
-    font-weight: 600;
-}
-
-/* =========================================================
    테이블 DDL (테이블 관리 > 테이블 상세 > DDL 보기)
    ========================================================= */
 .table-ddl-toolbar {

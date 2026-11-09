@@ -58,17 +58,6 @@ public class PopupController {
         return "popup/common_column_set :: content"; // 팝업 다이얼로그 화면 조각
     }
 
-    @PreAuthorize("hasRole('MANAGER')")
-    @GetMapping("/codeRulePopup")
-    public String codeRulePopup(){
-        return "popup/code_rule_popup :: content"; // 팝업 다이얼로그 화면 조각
-    }
-
-    @PreAuthorize("hasRole('USER')")
-    @GetMapping("/codeRuleDetailPopup")
-    public String codeRuleDetailPopup(){
-        return "popup/code_rule_detail_popup :: content"; // 팝업 다이얼로그 화면 조각
-    }
     
     /**
      * 공지사항 상세보기 팝업

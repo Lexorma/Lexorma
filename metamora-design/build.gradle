@@ -1,4 +1,0 @@
-// 설계기반 관리 - 메서드명 생성에 데이터사전을 사용한다
-dependencies {
-    api project(':metamora-data')
-}

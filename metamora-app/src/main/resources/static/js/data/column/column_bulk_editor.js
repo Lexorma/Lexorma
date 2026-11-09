@@ -3,6 +3,7 @@ import {setMainDialogSize} from "../../common/common.js";
 import {createTermForm} from "../dictionary/term_create_form.js";
 import {applyRecommendation} from "./column_recommend.js";
 import {openCommonColumnSet} from "./common_column_set.js";
+import {bindRefTableLookup} from "./ref_table_lookup.js";
 
 const RECOMMEND_STORAGE_KEY = "metamora.columnBulk.recommend";
 
@@ -832,12 +833,20 @@ function render(table, columnInfos, onSaved) {
                 $("<div></div>").addClass("col-bulk-detail").append(
                     field("정밀도", numberInput(row, "precision", disabled)),
                     field("소수 자릿수", numberInput(row, "scale", disabled)),
-                    field("참조 테이블명", textInput(row, "refTableName", disabled).addClass("gh-mono").attr("placeholder", "예: TB_USER")),
+                    refTableField(row, disabled, field),
                     field("데이터 예시", textInput(row, "example", disabled))
                 ),
                 $flags
             )
         );
+    }
+
+    // 참조 테이블명 : 승인된 테이블 자동완성 (승인된 컬럼은 잠겨 있으므로 조회하지 않는다)
+    function refTableField(row, disabled, field) {
+        const $input = textInput(row, "refTableName", disabled).addClass("gh-mono").attr("placeholder", "예: TB_USER");
+        const $field = field("참조 테이블명", $input);
+        if (!disabled) $field.append(bindRefTableLookup($input));
+        return $field;
     }
 
     function textInput(row, key, disabled) {

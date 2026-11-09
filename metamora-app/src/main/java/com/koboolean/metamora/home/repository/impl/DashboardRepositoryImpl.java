@@ -4,7 +4,6 @@ import com.koboolean.metamora.operation.board.domain.dto.BoardDto;
 import com.koboolean.metamora.operation.board.domain.dto.BoardViewDto;
 import com.koboolean.metamora.operation.board.domain.entity.Board;
 import com.koboolean.metamora.operation.board.domain.entity.QBoard;
-import com.koboolean.metamora.design.code.domain.entity.QCodeRuleDetail;
 import com.koboolean.metamora.data.column.domain.entity.QColumnInfo;
 import com.koboolean.metamora.data.dictionary.domain.entity.QStandardDomain;
 import com.koboolean.metamora.data.dictionary.domain.entity.QStandardTerm;
@@ -13,8 +12,6 @@ import com.koboolean.metamora.data.table.domain.entity.QTableInfo;
 import com.koboolean.metamora.home.domain.dto.DashboardDto;
 import com.koboolean.metamora.home.domain.dto.RecentChangeDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
-import com.koboolean.metamora.design.rule.domain.entity.QCodeRule;
-import com.koboolean.metamora.design.rule.domain.entity.QTemplate;
 import com.koboolean.metamora.home.repository.DashboardRepositoryCustom;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.CaseBuilder;
@@ -39,9 +36,6 @@ public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
         QStandardWord word = QStandardWord.standardWord;
         QStandardTerm term = QStandardTerm.standardTerm;
         QStandardDomain domain = QStandardDomain.standardDomain;
-        QCodeRule rule = QCodeRule.codeRule;
-        QCodeRuleDetail codeRuleDetail = QCodeRuleDetail.codeRuleDetail;
-        QTemplate template = QTemplate.template;
         QTableInfo tableInfo = QTableInfo.tableInfo;
         QColumnInfo columnInfo = QColumnInfo.columnInfo;
 
@@ -84,45 +78,6 @@ public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
                 .limit(limit)
                 .fetch();
 
-        List<RecentChangeDto> codeRuleChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("코드규칙관리"),
-                        rule.codeRuleName,
-                        rule.updatedBy,
-                        rule.updated
-                ))
-                .from(rule)
-                .where(rule.projectId.eq(projectId))
-                .orderBy(rule.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> codeRuleDetailChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("코드규칙"),
-                        codeRuleDetail.methodName,
-                        codeRuleDetail.updatedBy,
-                        codeRuleDetail.updated
-                ))
-                .from(codeRuleDetail)
-                .where(codeRuleDetail.projectId.eq(projectId))
-                .orderBy(codeRuleDetail.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> templateChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("템플릿"),
-                        template.templateName,
-                        template.updatedBy,
-                        template.updated
-                ))
-                .from(template)
-                .where(template.projectId.eq(projectId))
-                .orderBy(template.updated.desc())
-                .limit(limit)
-                .fetch();
-
         List<RecentChangeDto> tableChanges = query
                 .select(Projections.constructor(RecentChangeDto.class,
                         Expressions.constant("테이블관리"),
@@ -149,7 +104,7 @@ public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
                 .limit(limit)
                 .fetch();
 
-        return Stream.of(wordChanges, termChanges, domainChanges, codeRuleChanges, codeRuleDetailChanges, templateChanges, tableChanges, columnChanges)
+        return Stream.of(wordChanges, termChanges, domainChanges, tableChanges, columnChanges)
                 .flatMap(Collection::stream)
                 .sorted(Comparator.comparing(RecentChangeDto::modifiedAt).reversed())
                 .limit(limit)

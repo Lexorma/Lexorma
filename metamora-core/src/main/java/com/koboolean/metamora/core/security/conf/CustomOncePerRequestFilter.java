@@ -1,13 +1,10 @@
 package com.koboolean.metamora.core.security.conf;
 
-import com.koboolean.metamora.core.security.domain.dto.AccountDto;
-import com.koboolean.metamora.core.login.service.LoginUserCache;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -18,10 +15,7 @@ import org.springframework.web.util.WebUtils;
 import java.io.IOException;
 
 @Component
-@RequiredArgsConstructor
 public class CustomOncePerRequestFilter extends OncePerRequestFilter {
-
-    private final LoginUserCache loginUserCache;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -52,13 +46,6 @@ public class CustomOncePerRequestFilter extends OncePerRequestFilter {
         // 요청 본문을 강제적으로 캐싱하지 않고 그대로 유지
         request.setAttribute("CACHED_REQUEST", requestToUse);
         request.setAttribute("CACHED_RESPONSE", responseToUse);
-
-        AccountDto accountDto = (AccountDto) request.getSession().getAttribute("account");
-
-        if (accountDto != null && accountDto.getId() != null) {
-            // 로그인 사용자 만료시간 연장
-            loginUserCache.extend(accountDto.getId());
-        }
 
         // 필터 체인 실행 (중요: 감싼 요청과 응답을 사용해야 함)
         filterChain.doFilter(requestToUse, responseToUse);

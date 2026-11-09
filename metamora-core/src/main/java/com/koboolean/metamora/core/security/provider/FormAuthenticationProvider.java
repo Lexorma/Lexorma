@@ -4,7 +4,6 @@ import com.koboolean.metamora.core.security.domain.dto.AccountContext;
 import com.koboolean.metamora.core.security.details.FormWebAuthenticationDetails;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.ProjectAccessException;
-import com.koboolean.metamora.core.login.service.LoginUserCache;
 import com.koboolean.metamora.core.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +27,6 @@ public class FormAuthenticationProvider implements AuthenticationProvider {
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
     private final UserService userService;
-    private final LoginUserCache loginUserCache;
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
@@ -67,8 +65,6 @@ public class FormAuthenticationProvider implements AuthenticationProvider {
 
         accountDto.setRoleName(userService.getRoleName(authorities.get(0).toString()));
         accountDto.setPassword(null);
-
-        loginUserCache.save(accountDto);
 
         HttpServletRequest request = details.getRequest();
         if (request != null) {

@@ -114,31 +114,6 @@
                     </a>
                 </div>
             </th:block>
-
-            <!-- 1뎁스: 설계기반 관리 -->
-            <th:block th:if="${@menuAuth.canView('design-test')}">
-                <a href="#design-test" class="sidebar-link has-children" title="설계기반 관리"
-                   onclick="toggleMenu(event, 'design-test', this)"
-                   data-menu-id="design-test">
-                    <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
-                    </svg>
-                    <span class="sidebar-label">설계기반 관리</span>
-                    <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </a>
-                <div id="design-test" class="collapse sidebar-submenu">
-                    <a th:if="${@menuAuth.canView('code-rule-manage')}" href="/codeRuleManage" class="sidebar-sublink"
-                       onclick="setActiveSubmenu(event, 'code-rule-manage')"
-                       data-submenu-id="code-rule-manage">
-                        코드규칙 관리
-                    </a>
-                    <a th:if="${@menuAuth.canView('code-rule')}" href="/codeRule" class="sidebar-sublink"
-                       onclick="setActiveSubmenu(event, 'code-rule')"
-                       data-submenu-id="code-rule">
-                        코드 규칙
-                    </a>
-                </div>
-            </th:block>
         </nav>
     </aside>
 </html>

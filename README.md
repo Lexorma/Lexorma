@@ -1,4 +1,5 @@
- <p align="center">
+
+<p align="center">
   <img src="metamora-app/src/main/resources/static/images/favicon.png" alt="MetaMora Logo" width="120" height="120">
 </p>
 
@@ -10,7 +11,8 @@
 
 MetaMora is an open-source web application designed to streamline database modeling, data standardization, and metadata management.
 
-It provides standardized data dictionaries (words, domains, and terms), rule-based naming conventions, and DDL generation to maintain consistency across database schemas and application code.
+It provides standardized data dictionaries (words, domains, and terms), rule-based naming conventions, and DDL generation to maintain consistency across database schemas.
+
 
 MetaMora aims to improve developer productivity by enforcing consistent naming standards and automating repetitive tasks in large-scale software development.
 
@@ -20,7 +22,7 @@ The platform is evolving toward AI-assisted database reverse engineering, metada
 
 ## Project Goals
 
-1. **Improve Consistency** — Generate consistent table, column, method, and function names based on standardized data definitions and naming conventions.
+1. **Improve Consistency** — Generate consistent table and column names based on standardized data definitions and naming conventions.
 2. **Automate DDL Generation** — Generate database-specific DDL statements from registered data standards and table definitions.
 3. **Increase Developer Productivity** — Reduce repetitive work through Excel templates and automated workflows.
 4. **Centralize Metadata Management** — Establish a unified foundation for managing database structures, data definitions, and standardization rules.
@@ -37,9 +39,7 @@ The platform is evolving toward AI-assisted database reverse engineering, metada
 | System Management | Users / Projects / System Logs | User approval and authorization, project configuration (table prefixes and target databases), and API request logs |
 | Data Management | Data Dictionary | Manage and approve standardized words, domains, and terms; Excel import/export with common standard terminology templates |
 | Data Management | Table Management | Generate table names from standardized English abbreviations, view table details, and generate DDL |
-| Data Management | Column Management | Register columns using standardized terms, perform bulk editing, manage reusable column sets, and import Excel files |
-| Design Management | Code Rules / Naming Conventions | Manage naming rule templates and generate method or function names using the data dictionary |
-| Messenger | Real-Time Chat | View online users and communicate through one-to-one messaging using STOMP WebSocket |
+| Data Management | Column Management | Register columns using standardized terms, search and select referenced (FK) tables, perform bulk editing, manage reusable column sets, and import Excel files |
 
 ### Data Standardization Rules
 
@@ -92,8 +92,8 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 | `ADMIN` | Administrator | Full system access, including user management |
 | `MANAGER` | Manager | Approval workflows, announcement creation and modification |
 | `DBA` | Database Administrator | Project management, system logs, and data dictionary approval |
-| `USER` | Standard User | Column management and code naming rules |
-| `VIEWER` | Read-Only User | View data dictionaries, tables, and naming rules |
+| `USER` | Standard User | Column management |
+| `VIEWER` | Read-Only User | View data dictionaries and tables |
 | `NOT_APPROVE` | Unapproved User | Dashboard and announcements only |
 
 Newly registered users are assigned the `NOT_APPROVE` role until an administrator grants additional permissions.
@@ -105,10 +105,10 @@ Newly registered users are assigned the `NOT_APPROVE` role until an administrato
 | Category | Technologies |
 |---|---|
 | Language / Build | Java 21, Gradle 9.8 (Wrapper included, multi-module project) |
-| Backend | Spring Boot 4.1, Spring Security, Spring Data JPA, QueryDSL 7 (OpenFeign), WebSocket (STOMP) |
+| Backend | Spring Boot 4.1, Spring Security, Spring Data JPA, QueryDSL 7 (OpenFeign) |
 | Database | PostgreSQL 18 (default), H2 (local development and testing), Flyway migrations |
 | Frontend | Thymeleaf, Thymeleaf Layout Dialect, jQuery, DataTables, GitHub Primer styling, Pretendard font |
-| Additional Libraries | Apache POI 5 (SAX/SXSSF streaming for Excel), Caffeine, springdoc-openapi |
+| Additional Libraries | Apache POI 5 (SAX/SXSSF streaming for Excel), springdoc-openapi |
 
 ### Module Architecture
 
@@ -117,7 +117,7 @@ MetaMora follows a Gradle multi-module architecture to separate shared infrastru
 **Dependency structure:**
 
 ```text
-common ← core ← (system, operation, data, chat) ← design(→ data) ← app
+common ← core ← (system, operation, data) ← app
 ```
 
 | Module | Responsibility |
@@ -129,8 +129,6 @@ common ← core ← (system, operation, data, chat) ← design(→ data) ← app
 | `metamora-data` | Data dictionaries, tables, columns, reusable column sets, and Excel template downloads |
 | `metamora-design` | Naming conventions, code rule management, and method name generation |
 | `metamora-chat` | Real-time messaging |
-| `metamora-app` | Executable application (`metamora.jar`), dashboard, UI resources, configuration, and Flyway migrations |
-
 ---
 
 ## System Requirements
@@ -339,8 +337,7 @@ metamora-app/src/main/resources/db/migration/
 - Databases created before Flyway integration are automatically baselined to preserve existing data.
 - Some migrations modify existing table structures.
 
-> **Important:** Back up production databases before upgrading, especially when applying structural migrations such as V6, which removes the term-to-column join table.
-
+> **Important:** Back up production databases before upgrading, especially when applying structural migrations such as V6, which removes the term-to-column join table, and V10, which drops the tables of the removed messenger and code rule features.
 ---
 
 ## User Accounts

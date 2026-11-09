@@ -2,7 +2,6 @@ package com.koboolean.metamora.core.user.service;
 
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
-import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
 
 import java.util.List;
 
@@ -20,12 +19,6 @@ public interface UserService {
     ProjectDto selectProjects(AccountDto accountDto);
 
     List<ProjectDto> selectAllProjectsIsActive();
-
-    List<AccountDto> getAccountList();
-
-    String getProjectName(Long projectId);
-
-    ProjectMemberDto getProjectRoleName(Long projectId, String username);
 
     List<ProjectDto> selectAllProjectsByUsername(AccountDto accountDto);
 

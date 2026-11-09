@@ -4,6 +4,7 @@ import {applyAll, registerRowDecorator, setApproval, setMono, setYN} from "../..
 import {openColumnTableDetail} from "../../popup/column_table_detail.js";
 import {closePopupDialog, openPopupDialog} from "../../common/popup_dialog.js";
 import {createTermForm} from "../dictionary/term_create_form.js";
+import {bindRefTableLookup} from "./ref_table_lookup.js";
 
 /**
  * 컬럼 행 꾸미기 : 테이블/컬럼명·데이터 타입은 코드 글꼴, Y/N 은 라벨, 승인여부는 상태 라벨
@@ -58,6 +59,7 @@ $(document).ready(() => {
 
         // 테이블 / 표준용어(컬럼명) 실시간 조회
         bindColumnLookup();
+        $("#refTableName").parent().append(bindRefTableLookup($("#refTableName")));
         $("#tableSearchInput").trigger("focus");
     });
 
@@ -244,7 +246,8 @@ function createForm(rowData, type) {
 
             <div class="form-group">
                 <label for="refTableName">참조 테이블명</label>
-                <input type="text" class="form-control" name="refTableName" id="refTableName"
+                <input type="text" class="form-control gh-mono" name="refTableName" id="refTableName"
+                       placeholder="테이블명 일부를 입력하면 승인된 테이블 목록이 나옵니다 (예: TB_USER)"
                        value="${rowData.refTableName ?? ''}" />
             </div>
 

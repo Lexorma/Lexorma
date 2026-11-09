@@ -38,19 +38,14 @@ public class MenuAuthorization {
             // 데이터 관리
             Map.entry("data-dictionary", "VIEWER"),
             Map.entry("table-manage", "VIEWER"),
-            Map.entry("column-manage", "USER"),
-
-            // 설계기반 관리
-            Map.entry("code-rule-manage", "VIEWER"),
-            Map.entry("code-rule", "USER")
+            Map.entry("column-manage", "USER")
     );
 
     /** 1뎁스 메뉴 그룹 → 하위 메뉴 ID (하위 메뉴가 하나라도 보이면 그룹을 노출) */
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
             "system-management", new String[]{"user-manage", "project-manage", "system-log"},
             "operation-management", new String[]{"notice"},
-            "data-management", new String[]{"data-dictionary", "table-manage", "column-manage"},
-            "design-test", new String[]{"code-rule-manage", "code-rule"}
+            "data-management", new String[]{"data-dictionary", "table-manage", "column-manage"}
     );
 
     private final RoleHierarchy roleHierarchy;

@@ -16,7 +16,7 @@ import org.springdoc.core.models.GroupedOpenApi;
 public class SwaggerConfig {
 
     @Bean
-    public GroupedOpenApi chatOpenApi() {
+    public GroupedOpenApi metamoraOpenApi() {
         String[] paths = {"/api/**"};
 
         return GroupedOpenApi.builder()

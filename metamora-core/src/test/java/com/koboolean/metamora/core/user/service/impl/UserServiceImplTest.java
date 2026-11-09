@@ -123,17 +123,6 @@ class UserServiceImplTest {
     }
 
     @Test
-    @DisplayName("프로젝트명 조회 : 없는 프로젝트는 NAN")
-    void getProjectName() {
-        Project project = CoreFixtures.project(3L, CoreFixtures.account(1L, "admin"));
-        when(projectRepository.findById(3L)).thenReturn(Optional.of(project));
-        when(projectRepository.findById(4L)).thenReturn(Optional.empty());
-
-        assertThat(userService.getProjectName(3L)).isEqualTo("프로젝트3");
-        assertThat(userService.getProjectName(4L)).isEqualTo("NAN");
-    }
-
-    @Test
     @DisplayName("권한 설명 조회")
     void getRoleName() {
         when(roleRepository.findByRoleName("ROLE_ADMIN")).thenReturn(CoreFixtures.role(1L, "ROLE_ADMIN"));

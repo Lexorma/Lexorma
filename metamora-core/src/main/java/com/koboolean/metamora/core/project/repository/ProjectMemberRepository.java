@@ -17,5 +17,4 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
 
     Page<ProjectMember> findAllByIsActiveAndProject_id(Pageable pageable, boolean y, Long projectId);
 
-    ProjectMember findAllByProject_IdAndAccount_Username(Long projectId, String username);
 }

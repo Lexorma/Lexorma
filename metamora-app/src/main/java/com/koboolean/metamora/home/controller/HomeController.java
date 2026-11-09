@@ -71,23 +71,6 @@ public class HomeController {
         return "pages/data/column_manage";
     }
 
-    @PreAuthorize("hasRole('USER')") // 화면의 그리드 API 권한(USER)과 동일 (MenuAuthorization 참고)
-    @GetMapping("/codeRule")
-    public String codeRule() {
-        return "pages/design/code_rule";
-    }
-
-    @PreAuthorize("hasRole('VIEWER')")
-    @GetMapping("/codeRuleManage")
-    public String codeRuleManage(Model model, @AuthenticationPrincipal AccountDto accountDto) {
-
-        ProjectDto projectDto = userService.selectProjects(accountDto);
-
-        model.addAttribute("project", projectDto);
-
-        return "pages/design/code_rule_manage";
-    }
-
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/userManage")
     public String manage() {

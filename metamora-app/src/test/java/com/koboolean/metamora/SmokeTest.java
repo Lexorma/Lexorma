@@ -15,23 +15,13 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.messaging.converter.SimpleMessageConverter;
-import org.springframework.messaging.simp.stomp.StompFrameHandler;
-import org.springframework.messaging.simp.stomp.StompHeaders;
-import org.springframework.messaging.simp.stomp.StompSession;
-import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.web.socket.WebSocketHttpHeaders;
-import org.springframework.web.socket.client.standard.StandardWebSocketClient;
-import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -40,16 +30,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 스모크 테스트 : 실제 서버(랜덤 포트)를 띄워 로그인 → 주요 화면/API → 채팅 웹소켓 → 시스템 로그 저장까지 확인한다.
+ * 스모크 테스트 : 실제 서버(랜덤 포트)를 띄워 로그인 → 주요 화면/API → 시스템 로그 저장까지 확인한다.
  * <p>
  * 프레임워크 업그레이드(Boot 3.5 / 4.x) 시 테스트 자동 설정 모듈 변경의 영향을 받지 않도록
  * MockMvc/TestRestTemplate 대신 JDK HttpClient를 사용한다.
@@ -79,7 +64,6 @@ class SmokeTest {
 
     private CookieManager cookieManager;
     private HttpClient client;
-    private String loginUserId;
 
     @BeforeAll
     void login() throws Exception {
@@ -125,12 +109,8 @@ class SmokeTest {
         assertThat(login.statusCode()).isEqualTo(302);
         assertThat(location(login)).endsWith("/");
 
-        // 대시보드 렌더링 확인 겸 로그인 사용자 ID(#authentication.principal.id) 확보
-        HttpResponse<String> dashboard = get("/", false);
-        assertThat(dashboard.statusCode()).isEqualTo(200);
-        Matcher matcher = Pattern.compile("id=\"hidden-user-id\"[^>]*value=\"([^\"]+)\"").matcher(dashboard.body());
-        assertThat(matcher.find()).as("hidden-user-id").isTrue();
-        loginUserId = matcher.group(1);
+        // 대시보드 렌더링 확인
+        assertThat(get("/", false).statusCode()).isEqualTo(200);
     }
 
     @AfterAll
@@ -185,7 +165,6 @@ class SmokeTest {
     @ParameterizedTest(name = "화면 {0}")
     @ValueSource(strings = {
             "/", "/account", "/notice", "/dataDictionary", "/tableManage", "/columnManage",
-            "/codeRule", "/codeRuleManage",
             "/userManage", "/systemLog", "/projectManage", "/help", "/denied"
     })
     @Order(10)
@@ -199,8 +178,7 @@ class SmokeTest {
 
     @ParameterizedTest(name = "팝업 다이얼로그 조각 {0}")
     @ValueSource(strings = {
-            "/popup/columTableSearch/detail", "/popup/standardTermCreate", "/popup/tableDdl", "/popup/commonColumnSet",
-            "/popup/codeRulePopup", "/popup/codeRuleDetailPopup"
+            "/popup/columTableSearch/detail", "/popup/standardTermCreate", "/popup/tableDdl", "/popup/commonColumnSet"
     })
     @Order(10)
     @DisplayName("팝업은 다이얼로그에 넣을 화면 조각만 반환한다 (html/head 없음)")
@@ -252,8 +230,7 @@ class SmokeTest {
         String body = get("/", false).body();
 
         for (String path : new String[]{"/userManage", "/projectManage", "/systemLog", "/notice",
-                "/dataDictionary", "/tableManage", "/columnManage",
-                "/codeRuleManage", "/codeRule"}) {
+                "/dataDictionary", "/tableManage", "/columnManage"}) {
             assertThat(body).as(path).contains("href=\"" + path + "\"");
         }
     }
@@ -281,7 +258,7 @@ class SmokeTest {
     @ParameterizedTest(name = "그리드 {0}")
     @ValueSource(strings = {
             "/api/getStandardWords", "/api/getStandardTerms", "/api/getStandardDomains",
-            "/api/selectTable", "/api/selectColumn", "/api/selectCodeRule", "/api/selectCodeRuleManage",
+            "/api/selectTable", "/api/selectColumn",
             "/api/selectNotice", "/api/selectUser", "/api/getSystemLog", "/api/getProject/" + PROJECT_ID
     })
     @Order(20)
@@ -297,7 +274,7 @@ class SmokeTest {
     }
 
     @ParameterizedTest(name = "API {0}")
-    @ValueSource(strings = {"/isApprovalAvailable", "/api/activeUsers", "/api/selectCodeRuleManage/template", "/api/commonColumn", "/v3/api-docs"})
+    @ValueSource(strings = {"/isApprovalAvailable", "/api/commonColumn", "/v3/api-docs"})
     @Order(21)
     @DisplayName("기타 주요 API")
     void apis(String path) throws Exception {
@@ -453,58 +430,6 @@ class SmokeTest {
                 .extracting(Logs::getRequestBody)
                 .noneMatch(body -> body != null && (body.contains("\"password\":\"" + PASSWORD + "\"")
                         || body.contains(PASSWORD))); // 로그인 전 비밀번호 변경의 newPassword 포함
-    }
-
-    @Test
-    @Order(40)
-    @DisplayName("채팅 웹소켓 : 본인 채널 구독 → 메시지 전송/수신 → 이력 조회")
-    void chatWebSocket() throws Exception {
-        WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
-        stompClient.setMessageConverter(new SimpleMessageConverter());
-
-        WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
-        handshakeHeaders.add("Cookie", "JSESSIONID=" + cookie(cookieManager, "JSESSIONID"));
-
-        // SockJS 엔드포인트의 raw WebSocket 경로로 접속
-        StompSession session = stompClient.connectAsync("ws://localhost:" + port + "/ws-chat/websocket",
-                handshakeHeaders, new StompHeaders(), new StompSessionHandlerAdapter() {
-                }).get(10, TimeUnit.SECONDS);
-
-        try {
-            BlockingQueue<String> received = new ArrayBlockingQueue<>(1);
-            session.subscribe("/sub/chat/" + loginUserId, new StompFrameHandler() {
-                @Override
-                public Type getPayloadType(StompHeaders headers) {
-                    return byte[].class;
-                }
-
-                @Override
-                public void handleFrame(StompHeaders headers, Object payload) {
-                    received.offer(new String((byte[]) payload, StandardCharsets.UTF_8));
-                }
-            });
-
-            String content = "smoke-" + UUID.randomUUID();
-            StompHeaders sendHeaders = new StompHeaders();
-            sendHeaders.setDestination("/pub/chat.send");
-            sendHeaders.setContentType(org.springframework.util.MimeTypeUtils.APPLICATION_JSON);
-
-            // 구독 처리 후 전송 (SUBSCRIBE는 비동기로 처리된다)
-            Thread.sleep(300);
-            session.send(sendHeaders, ("{\"to\":\"" + loginUserId + "\",\"content\":\"" + content + "\"}")
-                    .getBytes(StandardCharsets.UTF_8));
-
-            String message = received.poll(10, TimeUnit.SECONDS);
-            assertThat(message).isNotNull().contains(content).contains("\"from\":\"" + loginUserId + "\"");
-
-            HttpResponse<String> history = get("/api/chat/history?user="
-                    + URLEncoder.encode(loginUserId, StandardCharsets.UTF_8), true);
-            assertThat(history.statusCode()).isEqualTo(200);
-            assertThat(history.body()).contains(content);
-        } finally {
-            session.disconnect();
-            stompClient.stop();
-        }
     }
 
     // ===== helpers =====

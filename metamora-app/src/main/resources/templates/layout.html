@@ -32,8 +32,6 @@
     <script th:src="@{/js/dataTables.dataTables.min.js}"></script>
     <script th:src="@{/js/dataTables.min.js}"></script>
     <script th:src="@{/js/jquery-ui-1.14.1.custom/jquery-ui.js}"></script>
-    <script th:src="@{/js/sockjs.min.js}"></script>
-    <script th:src="@{/js/stomp.min.js}"></script>
 
     <link th:href="@{/fonts/pretendard.css}" rel="stylesheet">
     <link th:href="@{/css/bootstrap-grid.css}" rel="stylesheet">
@@ -53,7 +51,6 @@
         } catch (e) {}
     </script>
 
-    <script type="module" th:src="@{/js/messenger.js}"></script>
     <script th:src="@{/js/layout.js}"></script>
 
 </head>
@@ -113,51 +110,6 @@
 
             <!-- Footer : GitHub 처럼 콘텐츠 영역 최하단에 위치 -->
             <footer th:replace="~{fragments/footer::footer}"></footer>
-        </div>
-    </div>
-
-    <!-- 메신저 (오른쪽 하단 스낵바) : 로그인 사용자 목록 ↔ 채팅 (messenger.js) -->
-    <div id="messenger" class="messenger" sec:authorize="isAuthenticated()">
-        <input type="hidden" id="hidden-user-id" th:value="${#authentication.principal.id}">
-
-        <!-- 접힌 상태 : 스낵바 (새 메시지가 있으면 빨간 표시) -->
-        <button type="button" id="messenger-snackbar" class="messenger-snackbar">
-            <span class="status-dot online"></span>
-            <span>로그인 사용자</span>
-            <span id="messenger-active-count" class="messenger-count">0</span>
-            <span id="messenger-unread" class="messenger-unread" style="display: none;" aria-label="새 메시지"></span>
-        </button>
-
-        <div id="messenger-panel" class="messenger-panel" style="display: none;">
-            <!-- 로그인 사용자 목록 -->
-            <div id="messenger-users" class="messenger-view">
-                <div class="messenger-header">
-                    <span class="messenger-title">로그인 사용자</span>
-                    <button type="button" class="messenger-icon-btn messenger-minimize" aria-label="접기">&minus;</button>
-                </div>
-                <div class="messenger-body">
-                    <ul id="user-list-active" class="user-list"></ul>
-
-                    <div id="inactive-toggle" class="user-section-title user-section-toggle">
-                        <span class="status-dot offline"></span>비로그인 사용자 <span id="toggle-arrow">▼</span>
-                    </div>
-                    <ul id="user-list-inactive" class="user-list user-list-inactive" style="display: none;"></ul>
-                </div>
-            </div>
-
-            <!-- 채팅 -->
-            <div id="chat-box" class="messenger-view" style="display: none;">
-                <div class="messenger-header">
-                    <button type="button" id="chat-back" class="messenger-icon-btn" aria-label="뒤로가기">&larr;</button>
-                    <span id="chat-target" class="messenger-title">채팅</span>
-                    <button type="button" class="messenger-icon-btn messenger-minimize" aria-label="접기">&minus;</button>
-                </div>
-                <div class="chat-messages" id="chat-messages"></div>
-                <form class="chat-input" id="chat-form">
-                    <input type="text" id="chat-input" placeholder="메시지를 입력하세요" autocomplete="off"/>
-                    <button type="submit" class="btn btn-primary" id="submit-btn">전송</button>
-                </form>
-            </div>
         </div>
     </div>
 </div>

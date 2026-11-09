@@ -261,11 +261,6 @@
 .dash-label[data-type="컬럼관리"] {
     background: var(--success-subtle); border-color: #4ac26b66; color: var(--success);
 }
-.dash-label[data-type="코드규칙관리"],
-.dash-label[data-type="코드규칙"],
-.dash-label[data-type="템플릿"] {
-    background: var(--done-subtle); border-color: #c297ff66; color: var(--done);
-}
 
 /* ---------- 공지사항 목록 ---------- */
 .dash-list {

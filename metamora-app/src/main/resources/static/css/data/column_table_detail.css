@@ -1,0 +1,117 @@
+/* =========================================================
+   테이블 컬럼 상세 팝업 : 컬럼별 카드 (Primer Box)
+   ========================================================= */
+#table-name {
+    font-family: var(--app-font);
+}
+
+#table-name strong {
+    font-weight: 600;
+}
+
+.column-card-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas);
+    overflow: hidden;
+}
+
+.column-card {
+    padding: 12px 16px;
+}
+
+.column-card + .column-card {
+    border-top: 1px solid var(--gh-border);
+}
+
+.column-card:hover {
+    background-color: var(--gh-canvas-subtle);
+}
+
+/* 컬럼명 + 정렬 버튼 */
+.column-row.full {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.column-row.full > .label {
+    padding: 1px 8px;
+    border-radius: 6px;
+    background-color: var(--gh-neutral-muted);
+    color: var(--gh-fg);
+    font-family: var(--app-font);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.column-grid-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 24px;
+    margin-bottom: 4px;
+}
+
+.column-grid-row .pair {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+}
+
+.column-grid-row .label {
+    flex: none;
+    color: var(--gh-fg-muted);
+    font-weight: 400;
+}
+
+.column-grid-row .value {
+    min-width: 0;
+    color: var(--gh-fg);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.value.highlight {
+    color: var(--gh-accent);
+    font-weight: 600;
+}
+
+/* 위/아래 이동 버튼 (Primer IconButton) */
+.sort-buttons {
+    display: flex;
+    gap: 4px;
+    margin-left: 10px;
+}
+
+.sort-buttons button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+    color: var(--gh-fg-muted);
+    cursor: pointer;
+}
+
+.sort-buttons button:hover {
+    background-color: #eff2f5;
+    color: var(--gh-fg);
+}
+
+@media (max-width: 640px) {
+    .column-grid-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

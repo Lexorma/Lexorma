@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}"
+>
+<head>
+    <link rel="stylesheet" th:href="@{/css/login/auth.css}">
+</head>
+
+<body>
+<section layout:fragment="content">
+    <!-- GitHub 회원가입 화면 형태 -->
+    <div class="auth">
+        <div class="auth-logo">
+            <img th:src="@{/images/favicon.png}" src="/images/favicon.png" alt="" width="48" height="48">
+        </div>
+        <h1 class="auth-title">MetaMora 회원가입</h1>
+
+        <!-- Global error message -->
+        <input id="errorMessage" type="hidden" th:value="${errorMessage}"/>
+
+        <div th:if="${errorMessage}">
+            <script>
+                const errorMessage = document.getElementById('errorMessage')?.value;
+                openAlert(errorMessage);
+            </script>
+        </div>
+
+        <div class="auth-box">
+            <form th:action="@{/signup}" method="post">
+                <div class="auth-field">
+                    <label for="username">아이디</label>
+                    <input type="text" class="form-control" id="username" name="username"
+                           th:value="${account?.username}" autocomplete="username" autocapitalize="off" autofocus required>
+                </div>
+                <div class="auth-field">
+                    <label for="password">비밀번호</label>
+                    <input type="password" class="form-control" id="password" name="password"
+                           autocomplete="new-password" required>
+                </div>
+                <div class="auth-field">
+                    <label for="name">사용자명</label>
+                    <input type="text" class="form-control" id="name" name="name"
+                           th:value="${account?.name}" autocomplete="name" required>
+                </div>
+                <div class="auth-field">
+                    <label for="projectId">참여할 프로젝트</label>
+                    <select class="form-control" id="projectId" name="projectId" required>
+                        <option th:each="project : ${projects}"
+                                th:value="${project.id}"
+                                th:text="${project.projectName}"
+                                th:selected="${account != null and project.id == account.projectId}">
+                        </option>
+                    </select>
+                    <p class="auth-field-note">프로젝트 설정에 따라 관리자 승인 후 사용할 수 있습니다.</p>
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit">회원가입</button>
+            </form>
+        </div>
+
+        <div class="auth-callout">
+            이미 계정이 있으신가요? <a th:href="@{/login}" href="/login">로그인</a>
+        </div>
+    </div>
+</section>
+</body>
+</html>

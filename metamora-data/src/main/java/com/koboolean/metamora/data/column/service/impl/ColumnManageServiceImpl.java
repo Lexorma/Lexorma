@@ -1,0 +1,699 @@
+package com.koboolean.metamora.data.column.service.impl;
+
+import com.koboolean.metamora.data.column.domain.dto.TermResolveDto;
+import com.koboolean.metamora.data.column.domain.dto.ColumnBulkSaveDto;
+import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
+import com.koboolean.metamora.data.column.service.ColumnManageService;
+import com.koboolean.metamora.data.column.domain.dto.ColumnInfoDto;
+import com.koboolean.metamora.data.column.repository.ColumnInfoRepository;
+import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
+import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
+import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
+import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
+import com.koboolean.metamora.data.table.domain.entity.TableInfo;
+import com.koboolean.metamora.data.table.repository.TableInfoRepository;
+import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
+import com.koboolean.metamora.common.grid.enums.ColumnType;
+import com.koboolean.metamora.common.grid.enums.RowType;
+import com.koboolean.metamora.core.security.domain.dto.AccountDto;
+import com.koboolean.metamora.common.exception.CustomException;
+import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.core.util.AuthUtil;
+import com.koboolean.metamora.common.utils.ExcelUtils;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+@Service
+@RequiredArgsConstructor
+public class ColumnManageServiceImpl implements ColumnManageService {
+
+    private final ColumnInfoRepository columnInfoRepository;
+    private final TableInfoRepository tableInfoRepository;
+    private final StandardTermRepository standardTermRepository;
+    private final EntityManager entityManager;
+    private static final int FIRST_ROW = 1;
+
+    @Override
+    public List<ColumnDto> selectTableColumn() {
+        // 그리드에는 식별/타입/키 정보만 표시하고, 나머지(.hidden())는 행 클릭 시 상세 팝업에서 보여준다.
+        return List.of(
+                new ColumnDto("", "sortOrder", ColumnType.NUMBER, RowType.CHECKBOX),
+                new ColumnDto("테이블명", "tableName", ColumnType.STRING, RowType.TEXT, true, true),
+                new ColumnDto("컬럼명", "columnName", ColumnType.STRING, RowType.TEXT, true, true),
+                new ColumnDto("컬럼 설명", "columnDesc", ColumnType.STRING, RowType.TEXT, true, false),
+                new ColumnDto("데이터 타입", "dataType", ColumnType.STRING, RowType.TEXT, true, false),
+                new ColumnDto("최대 길이", "maxLength", ColumnType.NUMBER, RowType.TEXT, false,  false),
+                new ColumnDto("PK", "isPk", ColumnType.STRING, RowType.TEXT, false,  false),
+                new ColumnDto("정밀도", "precision", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("소수 자릿수", "scale", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("기본값", "defaultValue", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("정렬 순서", "sortOrder", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("참조 테이블명", "refTableName", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("데이터 예시", "example", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("NULL 허용", "isNullable", ColumnType.STRING, RowType.TEXT, false,  false),
+                new ColumnDto("마스터 데이터 여부", "isMasterData", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("필수 입력 여부", "isRequired", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("민감정보 여부", "isSensitive", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("고유값 여부", "isUnique", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("인덱스 생성 여부", "isIndex", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("암호화 필요 여부", "isEncrypted", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
+                new ColumnDto("승인여부", "isApproval", ColumnType.STRING, RowType.TEXT, false,  false)
+        );
+    }
+
+    @Override
+    public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
+        Long projectId = accountDto.getProjectId();
+
+        if (searchQuery == null || searchQuery.trim().isEmpty()) {
+            // 검색어가 없을 경우 전체 조회
+            return columnInfoRepository.findByProjectId(projectId, pageable).map(ColumnInfoDto::fromEntity);
+        }
+
+        if(!searchQuery.isEmpty()) {
+            searchQuery = "%" + searchQuery + "%";
+        }
+
+        Page<ColumnInfo> columnInfos = switch (searchColumn) {
+            case "tableName" ->
+                    columnInfoRepository.findAllByProjectIdAndTableNameLike(projectId, searchQuery.toUpperCase(), pageable);
+            case "columnName" ->
+                    columnInfoRepository.findAllByProjectIdAndColumnNameLikeIgnoreCase(projectId, searchQuery, pageable);
+            case "columnDesc" ->
+                    columnInfoRepository.findAllByProjectIdAndColumnDescLike(projectId, searchQuery, pageable);
+            case "dataType" ->
+                    columnInfoRepository.findAllByProjectIdAndDataTypeLike(projectId, searchQuery, pageable);
+            default -> null;
+        };
+
+        return columnInfos.map(ColumnInfoDto::fromEntity);
+    }
+
+    @Override
+    public List<TableInfoDto> selectTable(AccountDto accountDto, String tableName) {
+
+        Long projectId = accountDto.getProjectId();
+
+        String searchTableName = null;
+
+        if(!tableName.isEmpty()){
+            searchTableName = "%" + tableName.toUpperCase() + "%";
+        }
+
+        List<TableInfo> tableInfos = tableInfoRepository.findAllByProjectIdAndTableNameLikeAndIsApproval(projectId, searchTableName, true);
+
+        return tableInfos.stream().map(TableInfoDto::fromEntity).toList();
+    }
+
+    @Override
+    public List<ColumnInfoDto> selectTableColumn(AccountDto accountDto, Long tableId) {
+        TableInfo tableInfo = tableInfoRepository.findALlByProjectIdAndId(accountDto.getProjectId(), tableId);
+        return tableInfo.getColumns().stream().map(ColumnInfoDto::fromEntity).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void insertColumn(AccountDto accountDto, ColumnInfoDto columnInfoDto) {
+        Long projectId = accountDto.getProjectId();
+
+        TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(columnInfoDto.getTableInfoId(), projectId);
+        StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
+
+        // 테이블/표준용어를 선택하지 않았거나 다른 프로젝트의 정보면 등록할 수 없다.
+        if(tableInfo == null){
+            throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        }
+        if(standardTerm == null){
+            throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA);
+        }
+
+        // 같은 테이블 안에서만 컬럼명 중복을 막는다. (다른 테이블에는 같은 표준 컬럼을 쓸 수 있다)
+        List<ColumnInfo> duplicates = columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(projectId, tableInfo.getId(), columnInfoDto.getColumnName());
+
+        if(!duplicates.isEmpty()){
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName() + "." + columnInfoDto.getColumnName());
+        }
+
+        ColumnInfo columnInfo = columnInfoDto.toEntity();
+        columnInfo.setTableInfo(tableInfo);
+        columnInfo.setProjectId(projectId);
+
+        columnInfo.setStandardTerms(standardTerm);
+
+        columnInfo.setIsApproval(true);
+
+        if(!AuthUtil.isApprovalAvailable()){
+            columnInfo.setIsApproval(false);
+        }
+
+        columnInfoRepository.save(columnInfo);
+        tableInfo.getColumns().add(columnInfo);
+        standardTerm.getColumnInfos().add(columnInfo);
+    }
+
+    @Override
+    public List<StandardTermDto> selectTermData(AccountDto accountDto, String type, String data) {
+
+        List<StandardTerm> terms = switch(type){
+            // 표준용어명은 단어를 "_" 로 잇는다 : "사용자 이름" 으로 검색해도 "사용자_이름" 을 찾도록
+            case "termName" -> standardTermRepository.findAllByProjectIdAndCommonStandardTermNameContaining(accountDto.getProjectId(), data.trim().replaceAll("\\s+", "_"));
+            case "termAbbreviation" -> standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationContainingIgnoreCase(accountDto.getProjectId(), data);
+            default -> null;
+        };
+
+        return terms.stream().map(StandardTermDto::fromEntity).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ColumnInfoDto> selectDuplicateColumns(AccountDto accountDto, Long tableInfoId, String columnName) {
+        return columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(accountDto.getProjectId(), tableInfoId, columnName).stream()
+                .map(ColumnInfoDto::fromEntity)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void updateColumnApproval(AccountDto accountDto, List<ColumnInfoDto> columnInfoDtos, String type) {
+//        if(!AuthUtil.isApprovalAvailable()){
+//            throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
+//        }
+
+        Long projectId = accountDto.getProjectId();
+
+        columnInfoDtos.forEach(columnInfoDto -> {
+            ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
+
+            columnInfo.setIsApproval(Boolean.parseBoolean(type));
+        });
+
+    }
+
+    @Override
+    @Transactional
+    public void deleteColumn(AccountDto accountDto, List<ColumnInfoDto> columnInfoDtos) {
+//        if(!AuthUtil.isApprovalAvailable()){
+//            throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
+//        }
+
+        Long projectId = accountDto.getProjectId();
+
+        columnInfoDtos.forEach(columnInfoDto -> {
+            ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
+
+            if(columnInfo.getIsApproval()){
+                throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+            }
+
+            // 테이블명은 변경될 수 있으므로 이름이 아닌 연관관계(table_info_id)로 소속 테이블을 찾는다.
+            TableInfo tableInfo = columnInfo.getTableInfo();
+            StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
+
+            columnInfoRepository.delete(columnInfo);
+
+            if(tableInfo != null){
+                tableInfo.getColumns().remove(columnInfo);
+            }
+            standardTerm.getColumnInfos().remove(columnInfo);
+        });
+
+    }
+
+    @Override
+    @Transactional
+    public void uploadColumnExcelFile(MultipartFile file, AccountDto accountDto) throws IOException {
+        Long projectId = accountDto.getProjectId();
+
+        // 관리자의 경우 승인으로 저장, 아닐경우 관리자가 승인할 수 있도록 저장
+        boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
+
+        List<String> tableExcelHeaders = List.of(
+                "tableName",
+                "columnName",
+                "columnDesc",
+                "dataType",
+                "maxLength",
+                "precision",
+                "scale",
+                "isNullable",
+                "defaultValue",
+                "sortOrder",
+                "isMasterData",
+                "refTableName",
+                "isRequired",
+                "isSensitive",
+                "isPk",
+                "isUnique",
+                "isIndex",
+                "isEncrypted",
+                "example"
+        );
+
+        // 파일 안 중복 확인용 : "테이블ID|컬럼명"
+        Set<String> uploadedColumns = new HashSet<>();
+
+        // 업로드 중에는 테이블/표준용어가 바뀌지 않으므로 조회 결과(ID)를 캐시한다. (없으면 null 로 기록)
+        Map<String, Long> tableIdByName = new HashMap<>();
+        Map<String, Long> termIdByAbbreviation = new HashMap<>();
+
+        // 청크(500행) 단위 : 테이블/용어/중복은 청크당 IN 조회 한 번씩, 저장은 JDBC 배치, 저장 후 영속성 컨텍스트 비우기
+        ExcelUtils.readExcelRowsInChunks(file, 0, tableExcelHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
+            List<Map<String, String>> columnRows = rows.stream().filter(map -> !map.get("tableName").isEmpty()).toList();
+
+            loadColumnUploadReferences(projectId, columnRows, tableIdByName, termIdByAbbreviation);
+            Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
+
+            List<ColumnInfo> columnInfos = new ArrayList<>();
+
+            // 행마다 기존과 같은 순서로 검증한다 : 숫자/Y·N 형식 → 테이블 → 표준용어 → 파일 안 중복 → 등록된 컬럼 중복
+            for (Map<String, String> map : columnRows) {
+                String[] numberData = {"maxLength", "precision", "scale", "sortOrder"};
+
+                for (String key : numberData) {
+                    String trim = map.get(key).replaceAll("[^0-9]", "").trim();
+                    map.put(key, trim.isEmpty() ? "0" : trim);
+                }
+
+                String[] booleanData = {"isNullable", "isMasterData", "isRequired", "isSensitive", "isPk", "isUnique", "isIndex", "isEncrypted"};
+
+                for (String key : booleanData) {
+                    if (map.get(key).isEmpty()) {
+                        map.put(key, "N");
+                    }
+
+                    if (!map.get(key).equals("Y") && !map.get(key).equals("N")) {
+                        throw new CustomException(ErrorCode.COLUMN_BOOLEAN_TYPE_DEF);
+                    }
+                }
+
+                String tableName = map.get("tableName").toUpperCase();
+                Long tableInfoId = tableIdByName.get(tableName);
+
+                if (tableInfoId == null) {
+                    throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED, tableName);
+                }
+
+                // 표준용어 : 영문약어(대문자) 우선, 없으면 입력값 그대로
+                String columnName = map.get("columnName");
+                Long termId = termIdByAbbreviation.get(columnName.toUpperCase());
+                if (termId == null) {
+                    termId = termIdByAbbreviation.get(columnName);
+                }
+
+                if (termId == null) {
+                    throw new CustomException(ErrorCode.TERM_IS_NOT_DEFINED, columnName);
+                }
+
+                // 같은 테이블 안에서만 컬럼명 중복을 막는다. (화면 등록과 같은 기준) - 하나라도 있으면 업로드 전체 취소
+                String columnKey = tableInfoId + "|" + columnName;
+
+                if (!uploadedColumns.add(columnKey)) {
+                    throw new CustomException(ErrorCode.COLUMN_DUPLICATE_IN_FILE, tableName + "." + columnName);
+                }
+
+                if (existingColumns.contains(columnKey)) {
+                    throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableName + "." + columnName);
+                }
+
+                // 연관은 조회 없이 ID 참조로 연결한다. (테이블/용어의 컬럼 목록 컬렉션은 건드리지 않는다 - FK 가 기준)
+                columnInfos.add(ColumnInfo.builder()
+                        .projectId(projectId)
+                        .tableName(tableName)
+                        .columnName(columnName)
+                        .columnDesc(map.get("columnDesc"))
+                        .dataType(map.get("dataType"))
+                        .maxLength(Integer.parseInt(map.get("maxLength")))
+                        .precision(new BigDecimal(map.get("precision")))
+                        .scale(Integer.parseInt(map.get("scale")))
+                        .isNullable(map.get("isNullable").equals("Y"))
+                        .defaultValue(map.get("defaultValue"))
+                        .sortOrder(Integer.parseInt(map.get("sortOrder")))
+                        .isMasterData(map.get("isMasterData").equals("Y"))
+                        .refTableName(map.get("refTableName"))
+                        .isRequired(map.get("isPk").equals("Y") || map.get("isRequired").equals("Y"))
+                        .isSensitive(map.get("isSensitive").equals("Y"))
+                        .isPk(map.get("isPk").equals("Y"))
+                        .isUnique(map.get("isPk").equals("Y") || map.get("isUnique").equals("Y"))
+                        .isIndex(map.get("isIndex").equals("Y"))
+                        .isEncrypted(map.get("isEncrypted").equals("Y"))
+                        .example(map.get("example"))
+                        .standardTerms(entityManager.getReference(StandardTerm.class, termId))
+                        .tableInfo(entityManager.getReference(TableInfo.class, tableInfoId))
+                        .isApproval(isApprovalAvailable)
+                        .build());
+            }
+
+            columnInfoRepository.saveAll(columnInfos);
+            entityManager.flush();
+            entityManager.clear();
+        });
+    }
+
+    /**
+     * 청크에서 쓰는 테이블명/표준용어(영문약어) 중 캐시에 없는 것을 IN 조회 한 번씩으로 불러온다.
+     */
+    private void loadColumnUploadReferences(Long projectId, List<Map<String, String>> columnRows,
+                                            Map<String, Long> tableIdByName, Map<String, Long> termIdByAbbreviation) {
+        Set<String> tableNames = columnRows.stream()
+                .map(map -> map.get("tableName").toUpperCase())
+                .filter(name -> !tableIdByName.containsKey(name))
+                .collect(Collectors.toSet());
+
+        if (!tableNames.isEmpty()) {
+            tableNames.forEach(name -> tableIdByName.put(name, null));
+            tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, tableNames)
+                    .forEach(table -> {
+                        if (tableIdByName.get(table.getTableName()) == null) tableIdByName.put(table.getTableName(), table.getId());
+                    });
+        }
+
+        Set<String> abbreviations = columnRows.stream()
+                .flatMap(map -> Stream.of(map.get("columnName").toUpperCase(), map.get("columnName")))
+                .filter(abbreviation -> !termIdByAbbreviation.containsKey(abbreviation))
+                .collect(Collectors.toSet());
+
+        if (!abbreviations.isEmpty()) {
+            abbreviations.forEach(abbreviation -> termIdByAbbreviation.put(abbreviation, null));
+            standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations)
+                    .forEach(term -> {
+                        if (termIdByAbbreviation.get(term.getCommonStandardTermAbbreviation()) == null) {
+                            termIdByAbbreviation.put(term.getCommonStandardTermAbbreviation(), term.getId());
+                        }
+                    });
+        }
+    }
+
+    /**
+     * 청크의 (테이블, 컬럼명) 중 이미 등록된 조합 → "테이블ID|컬럼명"
+     */
+    private Set<String> findExistingColumns(Long projectId, List<Map<String, String>> columnRows, Map<String, Long> tableIdByName) {
+        Set<Long> tableIds = columnRows.stream()
+                .map(map -> tableIdByName.get(map.get("tableName").toUpperCase()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<String> columnNames = columnRows.stream().map(map -> map.get("columnName")).collect(Collectors.toSet());
+
+        if (tableIds.isEmpty() || columnNames.isEmpty()) {
+            return Set.of();
+        }
+
+        return columnInfoRepository.findTableColumnKeys(projectId, tableIds, columnNames).stream()
+                .map(key -> key[0] + "|" + key[1])
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public List<ColumnInfoDto> selectColumnDetail(AccountDto accountDto, Long id) {
+
+        Long projectId = accountDto.getProjectId();
+
+        ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, id);
+
+        TableInfo tableInfo = columnInfo.getTableInfo();
+
+        List<ColumnInfoDto> collect = tableInfo.getColumns().stream().map(ColumnInfoDto::fromEntity).collect(Collectors.toList());
+
+        for(ColumnInfoDto dto : collect){
+            if(dto.getIsApproval().equals("Y")){
+                return List.of();
+            }
+        }
+
+        return collect;
+    }
+
+    @Override
+    @Transactional
+    public void updateSortOrder(AccountDto accountDto, List<ColumnInfoDto> columnInfoDtos) {
+        Long projectId = accountDto.getProjectId();
+
+        columnInfoDtos.forEach(columnInfoDto -> {
+            ColumnInfo columnInfo = columnInfoRepository.findByIdAndProjectId(columnInfoDto.getId(), projectId);
+
+            if(columnInfo.getIsApproval()){
+                throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+            }
+
+            columnInfo.setSortOrder(columnInfoDto.getSortOrder());
+        });
+    }
+
+    // ------------------------------------------------------------------ 컬럼 일괄 편집
+
+    /** 붙여넣기 한 번에 찾을 수 있는 최대 줄 수 */
+    static final int RESOLVE_MAX_INPUTS = 300;
+
+    private static final java.util.regex.Pattern ABBREVIATION_INPUT = java.util.regex.Pattern.compile("^[A-Za-z0-9_]+$");
+
+    @Override
+    public List<TermResolveDto> resolveTerms(AccountDto accountDto, List<String> inputs) {
+        Long projectId = accountDto.getProjectId();
+        List<String> lines = inputs == null ? List.of() : inputs.stream()
+                .map(input -> input == null ? "" : input.trim())
+                .filter(input -> !input.isEmpty())
+                .limit(RESOLVE_MAX_INPUTS)
+                .toList();
+        if (lines.isEmpty()) return List.of();
+
+        // 용어명은 단어를 "_" 로 잇는다 : "사용자 이름" / "사용자_이름" 모두 같은 용어
+        Set<String> names = lines.stream().map(ColumnManageServiceImpl::toTermName).collect(Collectors.toSet());
+        Set<String> abbreviations = lines.stream()
+                .filter(input -> ABBREVIATION_INPUT.matcher(input).matches())
+                .map(String::toUpperCase)
+                .collect(Collectors.toSet());
+
+        Map<String, List<StandardTerm>> byName = standardTermRepository.findAllByProjectIdAndCommonStandardTermNameIn(projectId, names).stream()
+                .collect(Collectors.groupingBy(StandardTerm::getCommonStandardTermName));
+        Map<String, List<StandardTerm>> byAbbreviation = abbreviations.isEmpty() ? Map.of()
+                : standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations).stream()
+                .collect(Collectors.groupingBy(term -> term.getCommonStandardTermAbbreviation().toUpperCase()));
+
+        return lines.stream().map(input -> {
+            // 용어명이 정확히 같은 용어를 먼저, 없으면 영문약어명
+            List<StandardTerm> found = byName.getOrDefault(toTermName(input), List.of());
+            if (found.isEmpty() && ABBREVIATION_INPUT.matcher(input).matches()) {
+                found = byAbbreviation.getOrDefault(input.toUpperCase(), List.of());
+            }
+            return TermResolveDto.of(input, found.stream()
+                    .sorted(java.util.Comparator.comparing((StandardTerm term) -> !Boolean.TRUE.equals(term.getIsApproval())) // 승인된 용어 먼저
+                            .thenComparing(StandardTerm::getId))
+                    .map(StandardTermDto::fromEntity)
+                    .toList());
+        }).toList();
+    }
+
+    private static String toTermName(String input) {
+        return input.trim().replaceAll("[\\s_]+", "_");
+    }
+
+
+    @Override
+    @Transactional
+    public ColumnBulkSaveDto.Result saveColumnsBulk(AccountDto accountDto, ColumnBulkSaveDto request) {
+        Long projectId = accountDto.getProjectId();
+
+        // 로그인 프로젝트의 승인된 테이블에만 컬럼을 등록한다. (컬럼 등록 화면과 같은 기준)
+        TableInfo tableInfo = request.getTableInfoId() == null ? null : tableInfoRepository.findByIdAndProjectId(request.getTableInfoId(), projectId);
+        if (tableInfo == null) {
+            throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        }
+        if (!Boolean.TRUE.equals(tableInfo.getIsApproval())) {
+            return ColumnBulkSaveDto.Result.fail(List.of(new ColumnBulkSaveDto.RowError(null, "승인된 테이블에만 컬럼을 등록할 수 있습니다.")));
+        }
+
+        Map<Long, ColumnInfo> existing = tableInfo.getColumns().stream()
+                .collect(Collectors.toMap(ColumnInfo::getId, column -> column, (a, b) -> a, HashMap::new));
+        List<ColumnBulkSaveDto.RowError> errors = new ArrayList<>();
+
+        // 1) 삭제 대상 : 이 테이블의 승인 전 컬럼만
+        Set<Long> deletedIds = new HashSet<>(request.getDeletedIds() == null ? List.of() : request.getDeletedIds());
+        for (Long id : deletedIds) {
+            ColumnInfo column = existing.get(id);
+            if (column == null) {
+                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), "삭제할 컬럼이 이 테이블에 없습니다. (ID " + id + ")"));
+            } else if (Boolean.TRUE.equals(column.getIsApproval())) {
+                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), column.getColumnName() + " : 승인된 컬럼은 삭제할 수 없습니다."));
+            }
+        }
+
+        // 남는 기존 컬럼명 (중복 확인용)
+        Set<String> columnNames = existing.values().stream()
+                .filter(column -> !deletedIds.contains(column.getId()))
+                .map(ColumnInfo::getColumnName)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        // 2) 행 검증 : 기존 컬럼(수정) / 새 컬럼(추가)
+        List<ColumnBulkSaveDto.Row> rows = request.getRows() == null ? List.of() : request.getRows();
+        Map<String, StandardTerm> termByRowKey = new HashMap<>();
+        Set<Long> seenIds = new HashSet<>();
+
+        for (ColumnBulkSaveDto.Row row : rows) {
+            String key = row.getKey();
+
+            if (row.getId() != null) {
+                ColumnInfo column = existing.get(row.getId());
+                if (column == null) {
+                    errors.add(new ColumnBulkSaveDto.RowError(key, "이 테이블에 없는 컬럼입니다. 화면을 새로 열어주세요."));
+                } else if (deletedIds.contains(row.getId())) {
+                    errors.add(new ColumnBulkSaveDto.RowError(key, column.getColumnName() + " : 삭제와 수정을 함께 할 수 없습니다."));
+                } else if (!seenIds.add(row.getId())) {
+                    errors.add(new ColumnBulkSaveDto.RowError(key, column.getColumnName() + " : 같은 컬럼이 두 번 들어 있습니다."));
+                } else if (!Boolean.TRUE.equals(column.getIsApproval())) {
+                    validateRowFields(row, column.getColumnName(), errors);
+                }
+                continue;
+            }
+
+            StandardTerm term = row.getTermId() == null ? null : standardTermRepository.findByIdAndProjectId(row.getTermId(), projectId);
+            if (term == null) {
+                errors.add(new ColumnBulkSaveDto.RowError(key, "표준용어를 찾을 수 없습니다."));
+                continue;
+            }
+
+            String columnName = term.getCommonStandardTermAbbreviation();
+            if (!columnNames.add(columnName)) {
+                errors.add(new ColumnBulkSaveDto.RowError(key, columnName + " : 이 테이블에 이미 같은 컬럼명이 있습니다."));
+                continue;
+            }
+            validateRowFields(row, columnName, errors);
+            termByRowKey.put(key, term);
+        }
+
+        if (!errors.isEmpty()) {
+            return ColumnBulkSaveDto.Result.fail(errors);
+        }
+
+        // 3) 저장 : 삭제 → 수정/추가 (화면 순서대로 정렬 순서 부여)
+        for (Long id : deletedIds) {
+            ColumnInfo column = existing.get(id);
+            StandardTerm term = column.getStandardTerms();
+            tableInfo.getColumns().remove(column);
+            if (term != null && term.getColumnInfos() != null) term.getColumnInfos().remove(column);
+            columnInfoRepository.delete(column);
+        }
+
+        boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
+        int created = 0;
+        int updated = 0;
+        int order = 0;
+
+        for (ColumnBulkSaveDto.Row row : rows) {
+            if (row.getId() != null) {
+                ColumnInfo column = existing.get(row.getId());
+
+                if (Boolean.TRUE.equals(column.getIsApproval())) {
+                    // 승인된 컬럼은 정해진 순서를 바꾸지 않는다. 뒤의 컬럼은 이 컬럼 다음 순서부터 매긴다.
+                    // 단, 순서가 비어 있는 컬럼(예전 데이터)은 화면 순서대로 채운다. 비워 두면 목록 끝으로 밀려
+                    // 새로 추가한 컬럼이 승인 컬럼보다 앞에 보인다. (값을 바꾸는 것이 아니라 없는 값을 채우는 것)
+                    if (column.getSortOrder() == null) {
+                        column.setSortOrder(++order);
+                    } else {
+                        order = Math.max(order, column.getSortOrder());
+                    }
+                    continue;
+                }
+
+                order++;
+                if (applyRow(column, row, order)) updated++;
+                continue;
+            }
+
+            StandardTerm term = termByRowKey.get(row.getKey());
+            ColumnInfo column = ColumnInfo.builder()
+                    .projectId(projectId)
+                    .tableName(tableInfo.getTableName())
+                    .columnName(term.getCommonStandardTermAbbreviation())
+                    .isApproval(isApprovalAvailable)
+                    .build();
+            column.setTableInfo(tableInfo);
+            column.setStandardTerms(term);
+            applyRow(column, row, ++order);
+
+            columnInfoRepository.save(column);
+            tableInfo.getColumns().add(column);
+            if (term.getColumnInfos() != null) term.getColumnInfos().add(column);
+            created++;
+        }
+
+        return new ColumnBulkSaveDto.Result(true, created, updated, deletedIds.size(), List.of());
+    }
+
+    /**
+     * 필수 항목 : 컬럼 설명, 데이터 타입 (컬럼 등록 화면과 같은 기준) / 숫자 항목은 0 이상
+     */
+    private static void validateRowFields(ColumnBulkSaveDto.Row row, String columnName, List<ColumnBulkSaveDto.RowError> errors) {
+        List<String> problems = new ArrayList<>();
+        if (row.getColumnDesc() == null || row.getColumnDesc().isBlank()) problems.add("컬럼 설명");
+        if (row.getDataType() == null || row.getDataType().isBlank()) problems.add("데이터 타입");
+
+        if (!problems.isEmpty()) {
+            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), columnName + " : " + String.join(", ", problems) + "을(를) 입력해주세요."));
+        }
+        if ((row.getMaxLength() != null && row.getMaxLength() < 0)
+                || (row.getScale() != null && row.getScale() < 0)
+                || (row.getPrecision() != null && row.getPrecision().signum() < 0)) {
+            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), columnName + " : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다."));
+        }
+    }
+
+    /**
+     * 행 값을 컬럼에 반영한다. PK 는 NULL 비허용 + 필수 + 고유값으로 본다. (단건 등록 ColumnInfoDto.toEntity 와 같은 규칙)
+     * @return 값이 바뀌었는지
+     */
+    private static boolean applyRow(ColumnInfo column, ColumnBulkSaveDto.Row row, int sortOrder) {
+        boolean pk = isY(row.getIsPk());
+        List<Object> before = snapshot(column);
+
+        column.setColumnDesc(trimToNull(row.getColumnDesc()));
+        column.setDataType(row.getDataType() == null ? null : row.getDataType().trim().toUpperCase());
+        column.setMaxLength(row.getMaxLength());
+        column.setPrecision(row.getPrecision());
+        column.setScale(row.getScale());
+        column.setDefaultValue(trimToNull(row.getDefaultValue()));
+        column.setRefTableName(row.getRefTableName() == null || row.getRefTableName().isBlank() ? null : row.getRefTableName().trim().toUpperCase());
+        column.setExample(trimToNull(row.getExample()));
+        column.setIsPk(pk);
+        column.setIsNullable(!pk && isY(row.getIsNullable()));
+        column.setIsRequired(pk || isY(row.getIsRequired()));
+        column.setIsUnique(pk || isY(row.getIsUnique()));
+        column.setIsIndex(isY(row.getIsIndex()));
+        column.setIsMasterData(isY(row.getIsMasterData()));
+        column.setIsSensitive(isY(row.getIsSensitive()));
+        column.setIsEncrypted(isY(row.getIsEncrypted()));
+        column.setSortOrder(sortOrder);
+
+        return !before.equals(snapshot(column));
+    }
+
+    private static List<Object> snapshot(ColumnInfo c) {
+        return java.util.Arrays.asList(c.getColumnDesc(), c.getDataType(), c.getMaxLength(),
+                c.getPrecision() == null ? null : c.getPrecision().stripTrailingZeros(),
+                c.getScale(), c.getDefaultValue(), c.getRefTableName(), c.getExample(), c.getIsPk(), c.getIsNullable(),
+                c.getIsRequired(), c.getIsUnique(), c.getIsIndex(), c.getIsMasterData(), c.getIsSensitive(), c.getIsEncrypted(),
+                c.getSortOrder());
+    }
+
+    private static boolean isY(String value) {
+        return "Y".equalsIgnoreCase(value);
+    }
+
+    private static String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+}

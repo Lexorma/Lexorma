@@ -1,0 +1,58 @@
+package com.koboolean.metamora.data.dictionary.repository;
+
+import com.koboolean.metamora.data.dictionary.domain.entity.StandardDomain;
+import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
+import com.koboolean.metamora.data.dictionary.domain.entity.StandardWord;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
+@Repository
+public interface StandardTermRepository extends JpaRepository<StandardTerm, Long> {
+
+    Page<StandardTerm> findAllByProjectId(Long projectId, Pageable pageable);
+    List<StandardTerm> findAllByProjectId(Long projectId);
+    
+    Page<StandardTerm> findAllByIdAndProjectId(Long searchQuery, Long projectId, Pageable pageable);
+
+    Page<StandardTerm> findByRevisionNumberAndProjectId(int revisionNumber, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByCommonStandardTermNameContainingAndProjectId(String name, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByCommonStandardTermDescriptionContainingAndProjectId(String desc, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByCommonStandardTermAbbreviationContainingIgnoreCaseAndProjectId(String abbr, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByStandardDomain_CommonStandardDomainNameContainingAndProjectId(String domainName, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByStandardDomain_StorageFormatContainingAndProjectId(String storageFormat, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByAdministrativeStandardCodeNameContainingAndProjectId(String code, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByResponsibleOrganizationContainingAndProjectId(String org, Long projectId, Pageable pageable);
+    Page<StandardTerm> findBySynonymListContainingAndProjectId(String synonym, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByIsApprovalAndProjectId(Boolean isApproval, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByStandardDomain_AllowedValuesContainingAndProjectId(String searchQuery, Long projectId, Pageable pageable);
+    Page<StandardTerm> findByStandardDomain_DisplayFormatContainingAndProjectId(String searchQuery, Long projectId, Pageable pageable);
+
+    // 단건 조회
+    StandardTerm findByIdAndProjectId(Long id, Long projectId);
+
+    // 중복 체크
+    List<StandardTerm> findByCommonStandardTermAbbreviationAndStandardDomain_CommonStandardDomainNameAndProjectId(String abbr, String domainName, Long projectId);
+
+
+    List<StandardTerm> findAllByProjectIdAndCommonStandardTermAbbreviationContainingIgnoreCase(Long projectId, String commonStandardTermAbbreviation);
+
+    List<StandardTerm> findAllByProjectIdAndCommonStandardTermNameContaining(Long projectId, String commonStandardTermName);
+
+    List<StandardTerm> findALlByProjectIdAndCommonStandardTermName(Long projectId, String commonStandardTermName);
+
+    List<StandardTerm> findALlByProjectIdAndCommonStandardTermAbbreviation(Long projectId, String commonStandardTermAbbreviation);
+
+
+    /** 엑셀 업로드 : 청크의 영문약어(컬럼명)를 한 번에 조회 */
+    List<StandardTerm> findAllByProjectIdAndCommonStandardTermAbbreviationIn(Long projectId, Collection<String> commonStandardTermAbbreviations);
+
+    // 컬럼 일괄 편집 붙여넣기 : 용어명 여러 개를 한 번에 찾는다
+    List<StandardTerm> findAllByProjectIdAndCommonStandardTermNameIn(Long projectId, Collection<String> commonStandardTermNames);
+}

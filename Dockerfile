@@ -1,0 +1,9 @@
+FROM eclipse-temurin:21-jdk
+
+WORKDIR /app
+
+COPY . .
+
+RUN ./gradlew clean build -x test --no-daemon
+
+CMD ["java", "-jar", "metamora-app/build/libs/metamora.jar", "--spring.profiles.active=docker"]

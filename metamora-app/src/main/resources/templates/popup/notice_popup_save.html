@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- 팝업 다이얼로그(#popupDialog) 화면 조각 : PopupController 가 "popup/notice_popup_save :: content" 로 반환한다. -->
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- 공지사항 등록/수정 (GitHub 새 이슈 작성 화면 형태) -->
+    <div th:fragment="content" class="popup-container notice-edit">
+        <header class="notice-edit-header">
+            <p class="gh-muted">프로젝트 멤버에게 공지할 내용을 작성합니다.</p>
+        </header>
+
+        <form id="editNoticeForm" class="notice-form">
+            <input type="hidden" id="type" name="type"/>
+            <input type="hidden" id="id" name="id"/>
+
+            <div class="notice-field" th:if="${projects != null}">
+                <span class="notice-label">공지 대상 프로젝트</span>
+                <div id="notice-project" class="notice-project-list">
+                    <label th:each="project : ${projects}" class="notice-project-item"
+                           th:for="'project_' + ${project.id}">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               th:id="'project_' + ${project.id}"
+                               th:name="projectIds"
+                               th:value="${project.id}"
+                               th:checked="${project.isSelected}"/>
+                        <span th:text="${project.projectName}">프로젝트</span>
+                    </label>
+                    <p class="notice-project-empty gh-muted" th:if="${projects.isEmpty()}">관리 중인 프로젝트가 없습니다.</p>
+                </div>
+            </div>
+
+            <div class="notice-field">
+                <label class="notice-label" for="title">제목 <span class="notice-required" aria-hidden="true">*</span></label>
+                <input type="text" id="title" class="form-control" name="title" placeholder="제목을 입력하세요" required readonly/>
+            </div>
+
+            <div class="notice-field">
+                <label class="notice-label" for="content">내용 <span class="notice-required" aria-hidden="true">*</span></label>
+                <textarea id="content" class="form-control notice-textarea" name="content" placeholder="공지 내용을 입력하세요" readonly></textarea>
+            </div>
+            <!--<div class="form-group">
+	            <label for="noticeFile">파일 등록</label>
+	            <input type="file" class="form-control" name="file" id="noticeFile" disabled/>
+	        </div>-->
+        </form>
+
+        <!-- 하단 버튼 (오른쪽 정렬) -->
+        <div class="notice-actions">
+            <button type="button" class="btn" data-popup-close>닫기</button>
+            <button type="button" class="btn" id="edit-button">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>
+                편집
+            </button>
+            <button type="button" class="btn btn-primary" id="save-button" hidden>저장</button>
+        </div>
+    </div>
+</body>
+</html>

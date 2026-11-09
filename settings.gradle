@@ -1,0 +1,11 @@
+rootProject.name = 'metamora'
+
+// 의존 방향: common ← core ← (system, operation, data, chat) ← design(→ data) ← app
+include 'metamora-common'     // 공통 기반 (BaseEntity, grid, 예외, 유틸) - 기능 의존 없음
+include 'metamora-core'       // 인증/로그인, 프로젝트 테넌시, 요청 로그
+include 'metamora-system'     // 시스템 관리 (사용자/프로젝트/시스템로그)
+include 'metamora-operation'  // 운영 관리 (공지사항)
+include 'metamora-data'       // 데이터 관리 (데이터사전/테이블/컬럼)
+include 'metamora-design'     // 설계기반 관리 (코드규칙/설계서/테스트)
+include 'metamora-chat'       // 메신저
+include 'metamora-app'        // 실행 모듈 (bootJar, 대시보드, 화면 리소스, Flyway)

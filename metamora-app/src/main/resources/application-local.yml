@@ -1,0 +1,22 @@
+# 로컬 개발 : docker/docker-compose.yml 의 Postgres (localhost:15439)
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:15439/metamora?charSet=UTF-8&reWriteBatchedInserts=true
+    username: metamora
+    password: metamora
+  jpa:
+    properties:
+      hibernate:
+        ejb:
+          metamodel:
+            population: enabled
+          format_sql: true
+          jdbc:
+            lob:
+              non_contextual_creation: true
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

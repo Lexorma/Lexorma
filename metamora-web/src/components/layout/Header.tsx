@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { initial } from '../../lib/format';
-import { PersonIcon, SignOutIcon } from '@primer/octicons-react';
+import { PersonIcon, SignOutIcon, ThreeBarsIcon } from '@primer/octicons-react';
 
-/** GitHub 스타일 상단 헤더 : 로고 / 프로젝트 경로 + 사용자 메뉴 */
-export function Header() {
+/** GitHub 스타일 상단 헤더 : (모바일 메뉴) 로고 / 프로젝트 경로 + 사용자 메뉴 */
+export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuToggle?: () => void }) {
   const { user, displayName, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -35,8 +35,14 @@ export function Header() {
   return (
     <header className="app-header">
       <div className="app-header-left">
+        {onMenuToggle && (
+          <button type="button" className="app-header-icon-btn app-header-menu-btn" aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
+            aria-expanded={menuOpen} onClick={onMenuToggle}>
+            <ThreeBarsIcon />
+          </button>
+        )}
         <Link className="app-header-logo" to="/" aria-label="MetaMora 홈">
-          <img src="/images/favicon.svg" alt="" width="28" height="28" />
+          <img src="/images/favicon.svg" alt="" width="20" height="20" />
         </Link>
         <nav className="app-header-context" aria-label="현재 위치">
           <Link className="app-header-crumb is-brand" to="/">

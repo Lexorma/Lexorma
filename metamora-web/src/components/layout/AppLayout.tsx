@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Footer } from './Footer';
 import { Header } from './Header';
@@ -8,16 +9,20 @@ import { Sidebar } from './Sidebar';
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  // 모바일 메뉴는 화면을 옮기면 닫는다
+  useEffect(() => setMobileOpen(false), [pathname]);
 
   return (
     <div className="page-container">
-      <Header />
+      <Header menuOpen={mobileOpen} onMenuToggle={user ? () => setMobileOpen((v) => !v) : undefined} />
       <div className="main-content">
         {user && (
           <>
             <Sidebar mobileOpen={mobileOpen} />
-            {/* 모바일용 토글 버튼 */}
-            <button type="button" id="sidebarToggleBtn" className="sidebar-toggle-btn" aria-label="메뉴 열기" onClick={() => setMobileOpen((v) => !v)} />
+            {/* 모바일 메뉴(서랍) 바깥을 누르면 닫는다 */}
+            {mobileOpen && <div className="sidebar-backdrop d-md-none" aria-hidden onClick={() => setMobileOpen(false)} />}
           </>
         )}
         <div className="content">

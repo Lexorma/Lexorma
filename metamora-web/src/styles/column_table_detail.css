@@ -106,7 +106,7 @@
 }
 
 .sort-buttons button:hover {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     color: var(--gh-fg);
 }
 

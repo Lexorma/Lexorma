@@ -41,6 +41,35 @@ def webDist = webDir.dir('dist')
 def frontendPrebuilt = providers.gradleProperty('frontendPrebuilt').map { it.toBoolean() }.orElse(false)
 def npmCommand = Os.isFamily(Os.FAMILY_WINDOWS) ? 'npm.cmd' : 'npm'
 
+// IntelliJ / Gradle 데몬은 셸 프로필(nvm 등)이 설정한 PATH 를 받지 못할 수 있다 → npm 이 있는 폴더를 찾는다
+// 순서 : -PnodeBin=<폴더> → PATH → nvm(가장 높은 버전) → Homebrew / /usr/local → Volta
+def findNodeBin = {
+    def home = System.getProperty('user.home')
+    def candidates = []
+    if (project.findProperty('nodeBin')) candidates << new File(project.findProperty('nodeBin').toString())
+    candidates.addAll((System.getenv('PATH') ?: '').split(File.pathSeparator).findAll { it }.collect { new File(it) })
+    def nvmVersions = new File(home, '.nvm/versions/node')
+    if (nvmVersions.isDirectory()) {
+        def version = { File dir -> dir.name.replaceFirst('^v', '').tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 } }
+        candidates.addAll(nvmVersions.listFiles().findAll { it.isDirectory() }
+                .sort { a, b -> [version(b), version(a)].transpose().collect { it[0] <=> it[1] }.find { it != 0 } ?: 0 }
+                .collect { new File(it, 'bin') })
+    }
+    candidates.addAll(['/opt/homebrew/bin', '/usr/local/bin', "${home}/.volta/bin"].collect { new File(it) })
+    def found = candidates.find { new File(it, npmCommand).isFile() }
+    if (found == null) {
+        throw new GradleException("npm 을 찾을 수 없습니다 (Node >= 20.19 필요). Node 를 설치하거나 -PnodeBin=<npm 이 있는 폴더> 로 지정하세요.")
+    }
+    return found
+}
+
+// npm 은 '#!/usr/bin/env node' 로 node 를 PATH 에서 찾으므로 찾은 폴더를 PATH 앞에 붙여 실행한다
+def useNodeBin = { Exec task ->
+    def bin = findNodeBin()
+    task.executable = new File(bin, npmCommand).absolutePath
+    task.environment('PATH', bin.absolutePath + File.pathSeparator + (System.getenv('PATH') ?: ''))
+}
+
 def npmCi = tasks.register('npmCi', Exec) {
     group = 'frontend'
     description = 'React 의존성 설치 (npm ci)'
@@ -48,6 +77,7 @@ def npmCi = tasks.register('npmCi', Exec) {
 
     workingDir webDir
     commandLine npmCommand, 'ci', '--no-audit', '--no-fund'
+    doFirst { useNodeBin(it) }
     inputs.files(webDir.file('package.json'), webDir.file('package-lock.json'))
     outputs.dir(webDir.dir('node_modules'))
 }
@@ -60,6 +90,7 @@ def buildFrontend = tasks.register('buildFrontend', Exec) {
 
     workingDir webDir
     commandLine npmCommand, 'run', 'build'
+    doFirst { useNodeBin(it) }
     inputs.dir(webDir.dir('src'))
     inputs.dir(webDir.dir('public'))
     inputs.files(webDir.file('index.html'), webDir.file('vite.config.ts'), webDir.file('package.json'),

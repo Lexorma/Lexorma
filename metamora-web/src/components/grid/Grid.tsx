@@ -1,12 +1,22 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type PaginationState,
+  type Row as TableRow,
+  type RowSelectionState,
+  type SortingState,
+  type VisibilityState,
+} from '@tanstack/react-table';
 import { api } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
 import { useAuth } from '../../hooks/useAuth';
 import { useDialog } from '../dialog/DialogProvider';
 
 /**
- * 서버 정의 컬럼 그리드 (예전 fragments/grid.html + DataTables)
+ * 서버 정의 컬럼 그리드 (TanStack Table v8 기반, 마크업 / CSS 는 예전 DataTables 와 같다)
  *
  * - GET {dataUrl}/column → 컬럼 정의(ColumnDto)
  * - GET {dataUrl}/data?page&size&sort&searchColumn&searchQuery → { data, recordsTotal }
@@ -89,18 +99,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     staleTime: Infinity,
   });
   const columns = useMemo(() => columnsQuery.data ?? [], [columnsQuery.data]);
-  const visibleColumns = useMemo(() => columns.filter((c) => c.isVisible !== false), [columns]);
   const searchColumns = useMemo(() => columns.filter((c) => c.isSearch), [columns]);
 
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
-  // DataTables 기본 정렬 : 첫 컬럼 오름차순 (예: 컬럼 관리의 체크박스 컬럼은 sortOrder)
-  const [order, setOrder] = useState<{ index: number; dir: 'asc' | 'desc' } | null>({ index: 0, dir: 'asc' });
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+  // null = DataTables 기본 정렬 : 첫 컬럼 오름차순 (숨김 컬럼이어도 기준이 된다. 예: 컬럼 관리의 sortOrder)
+  const [sortingState, setSortingState] = useState<SortingState | null>(null);
   const [searchColumn, setSearchColumn] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState({ column: '', query: '' });
   const [reloadKey, setReloadKey] = useState(0);
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [edits, setEdits] = useState<Record<number, Row>>({});
   const [selected, setSelected] = useState<number | null>(null);
 
@@ -110,12 +118,19 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     }
   }, [searchColumns, searchColumn]);
 
+  const sorting = useMemo<SortingState>(
+    () => sortingState ?? (columns.length > 0 ? [{ id: columnId(columns[0], 0), desc: false }] : []),
+    [sortingState, columns],
+  );
+
   const sort = useMemo(() => {
-    if (!order) return '';
-    const col = columns[order.index];
-    if (!col) return '';
-    return `${col.column || 'timestamp'},${order.dir}`;
-  }, [order, columns]);
+    const order = sorting[0];
+    const index = order ? columns.findIndex((c, i) => columnId(c, i) === order.id) : -1;
+    if (index < 0) return '';
+    return `${columns[index].column || 'timestamp'},${order.desc ? 'desc' : 'asc'}`;
+  }, [sorting, columns]);
+
+  const { pageIndex: page, pageSize: size } = pagination;
 
   const dataQuery = useQuery({
     queryKey: ['grid-data', dataUrl, page, size, sort, search.column, search.query, reloadKey],
@@ -135,7 +150,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   const pageCount = Math.max(1, Math.ceil(total / size));
 
   const clearRowState = useCallback(() => {
-    setChecked(new Set());
+    setRowSelection({});
     setEdits({});
     setSelected(null);
   }, []);
@@ -157,9 +172,47 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     setReloadKey((k) => k + 1);
   }, [clearRowState]);
 
+  const columnDefs = useMemo<ColumnDef<Row>[]>(
+    () => columns.map((col, i) => ({
+      id: columnId(col, i),
+      accessorFn: (row) => row[col.column],
+      enableSorting: col.isFilter !== false && col.rowType !== 'CHECKBOX',
+      meta: col,
+    })),
+    [columns],
+  );
+
+  const columnVisibility = useMemo<VisibilityState>(
+    () => Object.fromEntries(columns.map((col, i) => [columnId(col, i), col.isVisible !== false])),
+    [columns],
+  );
+
+  // 서버 페이징 / 정렬 : 조회는 위 dataQuery 가 하고, 테이블은 상태(페이지 / 정렬 / 체크 / 컬럼 표시)만 관리한다
+  const table = useReactTable({
+    data: rows,
+    columns: columnDefs,
+    state: { pagination, sorting, rowSelection, columnVisibility },
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    manualSorting: true,
+    pageCount,
+    enableMultiSort: false,
+    enableSortingRemoval: false, // DataTables 처럼 오름차순 ↔ 내림차순만 토글
+    sortDescFirst: false,
+    onPaginationChange: setPagination,
+    onSortingChange: (updater) => {
+      setSortingState(typeof updater === 'function' ? updater(sorting) : updater);
+      setPagination((p) => ({ ...p, pageIndex: 0 }));
+    },
+    onRowSelectionChange: setRowSelection,
+  });
+
   const editedRows = useCallback(() => rows.map((row, i) => ({ ...row, ...edits[i] })), [rows, edits]);
 
-  const getChecked = useCallback(() => rows.filter((_, i) => checked.has(i)), [rows, checked]);
+  const getChecked = useCallback(
+    () => rows.filter((_, i) => rowSelection[String(i)]),
+    [rows, rowSelection],
+  );
 
   useImperativeHandle(
     ref,
@@ -194,26 +247,19 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
 
   const doSearch = () => {
     clearRowState();
-    setPage(0);
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
     setSearch({ column: searchColumn, query: searchInput });
     setReloadKey((k) => k + 1);
   };
 
-  const toggleOrder = (index: number) => {
-    setPage(0);
-    setOrder((prev) => (prev && prev.index === index ? { index, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { index, dir: 'asc' }));
-  };
-
-  const allChecked = rows.length > 0 && checked.size === rows.length;
-
-  const renderValue = (col: GridColumn, row: Row, rowIndex: number): ReactNode => {
-    const custom = renderCell?.(col.column, row);
+  const renderValue = (col: GridColumn, row: TableRow<Row>): ReactNode => {
+    const data = row.original[col.column];
+    const custom = renderCell?.(col.column, row.original);
     if (custom !== undefined) return custom;
 
-    const data = row[col.column];
-    const edited = edits[rowIndex]?.[col.column];
+    const edited = edits[row.index]?.[col.column];
     const setEdit = (value: string) =>
-      setEdits((prev) => ({ ...prev, [rowIndex]: { ...prev[rowIndex], [col.column]: value } }));
+      setEdits((prev) => ({ ...prev, [row.index]: { ...prev[row.index], [col.column]: value } }));
 
     switch (col.rowType) {
       case 'INPUT':
@@ -228,7 +274,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
         );
       case 'BUTTON':
         return (
-          <button type="button" className="btn btn-sm btn-primary action-btn" onClick={() => onCellButton?.(col.column, row)}>
+          <button type="button" className="btn btn-sm btn-primary action-btn" onClick={() => onCellButton?.(col.column, row.original)}>
             {data}
           </button>
         );
@@ -243,27 +289,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
           </select>
         );
       case 'CHECKBOX':
-        return (
-          <input
-            type="checkbox"
-            className="row-checkbox"
-            checked={checked.has(rowIndex)}
-            onChange={(e) =>
-              setChecked((prev) => {
-                const next = new Set(prev);
-                if (e.target.checked) next.add(rowIndex);
-                else next.delete(rowIndex);
-                return next;
-              })
-            }
-          />
-        );
+        return <input type="checkbox" className="row-checkbox" checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} />;
       default:
         if (col.columnType === 'DATE') return <p>{formatDateTime(data)}</p>;
         if (col.columnType === 'STRING' && (data === 0 || data === '0')) return data;
         return col.rowType === 'TEXT' ? <p>{data ?? ''}</p> : (data ?? '');
     }
   };
+
+  const headers = table.getHeaderGroups()[0]?.headers ?? [];
+  const tableRows = table.getRowModel().rows;
 
   return (
     <div>
@@ -312,14 +347,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
             <div className="dt-length">
               <label>
                 페이지당{' '}
-                <select
-                  className="dt-input"
-                  value={size}
-                  onChange={(e) => {
-                    setSize(Number(e.target.value));
-                    setPage(0);
-                  }}
-                >
+                <select className="dt-input" value={size} onChange={(e) => setPagination({ pageIndex: 0, pageSize: Number(e.target.value) })}>
                   {PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
                       {n}
@@ -337,28 +365,27 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
             <table id={id} className="table table-striped table-bordered dataTable">
               <thead>
                 <tr>
-                  {visibleColumns.map((col) => {
-                    const index = columns.indexOf(col);
-                    const isCheckbox = col.rowType === 'CHECKBOX';
-                    const orderable = col.isFilter !== false && !isCheckbox;
-                    if (isCheckbox) {
+                  {headers.map((header) => {
+                    const col = header.column.columnDef.meta as GridColumn;
+                    if (col.rowType === 'CHECKBOX') {
                       return (
-                        <th key={col.column} className="grid-checkbox-header text-center" style={{ width: 40 }}>
-                          <input type="checkbox" className="header-checkbox" checked={allChecked}
-                            onChange={(e) => setChecked(e.target.checked ? new Set(rows.map((_, i) => i)) : new Set())} />
+                        <th key={header.id} className="grid-checkbox-header text-center" style={{ width: 40 }}>
+                          <input type="checkbox" className="header-checkbox" checked={rows.length > 0 && table.getIsAllRowsSelected()}
+                            onChange={table.getToggleAllRowsSelectedHandler()} />
                         </th>
                       );
                     }
-                    const ordering = order?.index === index ? order.dir : null;
+                    const orderable = header.column.getCanSort();
+                    const ordering = header.column.getIsSorted();
                     const classes = ['text-start'];
                     if (orderable) classes.push('dt-orderable-asc', 'dt-orderable-desc');
                     else classes.push('no-sort');
                     if (ordering) classes.push(`dt-ordering-${ordering}`);
                     return (
                       <th
-                        key={col.column}
+                        key={header.id}
                         className={classes.join(' ')}
-                        onClick={orderable ? () => toggleOrder(index) : undefined}
+                        onClick={orderable ? header.column.getToggleSortingHandler() : undefined}
                         aria-sort={ordering === 'asc' ? 'ascending' : ordering === 'desc' ? 'descending' : undefined}
                       >
                         <div className="dt-column-header">
@@ -371,9 +398,9 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 ? (
+                {tableRows.length === 0 ? (
                   <tr>
-                    <td colSpan={Math.max(visibleColumns.length, 1)} className="dt-empty">
+                    <td colSpan={Math.max(headers.length, 1)} className="dt-empty">
                       {columnsQuery.isPending || dataQuery.isPending
                         ? '조회 중입니다.'
                         : search.query
@@ -382,21 +409,24 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row, rowIndex) => (
+                  tableRows.map((row) => (
                     <tr
-                      key={row.id ?? rowIndex}
-                      className={[selected === rowIndex ? 'selected' : '', rowClassName?.(row) ?? ''].filter(Boolean).join(' ') || undefined}
+                      key={row.original.id ?? row.index}
+                      className={[selected === row.index ? 'selected' : '', rowClassName?.(row.original) ?? ''].filter(Boolean).join(' ') || undefined}
                       onClick={(e) => {
                         if ((e.target as HTMLElement).closest('input, button, select, label')) return; // 셀 입력은 행 선택 아님
-                        setSelected(rowIndex);
-                        onRowClick?.(row, columns, isManager);
+                        setSelected(row.index);
+                        onRowClick?.(row.original, columns, isManager);
                       }}
                     >
-                      {visibleColumns.map((col) => (
-                        <td key={col.column} className={col.rowType === 'CHECKBOX' ? 'text-center' : 'text-start'}>
-                          {renderValue(col, row, rowIndex)}
-                        </td>
-                      ))}
+                      {row.getVisibleCells().map((cell) => {
+                        const col = cell.column.columnDef.meta as GridColumn;
+                        return (
+                          <td key={cell.id} className={col.rowType === 'CHECKBOX' ? 'text-center' : 'text-start'}>
+                            {renderValue(col, row)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
@@ -407,13 +437,18 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
 
         <div className="dt-layout-row">
           <div className="dt-layout-cell dt-layout-end">
-            <Paging page={page} pageCount={pageCount} onChange={setPage} />
+            <Paging page={page} pageCount={pageCount} onChange={table.setPageIndex} />
           </div>
         </div>
       </div>
     </div>
   );
 });
+
+/** TanStack Table 컬럼 id (서버 컬럼명이 비어 있을 수 있어 순번으로 대신한다) */
+function columnId(col: GridColumn, index: number) {
+  return col.column || `__col${index}`;
+}
 
 function Paging({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
   const button = (label: ReactNode, target: number, disabled: boolean, current = false, key?: string) => (

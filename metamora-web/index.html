@@ -18,13 +18,17 @@
     <link rel="icon" type="image/png" href="/images/favicon.png"/>
     <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 
-    <!-- 사이드바 접힘 상태를 렌더링 전에 반영 (깜빡임 방지) -->
+    <!-- 사이드바 접힘 / 테마(OS 다크 모드 설정)를 렌더링 전에 반영 (깜빡임 방지, 테마 규칙은 lib/theme.ts 와 같음) -->
     <script>
-        try {
-            if (localStorage.getItem('sidebarCollapsed') === 'true') {
-                document.documentElement.classList.add('sidebar-collapsed');
-            }
-        } catch (e) {}
+        (function () {
+            var root = document.documentElement;
+            try {
+                if (localStorage.getItem('sidebarCollapsed') === 'true') root.classList.add('sidebar-collapsed');
+            } catch (e) {}
+            var theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            root.setAttribute('data-theme', theme);
+            root.setAttribute('data-bs-theme', theme);
+        })();
     </script>
 </head>
 <body>

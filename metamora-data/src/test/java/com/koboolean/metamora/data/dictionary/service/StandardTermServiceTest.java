@@ -291,4 +291,17 @@ class StandardTermServiceTest {
             assertThat(existing.getCommonStandardTermName()).isEqualTo("사용자_이름");
         }
     }
+
+    @Test
+    @DisplayName("약어 미사용 프로젝트의 용어 영문명 : 단어 영문명을 '_' 로 잇고, 여러 단어 영문명 / 약어 사용 단어 / 영문명 없는 단어는 약어")
+    void toEnglishTermName() {
+        StandardWord use = StandardWord.builder().commonStandardWordAbbreviation("USE").commonStandardWordEnglishName("use").build();
+        StandardWord history = StandardWord.builder().commonStandardWordAbbreviation("DTLS").commonStandardWordEnglishName("History").build();
+        StandardWord ip = StandardWord.builder().commonStandardWordAbbreviation("IP").commonStandardWordEnglishName("Internet Protocol").useAbbreviation(true).build();
+        StandardWord multiWord = StandardWord.builder().commonStandardWordAbbreviation("ADDR").commonStandardWordEnglishName("Street Address").build();
+        StandardWord noEnglish = StandardWord.builder().commonStandardWordAbbreviation("MNG").build();
+
+        assertThat(StandardTermService.toEnglishTermName(List.of(use, history, noEnglish))).isEqualTo("USE_HISTORY_MNG");
+        assertThat(StandardTermService.toEnglishTermName(List.of(ip, multiWord))).isEqualTo("IP_ADDR");
+    }
 }

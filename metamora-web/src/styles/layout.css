@@ -15,12 +15,12 @@ body, html {
    상단 헤더 (GitHub 스타일)
    ========================================================= */
 .app-header {
-    --hd-fg: #1f2328;
-    --hd-muted: #59636e;
-    --hd-border: #d1d9e0;
-    --hd-bg: #f6f8fa;
+    --hd-fg: var(--gh-fg);
+    --hd-muted: var(--gh-fg-muted);
+    --hd-border: var(--gh-border);
+    --hd-bg: var(--gh-canvas-subtle);
     --hd-hover: #818b981a;
-    --hd-accent: #0969da;
+    --hd-accent: var(--gh-accent);
 
     position: relative;
     z-index: 20;
@@ -51,16 +51,15 @@ body, html {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    border: 1px solid var(--hd-border);
-    border-radius: 6px;
-    background-color: #ffffff;
+    width: 20px;
+    height: 20px;
+    margin-right: -8px; /* 헤더 gap 을 없애 타이틀에 붙인다 (간격은 타이틀 링크의 안쪽 여백 6px) */
 }
 
+/* 로고는 옆 타이틀(14px, 줄높이 21px)과 같은 높이 */
 .app-header-logo img {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     object-fit: contain;
 }
 
@@ -110,7 +109,7 @@ a.app-header-crumb:hover {
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background-color: #ddf4ff;
+    background-color: var(--gh-accent-subtle);
     color: var(--hd-accent);
     box-shadow: 0 0 0 1px var(--hd-border);
     font-size: 14px;
@@ -177,7 +176,7 @@ a.app-header-crumb:hover {
 .app-header-menu-divider {
     height: 1px;
     margin: 8px -8px;
-    background-color: #d1d9e0b3;
+    background-color: var(--gh-border-muted);
 }
 
 .app-header-menu-item {
@@ -208,15 +207,15 @@ a.app-header-crumb:hover {
    사이드바 (GitHub Primer ActionList 스타일)
    ========================================================= */
 .sidebar {
-    --sb-text: #1f2328;
-    --sb-muted: #59636e;
+    --sb-text: var(--gh-fg);
+    --sb-muted: var(--gh-fg-muted);
     --sb-hover: #818b981a;
     --sb-active-bg: #818b9826;
-    --sb-accent: #0969da;
-    --sb-border: #d1d9e0;
+    --sb-accent: var(--gh-accent);
+    --sb-border: var(--gh-border);
 
     flex: 0 0 248px;
-    background-color: #ffffff;
+    background-color: var(--gh-canvas);
     height: 100vh; /* 스크롤 시 화면 전체 높이를 채움 */
     position: sticky;
     top: 0; /* 헤더가 스크롤되어 사라지면 화면 최상단에 고정 */
@@ -237,7 +236,7 @@ a.app-header-crumb:hover {
     justify-content: space-between;
     height: 48px;
     padding: 0 8px 0 16px;
-    background-color: #ffffff;
+    background-color: var(--gh-canvas);
 }
 
 .sidebar-title {
@@ -470,7 +469,7 @@ a.app-header-crumb:hover {
     gap: 6px;
     margin-bottom: 4px;
     font-size: 14px;
-    color: #59636e;
+    color: var(--gh-fg-muted);
 }
 
 /* =========================================================
@@ -484,8 +483,8 @@ a.app-header-crumb:hover {
     gap: 8px 16px;
     margin-top: 40px;
     padding: 24px 0 8px;
-    border-top: 1px solid #d1d9e0;
-    color: #59636e;
+    border-top: 1px solid var(--gh-border);
+    color: var(--gh-fg-muted);
     font-family: var(--app-font);
     font-size: 12px;
     line-height: 1.5;
@@ -504,24 +503,24 @@ a.app-header-crumb:hover {
 }
 
 .app-footer-sep {
-    color: #818b98;
+    color: var(--gh-fg-subtle);
 }
 
 .app-footer-link {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    color: #0969da;
+    color: var(--gh-accent);
     text-decoration: none;
 }
 
 .app-footer-link:hover {
-    color: #0969da;
+    color: var(--gh-accent);
     text-decoration: underline;
 }
 
 .app-footer-link:focus-visible {
-    outline: 2px solid #0969da;
+    outline: 2px solid var(--gh-accent);
     outline-offset: 2px;
     border-radius: 3px;
 }
@@ -539,7 +538,7 @@ p {
 .list-group a.active {
     font-weight: bold;
     color: #0056b3; /* 진한 파란색 글자 */
-    background-color: #f8f9fa; /* 연한 회색 배경 */
+    background-color: var(--gh-canvas-subtle); /* 연한 회색 배경 */
     border: none; /* 테두리 제거 */
     border-radius: 8px; /* 부드러운 라운드 처리 */
     margin: 5px 0; /* 메뉴 간격 */
@@ -551,8 +550,8 @@ p {
 /* 2-depth 메뉴 스타일 */
 .list-group .collapse .list-group-item {
     font-weight: normal;
-    background-color: #f8f9fa; /* 연한 회색 배경 */
-    color: #495057; /* 짙은 회색 글자 */
+    background-color: var(--gh-canvas-subtle); /* 연한 회색 배경 */
+    color: var(--gh-fg); /* 짙은 회색 글자 */
     border-radius: 6px; /* 라운드 처리 */
     margin: 2px 0; /* 간격 */
     padding: 8px 20px; /* 들여쓰기 포함 여백 */
@@ -561,7 +560,7 @@ p {
 
 /* 2-depth 메뉴 활성화 상태 */
 .list-group .collapse .list-group-item.active {
-    background-color: #e9ecef; /* 조금 더 진한 회색 배경 */
+    background-color: var(--gh-canvas-subtle); /* 조금 더 진한 회색 배경 */
     color: #0056b3; /* 진한 파란색 글자 */
     font-weight: bold;
     border: none; /* 테두리 제거 */
@@ -576,14 +575,14 @@ p {
 
 /* 2-depth 메뉴와 연결되는 라인 */
 .list-group .collapse {
-    border-left: 2px solid #dee2e6; /* 더 연한 회색 라인 */
+    border-left: 2px solid var(--gh-border); /* 더 연한 회색 라인 */
     padding-left: 15px; /* 추가 들여쓰기 */
     margin-left: 5px; /* 1-depth와의 간격 */
 }
 
 /* 호버 시 스타일 */
 .list-group-item:hover {
-    background-color: #e9ecef; /* 살짝 더 진한 회색 */
+    background-color: var(--gh-canvas-subtle); /* 살짝 더 진한 회색 */
     color: #0056b3; /* 진한 파란색 글자 */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 가벼운 어두운 그림자 */
     border: none; /* 테두리 제거 */
@@ -602,7 +601,7 @@ dialog {
     padding: 20px;
     width: 400px;
     max-width: 90%;
-    background-color: #fff;
+    background-color: var(--gh-canvas);
     font-family: var(--app-font);
     text-align: left; /* 기본 내용 왼쪽 정렬 */
     position: fixed;
@@ -610,7 +609,7 @@ dialog {
     left: 50%;
     transform: translate(-50%, -50%);
     margin: 0;
-    border: 1px solid #ccc;
+    border: 1px solid var(--gh-border);
     border-radius: 8px;
     z-index: 1000;
 }
@@ -622,10 +621,10 @@ dialog h3 {
     font-size: 20px;
     font-weight: 400;
     line-height: 1.25;
-    color: #1f2328;
+    color: var(--gh-fg);
     margin: 0 0 16px;
     padding-bottom: 8px;
-    border-bottom: 1px solid #d1d9e0;
+    border-bottom: 1px solid var(--gh-border);
     text-align: left; /* 타이틀 왼쪽 정렬 */
 }
 
@@ -636,7 +635,7 @@ dialog .dialog-header {
     align-items: center;
     margin-bottom: 16px;
     padding-bottom: 8px;
-    border-bottom: 1px solid #d1d9e0;
+    border-bottom: 1px solid var(--gh-border);
 }
 
 dialog .dialog-header h3 {
@@ -649,7 +648,7 @@ dialog .dialog-header h3 {
 dialog p {
     font-size: 16px;
     margin: 0 0 20px;
-    color: #555;
+    color: var(--gh-fg-muted);
     line-height: 1.5;
     text-align: left; /* 내용 왼쪽 정렬 */
 }
@@ -673,9 +672,9 @@ dialog button.confirm:hover {
 /* 닫기 버튼 스타일 (흰색) */
 dialog button.close {
     padding: 10px 20px;
-    background-color: #fff;
-    color: #333;
-    border: 1px solid #ccc;
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+    border: 1px solid var(--gh-border);
     border-radius: 4px;
     font-size: 14px;
     cursor: pointer;
@@ -683,8 +682,8 @@ dialog button.close {
 }
 
 dialog button.close:hover {
-    background-color: #f8f9fa;
-    border-color: #bbb;
+    background-color: var(--gh-canvas-subtle);
+    border-color: var(--gh-border);
 }
 
 /* 넓은 다이얼로그 (시스템 로그 상세 등) */
@@ -698,7 +697,7 @@ dialog.dialog-wide {
     margin: 12px 0 4px;
     font-size: 14px;
     font-weight: 600;
-    color: #1f2328;
+    color: var(--gh-fg);
 }
 
 .dialog-detail-value {
@@ -709,9 +708,9 @@ dialog.dialog-wide {
     font-size: 13px;
     white-space: pre-wrap;
     word-break: break-all;
-    color: #1f2328;
-    background-color: #f6f8fa;
-    border: 1px solid #d1d9e0;
+    color: var(--gh-fg);
+    background-color: var(--gh-canvas-subtle);
+    border: 1px solid var(--gh-border);
     border-radius: 6px;
 }
 
@@ -762,16 +761,16 @@ dialog .btn-primary {
     height: 38px;
     padding: 6px 12px;
     font-size: 14px;
-    color: #1f2328;
-    background-color: #fff;
-    border: 1px solid #d1d9e0;
+    color: var(--gh-fg);
+    background-color: var(--gh-canvas);
+    border: 1px solid var(--gh-border);
     border-radius: 6px;
     outline: none;
     transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .search-input:focus {
-    border-color: #0969da;
+    border-color: var(--gh-accent);
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
 }
 
@@ -885,10 +884,10 @@ dialog .btn-primary {
     height: 38px; /* 검색창과 동일한 높이 */
     padding: 6px 36px 6px 12px;
     font-size: 14px;
-    color: #1f2328;
-    border: 1px solid #d1d9e0;
+    color: var(--gh-fg);
+    border: 1px solid var(--gh-border);
     border-radius: 6px;
-    background-color: #fff;
+    background-color: var(--gh-canvas);
     cursor: pointer;
     min-width: 150px;
     max-width: 200px;
@@ -919,8 +918,8 @@ dialog .btn-primary {
     gap: 8px; /* 입력창, select, 조회 버튼 간격 */
     width: 100%;
     padding: 16px;
-    background-color: #f6f8fa;
-    border: 1px solid #d1d9e0;
+    background-color: var(--gh-canvas-subtle);
+    border: 1px solid var(--gh-border);
     border-radius: 6px;
 }
 
@@ -930,7 +929,7 @@ dialog .btn-primary {
     font-size: 24px;
     font-weight: bold;
     cursor: pointer;
-    color: #333;
+    color: var(--gh-fg);
 }
 .close-btn:active {
     color: blue;
@@ -943,60 +942,84 @@ dialog .btn-primary {
     font-size: 24px;
     font-weight: 400;
     line-height: 1.25;
-    color: #1f2328;
+    color: var(--gh-fg);
     padding-bottom: 8px;
     margin-bottom: 16px;
-    border-bottom: 1px solid #d1d9e0;
+    border-bottom: 1px solid var(--gh-border);
 }
 
-/* 모바일용 사이드바 스타일 */
-.sidebar.mobile-sidebar {
-    position: fixed;
-    top: 70px; /* header 아래 */
-    left: 0;
-    width: 220px;
-    background-color: #f8f9fa; /* 회색 */
-    padding: 15px;
-    border-radius: 0 8px 8px 0;
-    z-index: 1050;
-    box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
-    height: auto;
+/* =========================================================
+   반응형 : 본문 / 그리드 / 모바일 메뉴(서랍)
+   ========================================================= */
+
+/* flex 자식은 기본 min-width 가 내용 폭이라, 넓은 표가 본문을 화면 밖으로 밀어낸다 → 본문은 화면 폭에 맞추고 표만 가로 스크롤 */
+.content {
+    min-width: 0;
 }
 
-.sidebar-toggle-btn {
+div.dt-container .dt-layout-table {
+    overflow-x: auto;
+}
+
+table.dataTable thead th {
+    white-space: nowrap;
+}
+
+/* 헤더 아이콘 버튼 (모바일 메뉴) */
+.app-header-icon-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--hd-border);
+    border-radius: 6px;
+    background-color: transparent;
+    color: var(--hd-muted);
+    cursor: pointer;
+}
+
+.app-header-icon-btn:hover {
+    background-color: var(--hd-hover);
+    color: var(--hd-fg);
+}
+
+.app-header-menu-btn {
     display: none;
 }
 
-/* 모바일 화면일 때만 보이도록 설정 */
 @media (max-width: 767.98px) {
-    .sidebar.mobile-sidebar.d-md-block {
-        display: none !important; /* PC 전용 숨기기 */
+    .app-header-menu-btn {
+        display: inline-flex;
     }
 
-    .sidebar-toggle-btn {
+    /* 사이드바는 헤더 아래에서 왼쪽 서랍으로 연다 */
+    .sidebar {
         position: fixed;
-        top: 65px;
-        left: 5px;
-        width: 36px;
-        height: 36px;
-        z-index: 1060;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        background-color: #f8f9fa;
-        font-size: 20px;
-        padding: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        line-height: 1;
-        border-radius: 10%;
-        border: 0;
+        top: 64px;
+        left: 0;
+        bottom: 0;
+        z-index: 1050;
+        width: 260px;
+        height: auto;
+        box-shadow: 0 8px 24px #1f232833;
     }
 
-    .sidebar-toggle-btn::before {
-        content: '☰';
-        font-size: 18px;
-        line-height: 1;
-        display: block;
-        text-align: center;
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 64px 0 0 0;
+        z-index: 1040;
+        background-color: #1f232866;
+    }
+
+    .content {
+        padding: 16px;
+    }
+
+    /* 좁은 화면 : 셀 줄바꿈으로 세로로 길어지지 않게 하고 표를 가로 스크롤 */
+    table.dataTable tbody td {
+        white-space: nowrap;
     }
 }

@@ -24,8 +24,49 @@
     --gh-done-subtle: #fbefff;
     --gh-btn-primary: #0969da;
     --gh-btn-primary-hover: #0860ca;
+    --gh-btn-hover: #eff2f5;
+    --gh-fg-subtle: #818b98;
     --gh-font: var(--app-font);
     --gh-mono: var(--app-font);
+}
+
+/* ---------- 다크 모드 : <html data-theme="dark" data-bs-theme="dark"> (index.html / lib/theme.ts)
+   색은 위 --gh-* 토큰으로만 바꾼다. Bootstrap / DataTables 는 data-bs-theme 로 자체 다크 스타일을 쓰고,
+   배경 / 글자색만 Primer 다크 팔레트에 맞춘다. ---------- */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --gh-fg: #f0f6fc;
+    --gh-fg-muted: #9198a1;
+    --gh-fg-subtle: #656c76;
+    --gh-border: #3d444d;
+    --gh-border-muted: #3d444db3;
+    --gh-canvas: #0d1117;
+    --gh-canvas-subtle: #151b23;
+    --gh-neutral-muted: #656c7633;
+    --gh-hover: #656c761a;
+    --gh-accent: #4493f8;
+    --gh-accent-subtle: #388bfd1a;
+    --gh-success: #3fb950;
+    --gh-success-subtle: #2ea04326;
+    --gh-attention: #d29922;
+    --gh-attention-subtle: #bb800926;
+    --gh-danger: #f85149;
+    --gh-danger-subtle: #f851491a;
+    --gh-done: #ab7df8;
+    --gh-done-subtle: #ab7df826;
+    --gh-btn-primary: #1f6feb;
+    --gh-btn-primary-hover: #388bfd;
+    --gh-btn-hover: #262c36;
+
+    --bs-body-bg: var(--gh-canvas);
+    --bs-body-color: var(--gh-fg);
+    --bs-border-color: var(--gh-border);
+    --dt-html-background: var(--gh-canvas);
+}
+
+body {
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
 }
 
 .content {
@@ -78,7 +119,7 @@ dialog .btn,
 .popup-container .btn:hover,
 dialog .btn:hover,
 .gh-btn:hover {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     border-color: var(--gh-border);
     color: var(--gh-fg);
 }
@@ -95,9 +136,9 @@ dialog .btn:focus-visible,
 .content .btn:disabled,
 .popup-container .btn:disabled,
 dialog .btn:disabled {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     border-color: var(--gh-border-muted);
-    color: #818b98;
+    color: var(--gh-fg-subtle);
     opacity: 1;
 }
 
@@ -148,7 +189,7 @@ dialog .btn.btn-primary:disabled {
 
 .content .btn.btn-danger:disabled,
 .popup-container .btn.btn-danger:disabled {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     color: #d1242f80;
 }
 
@@ -215,7 +256,7 @@ dialog .form-select:focus {
 .content .form-check-input,
 .popup-container .form-check-input,
 dialog .form-check-input {
-    border-color: #818b98;
+    border-color: var(--gh-fg-subtle);
 }
 
 .content .form-check-input:checked,
@@ -400,7 +441,7 @@ dialog .form-check-label {
 }
 
 .search-container .search-input::placeholder {
-    color: #818b98;
+    color: var(--gh-fg-subtle);
 }
 
 .search-container .grd-select {
@@ -417,7 +458,7 @@ dialog .form-check-label {
 }
 
 .search-container .grd-select:hover {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
 }
 
 /* 검색 컬럼이 없어 select 가 숨겨진 경우 입력창 왼쪽 모서리 복원 */
@@ -473,7 +514,7 @@ dialog .form-check-label {
 }
 
 .grid-header .button-container .btn:hover {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     color: var(--gh-fg);
 }
 
@@ -505,9 +546,9 @@ dialog .form-check-label {
 }
 
 .grid-header .button-container .btn:disabled {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     border-color: var(--gh-border-muted);
-    color: #818b98;
+    color: var(--gh-fg-subtle);
 }
 
 /* =========================================================
@@ -725,7 +766,7 @@ div.dt-container .dt-paging .dt-paging-button.disabled,
 div.dt-container .dt-paging .dt-paging-button.disabled:hover {
     border-color: transparent !important;
     background: transparent !important;
-    color: #818b98 !important;
+    color: var(--gh-fg-subtle) !important;
     cursor: default;
 }
 
@@ -846,7 +887,7 @@ dialog button.close {
 }
 
 dialog button.close:hover {
-    background-color: #eff2f5;
+    background-color: var(--gh-btn-hover);
     border-color: var(--gh-border);
 }
 
@@ -1154,20 +1195,42 @@ dialog .dict-detail .dict-detail-flag-off {
         max-width: none;
     }
 
+    /* 검색 줄 : 컬럼 선택 / 입력 / 조회가 화면 폭 안에서 줄어든다 */
+    .search-container {
+        min-width: 0;
+    }
+
     .search-container .search-column-select {
+        flex: 0 1 auto;
         width: auto;
         min-width: 96px;
+        max-width: 40%;
     }
 
-    .search-container .search-input,
-    .search-container .grd-select {
+    .search-container .search-input {
+        flex: 1 1 auto;
         width: auto;
     }
 
+    .search-container .grd-select {
+        flex: none;
+        width: auto;
+    }
+
+    /* 버튼 줄 : 한 줄을 차지하고 왼쪽부터 채워 줄바꿈 */
     .grid-header .button-container {
+        flex: 1 1 100%;
+        min-width: 0;
         flex-wrap: wrap;
         justify-content: flex-start;
+        row-gap: 6px;
         margin-left: 0;
+    }
+
+    .grid-header .grid-extra-actions,
+    .grid-header .grid-extra-actions > span {
+        flex-wrap: wrap;
+        row-gap: 6px;
     }
 
     div.dt-container .dt-layout-table {

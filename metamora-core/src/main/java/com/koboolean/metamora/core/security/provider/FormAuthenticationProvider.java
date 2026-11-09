@@ -5,7 +5,6 @@ import com.koboolean.metamora.core.security.details.FormWebAuthenticationDetails
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.ProjectAccessException;
 import com.koboolean.metamora.core.user.service.UserService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -65,11 +64,6 @@ public class FormAuthenticationProvider implements AuthenticationProvider {
 
         accountDto.setRoleName(userService.getRoleName(authorities.get(0).toString()));
         accountDto.setPassword(null);
-
-        HttpServletRequest request = details.getRequest();
-        if (request != null) {
-            request.getSession().setAttribute("account", accountDto);
-        }
 
         return new UsernamePasswordAuthenticationToken(accountDto, null, accountContext.getAuthorities());
     }

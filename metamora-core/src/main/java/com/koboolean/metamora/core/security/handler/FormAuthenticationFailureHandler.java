@@ -1,36 +1,36 @@
 package com.koboolean.metamora.core.security.handler;
 
-import jakarta.servlet.ServletException;
+import com.koboolean.metamora.common.exception.ProjectAccessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import com.koboolean.metamora.common.exception.ProjectAccessException;
 import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.session.SessionAuthenticationException;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
+/**
+ * 로그인 실패 (POST /api/auth/login) : 401 + code / message
+ */
 @Component("failureHandler")
-public class FormAuthenticationFailureHandler extends SimpleUrlAuthenticationFailureHandler {
+public class FormAuthenticationFailureHandler implements AuthenticationFailureHandler {
 
     @Override
-    public void onAuthenticationFailure(final HttpServletRequest request, final HttpServletResponse response, final AuthenticationException exception) throws IOException, ServletException {
-
-        // 아이디 없음 / 비밀번호 불일치는 아이디 존재 여부가 드러나지 않도록 같은 메시지 사용
-        String errorMessage = "아이디 또는 비밀번호가 잘못되었습니다.";
+    public void onAuthenticationFailure(final HttpServletRequest request, final HttpServletResponse response, final AuthenticationException exception) throws IOException {
 
         if (exception instanceof CredentialsExpiredException) {
-            errorMessage = exception.getMessage();
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PASSWORD_CHANGE_REQUIRED", exception.getMessage());
         } else if (exception instanceof ProjectAccessException) {
-            errorMessage = exception.getMessage();
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PROJECT_ACCESS_DENIED", exception.getMessage());
+        } else if (exception instanceof SessionAuthenticationException) {
+            // maximumSessions(1) + maxSessionsPreventsLogin : 이미 로그인된 세션이 있다
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "SESSION_LIMIT_EXCEEDED",
+                    "이미 다른 곳에서 로그인되어 있습니다. 기존 세션에서 로그아웃하거나 세션이 만료된 뒤 다시 시도해주세요.");
+        } else {
+            // 아이디 없음 / 비밀번호 불일치는 아이디 존재 여부가 드러나지 않도록 같은 메시지 사용
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_CREDENTIALS", "아이디 또는 비밀번호가 잘못되었습니다.");
         }
-
-        // 공유(singleton) 핸들러이므로 setDefaultFailureUrl로 상태를 바꾸지 않고 요청마다 직접 redirect
-        saveException(request, exception);
-        getRedirectStrategy().sendRedirect(request, response,
-                "/login?error=true&exception=" + URLEncoder.encode(errorMessage, StandardCharsets.UTF_8));
     }
 }

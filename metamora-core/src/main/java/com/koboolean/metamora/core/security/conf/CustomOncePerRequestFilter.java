@@ -2,33 +2,24 @@ package com.koboolean.metamora.core.security.conf;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
-import org.springframework.web.util.WebUtils;
 
 import java.io.IOException;
 
+/**
+ * 요청/응답 본문 캐싱 : LogsInterceptor 가 요청 로그(요청/응답 본문)를 남길 수 있도록 감싼다.
+ * (CSRF 토큰은 GET /api/auth/csrf 로 받으므로 예전의 XSRF-TOKEN 쿠키 갱신 처리는 하지 않는다)
+ */
 @Component
 public class CustomOncePerRequestFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-
-        // CSRF 토큰 갱신 (기존 로직 유지)
-        CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-        if (csrfToken != null) {
-            Cookie cookie = WebUtils.getCookie(request, "XSRF-TOKEN");
-            String token = csrfToken.getToken();
-            if (cookie == null || (token != null && !token.equals(cookie.getValue()))) {
-                updateSessionCookie(request, response, "XSRF-TOKEN", token, false);
-            }
-        }
 
         // Only wrap if not already wrapped
         HttpServletRequest requestToUse = request;
@@ -56,12 +47,11 @@ public class CustomOncePerRequestFilter extends OncePerRequestFilter {
         }
     }
 
-    private static void updateSessionCookie(HttpServletRequest request, HttpServletResponse response, String type, String token, boolean httpOnly) {
-        Cookie cookie = new Cookie(type, token);
-        cookie.setPath("/");
-        cookie.setHttpOnly(httpOnly);
-        cookie.setSecure(request.isSecure()); // HTTPS 요청(프록시 X-Forwarded-Proto 포함)인 경우에만 Secure
-        cookie.setMaxAge(1800); // 요청 시마다 만료 시간 갱신
-        response.addCookie(cookie);
+    /**
+     * 정적 리소스(React 화면, 이미지, 폰트)는 로그 대상이 아니므로 감싸지 않는다. (큰 파일을 메모리에 담지 않음)
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return !request.getRequestURI().startsWith("/api/");
     }
 }

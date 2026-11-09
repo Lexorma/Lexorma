@@ -20,3 +20,8 @@ out/
 /docker/volume/**
 
 CLAUDE.md
+
+### Frontend (metamora-web) ###
+metamora-web/node_modules/
+metamora-web/dist/
+metamora-web/*.tsbuildinfo

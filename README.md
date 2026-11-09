@@ -427,7 +427,7 @@ The following capabilities are planned and should not be considered implemented 
 
 ### Integration & Governance
 
-- MCP Server integration for AI agents
+- MCP-based on-demand collection and synchronization of external database metadata (AI tool calling works only on metadata stored in MetaMora's own database)
 - REST API integration with external developer tools
 - Schema change impact analysis
 - Metadata governance and audit capabilities

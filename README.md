@@ -7,8 +7,6 @@
 MetaMora는 데이터 표준(표준 단어·도메인·용어)과 규칙 기반 명명법으로 테이블/컬럼명과 메소드·함수명을 일관되게 만들고, 이를 바탕으로 DDL 생성을 지원하는 웹 애플리케이션입니다.
 대규모 시스템 개발에서 명명 규칙을 지키고 반복 작업을 자동화해 개발 생산성을 높입니다.
 
-[Docker Hub](https://hub.docker.com/repository/docker/koboolean/metamora) · [Document Page](https://metagen-react.vercel.app/) · [ERD Cloud](https://www.erdcloud.com/d/KE8576rcrNDyCve2h)
-
 ---
 
 ## 프로젝트 목표

@@ -256,6 +256,29 @@ class SmokeTest {
 
     @Test
     @Order(11)
+    @DisplayName("V0 기본 안내 공지의 목록·상세·작성자·조회 상태를 확인한다")
+    void welcomeNotice() throws Exception {
+        HttpResponse<String> list = get("/api/selectNotice/data?page=0&size=10&sort=id,asc", true);
+        assertThat(list.statusCode()).isEqualTo(200);
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var first = mapper.readTree(list.body()).path("data").get(0);
+        assertThat(first.path("id").asLong()).isEqualTo(1L);
+        assertThat(first.path("title").asString()).isEqualTo("[안내] Metamora에 오신 것을 환영합니다.");
+        assertThat(first.path("isHit").asString()).isEqualTo("확인");
+
+        HttpResponse<String> view = get("/api/selectNotice/view/1", true);
+        assertThat(view.statusCode()).isEqualTo(200);
+        var notice = mapper.readTree(view.body());
+        assertThat(notice.path("username").asString()).isEqualTo("admin");
+        assertThat(notice.path("content").asString()).contains("물리 ERD", "이용 안내", "문의 및 오류 신고",
+                "https://github.com/meta-mora/metamora/issues");
+        assertThat(notice.path("accounts").size()).isEqualTo(1);
+        assertThat(get("/api/selectNotice/view/1", true).statusCode()).isEqualTo(200);
+        assertThat(mapper.readTree(get("/api/selectNotice/view/1", true).body()).path("accounts").size()).isEqualTo(1);
+    }
+
+    @Test
+    @Order(11)
     @DisplayName("공지사항 등록 → 상세(조회자 기록) / 대상 프로젝트 / 관리 권한 API")
     void noticeApis() throws Exception {
         String title = "smoke-notice-" + UUID.randomUUID();

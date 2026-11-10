@@ -39,4 +39,11 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'column-manage', label: '컬럼 관리', path: '/columnManage' },
     ],
   },
+  {
+    id: 'data-management',
+    label: '데이터 모델링',
+    items: [
+      { id: 'physical-erd', label: '물리 ERD', path: '/physicalErd' },
+    ],
+  },
 ];

@@ -10,7 +10,7 @@ import lombok.*;
  * - 스키마명은 프로젝트 안에서 대소문자 무관 중복 불가
  */
 @Entity
-@Table(name = "schema_info")
+@Table(name = "TB_SCHM")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,20 +22,20 @@ public class SchemaInfo extends BaseEntity {
     public static final String DEFAULT_NAME = "DEFAULT";
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "schema_info_seq")
-    @SequenceGenerator(name = "schema_info_seq", sequenceName = "schema_info_seq", allocationSize = 50)
-    @Column(name = "schema_info_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_SCHM")
+    @SequenceGenerator(name = "SQ_SCHM", sequenceName = "SQ_SCHM", allocationSize = 50)
+    @Column(name = "SCHM_SN", nullable = false, unique = true)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
-    @Column(nullable = false)
+    @Column(name = "SCHM_NM", nullable = false)
     private String schemaName;
 
-    @Column
+    @Column(name = "SCHM_EXPLN")
     private String schemaDescription;
 
-    @Column(nullable = false)
+    @Column(name = "BSC_YN", nullable = false)
     private Boolean isDefault;
 }

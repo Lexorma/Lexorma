@@ -127,6 +127,9 @@ public class StandardTermService {
                 .map(project -> Boolean.TRUE.equals(project.getIsDicAbbrUsed()))
                 .orElse(true);
 
+        // 중복 기준 : 용어명 + 영문약어명 + 도메인이 모두 같은 용어 (도메인만 다른 폐기 행, 생성된 영문명이 우연히 같은 다른 용어는 등록한다)
+        Set<String> uploadedTermKeys = new HashSet<>();
+
         // 청크(500행) 단위 : 단어/도메인은 청크당 IN 조회, 저장은 JDBC 배치(용어 + 매핑 + 이음동의어), 저장 후 영속성 컨텍스트 비우기
         ExcelUtils.readExcelRowsInChunks(file, 0, standardTermHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
             List<Map<String, String>> termRows = rows.stream()
@@ -135,10 +138,19 @@ public class StandardTermService {
 
             loadUploadReferences(projectId, termRows, wordsByAbbreviation, domainIdByName);
 
-            List<StandardTerm> standardTerms = new ArrayList<>();
+            List<StandardTerm> built = new ArrayList<>();
             for (Map<String, String> standardTermEntry : termRows) {
-                standardTerms.add(buildUploadedTerm(projectId, isApprovalAvailable, isDicAbbrUsed, standardTermEntry, wordsByAbbreviation, domainIdByName));
+                built.add(buildUploadedTerm(projectId, isApprovalAvailable, isDicAbbrUsed, standardTermEntry, wordsByAbbreviation, domainIdByName));
             }
+
+            // 이미 등록된 용어 / 파일 안에서 앞에 나온 같은 용어는 건너뛴다
+            Set<String> abbreviations = built.stream().map(StandardTerm::getCommonStandardTermAbbreviation).collect(Collectors.toSet());
+            Set<String> existingTermKeys = standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations).stream()
+                    .map(StandardTermService::termKey)
+                    .collect(Collectors.toSet());
+            List<StandardTerm> standardTerms = built.stream()
+                    .filter(term -> !existingTermKeys.contains(termKey(term)) && uploadedTermKeys.add(termKey(term)))
+                    .toList();
 
             standardTermRepository.saveAll(standardTerms);
             entityManager.flush();
@@ -177,6 +189,11 @@ public class StandardTermService {
      * 엑셀 한 행으로 표준용어를 만든다. (단어 매핑 / 도메인은 조회 없이 ID 참조로 연결)
      * 검증 순서와 오류는 기존과 같다 : 단어 매핑(NOT_FOUND_WORD_DATA) → 도메인(NOT_FOUND_DOMAIN_DATA)
      */
+    private static String termKey(StandardTerm term) {
+        return term.getCommonStandardTermName() + "|" + term.getCommonStandardTermAbbreviation() + "|"
+                + (term.getStandardDomain() == null ? null : term.getStandardDomain().getId());
+    }
+
     private StandardTerm buildUploadedTerm(Long projectId, boolean isApprovalAvailable, boolean isDicAbbrUsed, Map<String, String> standardTermEntry,
                                            Map<String, List<StandardWord>> wordsByAbbreviation, Map<String, Long> domainIdByName) {
         String abbreviation = standardTermEntry.get("standardTermAbbreviation");

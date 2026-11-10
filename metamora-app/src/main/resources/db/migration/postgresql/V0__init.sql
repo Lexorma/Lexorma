@@ -1,416 +1,513 @@
 -- =====================================================================
 -- MetaMora 초기 스키마 / 초기 데이터 (V0)
---  * 테이블 : JPA 엔티티 기준 + 로그인 세션(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)
---  * 초기 데이터 : 권한, 관리자 계정(admin/admin), 기본 프로젝트(MAIN), 게시판 카테고리(NOTICE)
+--  * 명명 : 공통표준(static/excel/dataPortal.xlsx) 영문약어, 테이블은 TB_ 접두어 (docs/db-naming-standard.md)
+--  * 테이블 : JPA 엔티티 기준 + 로그인 세션(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES : spring-session-jdbc 고정 스키마)
+--  * 초기 데이터 : 권한, 관리자 계정(admin/admin), 기본 프로젝트(META-MORA)·기본 스키마, 게시물 범주(NOTICE),
+--                예제 데이터 사전(단어·용어·도메인)·물리 모델(MetaMora 자체 테이블·컬럼·관계)
 -- 이후 스키마 변경은 이 파일을 수정하지 말고 V{n}__설명.sql 파일을 추가한다. (postgresql / h2 양쪽)
 -- =====================================================================
 
 -- ---------- 시퀀스 ----------
--- 엑셀 업로드로 대량 저장하는 엔티티(table_info, column_info, standard_*)는 JDBC 배치 INSERT 를 위해
--- IDENTITY 대신 SEQUENCE(pooled, 50개씩 할당) 를 쓴다.
+-- SQ_STD_*·SQ_TBL·SQ_COL·SQ_TBL_REL·SQ_TBL_REL_COL 은 예제 데이터(1~)와 겹치지 않도록 1001 부터 시작한다.
+-- 엑셀 업로드로 대량 저장하는 엔티티는 JDBC 배치 INSERT 를 위해 IDENTITY 대신 SEQUENCE(pooled, 50개씩 할당) 를 쓴다.
 
-create sequence account_seq start with 1 increment by 50;
+create sequence SQ_ACNT start with 1 increment by 50;
+create sequence SQ_ROLE start with 1 increment by 50;
+create sequence SQ_PRJ start with 1 increment by 50;
+create sequence SQ_PRJ_MBR start with 1 increment by 50;
+create sequence SQ_PST start with 1 increment by 50;
+create sequence SQ_ATCH_FILE start with 1 increment by 50;
+create sequence SQ_STD_WORD start with 1001 increment by 50;
+create sequence SQ_STD_TRM start with 1001 increment by 50;
+create sequence SQ_STD_TRM_WORD start with 1001 increment by 50;
+create sequence SQ_STD_DMN start with 1001 increment by 50;
+create sequence SQ_SCHM start with 1 increment by 50;
+create sequence SQ_TBL start with 1001 increment by 50;
+create sequence SQ_COL start with 1001 increment by 50;
+create sequence SQ_CMN_COL start with 1 increment by 50;
+create sequence SQ_TBL_REL start with 1001 increment by 50;
+create sequence SQ_TBL_REL_COL start with 1001 increment by 50;
+create sequence SQ_TBL_IDX start with 1 increment by 50;
+create sequence SQ_TBL_IDX_COL start with 1 increment by 50;
+create sequence SQ_TBL_CNSTRT start with 1 increment by 50;
+create sequence SQ_TBL_CNSTRT_COL start with 1 increment by 50;
+create sequence SQ_ERD_LYT start with 1 increment by 50;
 
-create sequence board_seq start with 1 increment by 50;
+-- ---------- 계정·권한·프로젝트 ----------
 
-create sequence column_info_seq start with 1 increment by 50;
-
-create sequence common_column_seq start with 1 increment by 50;
-
-create sequence file_seq start with 1 increment by 50;
-
-create sequence project_member_seq start with 1 increment by 50;
-
-create sequence project_seq start with 1 increment by 50;
-
-create sequence role_seq start with 1 increment by 50;
-
-create sequence standard_domains_seq start with 1 increment by 50;
-
-create sequence standard_term_word_mappings_seq start with 1 increment by 50;
-
-create sequence standard_terms_seq start with 1 increment by 50;
-
-create sequence standard_words_seq start with 1 increment by 50;
-
-create sequence table_info_seq start with 1 increment by 50;
-
--- ---------- 테이블 ----------
-
-create table account (
-    is_active boolean,
-    is_password_check boolean,
-    created timestamp(6),
-    id bigint not null,
-    updated timestamp(6),
-    created_by varchar(255),
-    name varchar(255),
-    password varchar(255),
-    updated_by varchar(255),
-    username varchar(255),
-    primary key (id)
+-- 계정
+create table TB_ACNT (
+    ACNT_SN bigint not null,
+    USER_ID varchar(255),
+    PSWD varchar(255),
+    USER_NM varchar(255),
+    ACTVTN_YN boolean,
+    -- 비밀번호 변경 여부 : false 면 초기 비밀번호 (로그인 전에 변경해야 한다)
+    PSWD_CHG_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_ACNT primary key (ACNT_SN)
 );
 
-create table account_roles (
-    account_id bigint not null,
-    role_id bigint not null,
-    primary key (account_id, role_id)
+-- 역할
+create table TB_ROLE (
+    ROLE_SN bigint not null,
+    ROLE_NM varchar(255),
+    ROLE_EXPLN varchar(255),
+    EXPR_YN varchar(255),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_ROLE primary key (ROLE_SN)
 );
 
-create table board (
-    delete_yn char(1) not null,
-    category_id varchar(6),
-    created timestamp(6),
-    id bigint not null,
-    project_id bigint,
-    updated timestamp(6),
-    updated_time timestamp(6),
-    username varchar(16) not null,
-    title varchar(100) not null,
-    content TEXT,
-    created_by varchar(255),
-    updated_by varchar(255),
-    project_ids bigint array,
-    primary key (id)
+-- 계정 역할
+create table TB_ACNT_ROLE (
+    ACNT_SN bigint not null,
+    ROLE_SN bigint not null,
+    constraint PK_ACNT_ROLE primary key (ACNT_SN, ROLE_SN)
 );
 
-create table board_accounts (
-    accounts_id bigint not null,
-    board_id bigint not null,
-    primary key (board_id, accounts_id)
+-- 프로젝트
+create table TB_PRJ (
+    PRJ_SN bigint not null,
+    PRJ_NM varchar(255),
+    MNGR_ACNT_SN bigint,
+    ACTVTN_YN boolean,
+    AUTO_APRV_YN boolean,
+    -- 데이터 사전 업로드 시 엑셀의 영문약어명 사용 여부 (false 면 용어 영문명을 단어 영문명으로 만든다)
+    DIC_ABBR_USE_YN boolean,
+    -- 표준 단어 기준 테이블명 생성 시 앞에 붙일 접두어 (예: TB_)
+    TBL_PFX_NM varchar(20),
+    -- 대상 DB (POSTGRESQL / ORACLE / MYSQL / MARIADB) : 테이블 관리에서 DDL 을 이 DB 기준으로 생성한다
+    DB_TYPE_CD varchar(20) default 'POSTGRESQL' not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PRJ primary key (PRJ_SN)
 );
 
-create table board_category (
-    order_number integer not null,
-    use_yn char(1) not null,
-    category_id varchar(6) not null,
-    created timestamp(6),
-    updated timestamp(6),
-    category_name varchar(30) not null,
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (category_id)
+-- 프로젝트 회원
+create table TB_PRJ_MBR (
+    PRJ_MBR_SN bigint not null,
+    ACNT_SN bigint,
+    PRJ_SN bigint,
+    ACTVTN_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PRJ_MBR primary key (PRJ_MBR_SN)
 );
 
-create table column_info (
-    is_approval boolean,
-    is_encrypted boolean,
-    is_index boolean,
-    is_master_data boolean,
-    is_nullable boolean,
-    is_pk boolean,
-    is_required boolean,
-    is_sensitive boolean,
-    is_unique boolean,
-    max_length integer,
-    precision numeric(38,2),
-    scale integer,
-    sort_order integer,
-    column_info_id bigint not null,
-    created timestamp(6),
-    project_id bigint,
-    standard_terms_standard_term_id bigint,
-    table_info_id bigint,
-    updated timestamp(6),
-    column_desc varchar(255),
-    column_name varchar(255),
-    created_by varchar(255),
-    data_type varchar(255),
-    default_value varchar(255),
-    example varchar(255),
-    ref_table_name varchar(255),
-    table_name varchar(255),
-    updated_by varchar(255),
-    primary key (column_info_id)
+-- 요청 로그
+create table TB_LOG (
+    LOG_SN bigint generated by default as identity,
+    DMND_URL_ADDR varchar(255) not null,
+    DMND_MTHD_NM varchar(255) not null,
+    CNTN_IP_ADDR varchar(255) not null,
+    PRJ_SN bigint,
+    USER_ID varchar(255),
+    ROLE_NM varchar(255),
+    RSPNS_STTS_CD integer,
+    DMND_CN TEXT,
+    RSPNS_CN TEXT,
+    ERR_CN TEXT,
+    USER_AGNT_CN varchar(255),
+    LOG_DT timestamp(6) not null,
+    constraint PK_LOG primary key (LOG_SN)
+);
+
+-- ---------- 게시물 ----------
+
+-- 게시물 범주
+create table TB_PST_CTGRY (
+    CTGRY_CD varchar(6) not null,
+    CTGRY_NM varchar(30) not null,
+    SORT_ORD integer not null,
+    USE_YN char(1) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PST_CTGRY primary key (CTGRY_CD)
+);
+
+-- 게시물
+create table TB_PST (
+    PST_SN bigint not null,
+    PRJ_SN bigint,
+    CTGRY_CD varchar(6),
+    WRTR_ID varchar(16) not null,
+    PST_TTL varchar(100) not null,
+    PST_CN TEXT,
+    DEL_YN char(1) not null,
+    PST_MDFCN_DT timestamp(6),
+    PRJ_SN_LIST bigint array,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PST primary key (PST_SN)
+);
+
+-- 게시물 계정
+create table TB_PST_ACNT (
+    PST_SN bigint not null,
+    ACNT_SN bigint not null,
+    constraint PK_PST_ACNT primary key (PST_SN, ACNT_SN)
+);
+
+-- 첨부 파일
+create table TB_ATCH_FILE (
+    FILE_SN bigint not null,
+    PST_SN bigint,
+    FILE_NM varchar(200) not null,
+    ORGNL_FILE_NM varchar(200) not null,
+    FILE_EXTN_NM varchar(15) not null,
+    FILE_PATH_NM varchar(300) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_ATCH_FILE primary key (FILE_SN)
+);
+
+-- ---------- 데이터 사전 (표준 단어·용어·도메인) ----------
+
+-- 표준 도메인
+create table TB_STD_DMN (
+    STD_DMN_SN bigint not null,
+    PRJ_SN bigint,
+    ENCT_CYCL integer not null,
+    DMN_GROUP_NM varchar(255),
+    DMN_CLSF_NM varchar(255),
+    DMN_NM varchar(255),
+    DMN_EXPLN varchar(1000),
+    DATA_TYPE_NM varchar(255),
+    DATA_LEN integer,
+    DATA_DCPT_LEN integer,
+    STRG_FRMT_CN varchar(255),
+    INDCT_FRMT_CN varchar(255),
+    UNIT_NM varchar(255),
+    ALWNC_VL_CN varchar(2000),
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_STD_DMN primary key (STD_DMN_SN)
+);
+
+-- 표준 단어
+create table TB_STD_WORD (
+    STD_WORD_SN bigint not null,
+    PRJ_SN bigint,
+    ENCT_CYCL integer not null,
+    WORD_NM varchar(255),
+    WORD_ENG_ABBR_NM varchar(255),
+    WORD_ENG_NM varchar(255),
+    WORD_EXPLN varchar(1000),
+    FRMT_WORD_YN boolean,
+    DMN_CLSF_NM varchar(255),
+    ABBR_USE_YN boolean,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_STD_WORD primary key (STD_WORD_SN)
+);
+
+-- 표준 단어 이음동의어
+create table TB_STD_WORD_SYNM (
+    STD_WORD_SN bigint not null,
+    SYNM_NM varchar(255)
+);
+
+-- 표준 단어 금칙어
+create table TB_STD_WORD_PRHBT (
+    STD_WORD_SN bigint not null,
+    PRHBT_WORD_NM varchar(255)
+);
+
+-- 표준 용어
+create table TB_STD_TRM (
+    STD_TRM_SN bigint not null,
+    PRJ_SN bigint,
+    ENCT_CYCL integer not null,
+    TRM_NM varchar(255),
+    TRM_EXPLN varchar(1000),
+    TRM_ENG_ABBR_NM varchar(255),
+    PBADMS_STD_CD_NM varchar(255),
+    JRSDC_INST_NM varchar(255),
+    STD_DMN_SN bigint,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_STD_TRM primary key (STD_TRM_SN)
+);
+
+-- 표준 용어 이음동의어
+create table TB_STD_TRM_SYNM (
+    STD_TRM_SN bigint not null,
+    SYNM_NM varchar(255)
+);
+
+-- 표준 용어를 이루는 단어 (SORT_ORD : 사용자_명 → 사용자(1), 명(2))
+create table TB_STD_TRM_WORD (
+    STD_TRM_WORD_SN bigint not null,
+    STD_TRM_SN bigint,
+    STD_WORD_SN bigint,
+    SORT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_STD_TRM_WORD primary key (STD_TRM_WORD_SN)
+);
+
+-- ---------- 물리 모델 (스키마 → 테이블 → 컬럼, 관계·인덱스·제약조건) ----------
+
+-- 스키마 : 프로젝트마다 기본 스키마 1개 (DDL 에 스키마명을 붙이지 않는다). 스키마명은 프로젝트 안에서 중복 불가
+create table TB_SCHM (
+    SCHM_SN bigint not null,
+    PRJ_SN bigint not null,
+    SCHM_NM varchar(255) not null,
+    SCHM_EXPLN varchar(255),
+    BSC_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SCHM primary key (SCHM_SN)
+);
+
+-- 테이블
+create table TB_TBL (
+    TBL_SN bigint not null,
+    PRJ_SN bigint not null,
+    SCHM_SN bigint not null,
+    TBL_NM varchar(255) not null,
+    -- 테이블 한글명 (예: 사용_내역_관리) : 테이블명은 이 한글명을 표준 단어 영문약어로 변환해 만든다
+    TBL_KORN_NM varchar(255),
+    TBL_EXPLN varchar(255),
+    MSTR_TBL_YN boolean,
+    SORT_ORD integer,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_TBL primary key (TBL_SN)
+);
+
+-- 컬럼 (RFRNC_TBL_NM : 단일 FK 약식 입력. 확정 가능한 것만 관계(REF_COLUMN)가 된다)
+create table TB_COL (
+    COL_SN bigint not null,
+    PRJ_SN bigint,
+    TBL_SN bigint,
+    TBL_NM varchar(255),
+    COL_NM varchar(255),
+    COL_EXPLN varchar(255),
+    DATA_TYPE_NM varchar(255),
+    MAX_LEN integer,
+    DATA_PRCSN numeric(38,2),
+    DCPT_LEN integer,
+    NULL_ALWNC_YN boolean,
+    BSC_VL varchar(255),
+    SORT_ORD integer,
+    MSTR_DATA_YN boolean,
+    RFRNC_TBL_NM varchar(255),
+    ESNTL_YN boolean,
+    SNSTV_INFO_YN boolean,
+    PK_YN boolean,
+    UNQ_YN boolean,
+    IDX_YN boolean,
+    ENCPT_YN boolean,
+    EXMPL_CN varchar(255),
+    APRV_YN boolean,
+    STD_TRM_SN bigint,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_COL primary key (COL_SN)
 );
 
 -- 프로젝트 공통 컬럼 세트 : 거의 모든 테이블에 들어가는 컬럼(등록일시, 등록자, 수정일시, 수정자, 사용여부 등)을
--- 표준용어로 정해 두고, 컬럼 일괄 편집에서 한 번에 추가한다. (용어가 지워질 수 있으므로 term_id 는 FK 를 걸지 않는다)
-create table common_column (
-    common_column_id bigint not null,
-    project_id bigint not null,
-    term_id bigint not null,
-    sort_order integer,
-    is_nullable boolean,
-    is_index boolean,
-    default_value varchar(255),
-    created timestamp(6),
-    updated timestamp(6),
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (common_column_id)
+-- 표준 용어로 정해 두고, 컬럼 일괄 편집에서 한 번에 추가한다. (용어가 지워질 수 있으므로 STD_TRM_SN 은 FK 를 걸지 않는다)
+create table TB_CMN_COL (
+    CMN_COL_SN bigint not null,
+    PRJ_SN bigint not null,
+    STD_TRM_SN bigint not null,
+    SORT_ORD integer,
+    NULL_ALWNC_YN boolean,
+    IDX_YN boolean,
+    BSC_VL varchar(255),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_CMN_COL primary key (CMN_COL_SN)
 );
 
-create table file (
-    created timestamp(6),
-    file_id bigint not null,
-    id bigint,
-    updated timestamp(6),
-    file_extention varchar(15) not null,
-    fime_name varchar(200) not null,
-    orginal_file_name varchar(200) not null,
-    file_path varchar(300) not null,
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (file_id)
+-- 테이블 관계 (원본 → 대상, 컬럼 쌍은 TB_TBL_REL_COL). REL_TYPE_CD : FK / LOGICAL,
+-- REL_SRC_CD : USER / REF_COLUMN / IMPORTED / AI_APPROVED, DRVN_COL_SN : REF_COLUMN 관계를 만든 컬럼 (컬럼당 1개)
+create table TB_TBL_REL (
+    REL_SN bigint not null,
+    PRJ_SN bigint not null,
+    ORGNL_TBL_SN bigint not null,
+    TRGT_TBL_SN bigint not null,
+    REL_NM varchar(255),
+    REL_TYPE_CD varchar(20) not null,
+    REL_SRC_CD varchar(20) not null,
+    DRVN_COL_SN bigint,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_TBL_REL primary key (REL_SN)
 );
 
-create table logs (
-    status_code integer,
-    id bigint generated by default as identity,
-    project_id bigint,
-    timestamp timestamp(6) not null,
-    error_message TEXT,
-    ip varchar(255) not null,
-    log_url varchar(255) not null,
-    method varchar(255) not null,
-    request_body TEXT,
-    response_body TEXT,
-    role_name varchar(255),
-    user_agent varchar(255),
-    username varchar(255),
-    primary key (id)
+-- 테이블 관계 컬럼 쌍 (복합 FK 는 COL_ORD 순서)
+create table TB_TBL_REL_COL (
+    REL_COL_SN bigint not null,
+    REL_SN bigint not null,
+    ORGNL_COL_SN bigint not null,
+    TRGT_COL_SN bigint not null,
+    COL_ORD integer not null,
+    constraint PK_TBL_REL_COL primary key (REL_COL_SN)
 );
 
-create table project (
-    is_active boolean,
-    is_auto_active boolean,
-    is_dic_abbr_used boolean,
-    account_id bigint,
-    created timestamp(6),
-    project_id bigint not null,
-    updated timestamp(6),
-    created_by varchar(255),
-    project_name varchar(255),
-    -- 표준 단어 기준 테이블명 생성 시 앞에 붙일 접두어 (예: TB_)
-    table_prefix varchar(20),
-    -- 대상 DB (POSTGRESQL / ORACLE / MYSQL / MARIADB) : 테이블 관리에서 DDL 을 이 DB 기준으로 생성한다
-    db_type varchar(20) default 'POSTGRESQL' not null,
-    updated_by varchar(255),
-    primary key (project_id)
+-- 테이블 인덱스
+create table TB_TBL_IDX (
+    IDX_SN bigint not null,
+    PRJ_SN bigint not null,
+    TBL_SN bigint not null,
+    IDX_NM varchar(255) not null,
+    IDX_TYPE_NM varchar(255),
+    UNQ_YN boolean not null,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_TBL_IDX primary key (IDX_SN)
 );
 
-create table project_member (
-    is_active boolean,
-    account_id bigint,
-    created timestamp(6),
-    id bigint not null,
-    project_id bigint,
-    updated timestamp(6),
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (id)
+create table TB_TBL_IDX_COL (
+    IDX_COL_SN bigint not null,
+    IDX_SN bigint not null,
+    COL_SN bigint not null,
+    COL_ORD integer not null,
+    constraint PK_TBL_IDX_COL primary key (IDX_COL_SN)
 );
 
-create table role (
-    created timestamp(6),
-    role_id bigint not null,
-    updated timestamp(6),
-    created_by varchar(255),
-    is_expression varchar(255),
-    role_desc varchar(255),
-    role_name varchar(255),
-    updated_by varchar(255),
-    primary key (role_id)
+-- 테이블 제약조건 (CNSTRT_TYPE_CD : UNIQUE / CHECK)
+create table TB_TBL_CNSTRT (
+    CNSTRT_SN bigint not null,
+    PRJ_SN bigint not null,
+    TBL_SN bigint not null,
+    CNSTRT_NM varchar(255) not null,
+    CNSTRT_TYPE_CD varchar(20) not null,
+    INSP_EXPR_CN varchar(1000),
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_TBL_CNSTRT primary key (CNSTRT_SN)
 );
 
-create table standard_domains (
-    data_decimal_length integer,
-    data_length integer,
-    is_approval boolean,
-    revision_number integer not null,
-    created timestamp(6),
-    project_id bigint,
-    standard_domain_id bigint not null,
-    updated timestamp(6),
-    common_standard_domain_description varchar(1000),
-    allowed_values varchar(2000),
-    common_standard_domain_category varchar(255),
-    common_standard_domain_group_name varchar(255),
-    common_standard_domain_name varchar(255),
-    created_by varchar(255),
-    data_type varchar(255),
-    display_format varchar(255),
-    storage_format varchar(255),
-    unit varchar(255),
-    updated_by varchar(255),
-    primary key (standard_domain_id)
+create table TB_TBL_CNSTRT_COL (
+    CNSTRT_COL_SN bigint not null,
+    CNSTRT_SN bigint not null,
+    COL_SN bigint not null,
+    COL_ORD integer not null,
+    constraint PK_TBL_CNSTRT_COL primary key (CNSTRT_COL_SN)
 );
 
-create table standard_term_word_mappings (
-    order_index integer not null,
-    created timestamp(6),
-    id bigint not null,
-    standard_term_id bigint,
-    standard_word_id bigint,
-    updated timestamp(6),
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (id)
-);
-
-create table standard_terms (
-    is_approval boolean,
-    revision_number integer not null,
-    created timestamp(6),
-    project_id bigint,
-    standard_domain_id bigint,
-    standard_term_id bigint not null,
-    updated timestamp(6),
-    common_standard_term_description varchar(1000),
-    administrative_standard_code_name varchar(255),
-    common_standard_term_abbreviation varchar(255),
-    common_standard_term_name varchar(255),
-    created_by varchar(255),
-    responsible_organization varchar(255),
-    updated_by varchar(255),
-    primary key (standard_term_id)
-);
-
-create table standard_words (
-    is_approval boolean,
-    is_format_word boolean,
-    revision_number integer not null,
-    use_abbreviation boolean,
-    created timestamp(6),
-    id bigint not null,
-    project_id bigint,
-    updated timestamp(6),
-    common_standard_word_description varchar(1000),
-    common_standard_domain_category varchar(255),
-    common_standard_word_abbreviation varchar(255),
-    common_standard_word_english_name varchar(255),
-    common_standard_word_name varchar(255),
-    created_by varchar(255),
-    updated_by varchar(255),
-    primary key (id)
-);
-
-create table standard_term_synonym_list (
-    standard_term_standard_term_id bigint not null,
-    synonym_list varchar(255)
-);
-
-create table standard_word_restricted_words (
-    standard_word_id bigint not null,
-    restricted_words varchar(255)
-);
-
-create table standard_word_synonym_list (
-    standard_word_id bigint not null,
-    synonym_list varchar(255)
-);
-
-create table table_info (
-    is_approval boolean,
-    is_master_table boolean,
-    sort_order integer,
-    created timestamp(6),
-    project_id bigint not null,
-    table_info_id bigint not null,
-    updated timestamp(6),
-    created_by varchar(255),
-    table_description varchar(255),
-    table_name varchar(255) not null,
-    -- 테이블 한글명 (예: 사용 내역 관리) : 테이블명은 이 한글명을 표준 단어 영문약어로 변환해 만든다
-    table_kor_name varchar(255),
-    updated_by varchar(255),
-    primary key (table_info_id)
+-- 물리 ERD 레이아웃 : 사용자 × 프로젝트 1건 (물리 모델과 분리).
+-- NODE_PSTN_CN : {"테이블 일련번호": {"x": .., "y": ..}} JSON, VER_NO : JPA @Version (오래된 탭의 저장 거절)
+create table TB_ERD_LYT (
+    ERD_LYT_SN bigint not null,
+    PRJ_SN bigint not null,
+    ACNT_SN bigint not null,
+    NODE_PSTN_CN text not null,
+    SCRN_X_CRDNT double precision not null,
+    SCRN_Y_CRDNT double precision not null,
+    SCRN_MGNF double precision not null,
+    VER_NO bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_ERD_LYT primary key (ERD_LYT_SN)
 );
 
 -- ---------- 인덱스 ----------
 
-create index ix_common_column_project on common_column (project_id);
+create unique index UX_SCHM_01 on TB_SCHM (PRJ_SN, SCHM_NM);
+create index IX_TBL_01 on TB_TBL (SCHM_SN);
+create index IX_CMN_COL_01 on TB_CMN_COL (PRJ_SN);
+create index IX_TBL_REL_01 on TB_TBL_REL (PRJ_SN);
+create index IX_TBL_REL_02 on TB_TBL_REL (ORGNL_TBL_SN);
+create index IX_TBL_REL_03 on TB_TBL_REL (TRGT_TBL_SN);
+create unique index UX_TBL_REL_01 on TB_TBL_REL (DRVN_COL_SN);
+create unique index UX_TBL_REL_COL_01 on TB_TBL_REL_COL (REL_SN, COL_ORD);
+create index IX_TBL_REL_COL_01 on TB_TBL_REL_COL (ORGNL_COL_SN);
+create index IX_TBL_REL_COL_02 on TB_TBL_REL_COL (TRGT_COL_SN);
+create index IX_TBL_IDX_01 on TB_TBL_IDX (TBL_SN);
+create unique index UX_TBL_IDX_COL_01 on TB_TBL_IDX_COL (IDX_SN, COL_ORD);
+create index IX_TBL_IDX_COL_01 on TB_TBL_IDX_COL (COL_SN);
+create index IX_TBL_CNSTRT_01 on TB_TBL_CNSTRT (TBL_SN);
+create unique index UX_TBL_CNSTRT_COL_01 on TB_TBL_CNSTRT_COL (CNSTRT_SN, COL_ORD);
+create index IX_TBL_CNSTRT_COL_01 on TB_TBL_CNSTRT_COL (COL_SN);
+create unique index UX_ERD_LYT_01 on TB_ERD_LYT (PRJ_SN, ACNT_SN);
 
 -- ---------- 외래 키 ----------
 
-alter table account_roles
-   add constraint FKi84870gssnbi37wfqfifekghb
-   foreign key (role_id)
-   references role;
-
-alter table account_roles
-   add constraint FKtp61eta5i06bug3w1qr6286uf
-   foreign key (account_id)
-   references account;
-
-alter table board
-   add constraint FKda9ql2dvmo2jndde3msxwm8h6
-   foreign key (category_id)
-   references board_category;
-
-alter table board_accounts
-   add constraint FKplm96jo1vd4kpv7a1c4mbog6s
-   foreign key (accounts_id)
-   references account;
-
-alter table board_accounts
-   add constraint FKbtndh0hb11qw4ko6lb097nihk
-   foreign key (board_id)
-   references board;
-
-alter table column_info
-   add constraint FKppfebph8e21r50uc9m18kxqr3
-   foreign key (standard_terms_standard_term_id)
-   references standard_terms;
-
-alter table column_info
-   add constraint FK1cptgd4qlxm55qy3xeh179qgs
-   foreign key (table_info_id)
-   references table_info;
-
-alter table file
-   add constraint FK2qg7fojyknqoe6yndnhcwd9cm
-   foreign key (id)
-   references board;
-
-alter table project
-   add constraint FKt75uy6hdr646hum7eqvwm9slj
-   foreign key (account_id)
-   references account;
-
-alter table project_member
-   add constraint FKom5ob1ykogewdkdx4k2ppd86s
-   foreign key (account_id)
-   references account;
-
-alter table project_member
-   add constraint FK103dwxad12nbaxtmnwus4eft2
-   foreign key (project_id)
-   references project;
-
-alter table standard_term_word_mappings
-   add constraint FK133iwxsjlqm94g98m77ajscoo
-   foreign key (standard_term_id)
-   references standard_terms;
-
-alter table standard_term_word_mappings
-   add constraint FKjcfebxo9ut6pp0tscg0l8ah6f
-   foreign key (standard_word_id)
-   references standard_words;
-
-alter table standard_terms
-   add constraint FKlweinhy2i75crtuljnxbb5qgr
-   foreign key (standard_domain_id)
-   references standard_domains;
-
-alter table standard_term_synonym_list
-   add constraint FKpsl6mtap7jpaocwfc0ypdt3j2
-   foreign key (standard_term_standard_term_id)
-   references standard_terms;
-
-alter table standard_word_restricted_words
-   add constraint FKmy3c00x16dur5vvxrd2uxf9tq
-   foreign key (standard_word_id)
-   references standard_words;
-
-alter table standard_word_synonym_list
-   add constraint FKqrskt1lspopgtghvokvk22il
-   foreign key (standard_word_id)
-   references standard_words;
+alter table TB_ACNT_ROLE add constraint FK_ACNT_ROLE_01 foreign key (ROLE_SN) references TB_ROLE;
+alter table TB_ACNT_ROLE add constraint FK_ACNT_ROLE_02 foreign key (ACNT_SN) references TB_ACNT;
+alter table TB_PRJ add constraint FK_PRJ_01 foreign key (MNGR_ACNT_SN) references TB_ACNT;
+alter table TB_PRJ_MBR add constraint FK_PRJ_MBR_01 foreign key (ACNT_SN) references TB_ACNT;
+alter table TB_PRJ_MBR add constraint FK_PRJ_MBR_02 foreign key (PRJ_SN) references TB_PRJ;
+alter table TB_PST add constraint FK_PST_01 foreign key (CTGRY_CD) references TB_PST_CTGRY;
+alter table TB_PST_ACNT add constraint FK_PST_ACNT_01 foreign key (ACNT_SN) references TB_ACNT;
+alter table TB_PST_ACNT add constraint FK_PST_ACNT_02 foreign key (PST_SN) references TB_PST;
+alter table TB_ATCH_FILE add constraint FK_ATCH_FILE_01 foreign key (PST_SN) references TB_PST;
+alter table TB_STD_TRM add constraint FK_STD_TRM_01 foreign key (STD_DMN_SN) references TB_STD_DMN;
+alter table TB_STD_TRM_SYNM add constraint FK_STD_TRM_SYNM_01 foreign key (STD_TRM_SN) references TB_STD_TRM;
+alter table TB_STD_TRM_WORD add constraint FK_STD_TRM_WORD_01 foreign key (STD_TRM_SN) references TB_STD_TRM;
+alter table TB_STD_TRM_WORD add constraint FK_STD_TRM_WORD_02 foreign key (STD_WORD_SN) references TB_STD_WORD;
+alter table TB_STD_WORD_SYNM add constraint FK_STD_WORD_SYNM_01 foreign key (STD_WORD_SN) references TB_STD_WORD;
+alter table TB_STD_WORD_PRHBT add constraint FK_STD_WORD_PRHBT_01 foreign key (STD_WORD_SN) references TB_STD_WORD;
+alter table TB_TBL add constraint FK_TBL_01 foreign key (SCHM_SN) references TB_SCHM;
+alter table TB_COL add constraint FK_COL_01 foreign key (TBL_SN) references TB_TBL;
+alter table TB_COL add constraint FK_COL_02 foreign key (STD_TRM_SN) references TB_STD_TRM;
+-- 테이블 삭제는 컬럼이 없을 때만 가능하므로 테이블 쪽은 CASCADE, 컬럼 쪽은 서비스가 먼저 정리한다 (RESTRICT)
+alter table TB_TBL_REL add constraint FK_TBL_REL_01 foreign key (ORGNL_TBL_SN) references TB_TBL on delete cascade;
+alter table TB_TBL_REL add constraint FK_TBL_REL_02 foreign key (TRGT_TBL_SN) references TB_TBL on delete cascade;
+alter table TB_TBL_REL_COL add constraint FK_TBL_REL_COL_01 foreign key (REL_SN) references TB_TBL_REL on delete cascade;
+alter table TB_TBL_REL_COL add constraint FK_TBL_REL_COL_02 foreign key (ORGNL_COL_SN) references TB_COL;
+alter table TB_TBL_REL_COL add constraint FK_TBL_REL_COL_03 foreign key (TRGT_COL_SN) references TB_COL;
+alter table TB_TBL_IDX add constraint FK_TBL_IDX_01 foreign key (TBL_SN) references TB_TBL on delete cascade;
+alter table TB_TBL_IDX_COL add constraint FK_TBL_IDX_COL_01 foreign key (IDX_SN) references TB_TBL_IDX on delete cascade;
+alter table TB_TBL_IDX_COL add constraint FK_TBL_IDX_COL_02 foreign key (COL_SN) references TB_COL;
+alter table TB_TBL_CNSTRT add constraint FK_TBL_CNSTRT_01 foreign key (TBL_SN) references TB_TBL on delete cascade;
+alter table TB_TBL_CNSTRT_COL add constraint FK_TBL_CNSTRT_COL_01 foreign key (CNSTRT_SN) references TB_TBL_CNSTRT on delete cascade;
+alter table TB_TBL_CNSTRT_COL add constraint FK_TBL_CNSTRT_COL_02 foreign key (COL_SN) references TB_COL;
 
 -- ---------- 로그인 세션 (Spring Session JDBC) ----------
--- spring-session-jdbc 4.1.1 의 schema-postgresql.sql 그대로 (spring.session.jdbc.initialize-schema: never)
+-- spring-session-jdbc 4.1.1 의 schema-postgresql.sql 그대로 (spring.session.jdbc.initialize-schema: never). 라이브러리 고정 스키마라 명명 규칙에서 제외한다.
 -- 로그인 세션을 DB 에 보관해 애플리케이션 재시작/컨테이너 재생성 후에도 유지한다. 만료 세션은 Spring Session 이 주기적으로 지운다.
 
 CREATE TABLE SPRING_SESSION (
@@ -438,22 +535,1038 @@ CREATE TABLE SPRING_SESSION_ATTRIBUTES (
 
 -- ---------- 초기 데이터 ----------
 
-/* ROLE 생성 */
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(0, null, '관리자', 'ROLE_ADMIN', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(1, null, '매니저', 'ROLE_MANAGER', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(2, null, 'DBA', 'ROLE_DBA', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(3, null, '사용자', 'ROLE_USER', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(4, null, '뷰어 사용자', 'ROLE_VIEWER', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(5, null, '권한 미승인 사용자', 'ROLE_NOT_APPROVE', 'SYSTEM', 'SYSTEM');
-insert into role(role_id, is_expression, role_desc, role_name, created_by, updated_by) values(6, null, '익명 사용자', 'ROLE_ANONYMOUS', 'SYSTEM', 'SYSTEM');
+/* 역할 */
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(0, null, '관리자', 'ROLE_ADMIN', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(1, null, '매니저', 'ROLE_MANAGER', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(2, null, 'DBA', 'ROLE_DBA', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(3, null, '사용자', 'ROLE_USER', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(4, null, '뷰어 사용자', 'ROLE_VIEWER', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(5, null, '권한 미승인 사용자', 'ROLE_NOT_APPROVE', 'SYSTEM', 'SYSTEM');
+insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(6, null, '익명 사용자', 'ROLE_ANONYMOUS', 'SYSTEM', 'SYSTEM');
 
 /* 관리자 계정 (admin/admin, 최초 로그인 시 비밀번호 변경 필요) */
-insert into account(id, password, username, name, is_password_check, created_by, updated_by, is_active) values(0, '{bcrypt}$2a$10$GN1YfMyJLcWhDuslP6P/UuqRwIfJk2VF5tl9mXsRjLJ18ivQfIAoW', 'admin', '관리자', false, 'SYSTEM', 'SYSTEM', true);
-insert into account_roles(account_id, role_id) values(0, 0);
+insert into TB_ACNT(ACNT_SN, PSWD, USER_ID, USER_NM, PSWD_CHG_YN, RGTR_ID, MDFR_ID, ACTVTN_YN) values(0, '{bcrypt}$2a$10$GN1YfMyJLcWhDuslP6P/UuqRwIfJk2VF5tl9mXsRjLJ18ivQfIAoW', 'admin', '관리자', false, 'SYSTEM', 'SYSTEM', true);
+insert into TB_ACNT_ROLE(ACNT_SN, ROLE_SN) values(0, 0);
 
-/* 기본 프로젝트 */
-insert into project(is_active, project_id, created_by, project_name, updated_by, is_auto_active, account_id) values(true, 0, 'SYSTEM', 'MAIN', 'SYSTEM', true, 0);
-insert into project_member(account_id, id, project_id, created_by, updated_by, is_active) values(0, 0, 0, 'SYSTEM', 'SYSTEM', true);
+/* 기본 프로젝트·기본 스키마 */
+insert into TB_PRJ(ACTVTN_YN, PRJ_SN, RGTR_ID, PRJ_NM, MDFR_ID, AUTO_APRV_YN, DIC_ABBR_USE_YN, MNGR_ACNT_SN, TBL_PFX_NM) values(true, 0, 'SYSTEM', 'META-MORA', 'SYSTEM', true, true, 0, 'TB_');
+insert into TB_PRJ_MBR(ACNT_SN, PRJ_MBR_SN, PRJ_SN, RGTR_ID, MDFR_ID, ACTVTN_YN) values(0, 0, 0, 'SYSTEM', 'SYSTEM', true);
+insert into TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, SCHM_EXPLN, BSC_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(0, 0, 'DEFAULT', '기본 스키마', true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
 
-/* 게시판 카테고리 */
-insert into board_category(category_id, category_name, order_number, use_yn) values('NOTICE', '공지사항', 0, 'Y');
+/* 게시물 범주 */
+insert into TB_PST_CTGRY(CTGRY_CD, CTGRY_NM, SORT_ORD, USE_YN) values('NOTICE', '공지사항', 0, 'Y');
+
+-- ---------- 예제 데이터 : META-MORA 프로젝트 데이터 사전 + MetaMora 자체 물리 모델 (DEFAULT 스키마) ----------
+-- 데이터 사전 : 아래 테이블·컬럼 이름에 쓰인 단어·용어와 그 용어의 도메인. 공통표준(dataPortal.xlsx)에 있는 것은 그 값을 그대로,
+--   없는 것은 기관 표준단어로 넣는다 (docs/db-naming-standard.md). 모두 승인 상태.
+-- 물리 모델 : 테이블·컬럼(표준 용어 연결)·외래 키(참조 테이블명 + REF_COLUMN 관계). 테이블 관리·컬럼 관리·DDL·물리 ERD 에서 볼 수 있다.
+-- 일련번호는 1부터 직접 넣고, 해당 시퀀스는 1001 부터 시작한다.
+
+-- 표준 도메인
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 5, '내용', '내용', '내용V1000', '문자형 데이터를 정의한 것', 'VARCHAR', 1000, null, '1000자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 2, '내용', '내용', '내용V2000', '문자형 데이터를 정의한 것', 'VARCHAR', 2000, null, '2000자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 5, '내용', '내용', '내용V4000', '문자형 데이터를 정의한 것', 'VARCHAR', 4000, null, '4000자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 2, '명칭', '명', '명V100', '다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ''이름''의 뜻을 나타내는 말', 'VARCHAR', 100, null, '100자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 4, '명칭', '명', '명V20', '다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ''이름''의 뜻을 나타내는 말', 'VARCHAR', 20, null, '20자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 4, '명칭', '명', '명V256', '다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ''이름''의 뜻을 나타내는 말', 'VARCHAR', 256, null, '256자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 2, '명칭', '명', '명V300', '다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ''이름''의 뜻을 나타내는 말', 'VARCHAR', 300, null, '300자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 2, '명칭', '명', '명V5', '다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ''이름''의 뜻을 나타내는 말', 'VARCHAR', 5, null, '5자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 2, '번호', '번호', '번호C7', '차례를 나타내거나 식별하기 위해 붙이는 숫자나 문자를 고정된 길이로 정의한 것', 'CHAR', 7, null, '7자리 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 4, '율', '비율', '비율N12,9', '어떤 수량의 다른 수량에 대한 비의 값을 정수와 소수로 나타낸 것', 'NUMERIC', 12, 9, '999.999999999', '999.999999999', null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 2, '수량', '수', '수N10', '셀 수 있는 사물을 세어서 나타낸 값', 'NUMERIC', 10, null, '9999999999', '9,999,999,999', null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 1, '코드', '여부', '여부C1', '그러함과 그러하지 아니함을 구분하는 코드', 'CHAR', 1, null, '1자리 문자', 'Y or N', null, 'Y : 여(예),', true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 1, '날짜/시간', '연월일시분초', '연월일시분초D', '특정한 시간을 연(年), 월(01~12), 일(01~31), 시(00~23), 분(00~59), 초(00~59)까지 정하여 날짜형 데이터로 표현한 것', 'DATETIME', null, null, 'YYYYMMDDHH24MISS', 'YYYY-MM-DD HH:MI:SS', '연월일시분초', 'YYYY : 0001~9999,', true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 5, '번호', '일련번호', '일련번호N22', '일률적으로 연속되어 있는 번호', 'NUMERIC', 22, null, '9999999999999999999999', '9999999999999999999999', null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 2, '명칭', '주소', '주소V15', '사람이 살고 있는 곳이나 기관, 회사 따위가 자리 잡고 있는 곳을 행정 구역으로 나타낸 이름 또는, 데이터가 저장되어 있는 기억 장소의 위치. 또는 그것을 나타내는 수', 'VARCHAR', 15, null, '15자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 2, '명칭', '주소', '주소V320', '사람이 살고 있는 곳이나 기관, 회사 따위가 자리 잡고 있는 곳을 행정 구역으로 나타낸 이름 또는, 데이터가 저장되어 있는 기억 장소의 위치. 또는 그것을 나타내는 수', 'VARCHAR', 320, null, '320자리 이내 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 4, '코드', '코드', '코드C1', '정보를 나타내기 위한 기호 체계로 고정된 데이터 길이로 표현한 것', 'CHAR', 1, null, '1자리 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 2, '코드', '코드', '코드C12', '정보를 나타내기 위한 기호 체계로 고정된 데이터 길이로 표현한 것', 'CHAR', 12, null, '12자리 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_GROUP_NM, DMN_CLSF_NM, DMN_NM, DMN_EXPLN, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, STRG_FRMT_CN, INDCT_FRMT_CN, UNIT_NM, ALWNC_VL_CN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 2, '코드', '코드', '코드C7', '정보를 나타내기 위한 기호 체계로 고정된 데이터 길이로 표현한 것', 'CHAR', 7, null, '7자리 문자', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+
+-- 표준 단어
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 1, 'DB', 'DB', 'Database', '데이터베이스.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 1, 'ERD', 'ERD', 'Entity Relationship Diagram', '테이블과 관계를 그린 개체 관계 다이어그램.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 2, 'IP', 'IP', 'Internet Protocol', 'IP. OSI 모델의 제3계층(네트워크층)에 해당되는 프로토콜로 IP계층에 따라 다른 네트워크 간 패킷의 전송, 즉 경로 제어를 위한 규약', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 1, 'NULL', 'NULL', 'Null', '값이 없음.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 2, 'URL', 'URL', 'Uniform Resource Locator', 'URL. 확인된 리소스가 어디에 있는지 또 이를 탐색하는 메커니즘이 어디에 있는지에 대해 규정하는 URL', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 1, 'X', 'X', 'X', '가로 방향 축.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 1, 'Y', 'Y', 'Y', '세로 방향 축.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 5, '값', 'VL', 'Value', '어떤 사물의 중요성이나 의의', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 1, '검사', 'INSP', 'Inspection', '檢査. 사실이나 일의 상태 또는 물질의 구성 성분 따위를 조사하여 옳고 그름과 낫고 못함을 판단하는 일', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 4, '게시물', 'PST', 'Post', '揭示物. 여러 사람에게 알리기 위하여 내붙이거나 내걸어 두루 보게 한 물건이나 글', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 5, '경로', 'PATH', 'Path', '經路. 지나는 길', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 5, '계정', 'ACNT', 'Account', '計定. 부기(簿記)의 원장(原帳)에서 같은 종류나 동일 명칭의 자산, 부채, 자본, 수익, 비용, 손실에 대하여 그 증감을 계산/기록하기 위하여 설정한 단위', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 5, '고유', 'UNQ', 'Unique', '固有.본래부터 가지고 있는 특유한 것', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 1, '공통', 'CMN', 'Common', '여러 대상에 함께 쓰임.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 2, '관계', 'REL', 'Relation', '關係. 둘 이상의 사람, 사물, 현상 따위가 서로 관련을 맺거나 관련이 있음. 또는 그런 관련', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 1, '관리자', 'MNGR', 'Manager', '管理者. 소유자로부터 위탁을 받아 시설을 관리하는 자, 사법상(私法上) 타인의 재산을 관리하는 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 5, '그룹', 'GROUP', 'Group', 'Group. 함께 행동하거나 공통점이 있어 한데 묶일 수 있는 사람들이나 사물의 무리', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 1, '금칙', 'PRHBT', 'Prohibition', '쓰지 못하게 함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 2, '기관', 'INST', 'Institution', '機關. 사회생활의 영역에서 일정한 역할과 목적을 위하여 설치한 기구나 조직', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 0, 5, '기본', 'BSC', 'Basic', '基本. 사물이나 현상, 이론, 시설 따위를 이루는 바탕', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 0, 1, '기본키', 'PK', 'Primary Key', '행을 하나로 식별하는 키.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 0, 1, '길이', 'LEN', 'Length', '문자나 숫자의 자릿수.', true, '수', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 0, 2, '내용', 'CN', 'Content', '內容. 말, 글, 그림, 연출 따위의 모든 표현 매체 속에 들어 있는 것. 또는 그런 것들로 전하고자 하는 것', true, '내용', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 0, 1, '노드', 'NODE', 'Node', '다이어그램에서 하나의 요소(테이블). 공통표준 단어 교점(NODE)과 같은 약어.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 0, 1, '단어', 'WORD', 'Word', '데이터 표준의 최소 단위 말.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 0, 5, '단위', 'UNIT', 'Unit', '單位. 길이, 무게, 수효, 시간 따위의 수량을 수치로 나타낼 때 기초가 되는 일정한 기준. 근, 되, 자, 그램, 리터, 미터, 초 따위가 있다', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 0, 1, '대상', 'TRGT', 'Target', '對象. 어떤 일의 상대 또는 목표나 목적이 되는 것', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 0, 1, '도메인', 'DMN', 'Domain', '컬럼이 가질 수 있는 값의 자료형·길이·형식 정의.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(29, 0, 1, '등록', 'REG', 'Registration', '登錄. 일정한 자격 조건을 갖추기 위하여 단체나 기관에 문서를 올리거나 법정(法定)의 공부(公簿)에 기재하는 일', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(30, 0, 2, '등록자', 'RGTR', 'Registrant', '登錄者. 일정한 자격 조건을 갖추기 위하여 단체나 학교 따위에 문서를 올린 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(31, 0, 1, '레이아웃', 'LYT', 'Layout', '화면 요소의 배치.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(32, 0, 4, '로그', 'LOG', 'Log', 'LOG. 시스템 사용에 관련된 전체의 기록, 즉 입출력 내용, 프로그램 사용 내용, 자료변경 내용, 시작시간, 종료시간 등의 기록', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(33, 0, 1, '마스터', 'MSTR', 'Master', '기준이 되는 원본 데이터.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(34, 0, 2, '명', 'NM', 'Name', '名. 다른 것과 구별하기 위하여 사물, 단체, 현상 따위에 붙여서 부르는 말. ‘이름’의 뜻을 나타내는 말', true, '명', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(35, 0, 1, '목록', 'LIST', 'List', '여러 값을 나열한 것.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(36, 0, 1, '민감', 'SNSTV', 'Sensitive', '보호가 필요함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(37, 0, 4, '방법', 'MTHD', 'Method', '方法. 어떤 일을 해 나가거나 목적을 이루기 위하여 취하는 수단이나 방식', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(38, 0, 1, '배율', 'MGNF', 'Magnification', '화면을 확대·축소한 비율.', true, '비율', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(39, 0, 1, '버전', 'VER', 'Version', '변경 차례를 나타내는 번호.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(40, 0, 2, '번호', 'NO', 'Number', '番號. 차례를 나타내거나 식별하기 위해 붙이는 숫자나 문자', true, '번호', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(41, 0, 5, '범주', 'CTGRY', 'Category', '範疇. 동일한 성질을 가진 부류나 범위', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(42, 0, 1, '변경', 'CHG', 'Change', '變更. 다르게 바꾸어 새롭게 고침', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(43, 0, 5, '분류', 'CLSF', 'Classification', '分類. 종류에 따라서 가름', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(44, 0, 4, '비밀번호', 'PSWD', 'Password', '秘密番號. 은행이나 컴퓨터 시스템 따위에서, 보안을 위하여 미리 약정하여 쓰는 개인 고유의 문자열', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(45, 0, 1, '사용', 'USE', 'Use', '使用. 일정한 목적이나 기능에 맞게 씀', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(46, 0, 2, '사용자', 'USER', 'User', '使用者. 사람을 부리거나 물건을 쓰는 사람. 컴퓨터를 사용하는 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(47, 0, 1, '사전', 'DIC', 'Dictionary', '데이터 표준 단어·용어·도메인을 모은 데이터 사전.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(48, 0, 1, '삭제', 'DEL', 'Deletion', '削除. 깎아 없애거나 지워 버림. 파일 내에 저장된 기록을 제거하거나 기억 장치에서 프로그램을 지우는 일', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(49, 0, 4, '상태', 'STTS', 'Status', '狀態. 사물ㆍ현상이 놓여 있는 모양이나 형편', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(50, 0, 5, '설명', 'EXPLN', 'Explanation', '說明. 어떤 일이나 대상의 내용을 상대편이 잘 알 수 있도록 밝혀 말함. 또는 그런 말', true, '내용', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(51, 0, 1, '소관', 'JRSDC', 'Jurisdiction', '맡아 관리함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(52, 0, 1, '소수점', 'DCPT', 'Decimal Point', '숫자의 소수 부분.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(53, 0, 1, '수정', 'MDFCN', 'Modification', '修正. 바로잡아 고침', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(54, 0, 2, '수정자', 'MDFR', 'Modifier', '修正者. 바로 잡아 고친 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(55, 0, 1, '순서', 'ORD', 'Order', '차례.', true, '수', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(56, 0, 1, '스키마', 'SCHM', 'Schema', '데이터베이스 객체를 묶는 이름 공간.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(57, 0, 1, '승인', 'APRV', 'Approval', '承認. 어떤 사실을 마땅하다고 받아들임. 어떤 특정한 행위에 대하여 행하는 승낙이나 동의', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(58, 0, 5, '아이디', 'ID', 'ID', 'ID. 인터넷에서, 이용자의 신분을 증명할 수 있는 고유의 체계', true, '명', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(59, 0, 5, '암호화', 'ENCPT', 'Encryption', '暗號化. 통신할 내용을 일정한 체계에 따라 암호로 바꿈', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(60, 0, 1, '약어', 'ABBR', 'Abbreviation', '단어를 줄여 쓴 영문 표기.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(61, 0, 1, '에이전트', 'AGNT', 'Agent', '요청을 보낸 브라우저·클라이언트 프로그램.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(62, 0, 1, '여부', 'YN', 'Yes or No', '與否. 그러함과 그러하지 아니함', true, '여부', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(63, 0, 1, '역할', 'ROLE', 'Role', '사용자에게 부여한 권한 묶음.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(64, 0, 2, '영문', 'ENG', 'English', '英文. 영어로 쓴 글 또는 영어를 표기하는 데 쓰는 문자', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(65, 0, 1, '예시', 'EXMPL', 'Example', '이해를 돕기 위한 예.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(66, 0, 1, '오류', 'ERR', 'Error', '誤謬. 그릇되어 이치에 맞지 않는 일로 연산 처리 장치의 잘못된 동작이나 소프트웨어의 잘못 때문에 생기는 계산값과 참값과의 오차 등을 뜻함', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(67, 0, 1, '요청', 'DMND', 'Demand', '要請. 필요한 어떤 일이나 행동을 청함. 또는 그런 청', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(68, 0, 1, '용어', 'TRM', 'Term', '표준 단어를 조합한 컬럼 이름. 공통표준 TERM(기한)과 겹쳐 TRM 으로 정함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(69, 0, 4, '원본', 'ORGNL', 'Original', '原本. 베끼거나 고친 것에 대하여 근본이 되는 서류나 문건 따위', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(70, 0, 5, '위치', 'PSTN', 'Position', '位置. 일정한 곳에 자리를 차지함. 또는 그 자리', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(71, 0, 5, '유형', 'TYPE', 'Type', '類型. 성질이나 특징 따위가 공통적인 것끼리 묶은 하나의 틀. 또는 그 틀에 속하는 것', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(72, 0, 1, '응답', 'RSPNS', 'Response', '應答. 부름이나 물음에 응하여 답함', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(73, 0, 1, '이음동의어', 'SYNM', 'Synonym', '형태는 다르나 뜻이 같은 말.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(74, 0, 1, '인덱스', 'IDX', 'Index', '검색을 빠르게 하기 위한 색인.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(75, 0, 2, '일련번호', 'SN', 'Serial Number', '一連番號. 일률적으로 연속되어 있는 번호', true, '일련번호', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(76, 0, 1, '일시', 'DT', 'Date and Time', '日時. 날짜와 시간을 아울러 이르는 말로 연월일시분초를 나타냄', true, '연월일시분초', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(77, 0, 1, '자동', 'AUTO', 'Automatic', '사람의 조작 없이 스스로 처리됨.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(78, 0, 1, '자료', 'DATA', 'Data', '資料. 연구나 조사 따위의 바탕이 되는 재료', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(79, 0, 3, '작성자', 'WRTR', 'Writer', '作成者. 서류, 원고 등을 만든 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(80, 0, 1, '저장', 'STRG', 'Storage', '貯藏. 물건이나 재화 따위를 모아서 간수함', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(81, 0, 1, '접두어', 'PFX', 'Prefix', '이름 앞에 붙이는 말.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(82, 0, 1, '접속', 'CNTN', 'Connection', '接續. 서로 맞대어 이음. 컴퓨터에서 여러 개의 프로세서와 기억 장치 모듈 사이를 물리적으로 또는 전자 회로적으로 연결하는 일', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(83, 0, 5, '정렬', 'SORT', 'Sort', '整列. 가지런하게 줄지어 늘어섬. 또는 그렇게 늘어서게 함', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(84, 0, 1, '정밀도', 'PRCSN', 'Precision', '숫자의 전체 자릿수.', true, '수', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(85, 0, 4, '정보', 'INFO', 'Information', '情報. 어떤 자료나 소식을 통하여 얻는 지식이나 상태의 총량', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(86, 0, 4, '제목', 'TTL', 'Title', '題目. 작품이나 강연, 보고 따위에서, 그것을 대표하거나 내용을 보이기 위하여 붙이는 이름', true, '명', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(87, 0, 1, '제약조건', 'CNSTRT', 'Constraint', '테이블 데이터가 지켜야 하는 UNIQUE·CHECK 규칙.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(88, 0, 1, '제정', 'ENCT', 'Enactment', '표준을 정하여 공표함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(89, 0, 1, '좌표', 'CRDNT', 'Coordinate', '화면이나 평면에서의 위치 값.', true, '수', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(90, 0, 2, '주소', 'ADDR', 'Address', '住所. 사람이 살고 있는 곳이나 기관, 회사 따위가 자리 잡고 있는 곳을 행정 구역으로 나타낸 이름', true, '주소', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(91, 0, 5, '차수', 'CYCL', 'Cycle', '次數. 주기나 경과의 해당 시기를 나타내는 말.', true, '수', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(92, 0, 5, '참조', 'RFRNC', 'Reference', '參照. 참고로 비교하고 대조하여 봄', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(93, 0, 1, '첨부', 'ATCH', 'Attachment', '添附. 안건이나 문서 따위를 덧붙임', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(94, 0, 1, '최대', 'MAX', 'Maximum', '가장 큰 값.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(95, 0, 5, '출처', 'SRC', 'Source', '出處.  사물이나 말 따위가 생기거나 나온 근거', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(96, 0, 2, '컬럼', 'COL', 'Column', '논리적 데이터 요소인 애트리뷰트에 대응되는 물리적 개념으로 관계형 데이터베이스에서 테이블의 2차원 구조의 한 축을 구성하는 데이터의 가장 기본적인 물리적 단위', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(97, 0, 2, '코드', 'CD', 'Code', '정보를 나타내기 위한 기호 체계', true, '코드', true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(98, 0, 2, '테이블', 'TBL', 'Table', '행과 열로 구성된 관계형 데이터베이스의 기본적인 저장 매체의 단위', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(99, 0, 1, '파생', 'DRVN', 'Derived', '다른 값에서 만들어짐.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(100, 0, 1, '파일', 'FILE', 'File', '여러 가지 서류를 한데 모아 매어 두게 만든 도구. 또는 그렇게 매어 둔 묶음. 하나의 단위로서 처리되는 서로 관련 있는 레코드의 집합', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(101, 0, 1, '표시', 'INDCT', 'Indication', '表示. 겉으로 드러내 보임. 標示. 표를 하여 외부에 드러내 보임', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(102, 0, 3, '표준', 'STD', 'Standard', '標準. 사물의 정도나 성격 등을 알기 위한 근거나 기준', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(103, 0, 1, '표현식', 'EXPR', 'Expression', '값이나 조건을 나타내는 식.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(104, 0, 1, '프로젝트', 'PRJ', 'Project', '데이터 표준·모델을 관리하는 작업 단위.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(105, 0, 1, '필수', 'ESNTL', 'Essential', '必需. 반드시 있어야 함. 또는 반드시 쓰임', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(106, 0, 2, '한글', 'KORN', 'Korean (Language)', '대한민국의 고유 문자의 이름', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(107, 0, 3, '행정', 'PBADMS', 'Public Administration', '行政. 정치나 사무를 행함', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(108, 0, 1, '허용', 'ALWNC', 'Allowance', '받아들여 허락함. 공통표준 PRMSN(허가)과 겹쳐 ALWNC 로 정함.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(109, 0, 1, '형식', 'FRMT', 'Format', '값을 저장하거나 나타내는 모양.', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(110, 0, 4, '화면', 'SCRN', 'Screen', '畫面. 텔레비전이나 컴퓨터 따위에서 그림이나 영상이 나타나는 면', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(111, 0, 2, '확장자', 'EXTN', 'Extension', '擴張字. 컴퓨터에서, 파일의 종류를 구분하기 위하여 파일명의 마침표 뒤에 붙이는 문자', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(112, 0, 5, '활성', 'ACTVTN', 'Activation', '活性. 어떤 시스템이 동작할 수 있는 수준에 있는 것', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD(STD_WORD_SN, PRJ_SN, ENCT_CYCL, WORD_NM, WORD_ENG_ABBR_NM, WORD_ENG_NM, WORD_EXPLN, FRMT_WORD_YN, DMN_CLSF_NM, ABBR_USE_YN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(113, 0, 2, '회원', 'MBR', 'Member', '會員. 어떤 모임을 구성하는 사람', false, null, true, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(3, '아이피');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(11, '패스');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(15, '관련');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(15, '연관');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(15, '유관');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(20, '디폴트');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(30, '등록인');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(34, '이름');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(34, '명칭');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(41, '카테고리');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(44, '패스워드');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(46, '사용인');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(46, '유저');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(54, '수정인');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(64, '영문자');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(75, '순번');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(75, '연번');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(75, '시퀀스');
+insert into TB_STD_WORD_SYNM(STD_WORD_SN, SYNM_NM) values(78, '데이터');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(100, '화일');
+insert into TB_STD_WORD_PRHBT(STD_WORD_SN, PRHBT_WORD_NM) values(100, 'FILE');
+
+-- 표준 용어 (+ 용어를 이루는 단어)
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 1, '계정_일련번호', '계정 일련번호.', 'ACNT_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 1, 12, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 1, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 1, '사용자_아이디', '사용자 아이디.', 'USER_ID', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 2, 46, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 2, 58, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 1, '비밀번호', '비밀번호.', 'PSWD', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 3, 44, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 2, '사용자_명', '사람을 부리거나 물건을 쓰거나 컴퓨터 프로그램 등을 사용하는 사람의 이름', 'USER_NM', null, null, 4, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(4, '사용자이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(4, '사용인명');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(4, '사용인이름');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 4, 46, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 4, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 5, '활성_여부', '어떤 시스템이 동작할 수 있는 수준에 있는 것인지 여부', 'ACTVTN_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 5, 112, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 5, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 5, '비밀번호_변경_여부', '비밀번호를 다르게 바꾸어 새롭게 고쳤는지 여부', 'PSWD_CHG_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 6, 44, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 6, 42, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 6, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 1, '등록_일시', '일정한 자격이나 조건을 갖추려고 단체나 기관 등에 문서, 서류 등을 올린 날짜와 시각', 'REG_DT', null, null, 13, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 7, 29, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 7, 76, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 1, '수정_일시', '바로잡아 고친 날짜와 시각', 'MDFCN_DT', null, null, 13, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 8, 53, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 8, 76, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 1, '등록자_아이디', '등록자 아이디.', 'RGTR_ID', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 9, 30, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 9, 58, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 1, '수정자_아이디', '수정자 아이디.', 'MDFR_ID', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 10, 54, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 10, 58, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 1, '역할_일련번호', '역할 일련번호.', 'ROLE_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 11, 63, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 11, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 1, '역할_명', '역할 명.', 'ROLE_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 12, 63, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 12, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 1, '역할_설명', '역할 설명.', 'ROLE_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 13, 63, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 13, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 1, '표현식_여부', '표현식 여부.', 'EXPR_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 14, 103, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 14, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 1, '프로젝트_일련번호', '프로젝트 일련번호.', 'PRJ_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(29, 15, 104, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(30, 15, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 1, '프로젝트_명', '프로젝트 명.', 'PRJ_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(31, 16, 104, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(32, 16, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 1, '관리자_계정_일련번호', '관리자 계정 일련번호.', 'MNGR_ACNT_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(33, 17, 16, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(34, 17, 12, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(35, 17, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 1, '자동_승인_여부', '자동 승인 여부.', 'AUTO_APRV_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(36, 18, 77, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(37, 18, 57, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(38, 18, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 1, '사전_약어_사용_여부', '사전 약어 사용 여부.', 'DIC_ABBR_USE_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(39, 19, 47, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(40, 19, 60, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(41, 19, 45, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(42, 19, 62, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 0, 1, '테이블_접두어_명', '테이블 접두어 명.', 'TBL_PFX_NM', null, null, 5, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(43, 20, 98, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(44, 20, 81, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(45, 20, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 0, 1, 'DB_유형_코드', 'DB 유형 코드.', 'DB_TYPE_CD', null, null, 18, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(46, 21, 1, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(47, 21, 71, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(48, 21, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 0, 1, '프로젝트_회원_일련번호', '프로젝트 회원 일련번호.', 'PRJ_MBR_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(49, 22, 104, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(50, 22, 113, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(51, 22, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 0, 5, '로그_일련번호', '시스템 사용과 관련된 전체의 기록에 일률적으로 연속되어 있는 번호', 'LOG_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(23, '로그번호');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(52, 23, 32, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(53, 23, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 0, 1, '요청_URL_주소', '요청 URL 주소.', 'DMND_URL_ADDR', null, null, 16, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(54, 24, 67, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(55, 24, 5, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(56, 24, 90, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 0, 1, '요청_방법_명', '요청 방법 명.', 'DMND_MTHD_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(57, 25, 67, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(58, 25, 37, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(59, 25, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 0, 4, '접속_IP_주소', '컴퓨터 등의 기기나 장치로 네트워크에 연결한 IP(인터넷 프로토콜) 주소', 'CNTN_IP_ADDR', null, null, 15, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(26, '접속아이피주소');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(60, 26, 82, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(61, 26, 3, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(62, 26, 90, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 0, 1, '응답_상태_코드', '응답 상태 코드.', 'RSPNS_STTS_CD', null, null, 17, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(63, 27, 72, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(64, 27, 49, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(65, 27, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 0, 5, '요청_내용', '필요한 어떤 일이나 행동을 청한 내용', 'DMND_CN', null, null, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(66, 28, 67, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(67, 28, 23, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(29, 0, 5, '응답_내용', '부름이나 물음에 응하여 답한 내용', 'RSPNS_CN', null, null, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(68, 29, 72, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(69, 29, 23, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(30, 0, 5, '오류_내용', '그릇되어 이치에 맞지 않게 일어난 일의 내용 / 연산 처리 장치의 잘못된 동작이나 소프트웨어의 잘못으로 생기는 계산값과 참값의 오차 등의 내용', 'ERR_CN', null, null, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(70, 30, 66, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(71, 30, 23, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(31, 0, 1, '사용자_에이전트_내용', '사용자 에이전트 내용.', 'USER_AGNT_CN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(72, 31, 46, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(73, 31, 61, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(74, 31, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(32, 0, 5, '로그_일시', '시스템 사용과 관련된 전체의 기록에 작성된 날짜와 시각', 'LOG_DT', null, null, 13, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(75, 32, 32, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(76, 32, 76, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(33, 0, 1, '범주_코드', '범주 코드.', 'CTGRY_CD', null, null, 19, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(77, 33, 41, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(78, 33, 97, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(34, 0, 5, '범주_명', '성질이 동일한 부류나 범위의 이름', 'CTGRY_NM', null, null, 4, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(34, '범주이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(34, '카테고리명');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(34, '카테고리이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(34, '범주명칭');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(34, '카테고리명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(79, 34, 41, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(80, 34, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(35, 0, 1, '정렬_순서', '정렬 순서.', 'SORT_ORD', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(81, 35, 83, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(82, 35, 55, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(36, 0, 1, '사용_여부', '어떠한 일에 일정한 목적이나 기능에 맞게 사용했는지 여부', 'USE_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(83, 36, 45, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(84, 36, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(37, 0, 5, '게시물_일련번호', '여러 사람에게 알리기 위하여 내붙이거나 내걸어 두루 보게 한 물건이나 글에 일률적으로 연속되게 매긴 번호', 'PST_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(37, '게시물번호');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(37, '게시글일련번호');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(37, '게시글번호');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(37, '게시물순번');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(37, '게시물연번');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(85, 37, 10, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(86, 37, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(38, 0, 1, '작성자_아이디', '작성자 아이디.', 'WRTR_ID', null, null, 5, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(87, 38, 79, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(88, 38, 58, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(39, 0, 1, '게시물_제목', '게시물 제목.', 'PST_TTL', null, null, 4, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(89, 39, 10, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(90, 39, 86, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(40, 0, 5, '게시물_내용', '여러 사람에게 알리기 위하여 내붙이거나 내걸어 두루 보게 한 물건이나 글의 내용', 'PST_CN', null, null, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(40, '게시글내용');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(91, 40, 10, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(92, 40, 23, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(41, 0, 1, '삭제_여부', '파일에 저장된 기록을 제거하거나 기억 장치에서 프로그램을 지워 버렸는지 여부', 'DEL_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(93, 41, 48, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(94, 41, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(42, 0, 1, '게시물_수정_일시', '게시물 수정 일시.', 'PST_MDFCN_DT', null, null, 13, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(95, 42, 10, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(96, 42, 53, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(97, 42, 76, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(43, 0, 1, '프로젝트_일련번호_목록', '프로젝트 일련번호 목록.', 'PRJ_SN_LIST', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(98, 43, 104, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(99, 43, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(100, 43, 35, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(44, 0, 5, '파일_일련번호', '컴퓨터에서, 하나의 단위로서 처리되는 서로 관련 있는 레코드의 집합인 파일에 일률적으로 연속되게 매긴 번호', 'FILE_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(44, '파일순번');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(44, '파일연번');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(101, 44, 100, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(102, 44, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(45, 0, 2, '파일_명', '컴퓨터에서, 하나의 단위로서 처리되는 서로 관련 있는 레코드 집합의 이름', 'FILE_NM', null, null, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(45, '파일이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(45, '파일명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(103, 45, 100, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(104, 45, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(46, 0, 4, '원본_파일_명', '베끼거나 고친 것에 대하여 근본이 되는 하나의 단위로 처리되는 서로 관련 있는 레코드 집합의 이름', 'ORGNL_FILE_NM', null, null, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(46, '원본파일이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(46, '원본파일명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(105, 46, 69, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(106, 46, 100, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(107, 46, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(47, 0, 2, '파일_확장자_명', '컴퓨터에서, 파일의 종류를 구분하려고 파일명 마침표 뒤에 붙이는 문자의 이름', 'FILE_EXTN_NM', null, null, 8, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(47, '파일확장자이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(47, '파일확장자명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(108, 47, 100, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(109, 47, 111, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(110, 47, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(48, 0, 5, '파일_경로_명', '컴퓨터에서, 하나의 단위로서 처리되는 서로 관련 있는 레코드의 집합인 파일이 위치한 경로의 이름', 'FILE_PATH_NM', null, null, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(48, '파일경로이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(48, '파일경로명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(111, 48, 100, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(112, 48, 11, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(113, 48, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(49, 0, 1, '표준_도메인_일련번호', '표준 도메인 일련번호.', 'STD_DMN_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(114, 49, 102, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(115, 49, 28, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(116, 49, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(50, 0, 1, '제정_차수', '제정 차수.', 'ENCT_CYCL', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(117, 50, 88, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(118, 50, 91, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(51, 0, 1, '도메인_그룹_명', '도메인 그룹 명.', 'DMN_GROUP_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(119, 51, 28, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(120, 51, 17, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(121, 51, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(52, 0, 1, '도메인_분류_명', '도메인 분류 명.', 'DMN_CLSF_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(122, 52, 28, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(123, 52, 43, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(124, 52, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(53, 0, 1, '도메인_명', '도메인 명.', 'DMN_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(125, 53, 28, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(126, 53, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(54, 0, 1, '도메인_설명', '도메인 설명.', 'DMN_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(127, 54, 28, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(128, 54, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(55, 0, 1, '자료_유형_명', '자료 유형 명.', 'DATA_TYPE_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(129, 55, 78, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(130, 55, 71, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(131, 55, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(56, 0, 1, '자료_길이', '자료 길이.', 'DATA_LEN', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(132, 56, 78, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(133, 56, 22, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(57, 0, 1, '자료_소수점_길이', '자료 소수점 길이.', 'DATA_DCPT_LEN', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(134, 57, 78, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(135, 57, 52, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(136, 57, 22, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(58, 0, 1, '저장_형식_내용', '저장 형식 내용.', 'STRG_FRMT_CN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(137, 58, 80, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(138, 58, 109, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(139, 58, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(59, 0, 1, '표시_형식_내용', '표시 형식 내용.', 'INDCT_FRMT_CN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(140, 59, 101, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(141, 59, 109, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(142, 59, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(60, 0, 5, '단위_명', '길이, 무게, 수효, 시간 따위의 수량을 수치로 나타낼 때 기초가 되는 일정한 기준의 이름', 'UNIT_NM', null, null, 4, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(60, '단위이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(60, '단위명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(143, 60, 26, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(144, 60, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(61, 0, 1, '허용_값_내용', '허용 값 내용.', 'ALWNC_VL_CN', null, null, 2, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(145, 61, 108, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(146, 61, 8, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(147, 61, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(62, 0, 1, '승인_여부', '어떤 행위를 하도록 승낙하거나 동의하였는지 여부', 'APRV_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(148, 62, 57, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(149, 62, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(63, 0, 1, '표준_단어_일련번호', '표준 단어 일련번호.', 'STD_WORD_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(150, 63, 102, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(151, 63, 25, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(152, 63, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(64, 0, 1, '단어_명', '단어 명.', 'WORD_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(153, 64, 25, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(154, 64, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(65, 0, 1, '단어_영문_약어_명', '단어 영문 약어 명.', 'WORD_ENG_ABBR_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(155, 65, 25, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(156, 65, 64, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(157, 65, 60, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(158, 65, 34, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(66, 0, 1, '단어_영문_명', '단어 영문 명.', 'WORD_ENG_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(159, 66, 25, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(160, 66, 64, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(161, 66, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(67, 0, 1, '단어_설명', '단어 설명.', 'WORD_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(162, 67, 25, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(163, 67, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(68, 0, 1, '형식_단어_여부', '형식 단어 여부.', 'FRMT_WORD_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(164, 68, 109, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(165, 68, 25, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(166, 68, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(69, 0, 1, '약어_사용_여부', '약어 사용 여부.', 'ABBR_USE_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(167, 69, 60, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(168, 69, 45, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(169, 69, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(70, 0, 1, '이음동의어_명', '이음동의어 명.', 'SYNM_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(170, 70, 73, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(171, 70, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(71, 0, 1, '금칙_단어_명', '금칙 단어 명.', 'PRHBT_WORD_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(172, 71, 18, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(173, 71, 25, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(174, 71, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(72, 0, 1, '표준_용어_일련번호', '표준 용어 일련번호.', 'STD_TRM_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(175, 72, 102, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(176, 72, 68, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(177, 72, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(73, 0, 1, '용어_명', '용어 명.', 'TRM_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(178, 73, 68, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(179, 73, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(74, 0, 1, '용어_설명', '용어 설명.', 'TRM_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(180, 74, 68, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(181, 74, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(75, 0, 1, '용어_영문_약어_명', '용어 영문 약어 명.', 'TRM_ENG_ABBR_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(182, 75, 68, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(183, 75, 64, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(184, 75, 60, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(185, 75, 34, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(76, 0, 1, '행정_표준_코드_명', '행정 표준 코드 명.', 'PBADMS_STD_CD_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(186, 76, 107, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(187, 76, 102, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(188, 76, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(189, 76, 34, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(77, 0, 1, '소관_기관_명', '소관 기관 명.', 'JRSDC_INST_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(190, 77, 51, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(191, 77, 19, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(192, 77, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(78, 0, 1, '표준_용어_단어_일련번호', '표준 용어 단어 일련번호.', 'STD_TRM_WORD_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(193, 78, 102, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(194, 78, 68, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(195, 78, 25, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(196, 78, 75, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(79, 0, 1, '스키마_일련번호', '스키마 일련번호.', 'SCHM_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(197, 79, 56, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(198, 79, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(80, 0, 1, '스키마_명', '스키마 명.', 'SCHM_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(199, 80, 56, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(200, 80, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(81, 0, 1, '스키마_설명', '스키마 설명.', 'SCHM_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(201, 81, 56, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(202, 81, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(82, 0, 1, '기본_여부', '기본 여부.', 'BSC_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(203, 82, 20, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(204, 82, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(83, 0, 1, '테이블_일련번호', '테이블 일련번호.', 'TBL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(205, 83, 98, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(206, 83, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(84, 0, 2, '테이블_명', '행과 열로 구성된 관계형 데이터베이스의 기본적인 저장 매체의 단위 이름', 'TBL_NM', null, null, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(84, '테이블이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(84, '테이블명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(207, 84, 98, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(208, 84, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(85, 0, 1, '테이블_한글_명', '테이블 한글 명.', 'TBL_KORN_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(209, 85, 98, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(210, 85, 106, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(211, 85, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(86, 0, 1, '테이블_설명', '테이블 설명.', 'TBL_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(212, 86, 98, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(213, 86, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(87, 0, 1, '마스터_테이블_여부', '마스터 테이블 여부.', 'MSTR_TBL_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(214, 87, 33, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(215, 87, 98, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(216, 87, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(88, 0, 1, '컬럼_일련번호', '컬럼 일련번호.', 'COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(217, 88, 96, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(218, 88, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(89, 0, 2, '컬럼_명', '논리적 데이터 요소인 애트리뷰트(속성)에 대응되는 물리적 개념으로 관계형 데이터베이스에서 테이블의 2차원 구조의 한 축을 구성하는 데이터의 가장 기본적인 물리적 단위의 이름', 'COL_NM', null, null, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(89, '컬럼이름');
+insert into TB_STD_TRM_SYNM(STD_TRM_SN, SYNM_NM) values(89, '컬럼명칭');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(219, 89, 96, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(220, 89, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(90, 0, 1, '컬럼_설명', '컬럼 설명.', 'COL_EXPLN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(221, 90, 96, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(222, 90, 50, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(91, 0, 1, '최대_길이', '최대 길이.', 'MAX_LEN', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(223, 91, 94, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(224, 91, 22, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(92, 0, 1, '자료_정밀도', '자료 정밀도.', 'DATA_PRCSN', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(225, 92, 78, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(226, 92, 84, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(93, 0, 1, '소수점_길이', '소수점 길이.', 'DCPT_LEN', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(227, 93, 52, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(228, 93, 22, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(94, 0, 1, 'NULL_허용_여부', 'NULL 허용 여부.', 'NULL_ALWNC_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(229, 94, 4, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(230, 94, 108, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(231, 94, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(95, 0, 1, '기본_값', '기본 값.', 'BSC_VL', null, null, null, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(232, 95, 20, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(233, 95, 8, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(96, 0, 1, '마스터_자료_여부', '마스터 자료 여부.', 'MSTR_DATA_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(234, 96, 33, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(235, 96, 78, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(236, 96, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(97, 0, 1, '참조_테이블_명', '참조 테이블 명.', 'RFRNC_TBL_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(237, 97, 92, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(238, 97, 98, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(239, 97, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(98, 0, 1, '필수_여부', '반드시 있어야 하는지 여부', 'ESNTL_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(240, 98, 105, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(241, 98, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(99, 0, 1, '민감_정보_여부', '민감 정보 여부.', 'SNSTV_INFO_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(242, 99, 36, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(243, 99, 85, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(244, 99, 62, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(100, 0, 1, '기본키_여부', '기본키 여부.', 'PK_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(245, 100, 21, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(246, 100, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(101, 0, 1, '고유_여부', '고유 여부.', 'UNQ_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(247, 101, 13, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(248, 101, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(102, 0, 1, '인덱스_여부', '인덱스 여부.', 'IDX_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(249, 102, 74, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(250, 102, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(103, 0, 5, '암호화_여부', '통신할 내용을 일정한 체계에 따라 암호로 바꾸는지 여부', 'ENCPT_YN', null, null, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(251, 103, 59, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(252, 103, 62, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(104, 0, 1, '예시_내용', '예시 내용.', 'EXMPL_CN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(253, 104, 65, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(254, 104, 23, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(105, 0, 1, '공통_컬럼_일련번호', '공통 컬럼 일련번호.', 'CMN_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(255, 105, 14, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(256, 105, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(257, 105, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(106, 0, 1, '관계_일련번호', '관계 일련번호.', 'REL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(258, 106, 15, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(259, 106, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(107, 0, 1, '원본_테이블_일련번호', '원본 테이블 일련번호.', 'ORGNL_TBL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(260, 107, 69, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(261, 107, 98, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(262, 107, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(108, 0, 1, '대상_테이블_일련번호', '대상 테이블 일련번호.', 'TRGT_TBL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(263, 108, 27, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(264, 108, 98, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(265, 108, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(109, 0, 1, '관계_명', '관계 명.', 'REL_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(266, 109, 15, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(267, 109, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(110, 0, 1, '관계_유형_코드', '관계 유형 코드.', 'REL_TYPE_CD', null, null, 18, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(268, 110, 15, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(269, 110, 71, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(270, 110, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(111, 0, 1, '관계_출처_코드', '관계 출처 코드.', 'REL_SRC_CD', null, null, 18, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(271, 111, 15, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(272, 111, 95, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(273, 111, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(112, 0, 1, '파생_컬럼_일련번호', '파생 컬럼 일련번호.', 'DRVN_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(274, 112, 99, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(275, 112, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(276, 112, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(113, 0, 1, '관계_컬럼_일련번호', '관계 컬럼 일련번호.', 'REL_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(277, 113, 15, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(278, 113, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(279, 113, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(114, 0, 1, '원본_컬럼_일련번호', '원본 컬럼 일련번호.', 'ORGNL_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(280, 114, 69, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(281, 114, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(282, 114, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(115, 0, 1, '대상_컬럼_일련번호', '대상 컬럼 일련번호.', 'TRGT_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(283, 115, 27, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(284, 115, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(285, 115, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(116, 0, 1, '컬럼_순서', '컬럼 순서.', 'COL_ORD', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(286, 116, 96, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(287, 116, 55, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(117, 0, 1, '인덱스_일련번호', '인덱스 일련번호.', 'IDX_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(288, 117, 74, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(289, 117, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(118, 0, 1, '인덱스_명', '인덱스 명.', 'IDX_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(290, 118, 74, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(291, 118, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(119, 0, 1, '인덱스_유형_명', '인덱스 유형 명.', 'IDX_TYPE_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(292, 119, 74, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(293, 119, 71, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(294, 119, 34, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(120, 0, 1, '인덱스_컬럼_일련번호', '인덱스 컬럼 일련번호.', 'IDX_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(295, 120, 74, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(296, 120, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(297, 120, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(121, 0, 1, '제약조건_일련번호', '제약조건 일련번호.', 'CNSTRT_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(298, 121, 87, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(299, 121, 75, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(122, 0, 1, '제약조건_명', '제약조건 명.', 'CNSTRT_NM', null, null, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(300, 122, 87, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(301, 122, 34, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(123, 0, 1, '제약조건_유형_코드', '제약조건 유형 코드.', 'CNSTRT_TYPE_CD', null, null, 18, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(302, 123, 87, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(303, 123, 71, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(304, 123, 97, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(124, 0, 1, '검사_표현식_내용', '검사 표현식 내용.', 'INSP_EXPR_CN', null, null, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(305, 124, 9, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(306, 124, 103, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(307, 124, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(125, 0, 1, '제약조건_컬럼_일련번호', '제약조건 컬럼 일련번호.', 'CNSTRT_COL_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(308, 125, 87, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(309, 125, 96, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(310, 125, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(126, 0, 1, 'ERD_레이아웃_일련번호', 'ERD 레이아웃 일련번호.', 'ERD_LYT_SN', null, null, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(311, 126, 2, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(312, 126, 31, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(313, 126, 75, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(127, 0, 1, '노드_위치_내용', '노드 위치 내용.', 'NODE_PSTN_CN', null, null, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(314, 127, 24, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(315, 127, 70, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(316, 127, 23, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(128, 0, 1, '화면_X_좌표', '화면 X 좌표.', 'SCRN_X_CRDNT', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(317, 128, 110, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(318, 128, 6, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(319, 128, 89, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(129, 0, 1, '화면_Y_좌표', '화면 Y 좌표.', 'SCRN_Y_CRDNT', null, null, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(320, 129, 110, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(321, 129, 7, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(322, 129, 89, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(130, 0, 1, '화면_배율', '화면 배율.', 'SCRN_MGNF', null, null, 10, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(323, 130, 110, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(324, 130, 38, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, PBADMS_STD_CD_NM, JRSDC_INST_NM, STD_DMN_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(131, 0, 1, '버전_번호', '버전 번호.', 'VER_NO', null, null, 9, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(325, 131, 39, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_STD_TRM_WORD(STD_TRM_WORD_SN, STD_TRM_SN, STD_WORD_SN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(326, 131, 40, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+
+-- 테이블
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 0, 'TB_ACNT', '계정', 'MetaMora 계정 정보', false, 1, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 0, 'TB_ROLE', '역할', 'MetaMora 역할 정보', false, 2, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 0, 'TB_ACNT_ROLE', '계정 역할', 'MetaMora 계정 역할 정보', false, 3, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 0, 'TB_PRJ', '프로젝트', 'MetaMora 프로젝트 정보', false, 4, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 0, 'TB_PRJ_MBR', '프로젝트 회원', 'MetaMora 프로젝트 회원 정보', false, 5, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 0, 'TB_LOG', '로그', 'MetaMora 로그 정보', false, 6, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 0, 'TB_PST_CTGRY', '게시물 범주', 'MetaMora 게시물 범주 정보', false, 7, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 0, 'TB_PST', '게시물', 'MetaMora 게시물 정보', false, 8, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 0, 'TB_PST_ACNT', '게시물 계정', 'MetaMora 게시물 계정 정보', false, 9, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 0, 'TB_ATCH_FILE', '첨부 파일', 'MetaMora 첨부 파일 정보', false, 10, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 0, 'TB_STD_DMN', '표준 도메인', 'MetaMora 표준 도메인 정보', false, 11, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 0, 'TB_STD_WORD', '표준 단어', 'MetaMora 표준 단어 정보', false, 12, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 0, 'TB_STD_WORD_SYNM', '표준 단어 이음동의어', 'MetaMora 표준 단어 이음동의어 정보', false, 13, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 0, 'TB_STD_WORD_PRHBT', '표준 단어 금칙', 'MetaMora 표준 단어 금칙 정보', false, 14, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 0, 'TB_STD_TRM', '표준 용어', 'MetaMora 표준 용어 정보', false, 15, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 0, 'TB_STD_TRM_SYNM', '표준 용어 이음동의어', 'MetaMora 표준 용어 이음동의어 정보', false, 16, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 0, 'TB_STD_TRM_WORD', '표준 용어 단어', 'MetaMora 표준 용어 단어 정보', false, 17, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 0, 'TB_SCHM', '스키마', 'MetaMora 스키마 정보', false, 18, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 0, 'TB_TBL', '테이블', 'MetaMora 테이블 정보', false, 19, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 0, 0, 'TB_COL', '컬럼', 'MetaMora 컬럼 정보', false, 20, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 0, 0, 'TB_CMN_COL', '공통 컬럼', 'MetaMora 공통 컬럼 정보', false, 21, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 0, 0, 'TB_TBL_REL', '테이블 관계', 'MetaMora 테이블 관계 정보', false, 22, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 0, 0, 'TB_TBL_REL_COL', '테이블 관계 컬럼', 'MetaMora 테이블 관계 컬럼 정보', false, 23, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 0, 0, 'TB_TBL_IDX', '테이블 인덱스', 'MetaMora 테이블 인덱스 정보', false, 24, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 0, 0, 'TB_TBL_IDX_COL', '테이블 인덱스 컬럼', 'MetaMora 테이블 인덱스 컬럼 정보', false, 25, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 0, 0, 'TB_TBL_CNSTRT', '테이블 제약조건', 'MetaMora 테이블 제약조건 정보', false, 26, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 0, 0, 'TB_TBL_CNSTRT_COL', '테이블 제약조건 컬럼', 'MetaMora 테이블 제약조건 컬럼 정보', false, 27, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, TBL_KORN_NM, TBL_EXPLN, MSTR_TBL_YN, SORT_ORD, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 0, 0, 'TB_ERD_LYT', 'ERD 레이아웃', 'MetaMora ERD 레이아웃 정보', false, 28, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+
+-- 컬럼
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 1, 'TB_ACNT', 'ACNT_SN', '계정 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 1, 'TB_ACNT', 'USER_ID', '사용자 아이디', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 1, 'TB_ACNT', 'PSWD', '비밀번호', 'VARCHAR', 255, null, null, true, null, 3, false, null, false, true, false, false, false, true, true, 3, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 1, 'TB_ACNT', 'USER_NM', '사용자 명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 4, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 1, 'TB_ACNT', 'ACTVTN_YN', '활성 여부', 'BOOLEAN', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 5, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 1, 'TB_ACNT', 'PSWD_CHG_YN', '비밀번호 변경 여부', 'BOOLEAN', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 6, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 1, 'TB_ACNT', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 1, 'TB_ACNT', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 1, 'TB_ACNT', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 1, 'TB_ACNT', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 2, 'TB_ROLE', 'ROLE_SN', '역할 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 11, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 2, 'TB_ROLE', 'ROLE_NM', '역할 명', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 12, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 2, 'TB_ROLE', 'ROLE_EXPLN', '역할 설명', 'VARCHAR', 255, null, null, true, null, 3, false, null, false, false, false, false, false, false, true, 13, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 2, 'TB_ROLE', 'EXPR_YN', '표현식 여부', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 14, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 2, 'TB_ROLE', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 2, 'TB_ROLE', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 2, 'TB_ROLE', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 2, 'TB_ROLE', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 3, 'TB_ACNT_ROLE', 'ACNT_SN', '계정 일련번호', 'BIGINT', null, null, null, false, null, 1, false, 'TB_ACNT', true, false, true, false, false, false, true, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 0, 3, 'TB_ACNT_ROLE', 'ROLE_SN', '역할 일련번호', 'BIGINT', null, null, null, false, null, 2, false, 'TB_ROLE', true, false, true, false, false, false, true, 11, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 0, 4, 'TB_PRJ', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 0, 4, 'TB_PRJ', 'PRJ_NM', '프로젝트 명', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 16, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 0, 4, 'TB_PRJ', 'MNGR_ACNT_SN', '관리자 계정 일련번호', 'BIGINT', null, null, null, true, null, 3, false, 'TB_ACNT', false, false, false, false, false, false, true, 17, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 0, 4, 'TB_PRJ', 'ACTVTN_YN', '활성 여부', 'BOOLEAN', null, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 5, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 0, 4, 'TB_PRJ', 'AUTO_APRV_YN', '자동 승인 여부', 'BOOLEAN', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 18, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 0, 4, 'TB_PRJ', 'DIC_ABBR_USE_YN', '사전 약어 사용 여부', 'BOOLEAN', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 19, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 0, 4, 'TB_PRJ', 'TBL_PFX_NM', '테이블 접두어 명', 'VARCHAR', 20, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 20, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 0, 4, 'TB_PRJ', 'DB_TYPE_CD', 'DB 유형 코드', 'VARCHAR', 20, null, null, false, 'POSTGRESQL', 8, false, null, true, false, false, false, false, false, true, 21, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(29, 0, 4, 'TB_PRJ', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(30, 0, 4, 'TB_PRJ', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(31, 0, 4, 'TB_PRJ', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(32, 0, 4, 'TB_PRJ', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(33, 0, 5, 'TB_PRJ_MBR', 'PRJ_MBR_SN', '프로젝트 회원 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 22, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(34, 0, 5, 'TB_PRJ_MBR', 'ACNT_SN', '계정 일련번호', 'BIGINT', null, null, null, true, null, 2, false, 'TB_ACNT', false, false, false, false, false, false, true, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(35, 0, 5, 'TB_PRJ_MBR', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 3, false, 'TB_PRJ', false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(36, 0, 5, 'TB_PRJ_MBR', 'ACTVTN_YN', '활성 여부', 'BOOLEAN', null, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 5, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(37, 0, 5, 'TB_PRJ_MBR', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(38, 0, 5, 'TB_PRJ_MBR', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(39, 0, 5, 'TB_PRJ_MBR', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(40, 0, 5, 'TB_PRJ_MBR', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(41, 0, 6, 'TB_LOG', 'LOG_SN', '로그 일련번호', 'BIGINT', null, null, null, true, null, 1, false, null, false, false, true, false, false, false, true, 23, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(42, 0, 6, 'TB_LOG', 'DMND_URL_ADDR', '요청 URL 주소', 'VARCHAR', 255, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 24, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(43, 0, 6, 'TB_LOG', 'DMND_MTHD_NM', '요청 방법 명', 'VARCHAR', 255, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 25, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(44, 0, 6, 'TB_LOG', 'CNTN_IP_ADDR', '접속 IP 주소', 'VARCHAR', 255, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 26, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(45, 0, 6, 'TB_LOG', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(46, 0, 6, 'TB_LOG', 'USER_ID', '사용자 아이디', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 2, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(47, 0, 6, 'TB_LOG', 'ROLE_NM', '역할 명', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 12, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(48, 0, 6, 'TB_LOG', 'RSPNS_STTS_CD', '응답 상태 코드', 'INTEGER', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 27, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(49, 0, 6, 'TB_LOG', 'DMND_CN', '요청 내용', 'TEXT', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 28, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(50, 0, 6, 'TB_LOG', 'RSPNS_CN', '응답 내용', 'TEXT', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 29, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(51, 0, 6, 'TB_LOG', 'ERR_CN', '오류 내용', 'TEXT', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 30, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(52, 0, 6, 'TB_LOG', 'USER_AGNT_CN', '사용자 에이전트 내용', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 31, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(53, 0, 6, 'TB_LOG', 'LOG_DT', '로그 일시', 'TIMESTAMP', null, null, null, false, null, 13, false, null, true, false, false, false, false, false, true, 32, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(54, 0, 7, 'TB_PST_CTGRY', 'CTGRY_CD', '범주 코드', 'VARCHAR', 6, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 33, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(55, 0, 7, 'TB_PST_CTGRY', 'CTGRY_NM', '범주 명', 'VARCHAR', 30, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 34, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(56, 0, 7, 'TB_PST_CTGRY', 'SORT_ORD', '정렬 순서', 'INTEGER', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 35, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(57, 0, 7, 'TB_PST_CTGRY', 'USE_YN', '사용 여부', 'CHAR', 1, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 36, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(58, 0, 7, 'TB_PST_CTGRY', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(59, 0, 7, 'TB_PST_CTGRY', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(60, 0, 7, 'TB_PST_CTGRY', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(61, 0, 7, 'TB_PST_CTGRY', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(62, 0, 8, 'TB_PST', 'PST_SN', '게시물 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 37, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(63, 0, 8, 'TB_PST', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(64, 0, 8, 'TB_PST', 'CTGRY_CD', '범주 코드', 'VARCHAR', 6, null, null, true, null, 3, false, 'TB_PST_CTGRY', false, false, false, false, false, false, true, 33, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(65, 0, 8, 'TB_PST', 'WRTR_ID', '작성자 아이디', 'VARCHAR', 16, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 38, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(66, 0, 8, 'TB_PST', 'PST_TTL', '게시물 제목', 'VARCHAR', 100, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 39, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(67, 0, 8, 'TB_PST', 'PST_CN', '게시물 내용', 'TEXT', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 40, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(68, 0, 8, 'TB_PST', 'DEL_YN', '삭제 여부', 'CHAR', 1, null, null, false, null, 7, false, null, true, false, false, false, false, false, true, 41, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(69, 0, 8, 'TB_PST', 'PST_MDFCN_DT', '게시물 수정 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 42, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(70, 0, 8, 'TB_PST', 'PRJ_SN_LIST', '프로젝트 일련번호 목록', 'BIGINT ARRAY', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 43, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(71, 0, 8, 'TB_PST', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(72, 0, 8, 'TB_PST', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(73, 0, 8, 'TB_PST', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(74, 0, 8, 'TB_PST', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(75, 0, 9, 'TB_PST_ACNT', 'PST_SN', '게시물 일련번호', 'BIGINT', null, null, null, false, null, 1, false, 'TB_PST', true, false, true, false, false, false, true, 37, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(76, 0, 9, 'TB_PST_ACNT', 'ACNT_SN', '계정 일련번호', 'BIGINT', null, null, null, false, null, 2, false, 'TB_ACNT', true, false, true, false, false, false, true, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(77, 0, 10, 'TB_ATCH_FILE', 'FILE_SN', '파일 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 44, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(78, 0, 10, 'TB_ATCH_FILE', 'PST_SN', '게시물 일련번호', 'BIGINT', null, null, null, true, null, 2, false, 'TB_PST', false, false, false, false, false, false, true, 37, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(79, 0, 10, 'TB_ATCH_FILE', 'FILE_NM', '파일 명', 'VARCHAR', 200, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 45, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(80, 0, 10, 'TB_ATCH_FILE', 'ORGNL_FILE_NM', '원본 파일 명', 'VARCHAR', 200, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 46, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(81, 0, 10, 'TB_ATCH_FILE', 'FILE_EXTN_NM', '파일 확장자 명', 'VARCHAR', 15, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 47, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(82, 0, 10, 'TB_ATCH_FILE', 'FILE_PATH_NM', '파일 경로 명', 'VARCHAR', 300, null, null, false, null, 6, false, null, true, false, false, false, false, false, true, 48, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(83, 0, 10, 'TB_ATCH_FILE', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(84, 0, 10, 'TB_ATCH_FILE', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(85, 0, 10, 'TB_ATCH_FILE', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(86, 0, 10, 'TB_ATCH_FILE', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(87, 0, 11, 'TB_STD_DMN', 'STD_DMN_SN', '표준 도메인 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 49, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(88, 0, 11, 'TB_STD_DMN', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(89, 0, 11, 'TB_STD_DMN', 'ENCT_CYCL', '제정 차수', 'INTEGER', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 50, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(90, 0, 11, 'TB_STD_DMN', 'DMN_GROUP_NM', '도메인 그룹 명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 51, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(91, 0, 11, 'TB_STD_DMN', 'DMN_CLSF_NM', '도메인 분류 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 52, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(92, 0, 11, 'TB_STD_DMN', 'DMN_NM', '도메인 명', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 53, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(93, 0, 11, 'TB_STD_DMN', 'DMN_EXPLN', '도메인 설명', 'VARCHAR', 1000, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 54, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(94, 0, 11, 'TB_STD_DMN', 'DATA_TYPE_NM', '자료 유형 명', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 55, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(95, 0, 11, 'TB_STD_DMN', 'DATA_LEN', '자료 길이', 'INTEGER', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 56, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(96, 0, 11, 'TB_STD_DMN', 'DATA_DCPT_LEN', '자료 소수점 길이', 'INTEGER', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 57, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(97, 0, 11, 'TB_STD_DMN', 'STRG_FRMT_CN', '저장 형식 내용', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 58, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(98, 0, 11, 'TB_STD_DMN', 'INDCT_FRMT_CN', '표시 형식 내용', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 59, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(99, 0, 11, 'TB_STD_DMN', 'UNIT_NM', '단위 명', 'VARCHAR', 255, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 60, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(100, 0, 11, 'TB_STD_DMN', 'ALWNC_VL_CN', '허용 값 내용', 'VARCHAR', 2000, null, null, true, null, 14, false, null, false, false, false, false, false, false, true, 61, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(101, 0, 11, 'TB_STD_DMN', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 15, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(102, 0, 11, 'TB_STD_DMN', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 16, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(103, 0, 11, 'TB_STD_DMN', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 17, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(104, 0, 11, 'TB_STD_DMN', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 18, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(105, 0, 11, 'TB_STD_DMN', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 19, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(106, 0, 12, 'TB_STD_WORD', 'STD_WORD_SN', '표준 단어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 63, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(107, 0, 12, 'TB_STD_WORD', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(108, 0, 12, 'TB_STD_WORD', 'ENCT_CYCL', '제정 차수', 'INTEGER', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 50, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(109, 0, 12, 'TB_STD_WORD', 'WORD_NM', '단어 명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 64, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(110, 0, 12, 'TB_STD_WORD', 'WORD_ENG_ABBR_NM', '단어 영문 약어 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 65, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(111, 0, 12, 'TB_STD_WORD', 'WORD_ENG_NM', '단어 영문 명', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 66, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(112, 0, 12, 'TB_STD_WORD', 'WORD_EXPLN', '단어 설명', 'VARCHAR', 1000, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 67, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(113, 0, 12, 'TB_STD_WORD', 'FRMT_WORD_YN', '형식 단어 여부', 'BOOLEAN', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 68, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(114, 0, 12, 'TB_STD_WORD', 'DMN_CLSF_NM', '도메인 분류 명', 'VARCHAR', 255, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 52, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(115, 0, 12, 'TB_STD_WORD', 'ABBR_USE_YN', '약어 사용 여부', 'BOOLEAN', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 69, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(116, 0, 12, 'TB_STD_WORD', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(117, 0, 12, 'TB_STD_WORD', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(118, 0, 12, 'TB_STD_WORD', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(119, 0, 12, 'TB_STD_WORD', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 14, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(120, 0, 12, 'TB_STD_WORD', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 15, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(121, 0, 13, 'TB_STD_WORD_SYNM', 'STD_WORD_SN', '표준 단어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, 'TB_STD_WORD', true, false, false, false, false, false, true, 63, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(122, 0, 13, 'TB_STD_WORD_SYNM', 'SYNM_NM', '이음동의어 명', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 70, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(123, 0, 14, 'TB_STD_WORD_PRHBT', 'STD_WORD_SN', '표준 단어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, 'TB_STD_WORD', true, false, false, false, false, false, true, 63, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(124, 0, 14, 'TB_STD_WORD_PRHBT', 'PRHBT_WORD_NM', '금칙 단어 명', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 71, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(125, 0, 15, 'TB_STD_TRM', 'STD_TRM_SN', '표준 용어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 72, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(126, 0, 15, 'TB_STD_TRM', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(127, 0, 15, 'TB_STD_TRM', 'ENCT_CYCL', '제정 차수', 'INTEGER', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 50, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(128, 0, 15, 'TB_STD_TRM', 'TRM_NM', '용어 명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 73, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(129, 0, 15, 'TB_STD_TRM', 'TRM_EXPLN', '용어 설명', 'VARCHAR', 1000, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 74, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(130, 0, 15, 'TB_STD_TRM', 'TRM_ENG_ABBR_NM', '용어 영문 약어 명', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 75, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(131, 0, 15, 'TB_STD_TRM', 'PBADMS_STD_CD_NM', '행정 표준 코드 명', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 76, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(132, 0, 15, 'TB_STD_TRM', 'JRSDC_INST_NM', '소관 기관 명', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 77, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(133, 0, 15, 'TB_STD_TRM', 'STD_DMN_SN', '표준 도메인 일련번호', 'BIGINT', null, null, null, true, null, 9, false, 'TB_STD_DMN', false, false, false, false, false, false, true, 49, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(134, 0, 15, 'TB_STD_TRM', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(135, 0, 15, 'TB_STD_TRM', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(136, 0, 15, 'TB_STD_TRM', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(137, 0, 15, 'TB_STD_TRM', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(138, 0, 15, 'TB_STD_TRM', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 14, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(139, 0, 16, 'TB_STD_TRM_SYNM', 'STD_TRM_SN', '표준 용어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, 'TB_STD_TRM', true, false, false, false, false, false, true, 72, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(140, 0, 16, 'TB_STD_TRM_SYNM', 'SYNM_NM', '이음동의어 명', 'VARCHAR', 255, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 70, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(141, 0, 17, 'TB_STD_TRM_WORD', 'STD_TRM_WORD_SN', '표준 용어 단어 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 78, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(142, 0, 17, 'TB_STD_TRM_WORD', 'STD_TRM_SN', '표준 용어 일련번호', 'BIGINT', null, null, null, true, null, 2, false, 'TB_STD_TRM', false, false, false, false, false, false, true, 72, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(143, 0, 17, 'TB_STD_TRM_WORD', 'STD_WORD_SN', '표준 단어 일련번호', 'BIGINT', null, null, null, true, null, 3, false, 'TB_STD_WORD', false, false, false, false, false, false, true, 63, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(144, 0, 17, 'TB_STD_TRM_WORD', 'SORT_ORD', '정렬 순서', 'INTEGER', null, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 35, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(145, 0, 17, 'TB_STD_TRM_WORD', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(146, 0, 17, 'TB_STD_TRM_WORD', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(147, 0, 17, 'TB_STD_TRM_WORD', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(148, 0, 17, 'TB_STD_TRM_WORD', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(149, 0, 18, 'TB_SCHM', 'SCHM_SN', '스키마 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 79, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(150, 0, 18, 'TB_SCHM', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(151, 0, 18, 'TB_SCHM', 'SCHM_NM', '스키마 명', 'VARCHAR', 255, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 80, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(152, 0, 18, 'TB_SCHM', 'SCHM_EXPLN', '스키마 설명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 81, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(153, 0, 18, 'TB_SCHM', 'BSC_YN', '기본 여부', 'BOOLEAN', null, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 82, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(154, 0, 18, 'TB_SCHM', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(155, 0, 18, 'TB_SCHM', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(156, 0, 18, 'TB_SCHM', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(157, 0, 18, 'TB_SCHM', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(158, 0, 19, 'TB_TBL', 'TBL_SN', '테이블 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 83, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(159, 0, 19, 'TB_TBL', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(160, 0, 19, 'TB_TBL', 'SCHM_SN', '스키마 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_SCHM', true, false, false, false, false, false, true, 79, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(161, 0, 19, 'TB_TBL', 'TBL_NM', '테이블 명', 'VARCHAR', 255, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 84, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(162, 0, 19, 'TB_TBL', 'TBL_KORN_NM', '테이블 한글 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 85, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(163, 0, 19, 'TB_TBL', 'TBL_EXPLN', '테이블 설명', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 86, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(164, 0, 19, 'TB_TBL', 'MSTR_TBL_YN', '마스터 테이블 여부', 'BOOLEAN', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 87, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(165, 0, 19, 'TB_TBL', 'SORT_ORD', '정렬 순서', 'INTEGER', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 35, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(166, 0, 19, 'TB_TBL', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(167, 0, 19, 'TB_TBL', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(168, 0, 19, 'TB_TBL', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(169, 0, 19, 'TB_TBL', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(170, 0, 19, 'TB_TBL', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(171, 0, 20, 'TB_COL', 'COL_SN', '컬럼 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 88, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(172, 0, 20, 'TB_COL', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, true, null, 2, false, null, false, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(173, 0, 20, 'TB_COL', 'TBL_SN', '테이블 일련번호', 'BIGINT', null, null, null, true, null, 3, false, 'TB_TBL', false, false, false, false, false, false, true, 83, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(174, 0, 20, 'TB_COL', 'TBL_NM', '테이블 명', 'VARCHAR', 255, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 84, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(175, 0, 20, 'TB_COL', 'COL_NM', '컬럼 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 89, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(176, 0, 20, 'TB_COL', 'COL_EXPLN', '컬럼 설명', 'VARCHAR', 255, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 90, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(177, 0, 20, 'TB_COL', 'DATA_TYPE_NM', '자료 유형 명', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 55, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(178, 0, 20, 'TB_COL', 'MAX_LEN', '최대 길이', 'INTEGER', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 91, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(179, 0, 20, 'TB_COL', 'DATA_PRCSN', '자료 정밀도', 'NUMERIC', null, 38, 2, true, null, 9, false, null, false, false, false, false, false, false, true, 92, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(180, 0, 20, 'TB_COL', 'DCPT_LEN', '소수점 길이', 'INTEGER', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 93, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(181, 0, 20, 'TB_COL', 'NULL_ALWNC_YN', 'NULL 허용 여부', 'BOOLEAN', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 94, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(182, 0, 20, 'TB_COL', 'BSC_VL', '기본 값', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 95, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(183, 0, 20, 'TB_COL', 'SORT_ORD', '정렬 순서', 'INTEGER', null, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 35, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(184, 0, 20, 'TB_COL', 'MSTR_DATA_YN', '마스터 자료 여부', 'BOOLEAN', null, null, null, true, null, 14, false, null, false, false, false, false, false, false, true, 96, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(185, 0, 20, 'TB_COL', 'RFRNC_TBL_NM', '참조 테이블 명', 'VARCHAR', 255, null, null, true, null, 15, false, null, false, false, false, false, false, false, true, 97, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(186, 0, 20, 'TB_COL', 'ESNTL_YN', '필수 여부', 'BOOLEAN', null, null, null, true, null, 16, false, null, false, false, false, false, false, false, true, 98, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(187, 0, 20, 'TB_COL', 'SNSTV_INFO_YN', '민감 정보 여부', 'BOOLEAN', null, null, null, true, null, 17, false, null, false, false, false, false, false, false, true, 99, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(188, 0, 20, 'TB_COL', 'PK_YN', '기본키 여부', 'BOOLEAN', null, null, null, true, null, 18, false, null, false, false, false, false, false, false, true, 100, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(189, 0, 20, 'TB_COL', 'UNQ_YN', '고유 여부', 'BOOLEAN', null, null, null, true, null, 19, false, null, false, false, false, false, false, false, true, 101, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(190, 0, 20, 'TB_COL', 'IDX_YN', '인덱스 여부', 'BOOLEAN', null, null, null, true, null, 20, false, null, false, false, false, false, false, false, true, 102, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(191, 0, 20, 'TB_COL', 'ENCPT_YN', '암호화 여부', 'BOOLEAN', null, null, null, true, null, 21, false, null, false, false, false, false, false, false, true, 103, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(192, 0, 20, 'TB_COL', 'EXMPL_CN', '예시 내용', 'VARCHAR', 255, null, null, true, null, 22, false, null, false, false, false, false, false, false, true, 104, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(193, 0, 20, 'TB_COL', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 23, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(194, 0, 20, 'TB_COL', 'STD_TRM_SN', '표준 용어 일련번호', 'BIGINT', null, null, null, true, null, 24, false, 'TB_STD_TRM', false, false, false, false, false, false, true, 72, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(195, 0, 20, 'TB_COL', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 25, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(196, 0, 20, 'TB_COL', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 26, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(197, 0, 20, 'TB_COL', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 27, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(198, 0, 20, 'TB_COL', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 28, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(199, 0, 21, 'TB_CMN_COL', 'CMN_COL_SN', '공통 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 105, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(200, 0, 21, 'TB_CMN_COL', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(201, 0, 21, 'TB_CMN_COL', 'STD_TRM_SN', '표준 용어 일련번호', 'BIGINT', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 72, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(202, 0, 21, 'TB_CMN_COL', 'SORT_ORD', '정렬 순서', 'INTEGER', null, null, null, true, null, 4, false, null, false, false, false, false, false, false, true, 35, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(203, 0, 21, 'TB_CMN_COL', 'NULL_ALWNC_YN', 'NULL 허용 여부', 'BOOLEAN', null, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 94, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(204, 0, 21, 'TB_CMN_COL', 'IDX_YN', '인덱스 여부', 'BOOLEAN', null, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 102, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(205, 0, 21, 'TB_CMN_COL', 'BSC_VL', '기본 값', 'VARCHAR', 255, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 95, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(206, 0, 21, 'TB_CMN_COL', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(207, 0, 21, 'TB_CMN_COL', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(208, 0, 21, 'TB_CMN_COL', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(209, 0, 21, 'TB_CMN_COL', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(210, 0, 22, 'TB_TBL_REL', 'REL_SN', '관계 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 106, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(211, 0, 22, 'TB_TBL_REL', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(212, 0, 22, 'TB_TBL_REL', 'ORGNL_TBL_SN', '원본 테이블 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_TBL', true, false, false, false, false, false, true, 107, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(213, 0, 22, 'TB_TBL_REL', 'TRGT_TBL_SN', '대상 테이블 일련번호', 'BIGINT', null, null, null, false, null, 4, false, 'TB_TBL', true, false, false, false, false, false, true, 108, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(214, 0, 22, 'TB_TBL_REL', 'REL_NM', '관계 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 109, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(215, 0, 22, 'TB_TBL_REL', 'REL_TYPE_CD', '관계 유형 코드', 'VARCHAR', 20, null, null, false, null, 6, false, null, true, false, false, false, false, false, true, 110, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(216, 0, 22, 'TB_TBL_REL', 'REL_SRC_CD', '관계 출처 코드', 'VARCHAR', 20, null, null, false, null, 7, false, null, true, false, false, false, false, false, true, 111, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(217, 0, 22, 'TB_TBL_REL', 'DRVN_COL_SN', '파생 컬럼 일련번호', 'BIGINT', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 112, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(218, 0, 22, 'TB_TBL_REL', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(219, 0, 22, 'TB_TBL_REL', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(220, 0, 22, 'TB_TBL_REL', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(221, 0, 22, 'TB_TBL_REL', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(222, 0, 22, 'TB_TBL_REL', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 13, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(223, 0, 23, 'TB_TBL_REL_COL', 'REL_COL_SN', '관계 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 113, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(224, 0, 23, 'TB_TBL_REL_COL', 'REL_SN', '관계 일련번호', 'BIGINT', null, null, null, false, null, 2, false, 'TB_TBL_REL', true, false, false, false, false, false, true, 106, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(225, 0, 23, 'TB_TBL_REL_COL', 'ORGNL_COL_SN', '원본 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_COL', true, false, false, false, false, false, true, 114, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(226, 0, 23, 'TB_TBL_REL_COL', 'TRGT_COL_SN', '대상 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 4, false, 'TB_COL', true, false, false, false, false, false, true, 115, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(227, 0, 23, 'TB_TBL_REL_COL', 'COL_ORD', '컬럼 순서', 'INTEGER', null, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 116, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(228, 0, 24, 'TB_TBL_IDX', 'IDX_SN', '인덱스 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 117, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(229, 0, 24, 'TB_TBL_IDX', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(230, 0, 24, 'TB_TBL_IDX', 'TBL_SN', '테이블 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_TBL', true, false, false, false, false, false, true, 83, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(231, 0, 24, 'TB_TBL_IDX', 'IDX_NM', '인덱스 명', 'VARCHAR', 255, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 118, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(232, 0, 24, 'TB_TBL_IDX', 'IDX_TYPE_NM', '인덱스 유형 명', 'VARCHAR', 255, null, null, true, null, 5, false, null, false, false, false, false, false, false, true, 119, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(233, 0, 24, 'TB_TBL_IDX', 'UNQ_YN', '고유 여부', 'BOOLEAN', null, null, null, false, null, 6, false, null, true, false, false, false, false, false, true, 101, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(234, 0, 24, 'TB_TBL_IDX', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(235, 0, 24, 'TB_TBL_IDX', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(236, 0, 24, 'TB_TBL_IDX', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(237, 0, 24, 'TB_TBL_IDX', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(238, 0, 24, 'TB_TBL_IDX', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(239, 0, 25, 'TB_TBL_IDX_COL', 'IDX_COL_SN', '인덱스 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 120, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(240, 0, 25, 'TB_TBL_IDX_COL', 'IDX_SN', '인덱스 일련번호', 'BIGINT', null, null, null, false, null, 2, false, 'TB_TBL_IDX', true, false, false, false, false, false, true, 117, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(241, 0, 25, 'TB_TBL_IDX_COL', 'COL_SN', '컬럼 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_COL', true, false, false, false, false, false, true, 88, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(242, 0, 25, 'TB_TBL_IDX_COL', 'COL_ORD', '컬럼 순서', 'INTEGER', null, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 116, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(243, 0, 26, 'TB_TBL_CNSTRT', 'CNSTRT_SN', '제약조건 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 121, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(244, 0, 26, 'TB_TBL_CNSTRT', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(245, 0, 26, 'TB_TBL_CNSTRT', 'TBL_SN', '테이블 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_TBL', true, false, false, false, false, false, true, 83, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(246, 0, 26, 'TB_TBL_CNSTRT', 'CNSTRT_NM', '제약조건 명', 'VARCHAR', 255, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 122, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(247, 0, 26, 'TB_TBL_CNSTRT', 'CNSTRT_TYPE_CD', '제약조건 유형 코드', 'VARCHAR', 20, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 123, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(248, 0, 26, 'TB_TBL_CNSTRT', 'INSP_EXPR_CN', '검사 표현식 내용', 'VARCHAR', 1000, null, null, true, null, 6, false, null, false, false, false, false, false, false, true, 124, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(249, 0, 26, 'TB_TBL_CNSTRT', 'APRV_YN', '승인 여부', 'BOOLEAN', null, null, null, true, null, 7, false, null, false, false, false, false, false, false, true, 62, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(250, 0, 26, 'TB_TBL_CNSTRT', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 8, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(251, 0, 26, 'TB_TBL_CNSTRT', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(252, 0, 26, 'TB_TBL_CNSTRT', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(253, 0, 26, 'TB_TBL_CNSTRT', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(254, 0, 27, 'TB_TBL_CNSTRT_COL', 'CNSTRT_COL_SN', '제약조건 컬럼 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 125, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(255, 0, 27, 'TB_TBL_CNSTRT_COL', 'CNSTRT_SN', '제약조건 일련번호', 'BIGINT', null, null, null, false, null, 2, false, 'TB_TBL_CNSTRT', true, false, false, false, false, false, true, 121, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(256, 0, 27, 'TB_TBL_CNSTRT_COL', 'COL_SN', '컬럼 일련번호', 'BIGINT', null, null, null, false, null, 3, false, 'TB_COL', true, false, false, false, false, false, true, 88, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(257, 0, 27, 'TB_TBL_CNSTRT_COL', 'COL_ORD', '컬럼 순서', 'INTEGER', null, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 116, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(258, 0, 28, 'TB_ERD_LYT', 'ERD_LYT_SN', 'ERD 레이아웃 일련번호', 'BIGINT', null, null, null, false, null, 1, false, null, true, false, true, false, false, false, true, 126, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(259, 0, 28, 'TB_ERD_LYT', 'PRJ_SN', '프로젝트 일련번호', 'BIGINT', null, null, null, false, null, 2, false, null, true, false, false, false, false, false, true, 15, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(260, 0, 28, 'TB_ERD_LYT', 'ACNT_SN', '계정 일련번호', 'BIGINT', null, null, null, false, null, 3, false, null, true, false, false, false, false, false, true, 1, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(261, 0, 28, 'TB_ERD_LYT', 'NODE_PSTN_CN', '노드 위치 내용', 'TEXT', null, null, null, false, null, 4, false, null, true, false, false, false, false, false, true, 127, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(262, 0, 28, 'TB_ERD_LYT', 'SCRN_X_CRDNT', '화면 X 좌표', 'DOUBLE PRECISION', null, null, null, false, null, 5, false, null, true, false, false, false, false, false, true, 128, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(263, 0, 28, 'TB_ERD_LYT', 'SCRN_Y_CRDNT', '화면 Y 좌표', 'DOUBLE PRECISION', null, null, null, false, null, 6, false, null, true, false, false, false, false, false, true, 129, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(264, 0, 28, 'TB_ERD_LYT', 'SCRN_MGNF', '화면 배율', 'DOUBLE PRECISION', null, null, null, false, null, 7, false, null, true, false, false, false, false, false, true, 130, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(265, 0, 28, 'TB_ERD_LYT', 'VER_NO', '버전 번호', 'BIGINT', null, null, null, false, null, 8, false, null, true, false, false, false, false, false, true, 131, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(266, 0, 28, 'TB_ERD_LYT', 'REG_DT', '등록 일시', 'TIMESTAMP', null, null, null, true, null, 9, false, null, false, false, false, false, false, false, true, 7, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(267, 0, 28, 'TB_ERD_LYT', 'MDFCN_DT', '수정 일시', 'TIMESTAMP', null, null, null, true, null, 10, false, null, false, false, false, false, false, false, true, 8, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(268, 0, 28, 'TB_ERD_LYT', 'RGTR_ID', '등록자 아이디', 'VARCHAR', 255, null, null, true, null, 11, false, null, false, false, false, false, false, false, true, 9, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, COL_EXPLN, DATA_TYPE_NM, MAX_LEN, DATA_PRCSN, DCPT_LEN, NULL_ALWNC_YN, BSC_VL, SORT_ORD, MSTR_DATA_YN, RFRNC_TBL_NM, ESNTL_YN, SNSTV_INFO_YN, PK_YN, UNQ_YN, IDX_YN, ENCPT_YN, APRV_YN, STD_TRM_SN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(269, 0, 28, 'TB_ERD_LYT', 'MDFR_ID', '수정자 아이디', 'VARCHAR', 255, null, null, true, null, 12, false, null, false, false, false, false, false, false, true, 10, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+
+-- 외래 키 관계 (참조 테이블명에서 만든 REF_COLUMN 관계, 대상은 참조 테이블의 단일 PK)
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(1, 0, 3, 2, 'FK_ACNT_ROLE_01', 'FK', 'REF_COLUMN', 20, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(1, 1, 20, 11, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(2, 0, 3, 1, 'FK_ACNT_ROLE_02', 'FK', 'REF_COLUMN', 19, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(2, 2, 19, 1, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(3, 0, 4, 1, 'FK_PRJ_01', 'FK', 'REF_COLUMN', 23, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(3, 3, 23, 1, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(4, 0, 5, 1, 'FK_PRJ_MBR_01', 'FK', 'REF_COLUMN', 34, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(4, 4, 34, 1, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(5, 0, 5, 4, 'FK_PRJ_MBR_02', 'FK', 'REF_COLUMN', 35, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(5, 5, 35, 21, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(6, 0, 8, 7, 'FK_PST_01', 'FK', 'REF_COLUMN', 64, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(6, 6, 64, 54, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(7, 0, 9, 1, 'FK_PST_ACNT_01', 'FK', 'REF_COLUMN', 76, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(7, 7, 76, 1, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(8, 0, 9, 8, 'FK_PST_ACNT_02', 'FK', 'REF_COLUMN', 75, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(8, 8, 75, 62, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(9, 0, 10, 8, 'FK_ATCH_FILE_01', 'FK', 'REF_COLUMN', 78, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(9, 9, 78, 62, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(10, 0, 15, 11, 'FK_STD_TRM_01', 'FK', 'REF_COLUMN', 133, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(10, 10, 133, 87, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(11, 0, 16, 15, 'FK_STD_TRM_SYNM_01', 'FK', 'REF_COLUMN', 139, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(11, 11, 139, 125, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(12, 0, 17, 15, 'FK_STD_TRM_WORD_01', 'FK', 'REF_COLUMN', 142, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(12, 12, 142, 125, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(13, 0, 17, 12, 'FK_STD_TRM_WORD_02', 'FK', 'REF_COLUMN', 143, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(13, 13, 143, 106, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(14, 0, 13, 12, 'FK_STD_WORD_SYNM_01', 'FK', 'REF_COLUMN', 121, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(14, 14, 121, 106, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(15, 0, 14, 12, 'FK_STD_WORD_PRHBT_01', 'FK', 'REF_COLUMN', 123, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(15, 15, 123, 106, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(16, 0, 19, 18, 'FK_TBL_01', 'FK', 'REF_COLUMN', 160, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(16, 16, 160, 149, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(17, 0, 20, 19, 'FK_COL_01', 'FK', 'REF_COLUMN', 173, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(17, 17, 173, 158, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(18, 0, 20, 15, 'FK_COL_02', 'FK', 'REF_COLUMN', 194, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(18, 18, 194, 125, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(19, 0, 22, 19, 'FK_TBL_REL_01', 'FK', 'REF_COLUMN', 212, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(19, 19, 212, 158, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(20, 0, 22, 19, 'FK_TBL_REL_02', 'FK', 'REF_COLUMN', 213, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(20, 20, 213, 158, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(21, 0, 23, 22, 'FK_TBL_REL_COL_01', 'FK', 'REF_COLUMN', 224, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(21, 21, 224, 210, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(22, 0, 23, 20, 'FK_TBL_REL_COL_02', 'FK', 'REF_COLUMN', 225, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(22, 22, 225, 171, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(23, 0, 23, 20, 'FK_TBL_REL_COL_03', 'FK', 'REF_COLUMN', 226, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(23, 23, 226, 171, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(24, 0, 24, 19, 'FK_TBL_IDX_01', 'FK', 'REF_COLUMN', 230, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(24, 24, 230, 158, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(25, 0, 25, 24, 'FK_TBL_IDX_COL_01', 'FK', 'REF_COLUMN', 240, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(25, 25, 240, 228, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(26, 0, 25, 20, 'FK_TBL_IDX_COL_02', 'FK', 'REF_COLUMN', 241, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(26, 26, 241, 171, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(27, 0, 26, 19, 'FK_TBL_CNSTRT_01', 'FK', 'REF_COLUMN', 245, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(27, 27, 245, 158, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(28, 0, 27, 26, 'FK_TBL_CNSTRT_COL_01', 'FK', 'REF_COLUMN', 255, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(28, 28, 255, 243, 1);
+insert into TB_TBL_REL(REL_SN, PRJ_SN, ORGNL_TBL_SN, TRGT_TBL_SN, REL_NM, REL_TYPE_CD, REL_SRC_CD, DRVN_COL_SN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(29, 0, 27, 20, 'FK_TBL_CNSTRT_COL_02', 'FK', 'REF_COLUMN', 256, true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
+insert into TB_TBL_REL_COL(REL_COL_SN, REL_SN, ORGNL_COL_SN, TRGT_COL_SN, COL_ORD) values(29, 29, 256, 171, 1);

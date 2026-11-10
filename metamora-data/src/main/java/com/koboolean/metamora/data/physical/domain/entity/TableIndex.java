@@ -13,7 +13,7 @@ import java.util.List;
  * DDL 은 같은 컬럼 구성의 인덱스를 한 번만 만든다.
  */
 @Entity
-@Table(name = "table_index")
+@Table(name = "TB_TBL_IDX")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,29 +22,29 @@ import java.util.List;
 public class TableIndex extends BaseEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_index_seq")
-    @SequenceGenerator(name = "table_index_seq", sequenceName = "table_index_seq", allocationSize = 50)
-    @Column(name = "table_index_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_IDX")
+    @SequenceGenerator(name = "SQ_TBL_IDX", sequenceName = "SQ_TBL_IDX", allocationSize = 50)
+    @Column(name = "IDX_SN", nullable = false, unique = true)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "table_info_id", nullable = false)
+    @JoinColumn(name = "TBL_SN", nullable = false)
     private TableInfo tableInfo;
 
-    @Column(nullable = false)
+    @Column(name = "IDX_NM", nullable = false)
     private String indexName;
 
     /** 인덱스 방식 (예: BTREE, HASH, BITMAP) - 저장만 하고 DDL 에는 쓰지 않는다 (DBMS 별 문법이 달라 M-11 에서 검토) */
-    @Column
+    @Column(name = "IDX_TYPE_NM")
     private String indexType;
 
-    @Column(nullable = false)
+    @Column(name = "UNQ_YN", nullable = false)
     private Boolean isUnique;
 
-    @Column
+    @Column(name = "APRV_YN")
     private Boolean isApproval;
 
     @Builder.Default

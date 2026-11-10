@@ -10,6 +10,7 @@ export type MenuId =
   | 'notice'
   | 'data-dictionary'
   | 'table-manage'
+  | 'physical-erd'
   | 'column-manage'
   | 'system-management'
   | 'operation-management'

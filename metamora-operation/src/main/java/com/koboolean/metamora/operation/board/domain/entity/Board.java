@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@Table(name = "TB_PST")
 @Builder
 @Getter
 @Setter
@@ -27,27 +28,29 @@ public class Board extends BaseEntity implements Serializable {
 
     /* 게시글 번호 */
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PST")
+    @SequenceGenerator(name = "SQ_PST", sequenceName = "SQ_PST", allocationSize = 50)
+    @Column(name = "PST_SN")
     private Long id;
 
     /* 프로젝트 아이디 */
-    @Column(name = "project_id")
+    @Column(name = "PRJ_SN")
     private Long projectId;
 
     /* 회원 아이디 */
-    @Column(length = 16, nullable = false)
+    @Column(name = "WRTR_ID", length = 16, nullable = false)
     private String username;
 
     /* 게시글 제목 */
-    @Column(length = 100, nullable = false)
+    @Column(name = "PST_TTL", length = 100, nullable = false)
     private String title;
 
     /* 게시글 내용 */
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "PST_CN", columnDefinition = "TEXT")
     private String content;
 
     /* 삭제 여부 */
-    @Column(name = "delete_yn", length = 1, nullable = false)
+    @Column(name = "DEL_YN", length = 1, nullable = false)
     private char deleteYn;
     
     /* 화면에 보여줄 용도로 사용되는 컬럼.
@@ -55,17 +58,18 @@ public class Board extends BaseEntity implements Serializable {
      * 화면에 표시하려면 화면 표시용의 컬럼이 있어야 하고 그것이 이 updatedTime 컬럼이다.
      * 이 방식이 아니라면 QueryDSL을 사용해야한다.
      */
+    @Column(name = "PST_MDFCN_DT")
     private LocalDateTime updatedTime;
 
     /* 게시판 카테고리 아이디 - 연관관계에서 매핑됨 */
-    // @Column(name = "category_id", length = 6, nullable = false)
+    // @Column(name = "CTGRY_CD", length = 6, nullable = false)
     // private String categoryId;
 
     /* 연관 관계 Mapping
      * Board(N) : BoardCategory(1)
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
+    @JoinColumn(name = "CTGRY_CD")
     private BoardCategory boardCategory;
 
     /* 연관 관계 Mapping
@@ -76,14 +80,15 @@ public class Board extends BaseEntity implements Serializable {
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
-            name = "board_accounts",
-            joinColumns = @JoinColumn(name = "board_id"),
-            inverseJoinColumns = @JoinColumn(name = "accounts_id"),
+            name = "TB_PST_ACNT",
+            joinColumns = @JoinColumn(name = "PST_SN"),
+            inverseJoinColumns = @JoinColumn(name = "ACNT_SN"),
             uniqueConstraints = {
-                    @UniqueConstraint(columnNames = {"board_id", "accounts_id"})
+                    @UniqueConstraint(columnNames = {"PST_SN", "ACNT_SN"})
             }
     )
     private Set<Account> accounts = new HashSet<>();
 
+    @Column(name = "PRJ_SN_LIST")
     private List<Long> projectIds;
 }

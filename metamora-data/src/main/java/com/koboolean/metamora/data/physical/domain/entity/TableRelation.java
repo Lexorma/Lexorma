@@ -14,7 +14,7 @@ import java.util.List;
  * AI 추정 관계도 승인 전에는 여기에 저장하지 않는다 (승인되면 source = AI_APPROVED).
  */
 @Entity
-@Table(name = "table_relation")
+@Table(name = "TB_TBL_REL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -35,38 +35,38 @@ public class TableRelation extends BaseEntity {
     public enum Source { USER, REF_COLUMN, IMPORTED, AI_APPROVED }
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_relation_seq")
-    @SequenceGenerator(name = "table_relation_seq", sequenceName = "table_relation_seq", allocationSize = 50)
-    @Column(name = "table_relation_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_REL")
+    @SequenceGenerator(name = "SQ_TBL_REL", sequenceName = "SQ_TBL_REL", allocationSize = 50)
+    @Column(name = "REL_SN", nullable = false, unique = true)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "source_table_id", nullable = false)
+    @JoinColumn(name = "ORGNL_TBL_SN", nullable = false)
     private TableInfo sourceTable;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "target_table_id", nullable = false)
+    @JoinColumn(name = "TRGT_TBL_SN", nullable = false)
     private TableInfo targetTable;
 
-    @Column
+    @Column(name = "REL_NM")
     private String relationName;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
+    @Column(name = "REL_TYPE_CD", length = 20, nullable = false)
     private Type relationType;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
+    @Column(name = "REL_SRC_CD", length = 20, nullable = false)
     private Source relationSource;
 
     /** REF_COLUMN 관계를 만든 컬럼 ID (컬럼당 관계 1개) */
-    @Column
+    @Column(name = "DRVN_COL_SN")
     private Long derivedColumnId;
 
-    @Column
+    @Column(name = "APRV_YN")
     private Boolean isApproval;
 
     @Builder.Default

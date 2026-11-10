@@ -6,7 +6,7 @@ import java.util.List;
  * 테이블 한글명(예: 사용_내역_관리)을 표준 단어로 변환한 결과
  *
  * @param tableName    생성된 테이블명 (예: TB_USE_HIST_MGMT) - 변환할 수 없는 단어가 있으면 null
- * @param tableKorName 단어를 공백으로 이은 테이블 한글명 (예: 사용 내역 관리) - table_info.table_kor_name 에 저장
+ * @param tableKorName 단어를 공백으로 이은 테이블 한글명 (예: 사용 내역 관리) - TB_TBL.TBL_KORN_NM 에 저장
  * @param tablePrefix  프로젝트 설정의 테이블명 접두어 (예: TB_) - 없으면 null
  * @param words        단어별 변환 결과
  * @param valid        모든 단어가 승인된 표준 단어인지 여부

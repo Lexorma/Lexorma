@@ -16,41 +16,54 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "standard_words")
+@Table(name = "TB_STD_WORD")
 public class StandardWord extends BaseEntity {
 
     @Id
     // 시퀀스(pooled, 50개씩 할당) : IDENTITY 는 JDBC 배치 INSERT 가 꺼지므로 사용하지 않는다 (V6 마이그레이션)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "standard_words_seq")
-    @SequenceGenerator(name = "standard_words_seq", sequenceName = "standard_words_seq", allocationSize = 50)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_STD_WORD")
+    @SequenceGenerator(name = "SQ_STD_WORD", sequenceName = "SQ_STD_WORD", allocationSize = 50)
+    @Column(name = "STD_WORD_SN")
     private Long id; // 번호
 
-    @Column(name = "project_id")
+    @Column(name = "PRJ_SN")
     private Long projectId;
 
+    @Column(name = "ENCT_CYCL")
     private int revisionNumber; // 제정차수
 
+    @Column(name = "WORD_NM")
     private String commonStandardWordName; // 표준단어명
 
+    @Column(name = "WORD_ENG_ABBR_NM")
     private String commonStandardWordAbbreviation; // 표준단어영문약어명
 
+    @Column(name = "WORD_ENG_NM")
     private String commonStandardWordEnglishName; // 표준단어 영문명
 
-    @Column(length = 1000)
+    @Column(name = "WORD_EXPLN", length = 1000)
     private String commonStandardWordDescription; // 표준단어 설명
 
+    @Column(name = "FRMT_WORD_YN")
     private Boolean isFormatWord; // 형식단어 여부 (true/false)
 
+    @Column(name = "DMN_CLSF_NM")
     private String commonStandardDomainCategory; // 표준도메인분류명
 
     @ElementCollection
+    @CollectionTable(name = "TB_STD_WORD_SYNM", joinColumns = @JoinColumn(name = "STD_WORD_SN"))
+    @Column(name = "SYNM_NM")
     private List<String> synonymList; // 이음동의어 목록
 
     @ElementCollection
+    @CollectionTable(name = "TB_STD_WORD_PRHBT", joinColumns = @JoinColumn(name = "STD_WORD_SN"))
+    @Column(name = "PRHBT_WORD_NM")
     private List<String> restrictedWords; // 금칙어 목록
 
+    @Column(name = "ABBR_USE_YN")
     private Boolean useAbbreviation;
 
+    @Column(name = "APRV_YN")
     private Boolean isApproval;
 
     @OneToMany(mappedBy = "standardWord", cascade = CascadeType.ALL)

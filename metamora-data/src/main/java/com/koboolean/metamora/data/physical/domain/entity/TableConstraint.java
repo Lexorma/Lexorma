@@ -13,7 +13,7 @@ import java.util.List;
  * PRIMARY KEY 는 컬럼의 isPk, FOREIGN KEY 는 {@link TableRelation} 이 기준이라 여기에 두지 않는다 (같은 제약을 두 곳에 저장하지 않는다).
  */
 @Entity
-@Table(name = "table_constraint")
+@Table(name = "TB_TBL_CNSTRT")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -24,30 +24,30 @@ public class TableConstraint extends BaseEntity {
     public enum Type { UNIQUE, CHECK }
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_constraint_seq")
-    @SequenceGenerator(name = "table_constraint_seq", sequenceName = "table_constraint_seq", allocationSize = 50)
-    @Column(name = "table_constraint_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_CNSTRT")
+    @SequenceGenerator(name = "SQ_TBL_CNSTRT", sequenceName = "SQ_TBL_CNSTRT", allocationSize = 50)
+    @Column(name = "CNSTRT_SN", nullable = false, unique = true)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "table_info_id", nullable = false)
+    @JoinColumn(name = "TBL_SN", nullable = false)
     private TableInfo tableInfo;
 
-    @Column(nullable = false)
+    @Column(name = "CNSTRT_NM", nullable = false)
     private String constraintName;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
+    @Column(name = "CNSTRT_TYPE_CD", length = 20, nullable = false)
     private Type constraintType;
 
     /** CHECK 조건식 (예: AMT >= 0) - DDL 에 그대로 쓴다 */
-    @Column(length = 1000)
+    @Column(name = "INSP_EXPR_CN", length = 1000)
     private String checkExpression;
 
-    @Column
+    @Column(name = "APRV_YN")
     private Boolean isApproval;
 
     @Builder.Default

@@ -7,7 +7,9 @@ import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.core.security.repository.AccountRepository;
 import com.koboolean.metamora.core.support.SecurityTestSupport;
+import com.koboolean.metamora.data.dictionary.repository.StandardDomainRepository;
 import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
+import com.koboolean.metamora.data.dictionary.repository.StandardWordRepository;
 import com.koboolean.metamora.data.dictionary.service.DataDictionaryService;
 import com.koboolean.metamora.data.dictionary.service.StandardTermService;
 import org.junit.jupiter.api.AfterEach;
@@ -38,6 +40,8 @@ class DataPortalTemplateTest {
 
     @Autowired DataDictionaryService dataDictionaryService;
     @Autowired StandardTermRepository standardTermRepository;
+    @Autowired StandardWordRepository standardWordRepository;
+    @Autowired StandardDomainRepository standardDomainRepository;
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
 
@@ -86,5 +90,33 @@ class DataPortalTemplateTest {
             if (!row.get("name").isEmpty()) terms.add(row);
         });
         assertThat(standardTermRepository.count() - before).isEqualTo(terms.size());
+    }
+
+    @Test
+    @DisplayName("이미 등록된 도메인·단어·용어는 건너뛰고 나머지만 등록한다 (같은 파일을 두 번 올려도, 예제 사전이 있는 META-MORA 에 올려도 성공)")
+    void skipDuplicates() throws IOException {
+        Account admin = accountRepository.findAll().stream()
+                .filter(account -> "admin".equals(account.getUsername())).findFirst().orElseThrow();
+        Project project = projectRepository.save(Project.builder()
+                .projectName("dataPortal-duplicate-test").isActive(true).account(admin).build());
+        AccountDto login = SecurityTestSupport.loginAs(projectRepository, project.getId(), String.valueOf(admin.getId()), "ROLE_ADMIN");
+
+        dataDictionaryService.uploadDictionaryExcelFile(template(), login);
+        long domains = standardDomainRepository.findAllByProjectId(project.getId()).size();
+        long words = standardWordRepository.findAllByProjectId(project.getId()).size();
+        long terms = standardTermRepository.findAllByProjectId(project.getId()).size();
+
+        dataDictionaryService.uploadDictionaryExcelFile(template(), login);
+        assertThat(standardDomainRepository.findAllByProjectId(project.getId())).hasSize((int) domains);
+        assertThat(standardWordRepository.findAllByProjectId(project.getId())).hasSize((int) words);
+        assertThat(standardTermRepository.findAllByProjectId(project.getId())).hasSize((int) terms);
+
+        // V0 예제 사전(공통표준 단어·용어·도메인 일부 + 기관 표준단어)이 있는 기본 프로젝트
+        AccountDto main = SecurityTestSupport.loginAs(projectRepository, 0L, String.valueOf(admin.getId()), "ROLE_ADMIN");
+        long seededTerms = standardTermRepository.findAllByProjectId(0L).size();
+        dataDictionaryService.uploadDictionaryExcelFile(template(), main);
+        assertThat(standardTermRepository.findAllByProjectId(0L).stream().filter(t -> "등록_일시".equals(t.getCommonStandardTermName())))
+                .as("예제와 템플릿에 모두 있는 용어는 한 번만").hasSize(1);
+        assertThat(standardTermRepository.findAllByProjectId(0L).size()).isGreaterThan((int) seededTerms);
     }
 }

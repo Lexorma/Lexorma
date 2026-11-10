@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "table_index_column")
+@Table(name = "TB_TBL_IDX_COL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -14,19 +14,19 @@ import lombok.*;
 public class TableIndexColumn {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_index_column_seq")
-    @SequenceGenerator(name = "table_index_column_seq", sequenceName = "table_index_column_seq", allocationSize = 50)
-    @Column(name = "table_index_column_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_IDX_COL")
+    @SequenceGenerator(name = "SQ_TBL_IDX_COL", sequenceName = "SQ_TBL_IDX_COL", allocationSize = 50)
+    @Column(name = "IDX_COL_SN", nullable = false, unique = true)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "table_index_id", nullable = false)
+    @JoinColumn(name = "IDX_SN", nullable = false)
     private TableIndex tableIndex;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "column_info_id", nullable = false)
+    @JoinColumn(name = "COL_SN", nullable = false)
     private ColumnInfo column;
 
-    @Column(nullable = false)
+    @Column(name = "COL_ORD", nullable = false)
     private Integer columnOrder;
 }

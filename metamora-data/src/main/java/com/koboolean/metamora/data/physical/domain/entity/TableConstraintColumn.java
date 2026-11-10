@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "table_constraint_column")
+@Table(name = "TB_TBL_CNSTRT_COL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -14,19 +14,19 @@ import lombok.*;
 public class TableConstraintColumn {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_constraint_column_seq")
-    @SequenceGenerator(name = "table_constraint_column_seq", sequenceName = "table_constraint_column_seq", allocationSize = 50)
-    @Column(name = "table_constraint_column_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_CNSTRT_COL")
+    @SequenceGenerator(name = "SQ_TBL_CNSTRT_COL", sequenceName = "SQ_TBL_CNSTRT_COL", allocationSize = 50)
+    @Column(name = "CNSTRT_COL_SN", nullable = false, unique = true)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "table_constraint_id", nullable = false)
+    @JoinColumn(name = "CNSTRT_SN", nullable = false)
     private TableConstraint tableConstraint;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "column_info_id", nullable = false)
+    @JoinColumn(name = "COL_SN", nullable = false)
     private ColumnInfo column;
 
-    @Column(nullable = false)
+    @Column(name = "COL_ORD", nullable = false)
     private Integer columnOrder;
 }

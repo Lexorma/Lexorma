@@ -2,6 +2,7 @@ package com.koboolean.metamora.data.schema.service.impl;
 
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.core.project.repository.ProjectRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.data.schema.domain.dto.SchemaDto;
@@ -25,6 +26,7 @@ public class SchemaServiceImpl implements SchemaService {
 
     private final SchemaInfoRepository schemaInfoRepository;
     private final TableInfoRepository tableInfoRepository;
+    private final ProjectRepository projectRepository;
 
     @Override
     @Transactional
@@ -80,6 +82,13 @@ public class SchemaServiceImpl implements SchemaService {
             return schemaInfoRepository.findByIdAndProjectId(schemaId, projectId)
                     .orElseThrow(() -> new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED));
         }
+        return schemaInfoRepository.findFirstByProjectIdAndIsDefaultTrue(projectId)
+                .orElseGet(() -> createDefaultSchema(projectId));
+    }
+
+    /** 최초 생성만 프로젝트 행 잠금으로 직렬화하고 잠금 후 다시 조회한다 (동시 요청이 UNIQUE 충돌로 실패하지 않도록) */
+    private SchemaInfo createDefaultSchema(Long projectId) {
+        projectRepository.findByIdForUpdate(projectId);
         return schemaInfoRepository.findFirstByProjectIdAndIsDefaultTrue(projectId)
                 .orElseGet(() -> schemaInfoRepository.save(SchemaInfo.builder()
                         .projectId(projectId)

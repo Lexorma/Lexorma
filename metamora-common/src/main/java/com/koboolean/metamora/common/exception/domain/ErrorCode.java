@@ -191,6 +191,16 @@ public enum ErrorCode {
     INVALID_PHYSICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_PHYSICAL_MODEL", "관계·인덱스·제약조건 정의가 올바르지 않습니다."),
 
     /**
+     * ERD 조회 범위·레이아웃 값 오류 (사유는 customMessage)
+     */
+    INVALID_ERD_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_ERD_REQUEST", "ERD 조회 조건 또는 배치 정보가 올바르지 않습니다."),
+
+    /**
+     * ERD 레이아웃 저장 충돌 : 다른 탭·창에서 먼저 저장함
+     */
+    ERD_LAYOUT_CONFLICT(HttpStatus.CONFLICT, "ERD_LAYOUT_CONFLICT", "다른 창에서 배치가 먼저 저장되었습니다. 저장된 배치를 다시 불러온 뒤 저장해주세요."),
+
+    /**
      * 새 비밀번호가 현재 비밀번호 또는 아이디와 같습니다.
      */
     PASSWORD_NOT_CHANGED(HttpStatus.BAD_REQUEST, "PASSWORD_NOT_CHANGED", "새 비밀번호는 현재 비밀번호 및 아이디와 달라야 합니다.");

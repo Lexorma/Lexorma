@@ -20,7 +20,7 @@ import lombok.Setter;
  * 표준용어가 지워질 수 있으므로 용어는 ID 로만 참조한다. (조회 시 없는 용어는 "용어 없음"으로 표시)
  */
 @Entity
-@Table(name = "common_column")
+@Table(name = "TB_CMN_COL")
 @Getter
 @Setter
 @Builder
@@ -29,26 +29,26 @@ import lombok.Setter;
 public class CommonColumn extends BaseEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "common_column_seq")
-    @SequenceGenerator(name = "common_column_seq", sequenceName = "common_column_seq", allocationSize = 50)
-    @Column(name = "common_column_id")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_CMN_COL")
+    @SequenceGenerator(name = "SQ_CMN_COL", sequenceName = "SQ_CMN_COL", allocationSize = 50)
+    @Column(name = "CMN_COL_SN")
     private Long id;
 
-    @Column(name = "project_id", nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
-    @Column(name = "term_id", nullable = false)
+    @Column(name = "STD_TRM_SN", nullable = false)
     private Long termId;
 
-    @Column(name = "sort_order")
+    @Column(name = "SORT_ORD")
     private Integer sortOrder;
 
-    @Column(name = "is_nullable")
+    @Column(name = "NULL_ALWNC_YN")
     private Boolean isNullable;
 
-    @Column(name = "is_index")
+    @Column(name = "IDX_YN")
     private Boolean isIndex;
 
-    @Column(name = "default_value")
+    @Column(name = "BSC_VL")
     private String defaultValue;
 }

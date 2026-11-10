@@ -81,7 +81,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
         // 참조 테이블명(단일 FK 약식 입력)이 있는 컬럼은 그 값으로 관계가 만들어지므로 두 곳에서 정의하지 않는다
         sourceColumns.stream().filter(c -> notBlank(c.getRefTableName())).findFirst().ifPresent(c -> {
-            throw invalid(c.getColumnName() + " 은(는) 참조 테이블(" + normalize(c.getRefTableName()) + ")이 지정된 컬럼입니다. 컬럼 관리에서 참조 테이블을 비운 뒤 등록해주세요.");
+            throw invalid("{0} 은(는) 참조 테이블({1})이 지정된 컬럼입니다. 컬럼 관리에서 참조 테이블을 비운 뒤 등록해주세요.", c.getColumnName(), normalize(c.getRefTableName()));
         });
 
         List<Long> sourceIds = ids(sourceColumns);
@@ -236,13 +236,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
         List<TableRelation> relations = relationRepository.findAllUsingColumns(columnIds);
         relations.stream().filter(r -> r.getRelationSource() != TableRelation.Source.REF_COLUMN).findFirst().ifPresent(r -> {
-            throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 " + r.getRelationName() + " 에서 사용 중인 컬럼입니다.");
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 {0} 에서 사용 중인 컬럼입니다.", r.getRelationName());
         });
         indexRepository.findAllUsingColumns(columnIds).stream().findFirst().ifPresent(i -> {
-            throw new CustomException(ErrorCode.RELATION_EXISTS, "인덱스 " + i.getIndexName() + " 에서 사용 중인 컬럼입니다.");
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "인덱스 {0} 에서 사용 중인 컬럼입니다.", i.getIndexName());
         });
         constraintRepository.findAllUsingColumns(columnIds).stream().findFirst().ifPresent(c -> {
-            throw new CustomException(ErrorCode.RELATION_EXISTS, "제약조건 " + c.getConstraintName() + " 에서 사용 중인 컬럼입니다.");
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "제약조건 {0} 에서 사용 중인 컬럼입니다.", c.getConstraintName());
         });
         relationRepository.deleteAll(relations); // 남은 것은 모두 REF_COLUMN (삭제 후 동기화가 다시 만든다)
     }
@@ -351,7 +351,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         Map<Long, ColumnInfo> found = columnInfoRepository.findAllById(columnIds).stream()
                 .filter(c -> projectId.equals(c.getProjectId()) && c.getTableInfo() != null && table.getId().equals(c.getTableInfo().getId()))
                 .collect(Collectors.toMap(ColumnInfo::getId, Function.identity()));
-        if (found.size() != columnIds.size()) throw invalid(table.getTableName() + " 의 컬럼이 아닌 컬럼이 있습니다.");
+        if (found.size() != columnIds.size()) throw invalid("{0} 의 컬럼이 아닌 컬럼이 있습니다.", table.getTableName());
         return columnIds.stream().map(found::get).toList();
     }
 
@@ -362,13 +362,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         if (columns.size() == 1) {
             ColumnInfo c = columns.get(0);
             boolean covered = Boolean.TRUE.equals(c.getIsPk()) || Boolean.TRUE.equals(c.getIsUnique()) || (!unique && Boolean.TRUE.equals(c.getIsIndex()));
-            if (covered) throw invalid(c.getColumnName() + " 은(는) 컬럼의 PK·고유값·인덱스 설정으로 이미 정의되어 있습니다.");
+            if (covered) throw invalid("{0} 은(는) 컬럼의 PK·고유값·인덱스 설정으로 이미 정의되어 있습니다.", c.getColumnName());
         }
     }
 
     private static String objectName(String requested, String defaultName) {
         String name = notBlank(requested) ? requested.trim() : defaultName;
-        if (!OBJECT_NAME.matcher(name).matches()) throw invalid("이름은 영문 또는 _ 로 시작하고 영문/숫자/_/$ 만 쓸 수 있습니다. (" + name + ")");
+        if (!OBJECT_NAME.matcher(name).matches()) throw invalid("이름은 영문 또는 _ 로 시작하고 영문/숫자/_/$ 만 쓸 수 있습니다. ({0})", name);
         return name;
     }
 
@@ -377,7 +377,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw invalid("알 수 없는 유형입니다. (" + value + ")");
+            throw invalid("알 수 없는 유형입니다. ({0})", value);
         }
     }
 
@@ -405,8 +405,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         return value != null && !value.isBlank();
     }
 
-    private static CustomException invalid(String message) {
-        return new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, message);
+    private static CustomException invalid(String message, Object... args) {
+        return new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, message, args);
     }
 
     private static CustomException notFound() {

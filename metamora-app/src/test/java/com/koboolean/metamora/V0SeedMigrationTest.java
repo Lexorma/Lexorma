@@ -43,11 +43,12 @@ class V0SeedMigrationTest {
             String accounts = "\"" + schema + "\".TB_ACNT";
             assertThat(jdbc.queryForObject("select count(*) from " + posts, Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject("select PST_TTL from " + posts + " where PST_SN = 1", String.class))
-                    .isEqualTo("[안내] Metamora에 오신 것을 환영합니다.");
+                    .isEqualTo("[Notice] Welcome to Metamora");
             assertThat(jdbc.queryForObject("select PST_CN from " + posts + " where PST_SN = 1", String.class))
-                    .contains("데이터 사전 관리", "테이블 및 컬럼 관리", "물리 ERD", "프로젝트 관리", "사용자 및 권한 관리",
-                            "이용 안내", "문의 및 오류 신고", "https://github.com/meta-mora/metamora/issues", "MIT 라이선스")
-                    .doesNotContain("# ", "**", "<a", "mailto:");
+                    .contains("Data dictionary", "Tables and columns", "Physical ERD", "Projects", "Users and permissions",
+                            "Getting started", "Questions and bug reports", "https://github.com/meta-mora/metamora/issues", "MIT License")
+                    .contains("## Key features", "### 1. Data dictionary", "| Purpose | Link |")
+                    .doesNotContain("<a", "mailto:");
             assertThat(jdbc.queryForObject("select count(*) from " + posts
                     + " where PRJ_SN = 0 and CTGRY_CD = 'NOTICE' and DEL_YN = 'N' and cardinality(PRJ_SN_LIST) = 1"
                     + " and PST_MDFCN_DT is not null and REG_DT is not null and MDFCN_DT is not null", Integer.class)).isEqualTo(1);

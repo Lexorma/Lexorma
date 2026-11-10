@@ -1,3 +1,4 @@
+import { t } from './i18n';
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function toDate(value: unknown): Date | null {
@@ -25,13 +26,13 @@ export function formatRelative(value: unknown): string {
   const date = toDate(value);
   if (!date) return '';
   const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 60) return '방금 전';
+  if (diffSec < 60) return t('방금 전');
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}분 전`;
+  if (diffMin < 60) return t('{0}분 전', diffMin);
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}시간 전`;
+  if (diffHour < 24) return t('{0}시간 전', diffHour);
   const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 7) return `${diffDay}일 전`;
+  if (diffDay < 7) return t('{0}일 전', diffDay);
   return formatDateTime(date);
 }
 

@@ -6,6 +6,7 @@ import com.koboolean.metamora.data.table.domain.dto.TableNameDto;
 import com.koboolean.metamora.data.table.service.TableDesignService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.utils.PageableUtil;
+import com.koboolean.metamora.common.i18n.Messages;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -114,7 +115,7 @@ public class TableDesignRestController {
         try {
             tableDesignService.uploadTableExcelFile(file, accountDto);
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "파일을 읽을 수 없습니다.", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, Messages.get("파일을 읽을 수 없습니다."), e);
         }
 
         return ResponseEntity.ok(Map.of("result", "success"));

@@ -2,6 +2,7 @@ package com.koboolean.metamora.data.excel.controller;
 
 import com.koboolean.metamora.data.excel.service.ExcelService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
+import com.koboolean.metamora.common.i18n.Messages;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -41,9 +42,9 @@ public class ExcelRestController {
         try {
             return excelService.getExcelFile(templateName, accountDto);
         } catch (MalformedURLException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "파일 경로가 잘못되었습니다.", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, Messages.get("파일 경로가 잘못되었습니다."), e);
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "파일을 읽을 수 없습니다.", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, Messages.get("파일을 읽을 수 없습니다."), e);
         }
     }
 

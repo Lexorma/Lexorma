@@ -1,5 +1,6 @@
 package com.koboolean.metamora.common.exception.domain;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
@@ -208,5 +209,12 @@ public enum ErrorCode {
     private final HttpStatus httpStatus;
     private final String code;
     private final String message;
+
+    /**
+     * 요청 언어에 맞는 메시지 (한국어 원문은 영어 사전의 키)
+     */
+    public String getMessage() {
+        return Messages.get(message);
+    }
 
 }

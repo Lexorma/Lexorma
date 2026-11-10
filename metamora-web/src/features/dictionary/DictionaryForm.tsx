@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { api } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
+import { t } from '../../lib/i18n';
 
 /**
  * 표준 도메인 / 단어 / 용어 등록·수정 폼 (예전 add/openEditDialog 의 동적 폼)
@@ -53,7 +54,7 @@ export function DictionaryForm({
 
     for (const f of fields) {
       if (config.required(f.key) && values[f.key].trim() === '') {
-        dialog.alert(`필수값 누락: ${f.label}`);
+        dialog.alert(t('필수값 누락: {0}', f.label));
         document.getElementById(`dict-${f.key}`)?.focus();
         return;
       }
@@ -75,7 +76,7 @@ export function DictionaryForm({
 
     const url = `/api/${type === 'C' ? 'insertDataDictionary' : 'updateDataDictionary'}/${tableId}`;
     const response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data });
-    if (response.result) dialog.alert(`정상적으로 ${type === 'C' ? '등록' : '수정'}되었습니다.`, onSaved);
+    if (response.result) dialog.alert(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'), onSaved);
   };
 
   return (

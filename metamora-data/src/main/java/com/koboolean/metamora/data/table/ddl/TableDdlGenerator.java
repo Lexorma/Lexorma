@@ -8,6 +8,7 @@ import com.koboolean.metamora.data.physical.domain.entity.TableIndex;
 import com.koboolean.metamora.data.physical.domain.entity.TableIndexColumn;
 import com.koboolean.metamora.data.physical.domain.entity.TableRelation;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
+import com.koboolean.metamora.common.i18n.Messages;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -87,8 +88,8 @@ public final class TableDdlGenerator {
         sql.append("\n");
 
         if (ordered.isEmpty()) {
-            warnings.add("등록된 컬럼이 없습니다. 컬럼 관리에서 컬럼을 먼저 등록해주세요.");
-            sql.append("-- 등록된 컬럼이 없습니다.\n");
+            warnings.add(Messages.get("등록된 컬럼이 없습니다. 컬럼 관리에서 컬럼을 먼저 등록해주세요."));
+            sql.append("-- ").append(Messages.get("등록된 컬럼이 없습니다.")).append("\n");
             return new Result(sql.toString(), warnings);
         }
 
@@ -119,7 +120,7 @@ public final class TableDdlGenerator {
             uniqueKeys.add(Set.copyOf(pkColumns));
             lines.add("    CONSTRAINT " + constraintName(db, "PK_" + tableName) + " PRIMARY KEY (" + String.join(", ", pkColumns) + ")");
         } else {
-            warnings.add("PK 컬럼이 없습니다.");
+            warnings.add(Messages.get("PK 컬럼이 없습니다."));
         }
 
         ordered.stream()
@@ -137,7 +138,7 @@ public final class TableDdlGenerator {
                 }
             } else {
                 lines.add("    CONSTRAINT " + constraintName(db, constraint.getConstraintName()) + " CHECK (" + constraint.getCheckExpression() + ")");
-                if (db == DbType.MYSQL) warnings.add(constraint.getConstraintName() + " : MySQL 8.0.16 미만은 CHECK 제약을 무시합니다.");
+                if (db == DbType.MYSQL) warnings.add(Messages.get("{0} : MySQL 8.0.16 미만은 CHECK 제약을 무시합니다.", constraint.getConstraintName()));
             }
         }
 
@@ -214,16 +215,16 @@ public final class TableDdlGenerator {
 
             String refTable = column.getRefTableName().trim().toUpperCase(Locale.ROOT);
             List<ColumnInfo> pk = refPkColumns.get(refTable);
-            String prefix = column.getColumnName() + " : 참조 테이블 " + refTable;
 
             if (pk == null) {
-                warnings.add(prefix + " 이(가) 테이블 관리에 등록되어 있지 않아 FK 를 만들지 않았습니다.");
+                warnings.add(Messages.get("{0} : 참조 테이블 {1} 이(가) 테이블 관리에 등록되어 있지 않아 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else if (pk.isEmpty()) {
-                warnings.add(prefix + " 에 PK 가 없어 FK 를 만들지 않았습니다.");
+                warnings.add(Messages.get("{0} : 참조 테이블 {1} 에 PK 가 없어 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else if (pk.size() > 1) {
-                warnings.add(prefix + " 의 PK 가 복합키(" + String.join(", ", pk.stream().map(ColumnInfo::getColumnName).toList()) + ")라 FK 를 만들지 않았습니다.");
+                warnings.add(Messages.get("{0} : 참조 테이블 {1} 의 PK 가 복합키({2})라 FK 를 만들지 않았습니다.", column.getColumnName(), refTable,
+                        String.join(", ", pk.stream().map(ColumnInfo::getColumnName).toList())));
             } else if (refTable.equals(tableName) && pk.get(0).getColumnName().equals(column.getColumnName())) {
-                warnings.add(prefix + " 의 PK 가 자기 자신이라 FK 를 만들지 않았습니다.");
+                warnings.add(Messages.get("{0} : 참조 테이블 {1} 의 PK 가 자기 자신이라 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else {
                 ColumnInfo refPk = pk.get(0);
                 String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo());
@@ -251,7 +252,7 @@ public final class TableDdlGenerator {
             boolean singleUnique = targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique());
 
             if (!referenced.equals(pk) && !singleUnique) {
-                warnings.add(relation.getRelationName() + " : 대상 컬럼이 " + target.getTableName() + " 의 PK(또는 고유값 컬럼)가 아니라 FK 를 만들지 않았습니다.");
+                warnings.add(Messages.get("{0} : 대상 컬럼이 {1} 의 PK(또는 고유값 컬럼)가 아니라 FK 를 만들지 않았습니다.", relation.getRelationName(), target.getTableName()));
                 continue;
             }
             statements.add("ALTER TABLE " + qualifiedName
@@ -284,9 +285,9 @@ public final class TableDdlGenerator {
 
         String pair = " (" + column.getColumnName() + " " + type + " ↔ " + refTable + "." + refPk.getColumnName() + " " + refType + ")";
         if (!baseType(type).equals(baseType(refType))) {
-            warnings.add(column.getColumnName() + " : 참조 PK 와 데이터 타입이 달라 FK 생성이 실패할 수 있습니다." + pair);
+            warnings.add(Messages.get("{0} : 참조 PK 와 데이터 타입이 달라 FK 생성이 실패할 수 있습니다.", column.getColumnName()) + pair);
         } else {
-            warnings.add(column.getColumnName() + " : 참조 PK 와 길이/정밀도가 다릅니다. 값이 들어가지 않거나 잘리지 않도록 맞추는 것을 권장합니다." + pair);
+            warnings.add(Messages.get("{0} : 참조 PK 와 길이/정밀도가 다릅니다. 값이 들어가지 않거나 잘리지 않도록 맞추는 것을 권장합니다.", column.getColumnName()) + pair);
         }
     }
 
@@ -310,7 +311,7 @@ public final class TableDdlGenerator {
         Integer scale = column.getScale();
 
         if (raw.isEmpty()) {
-            warnings.add(column.getColumnName() + " : 데이터 타입이 없어 문자열(VARCHAR)로 생성했습니다.");
+            warnings.add(Messages.get("{0} : 데이터 타입이 없어 문자열(VARCHAR)로 생성했습니다.", column.getColumnName()));
             base = "VARCHAR";
         } else if (matcher.matches()) {
             base = matcher.group(1).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", " ");
@@ -386,7 +387,7 @@ public final class TableDdlGenerator {
             case ORACLE -> 4000;
             default -> 255;
         };
-        warnings.add(column.getColumnName() + " : 최대 길이가 없어 " + (len == null ? "길이 없는 VARCHAR" : "VARCHAR(" + len + ")") + " 로 생성했습니다.");
+        warnings.add(Messages.get("{0} : 최대 길이가 없어 {1} 로 생성했습니다.", column.getColumnName(), len == null ? Messages.get("길이 없는 VARCHAR") : "VARCHAR(" + len + ")"));
         return len;
     }
 

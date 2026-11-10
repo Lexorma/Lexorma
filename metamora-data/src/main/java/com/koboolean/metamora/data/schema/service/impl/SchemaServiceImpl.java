@@ -70,7 +70,7 @@ public class SchemaServiceImpl implements SchemaService {
             throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED, "기본 스키마는 삭제할 수 없습니다.");
         }
         if (tableInfoRepository.existsBySchema_Id(schemaId)) {
-            throw new CustomException(ErrorCode.RELATION_EXISTS, schema.getSchemaName() + " 에 테이블이 있습니다.");
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "{0} 에 테이블이 있습니다.", schema.getSchemaName());
         }
         schemaInfoRepository.delete(schema);
     }

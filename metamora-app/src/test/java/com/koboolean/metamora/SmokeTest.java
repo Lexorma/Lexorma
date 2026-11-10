@@ -165,6 +165,15 @@ class SmokeTest {
         // 401 응답 때문에 익명 세션(DB 행)을 만들지 않는다
         assertThat(api.headers().allValues("Set-Cookie")).noneMatch(c -> c.startsWith("SESSION="));
 
+        // 메시지는 Accept-Language 를 따른다 : 없으면 한국어, 한국어가 아니면 영어 (Security 필터 단계 / 컨트롤러 예외 모두)
+        assertThat(api.body()).contains("로그인이 필요합니다.");
+        HttpResponse<String> english = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/data?page=0&size=10"))
+                .header("Accept-Language", "en").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(english.body()).contains("Login is required.");
+        HttpResponse<String> notFound = anonymous.send(HttpRequest.newBuilder(uri("/images/not-exists.png"))
+                .header("Accept-Language", "en-US,en;q=0.9").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(notFound.body()).contains("The requested resource could not be found.");
+
         HttpResponse<String> page = anonymous.send(HttpRequest.newBuilder(uri("/tableManage")).GET().build(), HttpResponse.BodyHandlers.ofString());
         assertThat(page.statusCode()).isEqualTo(200);
         assertThat(page.body()).contains("id=\"root\"");
@@ -263,14 +272,14 @@ class SmokeTest {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
         var first = mapper.readTree(list.body()).path("data").get(0);
         assertThat(first.path("id").asLong()).isEqualTo(1L);
-        assertThat(first.path("title").asString()).isEqualTo("[안내] Metamora에 오신 것을 환영합니다.");
+        assertThat(first.path("title").asString()).isEqualTo("[Notice] Welcome to Metamora");
         assertThat(first.path("isHit").asString()).isEqualTo("확인");
 
         HttpResponse<String> view = get("/api/selectNotice/view/1", true);
         assertThat(view.statusCode()).isEqualTo(200);
         var notice = mapper.readTree(view.body());
         assertThat(notice.path("username").asString()).isEqualTo("admin");
-        assertThat(notice.path("content").asString()).contains("물리 ERD", "이용 안내", "문의 및 오류 신고",
+        assertThat(notice.path("content").asString()).contains("Physical ERD", "Getting started", "Questions and bug reports",
                 "https://github.com/meta-mora/metamora/issues");
         assertThat(notice.path("accounts").size()).isEqualTo(1);
         assertThat(get("/api/selectNotice/view/1", true).statusCode()).isEqualTo(200);

@@ -2,25 +2,26 @@ import { useState } from 'react';
 import type { DialogControls } from '../../components/dialog/DialogProvider';
 import { ChevronDownIcon, ChevronUpIcon } from '@primer/octicons-react';
 import { api } from '../../lib/api';
+import { t } from '../../lib/i18n';
 
 const CARD_ROWS = [
   [
-    { label: '컬럼 설명', key: 'columnDesc' },
-    { label: '데이터 타입', key: 'dataType' },
-    { label: '최대 길이', key: 'maxLength' },
-    { label: 'PK 여부', key: 'isPk' },
+    { label: t('컬럼 설명'), key: 'columnDesc' },
+    { label: t('데이터 타입'), key: 'dataType' },
+    { label: t('최대 길이'), key: 'maxLength' },
+    { label: t('PK 여부'), key: 'isPk' },
   ],
   [
-    { label: '기본값', key: 'defaultValue' },
-    { label: 'NULL 허용', key: 'isNullable' },
-    { label: '필수 입력', key: 'isRequired' },
-    { label: '암호화 여부', key: 'isEncrypted' },
+    { label: t('기본값'), key: 'defaultValue' },
+    { label: t('NULL 허용'), key: 'isNullable' },
+    { label: t('필수 입력'), key: 'isRequired' },
+    { label: t('암호화 여부'), key: 'isEncrypted' },
   ],
   [
-    { label: '정렬 순서', key: 'sortOrder' },
-    { label: '참조 테이블명', key: 'refTableName' },
-    { label: '예시', key: 'example' },
-    { label: '민감정보 여부', key: 'isSensitive' },
+    { label: t('정렬 순서'), key: 'sortOrder' },
+    { label: t('참조 테이블명'), key: 'refTableName' },
+    { label: t('예시'), key: 'example' },
+    { label: t('민감정보 여부'), key: 'isSensitive' },
   ],
 ];
 
@@ -56,10 +57,10 @@ export function ColumnOrder({ columnInfos, controls, onSuccess }: { columnInfos:
   return (
     <div className="popup-container">
       <div className="popup-header">
-        <p>화살표 버튼으로 컬럼 순서를 바꾼 뒤 순서저장을 누르면 반영됩니다.</p>
+        <p>{t('화살표 버튼으로 컬럼 순서를 바꾼 뒤 순서저장을 누르면 반영됩니다.')}</p>
       </div>
       <div className="button-container" style={{ justifyContent: 'flex-end', display: 'flex' }}>
-        <button type="button" className="btn btn-primary" id="save-sort-order" onClick={save}>순서저장</button>
+        <button type="button" className="btn btn-primary" id="save-sort-order" onClick={save}>{t('순서저장')}</button>
       </div>
 
       <div id="column-table-container">
@@ -69,8 +70,8 @@ export function ColumnOrder({ columnInfos, controls, onSuccess }: { columnInfos:
               <div className="column-row full">
                 <span className="label">{col.columnName ?? ''}</span>
                 <div className="sort-buttons">
-                  <button type="button" className="btn-move-up" title="위로" aria-label="위로" onClick={() => move(index, -1)}><ChevronUpIcon /></button>
-                  <button type="button" className="btn-move-down" title="아래로" aria-label="아래로" onClick={() => move(index, 1)}><ChevronDownIcon /></button>
+                  <button type="button" className="btn-move-up" title={t('위로')} aria-label={t('위로')} onClick={() => move(index, -1)}><ChevronUpIcon /></button>
+                  <button type="button" className="btn-move-down" title={t('아래로')} aria-label={t('아래로')} onClick={() => move(index, 1)}><ChevronDownIcon /></button>
                 </div>
               </div>
               {CARD_ROWS.map((rowSet, r) => (

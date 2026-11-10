@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { t, tc } from '../../lib/i18n';
 
 /**
  * 공통 다이얼로그 (예전 layout.html 의 #myAlert / #myConfirm / #mainConfirm / #popupDialog)
@@ -163,11 +164,11 @@ function DialogView({
   if (entry.kind === 'alert') {
     return (
       <dialog ref={ref} onCancel={onCancel}>
-        <h3>알림</h3>
+        <h3>{t('알림')}</h3>
         <p style={{ whiteSpace: 'pre-line' }}>{entry.message}</p>
         <div className="popup-button-container">
           <button type="button" className="close" onClick={() => controls.close()} autoFocus>
-            닫기
+            {t('닫기')}
           </button>
         </div>
       </dialog>
@@ -177,14 +178,14 @@ function DialogView({
   if (entry.kind === 'confirm') {
     return (
       <dialog ref={ref} onCancel={onCancel}>
-        <h3>알림</h3>
+        <h3>{t('알림')}</h3>
         <p style={{ whiteSpace: 'pre-line' }}>{entry.message}</p>
         <div className="popup-button-container">
           <button type="button" className="confirm" onClick={() => finish(entry.onOk)} autoFocus>
-            확인
+            {tc('버튼', '확인')}
           </button>
           <button type="button" className="close" onClick={() => finish(entry.onCancel)}>
-            닫기
+            {t('닫기')}
           </button>
         </div>
       </dialog>
@@ -198,7 +199,7 @@ function DialogView({
       <dialog ref={ref} className={entry.className} onCancel={onCancel}>
         <div className="dialog-header">
           <h3>{title ?? entry.title}</h3>
-          <button type="button" onClick={controls.close} className="close-btn" aria-label="닫기">
+          <button type="button" onClick={controls.close} className="close-btn" aria-label={t('닫기')}>
             &times;
           </button>
         </div>
@@ -215,7 +216,7 @@ function DialogView({
     >
       <div className="dialog-header">
         <h3 className="popup-dialog-title">{title ?? entry.title}</h3>
-        <button type="button" onClick={controls.close} className="close-btn" aria-label="닫기">
+        <button type="button" onClick={controls.close} className="close-btn" aria-label={t('닫기')}>
           &times;
         </button>
       </div>

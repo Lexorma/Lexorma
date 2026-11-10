@@ -9,6 +9,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { DeniedPage } from '../auth/DeniedPage';
 import { projectColumns } from './columns';
+import { t } from '../../lib/i18n';
 
 /** 대상 DB 선택지 (서버 core/project/domain/enums/DbType 과 같은 값) */
 const DB_TYPES = [
@@ -56,7 +57,7 @@ export function ProjectManagePage() {
 
   if (!projects) return null;
   // 프로젝트 관리자가 아닌경우 권한 없음
-  if (projects.length === 0) return <DeniedPage title="접근 불가 페이지" message="프로젝트 관리자만 접근 가능합니다" />;
+  if (projects.length === 0) return <DeniedPage title={t('접근 불가 페이지')} message={t('프로젝트 관리자만 접근 가능합니다')} />;
 
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0];
   const isInactive = !selected.isActive;
@@ -68,13 +69,13 @@ export function ProjectManagePage() {
 
   const openProjectForm = (type: 'C' | 'U', projectData: ProjectData) => {
     dialog.open({
-      title: type === 'C' ? '프로젝트 등록' : '프로젝트 수정',
+      title: type === 'C' ? t('프로젝트 등록') : t('프로젝트 수정'),
       content: ({ close }: DialogControls) => (
         <ProjectForm
           type={type}
           projectData={projectData}
           onSaved={() => {
-            dialog.alert(`정상적으로 ${type === 'C' ? '등록' : '수정'}되었습니다.`, () => {
+            dialog.alert(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'), () => {
               close();
               reloadProjects();
             });
@@ -90,9 +91,9 @@ export function ProjectManagePage() {
   };
 
   const deleteProject = () => {
-    dialog.confirm('프로젝트 삭제 시 복구가 불가합니다.\n해당 프로젝트를 삭제하시겠습니까?', async () => {
+    dialog.confirm(t('프로젝트 삭제 시 복구가 불가합니다.\n해당 프로젝트를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>(`/api/deleteProject/project/${enc(selected.id)}`, { method: 'DELETE' });
-      if (response.result) dialog.alert('정상적으로 삭제 되었습니다.', () => reloadProjects());
+      if (response.result) dialog.alert(t('정상적으로 삭제 되었습니다.'), () => reloadProjects());
     });
   };
 
@@ -101,14 +102,14 @@ export function ProjectManagePage() {
     const response = await api<{ result: boolean; projectMember: { id: string; name: string }[] }>(`/api/getProject/projectMember/${enc(selected.id)}`);
     if (!response.result) return;
     dialog.open({
-      title: '프로젝트 멤버 추가',
+      title: t('프로젝트 멤버 추가'),
       content: ({ close }: DialogControls) => (
         <MemberAddForm
           users={response.projectMember}
           onSave={async (accountId) => {
             const saved = await api<{ result: boolean }>(`/api/saveProject/projectMember/${enc(selected.id)}`, { method: 'POST', body: { accountId } });
             if (saved.result) {
-              dialog.alert('프로젝트 멤버가 정상적으로 등록되었습니다.', () => {
+              dialog.alert(t('프로젝트 멤버가 정상적으로 등록되었습니다.'), () => {
                 close();
                 grid.current?.reload();
               });
@@ -122,10 +123,10 @@ export function ProjectManagePage() {
   const saveIsActive = (isActive: boolean) => {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
-    dialog.confirm(`선택한 정보를 ${isActive ? '승인' : '승인취소'} 하시겠습니까?`, async () => {
+    dialog.confirm(isActive ? t('선택한 정보를 승인 하시겠습니까?') : t('선택한 정보를 승인취소 하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>(`/api/saveProject/active/${isActive}`, { method: 'POST', body: checked });
       if (response.result) {
-        dialog.alert(`정상적으로 ${isActive ? '승인되어 활성화' : '승인취소되어 비활성화'}되었습니다.`, () => grid.current?.reload());
+        dialog.alert(isActive ? t('정상적으로 승인되어 활성화되었습니다.') : t('정상적으로 승인취소되어 비활성화되었습니다.'), () => grid.current?.reload());
       }
     });
   };
@@ -133,44 +134,44 @@ export function ProjectManagePage() {
   const deleteMembers = () => {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
-    dialog.confirm('선택한 정보를 삭제하시겠습니까?', async () => {
+    dialog.confirm(t('선택한 정보를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteProject/projectMember', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert('정상적으로 삭제처리 되었습니다.', () => grid.current?.reload());
+      if (response.result) dialog.alert(t('정상적으로 삭제처리 되었습니다.'), () => grid.current?.reload());
     });
   };
 
   return (
     <>
-      <PageHeader category="시스템 관리" title="프로젝트 관리" description="프로젝트를 등록·수정하고, 프로젝트 멤버의 참여를 승인합니다." />
+      <PageHeader category={t('시스템 관리')} title={t('프로젝트 관리')} description={t('프로젝트를 등록·수정하고, 프로젝트 멤버의 참여를 승인합니다.')} />
 
       {/* 프로젝트 선택 바 (GitHub 저장소 헤더 형태) */}
       <div className="project-bar">
         <div className="project-bar-main">
           <RepoIcon className="project-bar-icon" />
-          <label htmlFor="projectSelector" className="visually-hidden">프로젝트 선택</label>
+          <label htmlFor="projectSelector" className="visually-hidden">{t('프로젝트 선택')}</label>
           <select id="projectSelector" className="project-select" value={selected.id} onChange={(e) => setSelectedId(Number(e.target.value))}>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
-                {project.projectName}{project.isActive ? '' : ' (비활성)'}
+                {project.projectName}{project.isActive ? '' : t(' (비활성)')}
               </option>
             ))}
           </select>
-          <span className={`gh-label gh-label-dot ${isInactive ? 'gh-label-danger' : 'gh-label-success'}`}>{isInactive ? '비활성' : '활성'}</span>
-          {selected.isAutoActive && <span className="gh-label">사용자 자동 승인</span>}
+          <span className={`gh-label gh-label-dot ${isInactive ? 'gh-label-danger' : 'gh-label-success'}`}>{isInactive ? t('비활성') : t('활성')}</span>
+          {selected.isAutoActive && <span className="gh-label">{t('사용자 자동 승인')}</span>}
         </div>
         {/* 프로젝트 버튼 : 멤버 그리드 버튼과 구분되도록 프로젝트 바에 둔다 (수정은 비활성 프로젝트에서도 사용) */}
         <div className="project-bar-actions">
-          <button type="button" id="btn-project-add" title="프로젝트 등록" aria-label="프로젝트 등록" className="btn" disabled={isInactive} onClick={() => openProjectForm('C', {})}>
+          <button type="button" id="btn-project-add" title={t('프로젝트 등록')} aria-label={t('프로젝트 등록')} className="btn" disabled={isInactive} onClick={() => openProjectForm('C', {})}>
             <PlusIcon />
-            등록
+            {t('등록')}
           </button>
-          <button type="button" id="btn-project-edit" title="프로젝트 수정" aria-label="프로젝트 수정" className="btn" onClick={editProject}>
+          <button type="button" id="btn-project-edit" title={t('프로젝트 수정')} aria-label={t('프로젝트 수정')} className="btn" onClick={editProject}>
             <PencilIcon />
-            수정
+            {t('수정')}
           </button>
-          <button type="button" id="btn-project-delete" title="프로젝트 삭제" aria-label="프로젝트 삭제" className="btn btn-danger" disabled={isInactive} onClick={deleteProject}>
+          <button type="button" id="btn-project-delete" title={t('프로젝트 삭제')} aria-label={t('프로젝트 삭제')} className="btn btn-danger" disabled={isInactive} onClick={deleteProject}>
             <TrashIcon />
-            삭제
+            {t('삭제')}
           </button>
         </div>
       </div>
@@ -188,10 +189,10 @@ export function ProjectManagePage() {
             if (field === 'username') return <Mono>{row.username}</Mono>;
             if (field === 'name') return <User name={row.name} />;
             if (field === 'isActive') {
-              if (row.isActive === 'Y') return <Label variant="success" dot>승인</Label>;
-              if (row.isActive === 'N') return <Label variant="attention" dot>승인 대기</Label>;
+              if (row.isActive === 'Y') return <Label variant="success" dot>{t('승인')}</Label>;
+              if (row.isActive === 'N') return <Label variant="attention" dot>{t('승인 대기')}</Label>;
             }
-            if (field === 'projectManagerYn') return row.projectManagerYn === 'O' ? <Label variant="accent">관리자</Label> : <Muted>-</Muted>;
+            if (field === 'projectManagerYn') return row.projectManagerYn === 'O' ? <Label variant="accent">{t('관리자')}</Label> : <Muted>-</Muted>;
             return undefined;
           }}
         />
@@ -205,16 +206,16 @@ function MemberAddForm({ users, onSave }: { users: { id: string; name: string }[
   const [accountId, setAccountId] = useState('');
   return (
     <div>
-      <label className="gh-form-label" htmlFor="addProjectMemberSelect">사용자</label>
+      <label className="gh-form-label" htmlFor="addProjectMemberSelect">{t('사용자')}</label>
       <select className="form-control" id="addProjectMemberSelect" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-        <option value="" disabled>추가할 사용자를 선택하세요</option>
+        <option value="" disabled>{t('추가할 사용자를 선택하세요')}</option>
         {users.map((user) => (
           <option key={user.id} value={user.id}>{user.name}</option>
         ))}
       </select>
       <div className="gh-dialog-actions">
-        <button type="button" className="btn btn-primary" onClick={() => (accountId ? onSave(accountId) : dialog.alert('추가할 사용자를 선택해주세요.'))}>
-          저장
+        <button type="button" className="btn btn-primary" onClick={() => (accountId ? onSave(accountId) : dialog.alert(t('추가할 사용자를 선택해주세요.')))}>
+          {t('저장')}
         </button>
       </div>
     </div>
@@ -240,7 +241,7 @@ function ProjectForm({ type, projectData, onSaved }: { type: 'C' | 'U'; projectD
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (form.projectName === '') return dialog.alert('프로젝트 명은 필수값입니다.');
+    if (form.projectName === '') return dialog.alert(t('프로젝트 명은 필수값입니다.'));
 
     const body: Record<string, unknown> = {
       id: projectData.id ?? '',
@@ -260,13 +261,13 @@ function ProjectForm({ type, projectData, onSaved }: { type: 'C' | 'U'; projectD
   return (
     <form id="editProjectForm" className="edit-form" onSubmit={onSubmit}>
       <div className="form-group">
-        <label htmlFor="project-name">프로젝트 명</label>
+        <label htmlFor="project-name">{t('프로젝트 명')}</label>
         <input type="text" id="project-name" className="form-control" required value={form.projectName} onChange={(e) => set('projectName', e.target.value)} />
       </div>
 
       {type === 'U' && (
         <div className="form-group">
-          <label htmlFor="project-manager">프로젝트 관리자</label>
+          <label htmlFor="project-manager">{t('프로젝트 관리자')}</label>
           <select id="project-manager" className="form-control" value={form.projectManagerId} onChange={(e) => set('projectManagerId', e.target.value)}>
             {activeMembers.map((member) => (
               <option key={member.accountId} value={member.accountId}>{member.name}</option>
@@ -275,11 +276,11 @@ function ProjectForm({ type, projectData, onSaved }: { type: 'C' | 'U'; projectD
         </div>
       )}
 
-      <div className="gh-form-label">설정</div>
+      <div className="gh-form-label">{t('설정')}</div>
       {([
-        ['isActive', 'project-active', '활성화 여부'],
-        ['isAutoActive', 'project-autoactive', '사용자 자동 승인 여부'],
-        ['isDicAbbrUsed', 'project-dicAbbrUsed', '데이터 사전 약어 사용 여부'],
+        ['isActive', 'project-active', t('활성화 여부')],
+        ['isAutoActive', 'project-autoactive', t('사용자 자동 승인 여부')],
+        ['isDicAbbrUsed', 'project-dicAbbrUsed', t('데이터 사전 약어 사용 여부')],
       ] as const).map(([key, id, label]) => (
         <div className="form-check" style={{ marginTop: 10, marginBottom: 10 }} key={key}>
           <input type="checkbox" id={id} className="form-check-input" checked={form[key]} onChange={(e) => set(key, e.target.checked)} />
@@ -288,25 +289,25 @@ function ProjectForm({ type, projectData, onSaved }: { type: 'C' | 'U'; projectD
       ))}
 
       <div className="form-group">
-        <label htmlFor="project-tablePrefix">테이블명 접두어</label>
-        <input type="text" id="project-tablePrefix" className="form-control gh-mono" maxLength={20} placeholder="예) TB_" autoComplete="off"
+        <label htmlFor="project-tablePrefix">{t('테이블명 접두어')}</label>
+        <input type="text" id="project-tablePrefix" className="form-control gh-mono" maxLength={20} placeholder={t('예) TB_')} autoComplete="off"
           value={form.tablePrefix} onChange={(e) => set('tablePrefix', e.target.value)} />
-        <p className="form-help">테이블 등록 시 표준 단어로 만든 테이블명 앞에 붙습니다. (예: TB_ + USE_HIST_MGMT) 비워두면 붙이지 않습니다.</p>
+        <p className="form-help">{t('테이블 등록 시 표준 단어로 만든 테이블명 앞에 붙습니다. (예: TB_ + USE_HIST_MGMT) 비워두면 붙이지 않습니다.')}</p>
       </div>
 
       <div className="form-group">
-        <label htmlFor="project-dbType">대상 DB</label>
+        <label htmlFor="project-dbType">{t('대상 DB')}</label>
         <select id="project-dbType" className="form-control" value={form.dbType} onChange={(e) => set('dbType', e.target.value)}>
           {DB_TYPES.map((db) => (
             <option key={db.value} value={db.value}>{db.label}</option>
           ))}
         </select>
-        <p className="form-help">테이블 관리 &gt; 테이블 상세의 DDL 을 이 DB 문법으로 생성합니다.</p>
+        <p className="form-help">{t('테이블 관리 > 테이블 상세의 DDL 을 이 DB 문법으로 생성합니다.')}</p>
       </div>
 
       {canSave && (
         <div className="gh-dialog-actions">
-          <button type="submit" id="btn-save-project" className="btn btn-primary">저장</button>
+          <button type="submit" id="btn-save-project" className="btn btn-primary">{t('저장')}</button>
         </div>
       )}
     </form>

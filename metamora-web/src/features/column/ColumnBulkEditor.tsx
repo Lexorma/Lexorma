@@ -9,6 +9,7 @@ import { CommonColumnSet, type CommonColumnItem } from './CommonColumnSet';
 import { RefTableLookup } from './RefTableLookup';
 import { applyRecommendation } from './recommend';
 import { searchTerms, termLabel, type Term, type TermSearchType } from './terms';
+import { t, tc } from '../../lib/i18n';
 
 /**
  * 컬럼 일괄 편집 (테이블 관리 > 테이블 상세 > 컬럼 편집)
@@ -40,12 +41,12 @@ const DATA_TYPES = ['VARCHAR', 'CHAR', 'NUMBER', 'INTEGER', 'BIGINT', 'DATE', 'T
 
 // 행 펼치기(상세)에서 고치는 Y/N 항목
 const DETAIL_FLAGS: [string, string][] = [
-  ['isRequired', '필수 입력'],
-  ['isUnique', '고유값'],
-  ['isIndex', '인덱스'],
-  ['isMasterData', '마스터 데이터'],
-  ['isSensitive', '민감정보'],
-  ['isEncrypted', '암호화'],
+  ['isRequired', t('필수 입력')],
+  ['isUnique', t('고유값')],
+  ['isIndex', t('인덱스')],
+  ['isMasterData', t('마스터 데이터')],
+  ['isSensitive', t('민감정보')],
+  ['isEncrypted', t('암호화')],
 ];
 
 // 변경 여부 비교 / 저장에 쓰는 항목
@@ -135,7 +136,7 @@ function fromCommonColumn(item: CommonColumnItem, key: string): BulkRow {
   row.fields.isNullable = item.isNullable === 'Y' ? 'Y' : 'N';
   row.fields.isIndex = item.isIndex === 'Y' ? 'Y' : 'N';
   if (item.defaultValue) row.fields.defaultValue = item.defaultValue;
-  row.source = { label: '공통', title: '프로젝트 공통 컬럼 세트에서 추가' };
+  row.source = { label: t('공통'), title: t('프로젝트 공통 컬럼 세트에서 추가') };
   return row;
 }
 
@@ -143,10 +144,10 @@ function fromCommonColumn(item: CommonColumnItem, key: string): BulkRow {
 function fromCopiedColumn(col: ColumnInfo, key: string, sourceTableName: string, targetHasPk: boolean): BulkRow {
   const fields: Fields = {};
   FIELD_KEYS.forEach((k) => (fields[k] = normalize(k, col[k])));
-  const notes = [`${sourceTableName} 에서 복사`];
+  const notes = [t('{0} 에서 복사', sourceTableName)];
   if (targetHasPk && fields.isPk === 'Y') {
     fields.isPk = 'N';
-    notes.push('이 테이블에 이미 PK 가 있어 PK 는 해제했습니다');
+    notes.push(t('이 테이블에 이미 PK 가 있어 PK 는 해제했습니다'));
   }
   return {
     key,
@@ -158,7 +159,7 @@ function fromCopiedColumn(col: ColumnInfo, key: string, sourceTableName: string,
     termNotApproved: col.standardTerms!.isApprovalYn !== 'Y',
     fields,
     original: null,
-    source: { label: '복사', title: notes.join(' · ') },
+    source: { label: tc('출처', '복사'), title: notes.join(' · ') },
   };
 }
 
@@ -235,11 +236,11 @@ export function useColumnBulkEditor() {
       const response = await api<{ columnInfos?: ColumnInfo[] }>(`/api/selectColumn/tableColumn/${enc(table.id)}`, { silent: true });
       columnInfos = response.columnInfos || [];
     } catch (e) {
-      dialog.alert(e instanceof ApiError && e.status === 403 ? '컬럼을 편집할 권한이 없습니다.' : e instanceof ApiError ? e.message : '컬럼을 불러오지 못했습니다.');
+      dialog.alert(e instanceof ApiError && e.status === 403 ? t('컬럼을 편집할 권한이 없습니다.') : e instanceof ApiError ? e.message : t('컬럼을 불러오지 못했습니다.'));
       return;
     }
     dialog.open({
-      title: `컬럼 편집 · ${table.tableName ?? ''}${table.tableKorName ? ` (${table.tableKorName})` : ''}`,
+      title: t('컬럼 편집 · {0}', `${table.tableName ?? ''}${table.tableKorName ? ` (${table.tableKorName})` : ''}`),
       className: 'dialog-xl',
       content: (controls: DialogControls) => <ColumnBulkEditor table={table as TableRef} columnInfos={columnInfos} controls={controls} onSaved={onSaved} />,
     });
@@ -373,11 +374,11 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   // ---------------------------------------------------------------- 새 표준용어 등록 (팝업 다이얼로그)
   const openTermCreate = (initialName: string, onCreated: (saved: SavedTerm) => void) => {
     dialog.popup({
-      title: '새 표준용어 등록',
+      title: t('새 표준용어 등록'),
       content: ({ close }: DialogControls) => (
         <div className="popup-container term-create-popup">
-          <p className="form-help">등록한 용어는 권한에 따라 바로 승인되거나 승인 대기 상태가 됩니다.</p>
-          <TermCreateForm initialTermName={initialName} submitText="등록" onSaved={(saved) => { close(); onCreated(saved); }} />
+          <p className="form-help">{t('등록한 용어는 권한에 따라 바로 승인되거나 승인 대기 상태가 됩니다.')}</p>
+          <TermCreateForm initialTermName={initialName} submitText={t('등록')} onSaved={(saved) => { close(); onCreated(saved); }} />
         </div>
       ),
     });
@@ -394,7 +395,9 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       const term = terms.find((t) => t.commonStandardTermAbbreviation === abbreviation && t.commonStandardTermName === saved.commonStandardTermName)
         ?? terms.find((t) => t.commonStandardTermAbbreviation === abbreviation);
       if (term && addTerms([term]) > 0) {
-        dialog.alert(`표준용어 ${abbreviation} 이(가) ${term.isApprovalYn === 'Y' ? '승인' : '승인 대기'} 상태로 등록되어 컬럼으로 추가되었습니다.`);
+        dialog.alert(term.isApprovalYn === 'Y'
+          ? t('표준용어 {0} 이(가) 승인 상태로 등록되어 컬럼으로 추가되었습니다.', abbreviation)
+          : t('표준용어 {0} 이(가) 승인 대기 상태로 등록되어 컬럼으로 추가되었습니다.', abbreviation));
       }
     });
   };
@@ -405,8 +408,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     const items = response.items || [];
     if (items.length === 0) {
       dialog.alert(commonEditable
-        ? '공통 컬럼 세트가 비어 있습니다. [공통 컬럼 세트 관리]에서 먼저 정해주세요.'
-        : '공통 컬럼 세트가 비어 있습니다. 프로젝트 관리자에게 세트 등록을 요청해주세요.');
+        ? t('공통 컬럼 세트가 비어 있습니다. [공통 컬럼 세트 관리]에서 먼저 정해주세요.')
+        : t('공통 컬럼 세트가 비어 있습니다. 프로젝트 관리자에게 세트 등록을 요청해주세요.'));
       return;
     }
     const missing = items.filter((item) => !item.term).length;
@@ -414,14 +417,14 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     const skipped = items.filter((item) => item.term && used.has(item.term.commonStandardTermAbbreviation)).length;
     const added = pushRows(items.filter((item) => item.term).map((item) => ({ row: fromCommonColumn(item, nextKey()) })));
 
-    const notes = [`공통 컬럼 ${added}개를 추가했습니다.`];
-    if (skipped) notes.push(`이미 있는 ${skipped}개는 건너뛰었습니다.`);
-    if (missing) notes.push(`표준용어가 지워진 ${missing}개는 추가하지 못했습니다.`);
+    const notes = [t('공통 컬럼 {0}개를 추가했습니다.', added)];
+    if (skipped) notes.push(t('이미 있는 {0}개는 건너뛰었습니다.', skipped));
+    if (missing) notes.push(t('표준용어가 지워진 {0}개는 추가하지 못했습니다.', missing));
     dialog.alert(notes.join(' '));
   };
 
   const openCommonSet = () => {
-    dialog.popup({ title: '공통 컬럼 세트 관리', size: 'large', content: (c: DialogControls) => <CommonColumnSet controls={c} /> });
+    dialog.popup({ title: t('공통 컬럼 세트 관리'), size: 'large', content: (c: DialogControls) => <CommonColumnSet controls={c} /> });
   };
 
   // ---------------------------------------------------------------- 다른 테이블에서 복사
@@ -441,7 +444,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       if (list.length === 0) {
         setCopyTable(null);
         setCopyColumns([]);
-        setCopyMessage('조건에 맞는 다른 승인 테이블이 없습니다.');
+        setCopyMessage(t('조건에 맞는 다른 승인 테이블이 없습니다.'));
       } else {
         setCopyMessage('');
         if (list.length === 1) selectCopyTable(list[0]);
@@ -474,8 +477,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   // ---------------------------------------------------------------- 붙여넣기로 추가
   const findPaste = async () => {
     const inputs = parsePaste(pasteText);
-    if (inputs.length === 0) return dialog.alert('붙여넣은 내용이 없습니다.');
-    if (inputs.length > 300) return dialog.alert('한 번에 300줄까지 찾을 수 있습니다. 나눠서 붙여넣어 주세요.');
+    if (inputs.length === 0) return dialog.alert(t('붙여넣은 내용이 없습니다.'));
+    if (inputs.length > 300) return dialog.alert(t('한 번에 300줄까지 찾을 수 있습니다. 나눠서 붙여넣어 주세요.'));
     setResolving(true);
     try {
       setPasteItems((await resolveInputs(inputs)).map(toPasteItem));
@@ -575,7 +578,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
 
   const restoreRow = (row: BulkRow) => {
     if (usedColumnNames.has(row.columnName)) {
-      dialog.alert(`같은 컬럼명(${row.columnName})이 이미 추가되어 있어 되돌릴 수 없습니다.`);
+      dialog.alert(t('같은 컬럼명({0})이 이미 추가되어 있어 되돌릴 수 없습니다.', row.columnName));
       return;
     }
     updateRow(row.key, (r) => ({ ...r, deleted: false, error: null }));
@@ -595,7 +598,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   const isDirty = counts.created + counts.updated + counts.deleted > 0 || counts.reordered;
 
   const onCancel = () => {
-    if (isDirty) dialog.confirm('저장하지 않은 변경 내용이 있습니다. 닫을까요?', controls.close);
+    if (isDirty) dialog.confirm(t('저장하지 않은 변경 내용이 있습니다. 닫을까요?'), controls.close);
     else controls.close();
   };
 
@@ -605,11 +608,11 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     const checked = rows.map((row) => {
       if (row.deleted || row.approved) return { ...row, error: null };
       const missing: string[] = [];
-      if (!String(row.fields.columnDesc ?? '').trim()) missing.push('컬럼 설명');
-      if (!String(row.fields.dataType ?? '').trim()) missing.push('데이터 타입');
+      if (!String(row.fields.columnDesc ?? '').trim()) missing.push(t('컬럼 설명'));
+      if (!String(row.fields.dataType ?? '').trim()) missing.push(t('데이터 타입'));
       if (missing.length) {
         firstError ??= row.key;
-        return { ...row, error: `${row.columnName} : ${missing.join(', ')}을(를) 입력해주세요.` };
+        return { ...row, error: t('{0} : {1}을(를) 입력해주세요.', row.columnName, missing.join(', ')) };
       }
       return { ...row, error: null };
     });
@@ -621,7 +624,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       return;
     }
 
-    const message = `신규 ${counts.created}건, 수정 ${counts.updated}건, 삭제 ${counts.deleted}건${counts.reordered ? ', 순서 변경' : ''}을 저장하시겠습니까?`;
+    const message = t('신규 {0}건, 수정 {1}건, 삭제 {2}건{3}을 저장하시겠습니까?', counts.created, counts.updated, counts.deleted, counts.reordered ? t(', 순서 변경') : '');
     dialog.confirm(message, save);
   };
 
@@ -654,7 +657,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
         return;
       }
       controls.close();
-      dialog.alert(`저장되었습니다. (신규 ${response.created} · 수정 ${response.updated} · 삭제 ${response.deleted})`, () => onSaved?.());
+      dialog.alert(t('저장되었습니다. (신규 {0} · 수정 {1} · 삭제 {2})', response.created, response.updated, response.deleted), () => onSaved?.());
     } finally {
       setSaving(false);
     }
@@ -679,47 +682,46 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   return (
     <div className="col-bulk">
       <p className="form-help col-bulk-help">
-        승인된 컬럼은 잠겨 있습니다. 승인 전 컬럼은 바로 고치거나 순서를 바꾸고 삭제할 수 있습니다. 컬럼명(용어)을 바꾸려면 삭제 후 다시 추가하세요.
-        "속성 자동 추천"을 켜 두면 여부/등록 일시/등록자/첫 식별자 컬럼의 NOT NULL·기본값·PK 를 미리 채웁니다.
+        {t('승인된 컬럼은 잠겨 있습니다. 승인 전 컬럼은 바로 고치거나 순서를 바꾸고 삭제할 수 있습니다. 컬럼명(용어)을 바꾸려면 삭제 후 다시 추가하세요. "속성 자동 추천"을 켜 두면 여부/등록 일시/등록자/첫 식별자 컬럼의 NOT NULL·기본값·PK 를 미리 채웁니다.')}
       </p>
 
       <section className="col-bulk-search">
         <div className="col-bulk-search-head">
           <div className="col-bulk-modes">
-            {([['search', '검색해서 추가'], ['paste', '붙여넣기로 추가'], ['copy', '다른 테이블에서 복사']] as const).map(([m, label]) => (
+            {([['search', t('검색해서 추가')], ['paste', t('붙여넣기로 추가')], ['copy', t('다른 테이블에서 복사')]] as const).map(([m, label]) => (
               <button key={m} type="button" aria-pressed={mode === m} className={`btn btn-sm col-bulk-mode${mode === m ? ' is-active' : ''}`} onClick={() => setMode(m)}>
                 {label}
               </button>
             ))}
           </div>
           <div className="col-bulk-search-tools">
-            <label className="col-bulk-flag" title="여부 → NOT NULL·기본값 N, 등록 일시 → NOT NULL·CURRENT_TIMESTAMP, 등록자 → NOT NULL, 첫 식별자 컬럼 → PK">
+            <label className="col-bulk-flag" title={t('여부 → NOT NULL·기본값 N, 등록 일시 → NOT NULL·CURRENT_TIMESTAMP, 등록자 → NOT NULL, 첫 식별자 컬럼 → PK')}>
               <input type="checkbox" className="form-check-input" checked={recommend} onChange={(e) => { setRecommend(e.target.checked); saveRecommendSetting(e.target.checked); }} />
-              <span>속성 자동 추천</span>
+              <span>{t('속성 자동 추천')}</span>
             </label>
-            <button type="button" className="btn btn-sm" title="프로젝트 공통 컬럼 세트(등록일시/등록자 등)를 표 끝에 한 번에 추가합니다." onClick={addCommonColumns}>공통 컬럼 추가</button>
+            <button type="button" className="btn btn-sm" title={t('프로젝트 공통 컬럼 세트(등록일시/등록자 등)를 표 끝에 한 번에 추가합니다.')} onClick={addCommonColumns}>{t('공통 컬럼 추가')}</button>
             {commonEditable && (
-              <button type="button" className="btn btn-sm" title="프로젝트 공통 컬럼 세트를 정합니다. (프로젝트 관리자)" onClick={openCommonSet}>공통 컬럼 세트 관리</button>
+              <button type="button" className="btn btn-sm" title={t('프로젝트 공통 컬럼 세트를 정합니다. (프로젝트 관리자)')} onClick={openCommonSet}>{t('공통 컬럼 세트 관리')}</button>
             )}
-            <button type="button" className="btn btn-sm" onClick={createTermAndAdd}>+ 새 표준용어 등록</button>
+            <button type="button" className="btn btn-sm" onClick={createTermAndAdd}>{t('+ 새 표준용어 등록')}</button>
           </div>
         </div>
 
         {mode === 'search' && (
           <div className="col-bulk-pane">
             <div className="lookup-search-row">
-              <select className="form-control" aria-label="표준용어 검색 기준" value={searchType} onChange={(e) => setSearchType(e.target.value as TermSearchType)}>
-                <option value="termName">표준용어명</option>
-                <option value="termAbbreviation">영문약어명</option>
+              <select className="form-control" aria-label={t('표준용어 검색 기준')} value={searchType} onChange={(e) => setSearchType(e.target.value as TermSearchType)}>
+                <option value="termName">{t('표준용어명')}</option>
+                <option value="termAbbreviation">{t('영문약어명')}</option>
               </select>
-              <input type="text" ref={searchInputRef} autoComplete="off" placeholder="예: 사용자 / USER_" className="form-control" value={keyword}
+              <input type="text" ref={searchInputRef} autoComplete="off" placeholder={t('예: 사용자 / USER_')} className="form-control" value={keyword}
                 onChange={(e) => setKeyword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
             </div>
             <div className="col-bulk-results" aria-live="polite">
               {!keyword.trim() ? (
-                <p className="form-help">표준용어명이나 영문약어명을 입력하면 바로 검색합니다. 여러 개를 체크해 한 번에 추가할 수 있습니다.</p>
+                <p className="form-help">{t('표준용어명이나 영문약어명을 입력하면 바로 검색합니다. 여러 개를 체크해 한 번에 추가할 수 있습니다.')}</p>
               ) : results.length === 0 ? (
-                <p className="table-name-error">조건에 맞는 표준용어가 없습니다. [+ 새 표준용어 등록]으로 바로 등록할 수 있습니다.</p>
+                <p className="table-name-error">{t('조건에 맞는 표준용어가 없습니다. [+ 새 표준용어 등록]으로 바로 등록할 수 있습니다.')}</p>
               ) : null}
               {keyword.trim() && results.map((term) => {
                 const already = usedColumnNames.has(term.commonStandardTermAbbreviation);
@@ -735,8 +737,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                     <span className="gh-mono">{term.commonStandardTermAbbreviation}</span>
                     <span>{termLabel(term)}</span>
                     <span className="gh-muted">{term.dataType ?? '-'}</span>
-                    {term.isApprovalYn !== 'Y' && <span className="gh-label gh-label-attention">용어 미승인</span>}
-                    {already && <span className="gh-muted">이미 추가됨</span>}
+                    {term.isApprovalYn !== 'Y' && <span className="gh-label gh-label-attention">{t('용어 미승인')}</span>}
+                    {already && <span className="gh-muted">{t('이미 추가됨')}</span>}
                   </label>
                 );
               })}
@@ -744,10 +746,10 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
             <div className="col-bulk-search-actions">
               <button type="button" className="btn btn-sm" disabled={selectableIds.length === 0}
                 onClick={() => setCheckedIds(checkedCount === selectableIds.length ? new Set() : new Set(selectableIds))}>
-                전체 선택
+                {t('전체 선택')}
               </button>
               <button type="button" className="btn btn-sm btn-primary" disabled={checkedCount === 0} onClick={addChecked}>
-                {checkedCount > 0 ? `선택 추가 (${checkedCount})` : '선택 추가'}
+                {checkedCount > 0 ? t('선택 추가 ({0})', checkedCount) : t('선택 추가')}
               </button>
             </div>
           </div>
@@ -756,52 +758,52 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
         {mode === 'paste' && (
           <div className="col-bulk-pane">
             <textarea className="form-control col-bulk-paste-text" rows={5} autoFocus value={pasteText} onChange={(e) => setPasteText(e.target.value)}
-              placeholder={'설계서/엑셀에서 컬럼(용어명 또는 영문약어명)을 한 줄에 하나씩 붙여넣으세요.\n예)\n사용자 아이디\n사용자_이름\nUSE_YN\n(엑셀에서 여러 칸을 복사하면 첫 칸만 씁니다)'} />
+              placeholder={t('설계서/엑셀에서 컬럼(용어명 또는 영문약어명)을 한 줄에 하나씩 붙여넣으세요.\n예)\n사용자 아이디\n사용자_이름\nUSE_YN\n(엑셀에서 여러 칸을 복사하면 첫 칸만 씁니다)')} />
             <div className="col-bulk-search-actions">
-              <button type="button" className="btn btn-sm" disabled={resolving} onClick={findPaste}>찾기</button>
+              <button type="button" className="btn btn-sm" disabled={resolving} onClick={findPaste}>{t('찾기')}</button>
             </div>
             <div className="col-bulk-paste-results" aria-live="polite">
               {pasteItems.length > 0 && (
                 <>
                   <p className="form-help">
-                    {`${pasteItems.length}줄 · 찾음 ${pasteCounts.MATCHED} · 여러 건 ${pasteCounts.AMBIGUOUS} · 없음 ${pasteCounts.NOT_FOUND}`}
-                    {pasteCounts.NOT_FOUND ? ' — 없는 용어는 [등록]으로 바로 만들 수 있습니다.' : ''}
+                    {t('{0}줄 · 찾음 {1} · 여러 건 {2} · 없음 {3}', pasteItems.length, pasteCounts.MATCHED, pasteCounts.AMBIGUOUS, pasteCounts.NOT_FOUND)}
+                    {pasteCounts.NOT_FOUND ? t(' — 없는 용어는 [등록]으로 바로 만들 수 있습니다.') : ''}
                   </p>
                   <ul className="col-bulk-paste-list">
                     {pasteView.map(({ item, term, already, duplicated, blocked, checked }, index) => (
                       <li key={index} className={`col-bulk-paste-item is-${item.status.toLowerCase()}${blocked ? ' is-disabled' : ''}`}>
-                        <input type="checkbox" aria-label={`${item.input} 추가`} className="form-check-input" checked={checked} disabled={blocked}
+                        <input type="checkbox" aria-label={t('{0} 추가', item.input)} className="form-check-input" checked={checked} disabled={blocked}
                           onChange={(e) => updatePasteItem(index, { checked: e.target.checked })} />
                         <span className="col-bulk-paste-input">{item.input}</span>
                         <span className="gh-muted">→</span>
                         {item.status === 'NOT_FOUND' ? (
                           <>
-                            <span className="gh-label gh-label-danger">용어 없음</span>
-                            <button type="button" className="btn btn-sm" onClick={() => createTermForPaste(index)}>등록</button>
+                            <span className="gh-label gh-label-danger">{t('용어 없음')}</span>
+                            <button type="button" className="btn btn-sm" onClick={() => createTermForPaste(index)}>{t('등록')}</button>
                           </>
                         ) : (
                           <>
                             {item.status === 'AMBIGUOUS' ? (
                               <>
-                                <select className="form-control col-bulk-paste-select" aria-label={`${item.input} 용어 선택`} value={String(item.selectedId)}
+                                <select className="form-control col-bulk-paste-select" aria-label={t('{0} 용어 선택', item.input)} value={String(item.selectedId)}
                                   onChange={(e) => updatePasteItem(index, { selectedId: Number(e.target.value), checked: true })}>
-                                  {item.terms.map((t) => (
-                                    <option key={t.id} value={t.id}>
-                                      {`${t.commonStandardTermAbbreviation} · ${t.commonStandardDomainName ?? '-'} · ${t.dataType ?? '-'}${t.isApprovalYn === 'Y' ? '' : ' (미승인)'}`}
+                                  {item.terms.map((term) => (
+                                    <option key={term.id} value={term.id}>
+                                      {`${term.commonStandardTermAbbreviation} · ${term.commonStandardDomainName ?? '-'} · ${term.dataType ?? '-'}${term.isApprovalYn === 'Y' ? '' : t(' (미승인)')}`}
                                     </option>
                                   ))}
                                 </select>
-                                <span className="gh-label gh-label-attention">{`${item.terms.length}건 중 선택`}</span>
+                                <span className="gh-label gh-label-attention">{t('{0}건 중 선택', item.terms.length)}</span>
                               </>
                             ) : (
                               <>
                                 <span className="gh-mono">{term?.commonStandardTermAbbreviation}</span>
                                 <span className="gh-muted">{term?.dataType ?? '-'}</span>
-                                {term && term.isApprovalYn !== 'Y' && <span className="gh-label gh-label-attention">용어 미승인</span>}
+                                {term && term.isApprovalYn !== 'Y' && <span className="gh-label gh-label-attention">{t('용어 미승인')}</span>}
                               </>
                             )}
-                            {already && <span className="gh-muted">이미 추가됨</span>}
-                            {duplicated && <span className="gh-muted">위에 같은 컬럼 있음</span>}
+                            {already && <span className="gh-muted">{t('이미 추가됨')}</span>}
+                            {duplicated && <span className="gh-muted">{t('위에 같은 컬럼 있음')}</span>}
                           </>
                         )}
                       </li>
@@ -812,7 +814,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
             </div>
             <div className="col-bulk-search-actions">
               <button type="button" className="btn btn-sm btn-primary" disabled={pasteCheckedCount === 0} onClick={addPasted}>
-                {pasteCheckedCount > 0 ? `체크한 용어 추가 (${pasteCheckedCount})` : '체크한 용어 추가'}
+                {pasteCheckedCount > 0 ? t('체크한 용어 추가 ({0})', pasteCheckedCount) : t('체크한 용어 추가')}
               </button>
             </div>
           </div>
@@ -820,15 +822,15 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
 
         {mode === 'copy' && (
           <div className="col-bulk-pane">
-            <input type="text" autoComplete="off" placeholder="복사할 테이블명 또는 일부 (예: TB_USER)" className="form-control" autoFocus value={copyKeyword}
+            <input type="text" autoComplete="off" placeholder={t('복사할 테이블명 또는 일부 (예: TB_USER)')} className="form-control" autoFocus value={copyKeyword}
               onChange={(e) => setCopyKeyword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
-            <select className="form-control lookup-select" size={4} aria-label="복사할 테이블 선택" hidden={copyTables.length === 0 || !copyKeyword.trim()}
+            <select className="form-control lookup-select" size={4} aria-label={t('복사할 테이블 선택')} hidden={copyTables.length === 0 || !copyKeyword.trim()}
               value={copyTable ? String(copyTable.id) : ''} onChange={(e) => selectCopyTable(copyTables.find((t) => String(t.id) === e.target.value))}>
               {copyTables.map((t) => <option key={t.id} value={t.id}>{t.tableKorName ? `${t.tableName} · ${t.tableKorName}` : t.tableName}</option>)}
             </select>
             <div className="col-bulk-results col-bulk-copy-results" aria-live="polite">
               {copyMessage && <p className="table-name-error">{copyMessage}</p>}
-              {copyTable && copyColumns.length === 0 && <p className="form-help">{`${copyTable.tableName} 에 등록된 컬럼이 없습니다.`}</p>}
+              {copyTable && copyColumns.length === 0 && <p className="form-help">{t('{0} 에 등록된 컬럼이 없습니다.', copyTable.tableName)}</p>}
               {copyTable && copyColumns.map((col) => {
                 const noTerm = !col.standardTerms?.id;
                 const already = usedColumnNames.has(col.columnName);
@@ -846,8 +848,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                     <span>{col.columnDesc ?? ''}</span>
                     <span className="gh-muted">{`${col.dataType ?? '-'}${col.maxLength ? `(${col.maxLength})` : ''}`}</span>
                     {col.isPk === 'Y' && <span className="gh-label gh-label-accent">PK</span>}
-                    {noTerm && <span className="gh-muted">표준용어 연결 없음</span>}
-                    {already && <span className="gh-muted">이미 추가됨</span>}
+                    {noTerm && <span className="gh-muted">{t('표준용어 연결 없음')}</span>}
+                    {already && <span className="gh-muted">{t('이미 추가됨')}</span>}
                   </label>
                 );
               })}
@@ -855,10 +857,10 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
             <div className="col-bulk-search-actions">
               <button type="button" className="btn btn-sm" disabled={copyCheckable.length === 0}
                 onClick={() => setCopyChecked(copyCheckedCount === copyCheckable.length ? new Set() : new Set(copyCheckable))}>
-                전체 선택
+                {t('전체 선택')}
               </button>
               <button type="button" className="btn btn-sm btn-primary" disabled={copyCheckedCount === 0} onClick={addCopied}>
-                {copyCheckedCount > 0 ? `체크한 컬럼 복사 (${copyCheckedCount})` : '체크한 컬럼 복사'}
+                {copyCheckedCount > 0 ? t('체크한 컬럼 복사 ({0})', copyCheckedCount) : t('체크한 컬럼 복사')}
               </button>
             </div>
           </div>
@@ -875,7 +877,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
         <table className="col-bulk-table">
           <thead>
             <tr>
-              {['#', '', '컬럼명', '컬럼 설명', '데이터 타입', '길이', 'PK', 'NULL', '기본값', '', ''].map((h, i) => (
+              {['#', '', t('컬럼명'), t('컬럼 설명'), t('데이터 타입'), t('길이'), 'PK', 'NULL', t('기본값'), '', ''].map((h, i) => (
                 <th key={i} className={['', 'col-move', '', '', '', 'col-num', 'col-chk', 'col-chk', '', 'col-icon', 'col-icon'][i] || undefined}>{h}</th>
               ))}
             </tr>
@@ -883,7 +885,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="col-bulk-empty">등록된 컬럼이 없습니다. 위에서 표준용어를 검색해 추가하세요.</td>
+                <td colSpan={11} className="col-bulk-empty">{t('등록된 컬럼이 없습니다. 위에서 표준용어를 검색해 추가하세요.')}</td>
               </tr>
             )}
             {rows.map((row, index) => {
@@ -899,10 +901,10 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                     <td className="col-move">
                       {!row.deleted && (
                         <>
-                          <button type="button" title="위로" aria-label="위로" className="btn btn-sm col-bulk-icon" disabled={!canMove(index, -1)} onClick={() => move(index, -1)}>
+                          <button type="button" title={t('위로')} aria-label={t('위로')} className="btn btn-sm col-bulk-icon" disabled={!canMove(index, -1)} onClick={() => move(index, -1)}>
                             <ChevronUpIcon size={14} />
                           </button>
-                          <button type="button" title="아래로" aria-label="아래로" className="btn btn-sm col-bulk-icon" disabled={!canMove(index, 1)} onClick={() => move(index, 1)}>
+                          <button type="button" title={t('아래로')} aria-label={t('아래로')} className="btn btn-sm col-bulk-icon" disabled={!canMove(index, 1)} onClick={() => move(index, 1)}>
                             <ChevronDownIcon size={14} />
                           </button>
                         </>
@@ -910,25 +912,25 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                     </td>
                     <td className="col-name">
                       <span className="gh-mono">{row.columnName}</span>
-                      {row.isNew ? <span className="gh-label gh-label-accent">신규</span>
-                        : locked ? <span className="gh-label gh-label-success">승인</span>
-                          : row.deleted ? <span className="gh-label gh-label-danger">삭제 예정</span>
-                            : modified ? <span className="gh-label gh-label-attention">수정</span> : null}
-                      {row.termNotApproved && <span className="gh-label gh-label-attention">용어 미승인</span>}
+                      {row.isNew ? <span className="gh-label gh-label-accent">{t('신규')}</span>
+                        : locked ? <span className="gh-label gh-label-success">{t('승인')}</span>
+                          : row.deleted ? <span className="gh-label gh-label-danger">{t('삭제 예정')}</span>
+                            : modified ? <span className="gh-label gh-label-attention">{tc('상태', '수정')}</span> : null}
+                      {row.termNotApproved && <span className="gh-label gh-label-attention">{t('용어 미승인')}</span>}
                       {row.source && !row.deleted && <span className="gh-label col-bulk-source" title={row.source.title}>{row.source.label}</span>}
                       {row.recommended?.length && !row.deleted ? (
-                        <span className="gh-label gh-label-done col-bulk-recommended" title={`자동 추천 적용 : ${row.recommended.join(' / ')} (표에서 바로 바꿀 수 있습니다)`}>추천</span>
+                        <span className="gh-label gh-label-done col-bulk-recommended" title={t('자동 추천 적용 : {0} (표에서 바로 바꿀 수 있습니다)', row.recommended.join(' / '))}>{t('추천')}</span>
                       ) : null}
                     </td>
                     <td>{textInput(row, 'columnDesc', disabled)}</td>
                     <td>{textInput(row, 'dataType', disabled, { className: 'gh-mono', list: 'colBulkDataTypes' })}</td>
                     <td className="col-num">{numberInput(row, 'maxLength', disabled)}</td>
                     <td className="col-chk">{checkInput(row, 'isPk', disabled, 'PK')}</td>
-                    <td className="col-chk">{checkInput(row, 'isNullable', disabled || row.fields.isPk === 'Y', 'NULL 허용')}</td>
+                    <td className="col-chk">{checkInput(row, 'isNullable', disabled || row.fields.isPk === 'Y', t('NULL 허용'))}</td>
                     <td>{textInput(row, 'defaultValue', disabled, { className: 'gh-mono' })}</td>
                     <td className="col-icon">
                       {!row.deleted && (
-                        <button type="button" title={row.expanded ? '상세 닫기' : '상세 (정밀도/참조 테이블/속성)'} aria-expanded={!!row.expanded} className="btn btn-sm col-bulk-icon"
+                        <button type="button" title={row.expanded ? t('상세 닫기') : t('상세 (정밀도/참조 테이블/속성)')} aria-expanded={!!row.expanded} className="btn btn-sm col-bulk-icon"
                           onClick={() => updateRow(row.key, (r) => ({ ...r, expanded: !r.expanded }))}>
                           {row.expanded ? '▴' : '⋯'}
                         </button>
@@ -936,9 +938,9 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                     </td>
                     <td className="col-icon">
                       {row.deleted ? (
-                        <button type="button" title="삭제 취소" className="btn btn-sm col-bulk-icon" onClick={() => restoreRow(row)}>↺</button>
+                        <button type="button" title={t('삭제 취소')} className="btn btn-sm col-bulk-icon" onClick={() => restoreRow(row)}>↺</button>
                       ) : !locked ? (
-                        <button type="button" title="삭제" className="btn btn-sm col-bulk-icon col-bulk-remove" onClick={() => removeRow(index)}>✕</button>
+                        <button type="button" title={t('삭제')} className="btn btn-sm col-bulk-icon col-bulk-remove" onClick={() => removeRow(index)}>✕</button>
                       ) : null}
                     </td>
                   </tr>
@@ -947,15 +949,15 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                       <td colSpan={2} />
                       <td colSpan={9}>
                         <div className="col-bulk-detail">
-                          <label className="col-bulk-field"><span>정밀도</span>{numberInput(row, 'precision', locked)}</label>
-                          <label className="col-bulk-field"><span>소수 자릿수</span>{numberInput(row, 'scale', locked)}</label>
+                          <label className="col-bulk-field"><span>{t('정밀도')}</span>{numberInput(row, 'precision', locked)}</label>
+                          <label className="col-bulk-field"><span>{t('소수 자릿수')}</span>{numberInput(row, 'scale', locked)}</label>
                           {/* 참조 테이블명 : 승인된 테이블 자동완성 (승인된 컬럼은 잠겨 있으므로 조회하지 않는다) */}
                           <div className="col-bulk-field">
-                            <span>참조 테이블명</span>
-                            <RefTableLookup value={row.fields.refTableName ?? ''} disabled={locked} placeholder="예: TB_USER" ariaLabel="refTableName"
+                            <span>{t('참조 테이블명')}</span>
+                            <RefTableLookup value={row.fields.refTableName ?? ''} disabled={locked} placeholder={t('예: TB_USER')} ariaLabel="refTableName"
                               onChange={(v) => setFieldValue(row, 'refTableName', v)} />
                           </div>
-                          <label className="col-bulk-field"><span>데이터 예시</span>{textInput(row, 'example', locked)}</label>
+                          <label className="col-bulk-field"><span>{t('데이터 예시')}</span>{textInput(row, 'example', locked)}</label>
                         </div>
                         <div className="col-bulk-flags">
                           {DETAIL_FLAGS.map(([key, label]) => {
@@ -989,10 +991,10 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
 
       <div className="gh-dialog-actions col-bulk-actions">
         <span className="col-bulk-summary">
-          {[`신규 ${counts.created}`, `수정 ${counts.updated}`, `삭제 ${counts.deleted}`, ...(counts.reordered ? ['순서 변경'] : [])].join(' · ')}
+          {[t('신규 {0}', counts.created), t('수정 {0}', counts.updated), t('삭제 {0}', counts.deleted), ...(counts.reordered ? [t('순서 변경')] : [])].join(' · ')}
         </span>
-        <button type="button" className="btn" onClick={onCancel}>닫기</button>
-        <button type="button" className="btn btn-primary" disabled={saving || !isDirty} onClick={onSave}>일괄 저장</button>
+        <button type="button" className="btn" onClick={onCancel}>{t('닫기')}</button>
+        <button type="button" className="btn btn-primary" disabled={saving || !isDirty} onClick={onSave}>{t('일괄 저장')}</button>
       </div>
     </div>
   );

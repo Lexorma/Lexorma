@@ -4,6 +4,7 @@ import { useAuth, type MenuId } from '../../hooks/useAuth';
 // 사이드바 아이콘은 Lucide (그 외 화면은 GitHub Octicons - @primer/octicons-react)
 import {Bell, ChevronDown, Database, LayoutGrid, Menu, SlidersHorizontal, Workflow} from 'lucide-react';
 import { MENU_GROUPS } from './menu';
+import { t } from '../../lib/i18n';
 
 const GROUP_ICONS: Partial<Record<MenuId, ReactNode>> = {
   'operation-management': <Bell className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
@@ -57,7 +58,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
           type="button"
           className="sidebar-collapse-btn"
           onClick={() => setCollapsed(toggleSidebarCollapse())}
-          aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+          aria-label={collapsed ? t('사이드바 펼치기') : t('사이드바 접기')}
           aria-expanded={!collapsed}
         >
           <Menu size={20} aria-hidden />
@@ -66,9 +67,9 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
 
       <nav className="sidebar-nav">
         {canView('dashboard') && (
-          <NavLink to="/" end className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} title="대시보드">
+          <NavLink to="/" end className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} title={t('대시보드')}>
             <LayoutGrid className="sidebar-icon" strokeWidth={1.8} aria-hidden />
-            <span className="sidebar-label">대시보드</span>
+            <span className="sidebar-label">{t('대시보드')}</span>
           </NavLink>
         )}
 

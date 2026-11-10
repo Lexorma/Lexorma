@@ -1,3 +1,4 @@
+import { locale, t } from './i18n';
 /**
  * API 클라이언트 (fetch)
  *
@@ -47,7 +48,7 @@ async function getCsrf(): Promise<CsrfToken> {
   if (!csrfPromise) {
     csrfPromise = fetch('/api/auth/csrf', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(async (res) => {
-        if (!res.ok) throw new ApiError(res.status, '보안 토큰을 받지 못했습니다.');
+        if (!res.ok) throw new ApiError(res.status, t('보안 토큰을 받지 못했습니다.'));
         const body = (await res.json()) as CsrfToken;
         csrfToken = body;
         return body;
@@ -85,6 +86,8 @@ async function send(url: string, options: RequestOptions, retried = false): Prom
   const headers: Record<string, string> = {
     Accept: options.responseType === 'text' ? 'text/plain, text/markdown' : 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
+    // 서버 메시지도 화면과 같은 언어로 받는다
+    'Accept-Language': locale,
   };
 
   let body: BodyInit | undefined;
@@ -106,7 +109,7 @@ async function send(url: string, options: RequestOptions, retried = false): Prom
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
     // 서버 응답을 받지 못한 경우 : 세션 만료로 보지 않는다
-    throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.', 'NETWORK_ERROR');
+    throw new ApiError(0, t('서버에 연결할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.'), 'NETWORK_ERROR');
   }
 
   // 토큰이 바뀐 경우(세션 만료 후 새 세션 등) 한 번만 새 토큰으로 다시 보낸다
@@ -131,11 +134,11 @@ async function peekError(res: Response): Promise<ErrorBody> {
 async function toError(res: Response): Promise<ApiError> {
   const body = await peekError(res);
   let message = body.message;
-  if (res.status === 401) message = message ?? '로그인이 필요합니다.';
+  if (res.status === 401) message = message ?? t('로그인이 필요합니다.');
   else if (res.status === 403 || res.status === 405) {
-    message = body.code === 'CSRF_INVALID' ? body.message : '해당 작업을 수행할 접근 권한이 없습니다.';
+    message = body.code === 'CSRF_INVALID' ? body.message : t('해당 작업을 수행할 접근 권한이 없습니다.');
   }
-  return new ApiError(res.status, message ?? '알 수 없는 오류가 발생했습니다.', body.code, body);
+  return new ApiError(res.status, message ?? t('알 수 없는 오류가 발생했습니다.'), body.code, body);
 }
 
 function fail(error: unknown, options: RequestOptions): never {

@@ -11,6 +11,7 @@ import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from './TableDdl';
 import { TableForm } from './TableForm';
 import { tableColumns } from './columns';
+import { t } from '../../lib/i18n';
 
 /** 테이블 관리 : 테이블 설계 정보 등록·승인, 상세(컬럼 목록 / 컬럼 일괄 편집 / DDL) */
 export function TableManagePage() {
@@ -22,7 +23,7 @@ export function TableManagePage() {
 
   const openForm = (type: 'C' | 'U', row?: Row) => {
     dialog.open({
-      title: type === 'C' ? '테이블 등록' : '테이블 수정',
+      title: type === 'C' ? t('테이블 등록') : t('테이블 수정'),
       content: ({ close }: DialogControls) => <TableForm type={type} row={row} onSaved={() => { close(); reload(); }} />,
     });
   };
@@ -31,26 +32,25 @@ export function TableManagePage() {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
     if (checked.some((e) => e.isApproval === 'Y')) {
-      dialog.alert('체크된 데이터에 승인된 정보도 포함되어있습니다. 승인이 완료된 경우, 삭제가 불가능합니다.');
+      dialog.alert(t('체크된 데이터에 승인된 정보도 포함되어있습니다. 승인이 완료된 경우, 삭제가 불가능합니다.'));
       return;
     }
-    dialog.confirm('체크된 데이터를 삭제하시겠습니까?', async () => {
+    dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteTable', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert('정상적으로 삭제되었습니다.', reload);
+      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), reload);
     });
   };
 
   const updateActive = (isApproval: boolean) => {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
-    const msg = isApproval ? '승인' : '승인취소';
-    dialog.confirm(`체크된 테이블 정보를 ${msg}하시겠습니까?`, async () => {
+    dialog.confirm(isApproval ? t('체크된 테이블 정보를 승인하시겠습니까?') : t('체크된 테이블 정보를 승인취소하시겠습니까?'), async () => {
       if (!checked.some((e) => e.isApproval === (isApproval ? 'N' : 'Y'))) {
-        dialog.alert(`${msg} 필요한 정보가 선택되지 않았습니다.`);
+        dialog.alert(isApproval ? t('승인 필요한 정보가 선택되지 않았습니다.') : t('승인취소 필요한 정보가 선택되지 않았습니다.'));
         return;
       }
       const response = await api<{ result: boolean }>(`/api/saveTable/${isApproval}`, { method: 'PATCH', body: checked });
-      if (response.result) dialog.alert(`정상적으로 ${msg}처리 되었습니다.`, reload);
+      if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
     });
   };
 
@@ -60,13 +60,13 @@ export function TableManagePage() {
     const clear = () => {
       if (fileRef.current) fileRef.current.value = '';
     };
-    dialog.confirm('업로드 하시겠습니까?', async () => {
+    dialog.confirm(t('업로드 하시겠습니까?'), async () => {
       const formData = new FormData();
       formData.append('file', file);
       try {
         const response = await api<{ result: string }>('/api/uploadTableExcelFile', { method: 'POST', body: formData });
         if (response.result === 'success') {
-          dialog.alert('업로드가 완료되었습니다.');
+          dialog.alert(t('업로드가 완료되었습니다.'));
           reload();
         }
       } finally {
@@ -79,7 +79,7 @@ export function TableManagePage() {
   const openDetail = (row: Row) => {
     const approved = row.isApproval === 'Y';
     dialog.open({
-      title: `테이블 상세 · ${row.tableName ?? ''}`,
+      title: t('테이블 상세 · {0}', row.tableName ?? ''),
       // 컬럼 목록 표가 들어가므로 넓게 연다
       className: 'dialog-table-detail',
       content: ({ close }: DialogControls) => (
@@ -103,8 +103,8 @@ export function TableManagePage() {
 
   return (
     <>
-      <PageHeader category="데이터 관리" title="테이블 관리"
-        description="테이블 설계 정보를 등록하고 승인합니다. 테이블명은 한글명(예: 사용_내역_관리)을 승인된 표준 단어의 영문약어로 바꿔 만듭니다. 행을 누르면 테이블 정보를 수정할 수 있습니다." />
+      <PageHeader category={t('데이터 관리')} title={t('테이블 관리')}
+        description={t('테이블 설계 정보를 등록하고 승인합니다. 테이블명은 한글명(예: 사용_내역_관리)을 승인된 표준 단어의 영문약어로 바꿔 만듭니다. 행을 누르면 테이블 정보를 수정할 수 있습니다.')} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
 
       <div id="gridContainer">
@@ -116,17 +116,17 @@ export function TableManagePage() {
           crudActions="anCD"
           extraActions={
             <>
-              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/tableTemplate', '테이블 템플릿.xlsx')}>
-                <DownloadIcon />템플릿
+              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/tableTemplate', t('테이블 템플릿.xlsx'))}>
+                <DownloadIcon />{t('템플릿')}
               </button>
-              <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />업로드</button>
+              <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />{t('업로드')}</button>
             </>
           }
           onAction={{ add: () => openForm('C'), delete: remove, active: () => updateActive(true), unactive: () => updateActive(false) }}
           onRowClick={openDetail}
           renderCell={(field, row) => {
             if (field === 'tableName') return <Mono>{row.tableName}</Mono>;
-            if (field === 'isMasterTable') return <YN value={row.isMasterTable} text="마스터" />;
+            if (field === 'isMasterTable') return <YN value={row.isMasterTable} text={t('마스터')} />;
             if (field === 'isApproval') return <Approval value={row.isApproval} />;
             return undefined;
           }}
@@ -164,18 +164,18 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
   const columns = (data?.columnInfos ?? []).slice().sort((a, b) => order(a.sortOrder) - order(b.sortOrder));
 
   const items: [string, unknown, boolean?][] = [
-    ['테이블명', row.tableName, true],
-    ['테이블 한글명', row.tableKorName],
-    ['테이블 설명', row.tableDescription],
-    ['마스터 테이블', row.isMasterTable === 'Y' ? 'Y' : 'N'],
-    ['정렬 순서', row.sortOrder],
+    [t('테이블명'), row.tableName, true],
+    [t('테이블 한글명'), row.tableKorName],
+    [t('테이블 설명'), row.tableDescription],
+    [t('마스터 테이블'), row.isMasterTable === 'Y' ? 'Y' : 'N'],
+    [t('정렬 순서'), row.sortOrder],
   ];
 
   return (
     <div>
       <div className="dict-detail-status">
-        <span className={`gh-label gh-label-dot ${approved ? 'gh-label-success' : 'gh-label-attention'}`}>{approved ? '승인' : '승인 대기'}</span>
-        <span className="gh-muted">{approved ? '승인된 테이블은 수정할 수 없습니다.' : ''}</span>
+        <span className={`gh-label gh-label-dot ${approved ? 'gh-label-success' : 'gh-label-attention'}`}>{approved ? t('승인') : t('승인 대기')}</span>
+        <span className="gh-muted">{approved ? t('승인된 테이블은 수정할 수 없습니다.') : ''}</span>
       </div>
       <dl className="dict-detail">
         {items.map(([label, value, mono]) => {
@@ -190,19 +190,19 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
       </dl>
 
       <div className="dict-detail-columns">
-        <h4>{data && columns.length > 0 ? `컬럼 목록 (${columns.length})` : '컬럼 목록'}</h4>
+        <h4>{data && columns.length > 0 ? t('컬럼 목록 ({0})', columns.length) : t('컬럼 목록')}</h4>
         {error ? (
-          <p className="gh-muted">{error instanceof ApiError && error.status === 403 ? '컬럼 목록을 조회할 권한이 없습니다.' : '컬럼 목록을 불러오지 못했습니다.'}</p>
+          <p className="gh-muted">{error instanceof ApiError && error.status === 403 ? t('컬럼 목록을 조회할 권한이 없습니다.') : t('컬럼 목록을 불러오지 못했습니다.')}</p>
         ) : !data ? (
-          <p className="gh-muted">컬럼을 조회하고 있습니다.</p>
+          <p className="gh-muted">{t('컬럼을 조회하고 있습니다.')}</p>
         ) : columns.length === 0 ? (
-          <p className="gh-muted">등록된 컬럼이 없습니다.</p>
+          <p className="gh-muted">{t('등록된 컬럼이 없습니다.')}</p>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  {['#', '컬럼명', '컬럼 설명', '데이터 타입', 'PK', 'NULL', '승인'].map((h) => <th key={h}>{h}</th>)}
+                  {['#', t('컬럼명'), t('컬럼 설명'), t('데이터 타입'), 'PK', 'NULL', t('승인')].map((h) => <th key={h}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -214,7 +214,7 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
                     <td className="gh-mono">{col.dataType ? `${col.dataType}${col.maxLength ? `(${col.maxLength})` : ''}` : '-'}</td>
                     <td className="text-center">{ynLabel(col.isPk, 'PK')}</td>
                     <td className="text-center">{ynLabel(col.isNullable, 'Y')}</td>
-                    <td className="text-center">{ynLabel(col.isApproval, '승인', 'success')}</td>
+                    <td className="text-center">{ynLabel(col.isApproval, t('승인'), 'success')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -226,12 +226,12 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
       <div className="gh-dialog-actions">
         {/* 컬럼 일괄 편집 : 승인된 테이블에만 컬럼을 등록할 수 있다 */}
         <button type="button" className="btn" disabled={!approved} onClick={onEditColumns}
-          title={approved ? '표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.' : '승인된 테이블에만 컬럼을 등록할 수 있습니다.'}>
-          컬럼 편집
+          title={approved ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
+          {t('컬럼 편집')}
         </button>
         {/* DDL 은 승인 여부와 관계없이 볼 수 있다 */}
-        <button type="button" className="btn" onClick={onDdl}>DDL 보기</button>
-        {onEdit && <button type="button" className="btn btn-primary" onClick={onEdit}>수정</button>}
+        <button type="button" className="btn" onClick={onDdl}>{t('DDL 보기')}</button>
+        {onEdit && <button type="button" className="btn btn-primary" onClick={onEdit}>{t('수정')}</button>}
       </div>
     </div>
   );

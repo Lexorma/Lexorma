@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { initial } from '../../lib/format';
 import { PersonIcon, SignOutIcon, ThreeBarsIcon } from '@primer/octicons-react';
+import { t } from '../../lib/i18n';
 
 /** GitHub 스타일 상단 헤더 : (모바일 메뉴) 로고 / 프로젝트 경로 + 사용자 메뉴 */
 export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuToggle?: () => void }) {
@@ -36,15 +37,15 @@ export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuT
     <header className="app-header">
       <div className="app-header-left">
         {onMenuToggle && (
-          <button type="button" className="app-header-icon-btn app-header-menu-btn" aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
+          <button type="button" className="app-header-icon-btn app-header-menu-btn" aria-label={menuOpen ? t('메뉴 닫기') : t('메뉴 열기')}
             aria-expanded={menuOpen} onClick={onMenuToggle}>
             <ThreeBarsIcon />
           </button>
         )}
-        <Link className="app-header-logo" to="/" aria-label="MetaMora 홈">
+        <Link className="app-header-logo" to="/" aria-label={t('MetaMora 홈')}>
           <img src="/images/favicon.svg" alt="" width="20" height="20" />
         </Link>
-        <nav className="app-header-context" aria-label="현재 위치">
+        <nav className="app-header-context" aria-label={t('현재 위치')}>
           <Link className="app-header-crumb is-brand" to="/">
             MetaMora
           </Link>
@@ -60,7 +61,7 @@ export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuT
       <div className="app-header-right">
         {user && (
           <div className="dropdown" ref={menuRef} style={{ position: 'relative' }}>
-            <button type="button" className="app-header-avatar" aria-expanded={open} aria-label="사용자 메뉴 열기" onClick={() => setOpen((v) => !v)}>
+            <button type="button" className="app-header-avatar" aria-expanded={open} aria-label={t('사용자 메뉴 열기')} onClick={() => setOpen((v) => !v)}>
               {initial(displayName)}
             </button>
 
@@ -78,12 +79,12 @@ export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuT
               <div className="app-header-menu-divider" />
               <Link className="app-header-menu-item" to="/account" onClick={() => setOpen(false)}>
                 <PersonIcon />
-                내 정보
+                {t('내 정보')}
               </Link>
               <div className="app-header-menu-divider" />
               <a className="app-header-menu-item" href="/login" onClick={onLogout}>
                 <SignOutIcon />
-                로그아웃
+                {t('로그아웃')}
               </a>
             </div>
           </div>

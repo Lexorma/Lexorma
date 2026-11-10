@@ -1,6 +1,7 @@
 import { Fragment, memo } from 'react';
 import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
 import { columnType, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, ROW_HEIGHT, SIMPLE_WIDTH_PX, type TableNode as TableNodeType } from './model';
+import { t } from '../../lib/i18n';
 
 /** 화면에서 노드가 작으면(축소) 컬럼을 생략한다. 노드 크기와 테이블 연결점은 그대로라 관계선이 끊기지 않는다 */
 export const useSimpleNodes = () => useStore((s) => s.transform[2] * NODE_WIDTH < SIMPLE_WIDTH_PX);
@@ -20,9 +21,9 @@ export const TableNode = memo(function TableNode({ data, selected }: NodeProps<T
       <header title={table.tableName}>
         <strong>{table.tableName}</strong>
         <span>
-          {table.tableKorName || '논리명 없음'}
-          {table.isApproval ? '' : ' · 승인 대기'}
-          {table.isMasterTable ? ' · 마스터' : ''}
+          {table.tableKorName || t('논리명 없음')}
+          {table.isApproval ? '' : t(' · 승인 대기')}
+          {table.isMasterTable ? t(' · 마스터') : ''}
         </span>
       </header>
       {!simple && rows.map((c) => {
@@ -36,7 +37,7 @@ export const TableNode = memo(function TableNode({ data, selected }: NodeProps<T
           </div>
         );
       })}
-      {!simple && columns.length > MAX_ROWS && <div className="erd-column-more">외 {columns.length - MAX_ROWS}개 컬럼 · 상세 패널에서 확인</div>}
+      {!simple && columns.length > MAX_ROWS && <div className="erd-column-more">{t('외 {0}개 컬럼 · 상세 패널에서 확인', columns.length - MAX_ROWS)}</div>}
 
       <Handle type="target" id={TABLE_HANDLE.in} position={Position.Left} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
       <Handle type="source" id={TABLE_HANDLE.out} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />

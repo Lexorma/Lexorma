@@ -95,13 +95,13 @@ public class StandardDomainService {
                 // 1. 승인된 도메인 삭제 불가
                 if (Boolean.TRUE.equals(domain.getIsApproval())) {
                     throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED,
-                            "승인된 도메인은 삭제할 수 없습니다: " + domain.getCommonStandardDomainName());
+                            "승인된 도메인은 삭제할 수 없습니다: {0}", domain.getCommonStandardDomainName());
                 }
 
                 // 2. 표준용어에서 참조 중인 경우 삭제 불가
                 if (domain.getStandardTerms() != null && !domain.getStandardTerms().isEmpty()) {
                     throw new CustomException(ErrorCode.RELATION_EXISTS,
-                            "표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: " + domain.getCommonStandardDomainName());
+                            "표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: {0}", domain.getCommonStandardDomainName());
                 }
 
                 // 3. 삭제 수행

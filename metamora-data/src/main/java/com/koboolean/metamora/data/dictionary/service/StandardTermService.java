@@ -282,7 +282,7 @@ public class StandardTermService {
 
                 mappings.add(mapping);
             }else{
-                throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA, "누락된 문자열 : " + s);
+                throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA, "누락된 문자열 : {0}", s);
             }
         }
     }
@@ -352,7 +352,7 @@ public class StandardTermService {
         for (String part : abbrWords) {
             List<StandardWord> candidates = wordsByAbbreviation.getOrDefault(part, List.of());
             if (candidates.isEmpty()) {
-                throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA, "누락된 문자열 : " + part);
+                throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA, "누락된 문자열 : {0}", part);
             }
             words.add(pickWord(candidates, compactName));
         }
@@ -437,7 +437,7 @@ public class StandardTermService {
 
         if (standardDomain == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_DOMAIN_DATA,
-                    "도메인을 찾을 수 없습니다: " + dto.getCommonStandardDomainName());
+                    "도메인을 찾을 수 없습니다: {0}", dto.getCommonStandardDomainName());
         }
 
         return StandardTerm.builder()
@@ -473,7 +473,7 @@ public class StandardTermService {
 
         if (standardDomain == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_DOMAIN_DATA,
-                    "도메인을 찾을 수 없습니다: " + dto.getCommonStandardDomainName());
+                    "도메인을 찾을 수 없습니다: {0}", dto.getCommonStandardDomainName());
         }
 
         existingTerm.setRevisionNumber(dto.getRevisionNumber());

@@ -20,9 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.koboolean.metamora.operation.board.domain.dto.BoardDto;
 import com.koboolean.metamora.operation.board.domain.entity.Board;
 import com.koboolean.metamora.operation.board.domain.entity.BoardCategory;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.operation.notice.repository.BoardCategoryRepository;
 import com.koboolean.metamora.operation.notice.repository.BoardRepository;
 import com.koboolean.metamora.operation.notice.service.NoticeService;
@@ -41,21 +38,6 @@ public class NoticeServiceImpl implements NoticeService {
 	private final BoardRepository boardRepository;
 	private final BoardCategoryRepository boardCategoryRepository;
 	private final AccountRepository accountRepository;
-
-	/**
-	 * [공지사항 컬럼 조회] 공지사항 그리드에 표시할 컬럼을 조회한다.
-	 * 
-	 * @return
-	 */
-	@Override
-	public List<ColumnDto> getNoticeListColumn(Long selectedId) {
-
-		return List.of(new ColumnDto("", "id", ColumnType.NUMBER, RowType.CHECKBOX)
-				     , new ColumnDto("게시글 제목", "title", ColumnType.STRING, RowType.TEXT, true, true)
-				     , new ColumnDto("작성자", "username", ColumnType.STRING, RowType.TEXT, false, false)
-				     , new ColumnDto("작성일", "updatedTime", ColumnType.DATE, RowType.TEXT, false, false)
-				     , new ColumnDto("확인여부", "isHit", ColumnType.STRING, RowType.TEXT, false, false));
-	}
 
 	/**
 	 * [공지사항 리스트 조회] 공지사항 그리드에 표시할 데이터를 조회한다.
@@ -96,8 +78,7 @@ public class NoticeServiceImpl implements NoticeService {
         boardDto.setProjectId(accountDto.getProjectId());
         
         BoardCategory boardCategory = boardCategoryRepository.findById("NOTICE").orElse(null);
-        
-        
+
         /* DB 데이터가 없는 경우 객체가 비어서 Error 발생하기 때문에 */
         if(boardCategory == null) {
 

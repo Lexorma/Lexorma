@@ -10,6 +10,7 @@ import { isBlank } from '../../lib/format';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from './TableDdl';
 import { TableForm } from './TableForm';
+import { tableColumns } from './columns';
 
 /** 테이블 관리 : 테이블 설계 정보 등록·승인, 상세(컬럼 목록 / 컬럼 일괄 편집 / DDL) */
 export function TableManagePage() {
@@ -110,6 +111,7 @@ export function TableManagePage() {
         <Grid
           ref={grid}
           id="tableManageGrid"
+          columns={tableColumns}
           dataUrl="/api/selectTable"
           crudActions="anCD"
           extraActions={

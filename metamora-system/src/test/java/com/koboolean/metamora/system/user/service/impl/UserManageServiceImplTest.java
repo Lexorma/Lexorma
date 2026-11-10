@@ -2,7 +2,6 @@ package com.koboolean.metamora.system.user.service.impl;
 
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.core.security.domain.entity.Role;
@@ -39,14 +38,11 @@ class UserManageServiceImplTest {
 
     @Test
     @DisplayName("권한 선택 옵션에서 ROLE_ANONYMOUS 는 제외한다")
-    void userColumnRoleOptions() {
+    void userRoleOptions() {
         when(roleRepository.findAll()).thenReturn(List.of(
                 CoreFixtures.role(1L, "ROLE_ADMIN"), CoreFixtures.role(2L, "ROLE_USER"), CoreFixtures.role(3L, "ROLE_ANONYMOUS")));
 
-        ColumnDto roleColumn = service.selectUserColumn().stream()
-                .filter(c -> "role".equals(c.getColumn())).findFirst().orElseThrow();
-
-        assertThat(roleColumn.getOptions()).containsExactly("ROLE_ADMIN", "ROLE_USER");
+        assertThat(service.getUserRoles()).containsExactly("ROLE_ADMIN", "ROLE_USER");
     }
 
     @Test

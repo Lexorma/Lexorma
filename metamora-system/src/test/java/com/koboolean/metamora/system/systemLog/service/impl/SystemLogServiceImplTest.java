@@ -1,6 +1,5 @@
 package com.koboolean.metamora.system.systemLog.service.impl;
 
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.logs.repository.LogsRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import org.junit.jupiter.api.DisplayName;
@@ -77,12 +76,4 @@ class SystemLogServiceImplTest {
         verify(logsRepository).findAllByProjectId(3L, pageable);
     }
 
-    @Test
-    @DisplayName("요청/응답 본문 등 상세 컬럼은 그리드에서 숨긴다")
-    void hiddenColumns() {
-        assertThat(service.getSystemLogColumn())
-                .filteredOn(column -> Boolean.FALSE.equals(column.getIsVisible()))
-                .extracting(ColumnDto::getColumn)
-                .containsExactlyInAnyOrder("requestBody", "responseBody", "errorMessage", "userAgent");
-    }
 }

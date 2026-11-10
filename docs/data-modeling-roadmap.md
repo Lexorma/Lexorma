@@ -48,7 +48,7 @@ Thymeleaf·jQuery 서버 렌더링을 React + TypeScript + Vite(CSR)로 바꾼 �
 | 구분 | 상태 | 근거 |
 |---|---|---|
 | 기존 화면의 React 전환 (로그인·회원가입·내 정보, 대시보드, 공지, 사용자·프로젝트·시스템 로그, 데이터 사전, 테이블·컬럼 관리, 도움말) | **완료** — 로드맵에 다시 등록하지 않는다 | `metamora-web/src/app/App.tsx`, `src/features/*` |
-| 공통 UI (서버 정의 컬럼 그리드, 다이얼로그, 반응형, 다크 모드) | 완료 | `components/grid/Grid.tsx`(TanStack Table), `components/dialog`, `styles/*` |
+| 공통 UI (프론트 정의 컬럼 그리드, 다이얼로그, 반응형, 다크 모드) | 완료 | `components/grid/Grid.tsx`(TanStack Table), `components/dialog`, `styles/*` |
 | ERD·다이어그램 라이브러리 | **미도입** | `metamora-web/package.json` 에 그래프/다이어그램 의존성 없음 |
 | ERD 화면, 논리 모델 화면, 모델 비교 화면 | **미구현** | — |
 
@@ -87,7 +87,7 @@ Thymeleaf·jQuery 서버 렌더링을 React + TypeScript + Vite(CSR)로 바꾼 �
 | `generateTableName`, `resolveTerms`, `selectTermData`, `validateWordCount`, `resolveUploadedTermName`, `toEnglishTermName` | 물리명 추천(M-7), 명명 규칙 검증(M-5) |
 | `TableDdlGenerator` (`DbType` 별 타입·제약·주석 생성) | 모델 기반 다중 테이블 DDL·파일 Export (M-11) |
 | `ExcelExportUtils`(SXSSF), `PagedReader`, 업로드 SAX 청크 패턴 | 모델·테이블·컬럼 Export, 대량 역공학 결과 적재 |
-| 서버 정의 컬럼 그리드, `useDialog` | 변경 비교·사용 현황 목록 화면 |
+| 프론트 정의 컬럼 그리드, `useDialog` | 변경 비교·사용 현황 목록 화면 |
 | 프로젝트 범위 조회(`AccountDto.getProjectId()`), `@PreAuthorize`, `MenuAuthorization` | 모든 신규 API·메뉴 |
 
 ### 3.3 공백 (현재 모델의 한계)
@@ -335,7 +335,7 @@ UI(M-2/M-3), 원본 COMMENT·카탈로그(AI-1), 다중 테이블 DDL·Export �
     - 삭제 : 기본 스키마·테이블이 있는 스키마는 거절(현행). 삭제 전 확인 대화상자. 소속 테이블 자동 삭제·다른 스키마로 일괄 이동은 하지 않는다.
   - **테이블·컬럼 관리 연동:** 테이블 관리 그리드의 스키마 열·스키마 필터(스키마별 조회), 등록 시 스키마 선택(기본 스키마 자동 선택), 상세의 소속 스키마 표시. `schemaId` 를 보내지 않는 기존 화면·API·엑셀 업로드는 지금처럼 동작한다. 컬럼 관리에는 선택한 테이블의 스키마를 표시만 한다(컬럼에 스키마 ID 를 따로 저장하지 않는다).
   - **ERD 연동:** 스키마 등록·이름 변경·삭제 후 ERD 의 스키마 목록·필터·범위 표시가 갱신된다(TanStack Query 무효화). 현재 프로젝트 유지, 레이아웃(`TB_ERD_LYT`, 테이블 ID 기준 좌표)은 보존.
-- **기존 코드 재사용 가능성:** `SchemaService`(`saveSchema`·`deleteSchema`·`resolveSchema`, 이름 패턴·중복 검사), `SchemaRestController`, `TableInfoDto.schemaId`, `selectColumnDetail`, 표준 용어·도메인 연관(`ColumnInfo.standardTerms`), 기존 테이블 상세·DDL 컴포넌트(`TableDdl.tsx`), 데이터 사전 상세(`DictionaryDetail.tsx`), 서버 정의 그리드(`Grid`, `ColumnDto`), ERD 의 스키마 조회(`PhysicalErdPage.tsx`).
+- **기존 코드 재사용 가능성:** `SchemaService`(`saveSchema`·`deleteSchema`·`resolveSchema`, 이름 패턴·중복 검사), `SchemaRestController`, `TableInfoDto.schemaId`, `selectColumnDetail`, 표준 용어·도메인 연관(`ColumnInfo.standardTerms`), 기존 테이블 상세·DDL 컴포넌트(`TableDdl.tsx`), 데이터 사전 상세(`DictionaryDetail.tsx`), 프론트 정의 그리드(`Grid`, `GridColumn`), ERD 의 스키마 조회(`PhysicalErdPage.tsx`).
 - **기술적 고려사항:**
   - 화면 간 이동은 URL 파라미터(예: 테이블 ID)로 상태를 넘긴다. AI 결과가 없거나 AI 미설정이어도 ERD 는 정상 동작.
   - 스키마 이름 비교는 대소문자 무관(서비스)이나 DB 유니크 인덱스(`UX_SCHM_01`)는 대소문자를 구분한다. 동시 등록 경합 처리 수준을 정한다.

@@ -1,6 +1,5 @@
 package com.koboolean.metamora.system.user.controller;
 
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.logs.domain.dto.LogsDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
@@ -28,11 +27,11 @@ public class UserRestController {
 
     private final UserManageService userManageService;
 
-    @Operation(summary = "사용자 관리 컬럼 조회", description = "사용자 관리 컬럼 목록을 조회합니다.")
+    @Operation(summary = "사용자 권한 목록 조회", description = "사용자 관리에서 선택 가능한 권한을 조회합니다.")
     @PreAuthorize("hasRole('ADMIN')")
-    @GetMapping("/selectUser/column")
-    public ResponseEntity<List<ColumnDto>> selectUserColumn() {
-        return ResponseEntity.ok(userManageService.selectUserColumn());
+    @GetMapping("/selectUser/roles")
+    public ResponseEntity<List<String>> getUserRoles() {
+        return ResponseEntity.ok(userManageService.getUserRoles());
     }
 
     @Operation(summary = "사용자 관리 데이터 조회", description = "사용자 관리 그리드 데이터를 조회합니다.")

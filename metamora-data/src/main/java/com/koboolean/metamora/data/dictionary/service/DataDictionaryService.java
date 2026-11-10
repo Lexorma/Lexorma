@@ -3,7 +3,6 @@ package com.koboolean.metamora.data.dictionary.service;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.logs.domain.dto.LogsDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import org.springframework.data.domain.Page;
@@ -16,9 +15,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface DataDictionaryService {
-    List<ColumnDto> getStandardTermsColumn();
-    List<ColumnDto> getStandardWordsColumn();
-    List<ColumnDto> getStandardDomainsColumn();
 
     Page<StandardTermDto> getStandardTermsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);
     Page<StandardWordDto> getStandardWordsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);

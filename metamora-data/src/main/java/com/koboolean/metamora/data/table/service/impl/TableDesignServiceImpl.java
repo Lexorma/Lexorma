@@ -15,9 +15,6 @@ import com.koboolean.metamora.data.table.domain.dto.TableNameDto;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 import com.koboolean.metamora.data.table.repository.TableInfoRepository;
 import com.koboolean.metamora.data.table.service.TableDesignService;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
@@ -57,20 +54,6 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final SchemaService schemaService;
     private final PhysicalModelService physicalModelService;
     private static final int FIRST_ROW = 1;
-
-    @Override
-    public List<ColumnDto> selectTableInfoColumn() {
-        // 그리드에는 식별/구분 정보만 표시하고, 나머지(.hidden())는 행 클릭 시 상세 팝업에서 보여준다.
-        return List.of(
-                new ColumnDto("", "id", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("테이블명", "tableName", ColumnType.STRING, RowType.TEXT, true, true),
-                new ColumnDto("테이블 한글명", "tableKorName", ColumnType.STRING, RowType.TEXT, true, true),
-                new ColumnDto("테이블 설명", "tableDescription", ColumnType.STRING, RowType.TEXT, true, true).hidden(),
-                new ColumnDto("마스터 테이블", "isMasterTable", ColumnType.STRING, RowType.TEXT, false, false),
-                new ColumnDto("정렬 순서", "sortOrder", ColumnType.NUMBER, RowType.TEXT, false, true).hidden(),
-                new ColumnDto("승인 여부", "isApproval", ColumnType.STRING, RowType.TEXT, false, false)
-        );
-    }
 
     @Override
     public Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {

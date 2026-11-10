@@ -13,9 +13,6 @@ import com.koboolean.metamora.data.dictionary.service.DataDictionaryService;
 import com.koboolean.metamora.data.dictionary.service.StandardDomainService;
 import com.koboolean.metamora.data.dictionary.service.StandardTermService;
 import com.koboolean.metamora.data.dictionary.service.StandardWordService;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.common.utils.ExcelUtils;
@@ -40,63 +37,6 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
     private final StandardWordService standardWordService;
     private final StandardDomainService standardDomainService;
     private final StandardTermService standardTermService;
-
-    @Override
-    public List<ColumnDto> getStandardTermsColumn() {
-        return List.of(
-                new ColumnDto("", "id", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("제정차수", "revisionNumber", ColumnType.NUMBER).hidden(),
-                new ColumnDto("표준용어명", "commonStandardTermName", ColumnType.STRING, true),
-                new ColumnDto("표준용어설명", "commonStandardTermDescription", ColumnType.STRING, true).hidden(),
-                new ColumnDto("표준용어영문약어명", "commonStandardTermAbbreviation", ColumnType.STRING, true),
-                new ColumnDto("표준도메인명", "commonStandardDomainName", ColumnType.STRING, true),
-                new ColumnDto("허용값", "allowedValues", ColumnType.STRING).hidden(),
-                new ColumnDto("저장 형식", "storageFormat", ColumnType.STRING).hidden(),
-                new ColumnDto("표현 형식", "displayFormat", ColumnType.STRING).hidden(),
-                new ColumnDto("행정표준코드명", "administrativeStandardCodeName", ColumnType.STRING).hidden(),
-                new ColumnDto("소관기관명", "responsibleOrganization", ColumnType.STRING).hidden(),
-                new ColumnDto("용어 이음동의어 목록", "synonyms", ColumnType.STRING, RowType.TEXT, false, false).hidden(),
-                new ColumnDto("승인여부", "isApprovalYn", ColumnType.STRING, RowType.TEXT,false, false)
-        );
-    }
-
-    @Override
-    public List<ColumnDto> getStandardDomainsColumn() {
-        return List.of(
-                new ColumnDto("", "id", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("제정차수", "revisionNumber", ColumnType.NUMBER).hidden(),
-                new ColumnDto("데이터길이", "dataLength", ColumnType.NUMBER),
-                new ColumnDto("데이터소수점길이", "dataDecimalLength", ColumnType.NUMBER),
-                new ColumnDto("표준도메인그룹명", "commonStandardDomainGroupName", ColumnType.STRING, true),
-                new ColumnDto("표준도메인분류명", "commonStandardDomainCategory", ColumnType.STRING, true),
-                new ColumnDto("표준도메인명", "commonStandardDomainName", ColumnType.STRING, true),
-                new ColumnDto("표준도메인설명", "commonStandardDomainDescription", ColumnType.STRING, true).hidden(),
-                new ColumnDto("데이터타입", "dataType", ColumnType.STRING),
-                new ColumnDto("저장 형식", "storageFormat", ColumnType.STRING).hidden(),
-                new ColumnDto("표현 형식", "displayFormat", ColumnType.STRING).hidden(),
-                new ColumnDto("단위", "unit", ColumnType.STRING).hidden(),
-                new ColumnDto("허용값", "allowedValues", ColumnType.STRING).hidden(),
-                new ColumnDto("승인여부", "isApprovalYn", ColumnType.STRING, RowType.TEXT,false, false)
-        );
-    }
-
-    @Override
-    public List<ColumnDto> getStandardWordsColumn() {
-        return List.of(
-                new ColumnDto("", "id", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("제정차수", "revisionNumber", ColumnType.NUMBER).hidden(),
-                new ColumnDto("표준단어명", "commonStandardWordName", ColumnType.STRING, true),
-                new ColumnDto("표준단어영문약어명", "commonStandardWordAbbreviation", ColumnType.STRING, true),
-                new ColumnDto("표준단어 영문명", "commonStandardWordEnglishName", ColumnType.STRING, true),
-                new ColumnDto("표준단어 설명", "commonStandardWordDescription", ColumnType.STRING, true).hidden(),
-                new ColumnDto("표준도메인분류명", "commonStandardDomainCategory", ColumnType.STRING, true),
-                new ColumnDto("약어사용여부", "useAbbreviation", ColumnType.STRING, RowType.TEXT, false, false).hidden(),
-                new ColumnDto("형식단어 여부", "isFormatWord", ColumnType.STRING, RowType.TEXT, false, false),
-                new ColumnDto("이음동의어 목록", "synonyms", ColumnType.STRING, RowType.TEXT, false, false).hidden(),
-                new ColumnDto("금칙어 목록", "restrictedWords", ColumnType.STRING, RowType.TEXT, false, false).hidden(),
-                new ColumnDto("승인여부", "isApprovalYn", ColumnType.STRING, RowType.TEXT, false, false)
-        );
-    }
 
     @Override
     public Page<StandardTermDto> getStandardTermsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {

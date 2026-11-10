@@ -2,9 +2,6 @@ package com.koboolean.metamora.system.user.service.impl;
 
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.core.security.domain.entity.Role;
@@ -20,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,20 +28,10 @@ public class UserManageServiceImpl implements UserManageService {
     private final PasswordEncoder passwordEncoder;
 
     @Override
-    public List<ColumnDto> selectUserColumn() {
-
-        ColumnDto columnDto = new ColumnDto("권한", "role", ColumnType.STRING, RowType.SELECT, false);
-
-        columnDto.setOptions(roleRepository.findAll().stream().filter(role -> !role.getRoleName().equals("ROLE_ANONYMOUS")).map(Role::getRoleName).collect(Collectors.toList()));
-
-        return List.of(
-                new ColumnDto("","id", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("사용자 ID","username", ColumnType.STRING, true),
-                new ColumnDto("사용자명","name", ColumnType.STRING, true),
-                columnDto,
-                new ColumnDto("권한 명", "roleName", ColumnType.STRING, RowType.TEXT, false),
-                new ColumnDto("비밀번호 초기화", "resetButton", ColumnType.STRING, RowType.BUTTON, false)
-        );
+    public List<String> getUserRoles() {
+        return roleRepository.findAll().stream()
+                .filter(role -> !role.getRoleName().equals("ROLE_ANONYMOUS"))
+                .map(Role::getRoleName).toList();
     }
 
     @Override

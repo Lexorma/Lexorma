@@ -16,9 +16,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useDialog } from '../dialog/DialogProvider';
 
 /**
- * 서버 정의 컬럼 그리드 (TanStack Table v8 기반, 마크업 / CSS 는 예전 DataTables 와 같다)
+ * 화면 정의 컬럼 그리드 (TanStack Table v8 기반, 마크업 / CSS 는 예전 DataTables 와 같다)
  *
- * - GET {dataUrl}/column → 컬럼 정의(ColumnDto)
+ * - columns prop → 화면별 컬럼 정의
  * - GET {dataUrl}/data?page&size&sort&searchColumn&searchQuery → { data, recordsTotal }
  * - crudActions : C=추가, U=저장, M=수정, D=삭제, A=승인, N=승인취소, P=출력
  *   소문자는 승인 권한(/api/auth/me 의 approvalAvailable)이 있을 때만 보인다.
@@ -70,6 +70,7 @@ export interface GridHandle {
 export interface GridProps {
   id: string;
   dataUrl: string;
+  columns: GridColumn[];
   crudActions?: string;
   /** 버튼 그룹 앞에 붙는 화면 버튼 (예전 .grid-extra-actions) */
   extraActions?: ReactNode;
@@ -91,16 +92,10 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort } = props;
+  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
-  const columnsQuery = useQuery({
-    queryKey: ['grid-column', dataUrl],
-    queryFn: () => api<GridColumn[]>(`${dataUrl}/column`),
-    staleTime: Infinity,
-  });
-  const columns = useMemo(() => columnsQuery.data ?? [], [columnsQuery.data]);
   const searchColumns = useMemo(() => columns.filter((c) => c.isSearch), [columns]);
 
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
@@ -407,7 +402,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                 {tableRows.length === 0 ? (
                   <tr>
                     <td colSpan={Math.max(headers.length, 1)} className="dt-empty">
-                      {columnsQuery.isPending || dataQuery.isPending
+                      {dataQuery.isPending
                         ? '조회 중입니다.'
                         : search.query
                           ? '검색된 데이터가 없습니다.'

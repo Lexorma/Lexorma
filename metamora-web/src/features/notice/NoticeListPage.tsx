@@ -6,6 +6,7 @@ import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api } from '../../lib/api';
 import { useNoticeDialogs } from './noticeDialogs';
+import { noticeColumns } from './columns';
 
 /** 공지사항 목록 : 안 읽은 글은 파란 점 + 굵은 제목 (GitHub 알림 목록 형태) */
 export function NoticeListPage() {
@@ -37,6 +38,7 @@ export function NoticeListPage() {
       <Grid
         ref={grid}
         id="noticeList"
+        columns={noticeColumns}
         dataUrl="/api/selectNotice"
         crudActions={permission.isProjectManager ? 'cd' : ''}
         onAction={{ add: () => openNoticeSave({ type: 'add', onSuccess: saved }), delete: remove }}

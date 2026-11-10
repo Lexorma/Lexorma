@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { userColumns } from './columns';
+import { useMemo, useRef } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono, User } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
@@ -9,6 +11,14 @@ import { api } from '../../lib/api';
 export function UserManagePage() {
   const dialog = useDialog();
   const grid = useRef<GridHandle>(null);
+  const roles = useQuery({
+    queryKey: ['user-roles'],
+    queryFn: () => api<string[]>('/api/selectUser/roles'),
+    staleTime: Infinity,
+  });
+  const columns = useMemo(() => roles.data
+    ? userColumns.map((column) => column.column === 'role' ? { ...column, options: roles.data } : column)
+    : [], [roles.data]);
 
   const save = () => {
     dialog.confirm('변경 데이터를 저장하시겠습니까?', async () => {
@@ -43,6 +53,7 @@ export function UserManagePage() {
         <Grid
           ref={grid}
           id="userTable"
+          columns={columns}
           dataUrl="/api/selectUser"
           crudActions="ud"
           onAction={{ save, delete: remove }}

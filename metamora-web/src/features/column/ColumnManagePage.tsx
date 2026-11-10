@@ -8,6 +8,7 @@ import { api, download, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
+import { columnColumns } from './columns';
 
 /** 컬럼 상세 : 값 항목은 [라벨, 키, 코드글꼴 여부], 속성 항목(Y/N)은 라벨 목록 */
 const DETAIL_FIELDS: [string, string, boolean?][] = [
@@ -165,6 +166,7 @@ export function ColumnManagePage() {
         <Grid
           ref={grid}
           id="columnManageGrid"
+          columns={columnColumns}
           dataUrl="/api/selectColumn"
           crudActions="anCD"
           extraActions={

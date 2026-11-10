@@ -116,7 +116,7 @@ MetaMora 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터
 | 표준 단어 기준 테이블명 생성·단어별 상태(`NOT_FOUND` 등) `generateTableName` | `table/service/TableDesignService.java` | 6 (명명 규칙 검사) |
 | 용어명/약어 단어 수 검증·약어 기준 용어명 생성 (`validateWordCount`, `resolveUploadedTermName`, `toEnglishTermName`) | `dictionary/service/StandardTermService.java` | 5 (약어 해석), 6 |
 | 대량 처리 패턴 (500행 청크, `SEQUENCE` id + JDBC 배치, `flush/clear`) | `ExcelUtils`, 업로드 서비스 | 2 (대용량 메타데이터 적재) |
-| 서버 정의 컬럼 그리드 (`GET {url}/column`, `GET {url}/data`) | `metamora-web/src/components/grid`, `PageableUtil` | 5, 9 (검토·보고서 화면) |
+| 프론트 정의 컬럼 그리드 (`GridColumn[]`, `GET {url}/data`) | `metamora-web/src/components/grid`, `PageableUtil` | 5, 9 (검토·보고서 화면) |
 | 도메인 이벤트 (`ProjectDeletedEvent`, 현재 리스너 없음) | `core/project/domain/event` | 1·2 (프로젝트 삭제 시 수집/AI 데이터 정리) |
 | 요청 로그 + 민감정보 마스킹 | `core/logs` | 7 공통 (마스킹 키 확장 필요) |
 
@@ -462,7 +462,7 @@ MetaMora 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터
   - 보고서 내용: 실행 일시, 대상 프로젝트·스냅샷, 적용 규칙·모델·프롬프트 버전, 검사한 테이블·컬럼 수, 유형·심각도별 집계, 신규/해결/유지, 항목별 대상·현재 COMMENT·업무 설명·제안 문구·근거·확인 필요 사항·검토 상태.
   - 항목별 승인 / 수정 / 거절 / 보류와 이력(검토자, 시각, 사유).
   - 이전 보고서와 비교, 엑셀 내보내기(기존 SXSSF 출력 패턴 재사용 검토).
-- **설계 시 고려사항:** 보고서에 **원본 DB 를 변경하는 버튼·자동 수정 기능을 두지 않는다.** 보고서 조회는 프로젝트 멤버, 개선안 승인은 기존 승인 권한, 배치 설정은 프로젝트 관리자 이상으로 구분한다(8단계). 보고서·이력 보관 기간(U-06과 함께). 대량 결과는 서버 페이징 그리드(`{url}/column`, `{url}/data`).
+- **설계 시 고려사항:** 보고서에 **원본 DB 를 변경하는 버튼·자동 수정 기능을 두지 않는다.** 보고서 조회는 프로젝트 멤버, 개선안 승인은 기존 승인 권한, 배치 설정은 프로젝트 관리자 이상으로 구분한다(8단계). 보고서·이력 보관 기간(U-06과 함께). 대량 결과는 프론트 컬럼 정의와 서버 페이징 그리드(`GridColumn[]`, `{url}/data`).
 - **선행 작업 및 의존성:** 6, 7, 8단계.
 - **완료 조건:** 보고서에서 현재 설명, 문제 유형, 권고, 근거, 불확실성, 승인/반려 기록을 확인할 수 있고, 승인 결과는 데이터 사전에만 반영된다.
 - **테스트 및 검증 시나리오:** 보고서 집계 정확성, 이전 실행과의 신규/해결 비교, 권한 없는 사용자의 보고서 접근 거부, 내보내기 파일 내용 검증.

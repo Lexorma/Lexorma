@@ -13,9 +13,6 @@ import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
 import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 import com.koboolean.metamora.data.table.repository.TableInfoRepository;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
@@ -51,34 +48,6 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private final EntityManager entityManager;
     private final PhysicalModelService physicalModelService;
     private static final int FIRST_ROW = 1;
-
-    @Override
-    public List<ColumnDto> selectTableColumn() {
-        // 그리드에는 식별/타입/키 정보만 표시하고, 나머지(.hidden())는 행 클릭 시 상세 팝업에서 보여준다.
-        return List.of(
-                new ColumnDto("", "sortOrder", ColumnType.NUMBER, RowType.CHECKBOX),
-                new ColumnDto("테이블명", "tableName", ColumnType.STRING, RowType.TEXT, true, true),
-                new ColumnDto("컬럼명", "columnName", ColumnType.STRING, RowType.TEXT, true, true),
-                new ColumnDto("컬럼 설명", "columnDesc", ColumnType.STRING, RowType.TEXT, true, false),
-                new ColumnDto("데이터 타입", "dataType", ColumnType.STRING, RowType.TEXT, true, false),
-                new ColumnDto("최대 길이", "maxLength", ColumnType.NUMBER, RowType.TEXT, false,  false),
-                new ColumnDto("PK", "isPk", ColumnType.STRING, RowType.TEXT, false,  false),
-                new ColumnDto("정밀도", "precision", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("소수 자릿수", "scale", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("기본값", "defaultValue", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("정렬 순서", "sortOrder", ColumnType.NUMBER, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("참조 테이블명", "refTableName", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("데이터 예시", "example", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("NULL 허용", "isNullable", ColumnType.STRING, RowType.TEXT, false,  false),
-                new ColumnDto("마스터 데이터 여부", "isMasterData", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("필수 입력 여부", "isRequired", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("민감정보 여부", "isSensitive", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("고유값 여부", "isUnique", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("인덱스 생성 여부", "isIndex", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("암호화 필요 여부", "isEncrypted", ColumnType.STRING, RowType.TEXT, false,  false).hidden(),
-                new ColumnDto("승인여부", "isApproval", ColumnType.STRING, RowType.TEXT, false,  false)
-        );
-    }
 
     @Override
     public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
@@ -520,7 +489,6 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private static String toTermName(String input) {
         return input.trim().replaceAll("[\\s_]+", "_");
     }
-
 
     @Override
     @Transactional

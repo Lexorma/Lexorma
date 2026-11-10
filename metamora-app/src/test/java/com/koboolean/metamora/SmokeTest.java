@@ -320,6 +320,21 @@ class SmokeTest {
         assertThat(data.body()).as(dataUrl + "/data").contains("\"recordsTotal\"");
     }
 
+    @ParameterizedTest(name = "표준용어 도메인 정렬 {0}")
+    @ValueSource(strings = {"commonStandardDomainName", "allowedValues", "storageFormat", "displayFormat"})
+    @Order(20)
+    @DisplayName("표준용어의 도메인 필드 정렬은 검색 유무와 관계없이 동작한다")
+    void standardTermDomainSort(String field) throws Exception {
+        for (String direction : List.of("asc", "desc")) {
+            for (String query : List.of("", "&searchColumn=commonStandardDomainName&searchQuery=V")) {
+                HttpResponse<String> response = get("/api/getStandardTerms/data?page=0&size=10&sort="
+                        + field + "," + direction + ";id,asc" + query, true);
+                assertThat(response.statusCode()).as(field + "," + direction + query).isEqualTo(200);
+                assertThat(response.body()).contains("\"recordsTotal\"");
+            }
+        }
+    }
+
     @ParameterizedTest(name = "API {0}")
     @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
     @Order(21)

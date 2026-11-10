@@ -16,7 +16,9 @@ import com.koboolean.metamora.common.utils.ExcelUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,6 +43,16 @@ public class StandardTermService {
     private static final int FIRST_ROW = 1;
 
     public Page<StandardTermDto> getStandardTermsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {
+        // DTO에 펼쳐진 도메인 필드를 실제 엔티티 연관관계 경로로 정렬한다.
+        Sort sort = Sort.by(pageable.getSort().stream().map(order -> order.withProperty(switch (order.getProperty()) {
+            case "commonStandardDomainName", "allowedValues", "storageFormat", "displayFormat" ->
+                    "standardDomain." + order.getProperty();
+            default -> order.getProperty();
+        })).toList());
+        pageable = pageable.isPaged()
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort)
+                : Pageable.unpaged(sort);
+
         if (searchQuery == null || searchQuery.trim().isEmpty()) {
             // 검색어가 없을 경우 전체 조회
             Page<StandardTerm> allByProjectId = standardTermRepository.findAllByProjectId(accountDto.getProjectId(), pageable);

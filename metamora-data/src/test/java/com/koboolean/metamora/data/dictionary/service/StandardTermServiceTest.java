@@ -8,6 +8,11 @@ import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardWord;
 import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
+import com.koboolean.metamora.core.security.domain.dto.AccountDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -22,6 +27,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,6 +46,24 @@ class StandardTermServiceTest {
     StandardTermService service;
 
     private static final Long PROJECT_ID = 1L;
+
+    @Test
+    @DisplayName("도메인 정렬 경로를 변환하면서 페이지와 복합 정렬 조건을 유지한다")
+    void domainSortPreservesPaging() {
+        Pageable requested = PageRequest.of(2, 25, Sort.by(
+                Sort.Order.desc("commonStandardDomainName"), Sort.Order.asc("commonStandardTermName")));
+        when(standardTermRepository.findAllByProjectId(eq(PROJECT_ID), any(Pageable.class)))
+                .thenReturn(Page.empty());
+
+        service.getStandardTermsData(requested, AccountDto.builder().projectId(PROJECT_ID).build(), null, "");
+
+        ArgumentCaptor<Pageable> captured = ArgumentCaptor.forClass(Pageable.class);
+        verify(standardTermRepository).findAllByProjectId(eq(PROJECT_ID), captured.capture());
+        assertThat(captured.getValue().getPageNumber()).isEqualTo(2);
+        assertThat(captured.getValue().getPageSize()).isEqualTo(25);
+        assertThat(captured.getValue().getSort()).containsExactly(
+                Sort.Order.desc("standardDomain.commonStandardDomainName"), Sort.Order.asc("commonStandardTermName"));
+    }
 
     /** 표준용어 '사용자_이름' = 단어(사용자: USER, 이름: NM) + 도메인(명칭V100) */
     private static StandardTermDto termDto() {

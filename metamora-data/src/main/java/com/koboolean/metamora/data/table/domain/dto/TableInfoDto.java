@@ -34,6 +34,12 @@ public class TableInfoDto {
     /** 승인 여부 */
     private String isApproval;
 
+    /** 스키마 ID (저장 시 비우면 기본 스키마 / 수정 시 비우면 유지) */
+    private Long schemaId;
+
+    /** 스키마명 (조회 전용) */
+    private String schemaName;
+
     public static TableInfoDto fromEntity(TableInfo entity) {
         return TableInfoDto.builder()
                 .id(entity.getId())
@@ -44,6 +50,8 @@ public class TableInfoDto {
                 .isMasterTable(toYN(entity.getIsMasterTable()))
                 .sortOrder(entity.getSortOrder())
                 .isApproval(toYN(entity.getIsApproval()))
+                .schemaId(entity.getSchema() == null ? null : entity.getSchema().getId())
+                .schemaName(entity.getSchema() == null ? null : entity.getSchema().getSchemaName())
                 .build();
     }
 

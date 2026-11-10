@@ -1,6 +1,9 @@
 package com.koboolean.metamora.data.table.service.impl;
 
 import com.koboolean.metamora.core.project.domain.enums.DbType;
+import com.koboolean.metamora.data.physical.service.PhysicalModelService;
+import com.koboolean.metamora.data.schema.domain.entity.SchemaInfo;
+import com.koboolean.metamora.data.schema.service.SchemaService;
 import com.koboolean.metamora.data.table.ddl.TableDdlGenerator;
 import com.koboolean.metamora.data.table.domain.dto.TableDdlDto;
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
@@ -51,6 +54,8 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final StandardWordRepository standardWordRepository;
     private final ProjectRepository projectRepository;
     private final EntityManager entityManager;
+    private final SchemaService schemaService;
+    private final PhysicalModelService physicalModelService;
     private static final int FIRST_ROW = 1;
 
     @Override
@@ -112,6 +117,8 @@ public class TableDesignServiceImpl implements TableDesignService {
 
         TableInfo tableInfo = tableInfoDto.toEntity();
         tableInfo.setProjectId(projectId);
+        // 스키마를 고르지 않으면(기존 화면·API) 프로젝트 기본 스키마
+        tableInfo.setSchema(schemaService.resolveSchema(projectId, tableInfoDto.getSchemaId()));
 
         tableInfo.setIsApproval(true);
 
@@ -229,6 +236,14 @@ public class TableDesignServiceImpl implements TableDesignService {
         }
 
         tableInfo.setTableName(tableName);
+        // 스키마를 보내지 않으면(기존 화면·API) 지금 스키마를 유지한다
+        if (tableInfoDto.getSchemaId() != null) {
+            tableInfo.setSchema(schemaService.resolveSchema(projectId, tableInfoDto.getSchemaId()));
+        }
+        if (!tableName.equals(oldTableName)) {
+            // 새 이름을 참조 테이블명으로 적어 둔 컬럼이 있으면 관계가 새로 확정될 수 있다
+            physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
+        }
         tableInfo.setTableDescription(tableInfoDto.getTableDescription());
         tableInfo.setIsMasterTable(tableInfoDto.getIsMasterTable().equals("Y"));
         tableInfo.setSortOrder(tableInfoDto.getSortOrder());
@@ -287,6 +302,9 @@ public class TableDesignServiceImpl implements TableDesignService {
                 "sortOrder"
         );
 
+        // 업로드 템플릿에는 스키마가 없으므로 프로젝트 기본 스키마에 등록한다 (청크마다 영속성 컨텍스트를 비우므로 ID 로 참조)
+        Long defaultSchemaId = schemaService.resolveSchema(projectId, null).getId();
+
         // 파일 안 중복 확인용 (같은 테이블명은 처음 행만 등록)
         Set<String> uploadedTableNames = new HashSet<>();
 
@@ -327,6 +345,7 @@ public class TableDesignServiceImpl implements TableDesignService {
                         .isMasterTable(map.get("isMasterTable").equals("Y"))
                         .sortOrder(Integer.parseInt(s))
                         .isApproval(isApprovalAvailable)
+                        .schema(entityManager.getReference(SchemaInfo.class, defaultSchemaId))
                         .build());
             }
 
@@ -375,7 +394,7 @@ public class TableDesignServiceImpl implements TableDesignService {
                 .orElse(DbType.DEFAULT);
 
         TableDdlGenerator.Result result = TableDdlGenerator.generate(dbType, tableInfo, tableInfo.getColumns(),
-                referencedPkColumns(projectId, tableInfo.getColumns()));
+                referencedPkColumns(projectId, tableInfo.getColumns()), physicalModelService.ddlExtras(tableInfo));
         return new TableDdlDto(dbType.name(), dbType.getLabel(), tableInfo.getTableName(), result.ddl(), result.warnings());
     }
 }

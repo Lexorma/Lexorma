@@ -22,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.koboolean.metamora.data.physical.service.PhysicalModelService;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -55,6 +56,9 @@ class ColumnManageServiceImplTest {
 
     @Mock
     EntityManager entityManager;
+
+    @Mock
+    PhysicalModelService physicalModelService; // 관계 동기화는 PhysicalModelServiceImplTest
 
     @InjectMocks
     ColumnManageServiceImpl service;

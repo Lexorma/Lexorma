@@ -137,13 +137,17 @@ a.app-header-crumb:hover {
 
 /* 사용자 드롭다운 (Primer Overlay) */
 .app-header-menu {
-    min-width: 240px;
-    padding: 8px;
+    min-width: 10rem;
+    padding: .5rem 0;
     margin-top: 8px !important;
     border: 1px solid var(--hd-border);
-    border-radius: 12px;
+    border-radius: 6px;
+    background-color: var(--gh-canvas);
+    background-clip: padding-box;
     box-shadow: 0 1px 3px #1f23281f, 0 8px 24px #4247501f;
-    font-size: 14px;
+    color: var(--gh-fg);
+    font-size: 1rem;
+    text-align: left;
 }
 
 .app-header-menu-user {

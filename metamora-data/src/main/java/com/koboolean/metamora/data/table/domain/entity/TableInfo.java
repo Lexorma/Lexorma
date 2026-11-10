@@ -2,6 +2,7 @@ package com.koboolean.metamora.data.table.domain.entity;
 
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
 import com.koboolean.metamora.common.jpa.BaseEntity;
+import com.koboolean.metamora.data.schema.domain.entity.SchemaInfo;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -51,6 +52,11 @@ public class TableInfo extends BaseEntity {
     /** 테이블 승인 여부 */
     @Column
     private Boolean isApproval;
+
+    /** 소속 스키마 (V2). 저장 시 지정하지 않으면 프로젝트 기본 스키마 */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "schema_info_id", nullable = false)
+    private SchemaInfo schema;
 
     @OneToMany(mappedBy = "tableInfo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ColumnInfo> columns = new ArrayList<>();

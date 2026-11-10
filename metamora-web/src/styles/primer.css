@@ -1,6 +1,6 @@
 /* =========================================================
    GitHub Primer 스타일 공통 컴포넌트
-   - bootstrap.css / dataTables.css 이후에 로드되어 기본 스타일을 덮어쓴다.
+   - base.css(기본 요소) / dataTables.css 이후에 로드되어 기본 스타일을 덮어쓴다.
    - 그리드(fragments/grid.html), 버튼, 폼, 다이얼로그, 라벨
    ========================================================= */
 :root {
@@ -31,8 +31,8 @@
 }
 
 /* ---------- 다크 모드 : <html data-theme="dark" data-bs-theme="dark"> (index.html / lib/theme.ts)
-   색은 위 --gh-* 토큰으로만 바꾼다. Bootstrap / DataTables 는 data-bs-theme 로 자체 다크 스타일을 쓰고,
-   배경 / 글자색만 Primer 다크 팔레트에 맞춘다. ---------- */
+   색은 위 --gh-* 토큰으로만 바꾼다. DataTables CSS 는 data-bs-theme 로 자체 다크 스타일을 쓰고,
+   배경만 Primer 다크 팔레트에 맞춘다. ---------- */
 :root[data-theme="dark"] {
     color-scheme: dark;
     --gh-fg: #f0f6fc;
@@ -58,9 +58,6 @@
     --gh-btn-primary-hover: #388bfd;
     --gh-btn-hover: #262c36;
 
-    --bs-body-bg: var(--gh-canvas);
-    --bs-body-color: var(--gh-fg);
-    --bs-border-color: var(--gh-border);
     --dt-html-background: var(--gh-canvas);
 }
 
@@ -111,6 +108,8 @@ dialog .btn,
     font-weight: 500;
     line-height: 20px;
     white-space: nowrap;
+    text-decoration: none;
+    vertical-align: middle;
     box-shadow: 0 1px 0 #1f23280a;
     transition: background-color .1s ease, border-color .1s ease;
 }
@@ -136,6 +135,7 @@ dialog .btn:focus-visible,
 .content .btn:disabled,
 .popup-container .btn:disabled,
 dialog .btn:disabled {
+    pointer-events: none;
     background-color: var(--gh-btn-hover);
     border-color: var(--gh-border-muted);
     color: var(--gh-fg-subtle);
@@ -205,6 +205,56 @@ table.dataTable .btn {
 /* =========================================================
    폼 컨트롤 (Primer FormControl)
    ========================================================= */
+.form-control {
+    display: block;
+    width: 100%;
+    appearance: none;
+    background-clip: padding-box;
+}
+
+/* 체크박스 : 브라우저 기본 대신 같은 크기·모양으로 그린다 (색은 아래 .form-check-input 규칙) */
+.form-check {
+    display: block;
+    min-height: 1.5rem;
+    padding-left: 1.5em;
+    margin-bottom: .125rem;
+}
+
+.form-check .form-check-input {
+    float: left;
+    margin-left: -1.5em;
+}
+
+.form-check-input {
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    margin-top: .25em;
+    vertical-align: top;
+    appearance: none;
+    background-color: var(--gh-canvas);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    border: 1px solid var(--gh-border);
+    border-radius: .25em;
+    print-color-adjust: exact;
+}
+
+.form-check-input:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+.form-check-input:disabled {
+    pointer-events: none;
+    opacity: .5;
+}
+
+.form-check-input:disabled ~ .form-check-label {
+    cursor: default;
+    opacity: .5;
+}
+
 .content .form-control,
 .popup-container .form-control,
 .content .form-select,
@@ -600,11 +650,6 @@ div.dt-container .dt-input {
 
 /* 테이블 박스 */
 table.dataTable.table {
-    --bs-table-bg: transparent;
-    --bs-table-striped-bg: transparent;
-    --bs-table-hover-bg: transparent;
-    --bs-table-border-color: var(--gh-border-muted);
-
     width: 100% !important;
     margin: 0 !important;
     border: 1px solid var(--gh-border);
@@ -614,17 +659,23 @@ table.dataTable.table {
     background-color: var(--gh-canvas);
     color: var(--gh-fg);
     overflow: hidden;
+    vertical-align: top;
 }
 
-/* Bootstrap bordered / striped 효과 제거 */
+table.dataTable.table > thead {
+    vertical-align: bottom;
+}
+
+table.dataTable.table > tbody {
+    vertical-align: inherit;
+}
+
+/* DataTables 기본 셀 테두리 제거 (구분선은 아래 헤더·행 규칙) */
 table.dataTable.table-bordered > :not(caption) > * > * {
     border-width: 0;
 }
 
-table.dataTable.table-striped > tbody > tr:nth-of-type(odd) > * {
-    --bs-table-bg-type: transparent;
-}
-
+/* DataTables 의 선택 행·줄무늬 배경(box-shadow) 제거 */
 table.dataTable.table > :not(caption) > * > * {
     background-color: transparent;
     box-shadow: none;

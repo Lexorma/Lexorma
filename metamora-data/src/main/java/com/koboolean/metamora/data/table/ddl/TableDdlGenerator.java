@@ -2,11 +2,17 @@ package com.koboolean.metamora.data.table.ddl;
 
 import com.koboolean.metamora.core.project.domain.enums.DbType;
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
+import com.koboolean.metamora.data.physical.domain.entity.TableConstraint;
+import com.koboolean.metamora.data.physical.domain.entity.TableConstraintColumn;
+import com.koboolean.metamora.data.physical.domain.entity.TableIndex;
+import com.koboolean.metamora.data.physical.domain.entity.TableIndexColumn;
+import com.koboolean.metamora.data.physical.domain.entity.TableRelation;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,6 +27,8 @@ import java.util.regex.Pattern;
  * - 참조 테이블명이 있는 컬럼은 FK_테이블명_컬럼명 (참조 테이블의 단일 PK 를 참조, ALTER TABLE 로 생성)
  * - NOT NULL : NULL 비허용 / PK / 필수 입력 컬럼
  * - 주석 : PostgreSQL·Oracle 은 COMMENT ON, MySQL·MariaDB 는 컬럼/테이블 COMMENT 옵션
+ * - 물리 모델(M-1) : 기본 스키마가 아닌 스키마의 테이블은 스키마명.테이블명, 복합 UNIQUE·CHECK 는 CREATE TABLE 안에,
+ *   복합 인덱스는 CREATE INDEX, 사용자 정의 관계(복합 FK)는 ALTER TABLE 로 만든다. 같은 컬럼 구성의 키는 한 번만 만든다.
  * - 데이터 타입은 공통 타입명(VARCHAR, NUMBER, DATE, TIMESTAMP, BOOLEAN, CLOB, BLOB …)을 DB 별 타입으로 바꾼다.
  *   길이가 없어 DB 기본값으로 정한 항목은 warnings 로 알려준다.
  */
@@ -34,6 +42,14 @@ public final class TableDdlGenerator {
      * @param warnings 확인이 필요한 항목 (길이 미지정, 컬럼 없음 등)
      */
     public record Result(String ddl, List<String> warnings) {}
+
+    /**
+     * 컬럼 설정 밖의 물리 모델 (M-1)
+     * @param relations 이 테이블이 원본인 사용자 정의 FK 관계 (참조 테이블명에서 만든 REF_COLUMN 관계는 컬럼의 참조 테이블명으로 이미 만든다)
+     */
+    public record Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations) {
+        public static final Extras NONE = new Extras(List.of(), List.of(), List.of());
+    }
 
     private static final Pattern TYPE_PATTERN = Pattern.compile("^\\s*([A-Za-z][A-Za-z0-9_ ]*?)\\s*(?:\\(\\s*([0-9]+)\\s*(?:,\\s*([0-9]+)\\s*)?\\))?\\s*$");
 
@@ -52,8 +68,13 @@ public final class TableDdlGenerator {
      *                     컬럼의 참조 테이블명으로 FK 를 만들고, 참조 컬럼과 PK 의 타입이 같은지 확인할 때 쓴다.
      */
     public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns) {
+        return generate(dbType, table, columns, refPkColumns, Extras.NONE);
+    }
+
+    public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns, Extras extras) {
         DbType db = DbType.orDefault(dbType);
         String tableName = table.getTableName();
+        String qualifiedName = qualifiedName(table);
         List<String> warnings = new ArrayList<>();
 
         List<ColumnInfo> ordered = columns.stream()
@@ -92,7 +113,10 @@ public final class TableDdlGenerator {
         }
 
         List<String> pkColumns = ordered.stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList();
+        // 이미 만든 키 구성 (같은 구성의 UNIQUE / 인덱스를 다시 만들지 않는다)
+        Set<Set<String>> uniqueKeys = new HashSet<>();
         if (!pkColumns.isEmpty()) {
+            uniqueKeys.add(Set.copyOf(pkColumns));
             lines.add("    CONSTRAINT " + constraintName(db, "PK_" + tableName) + " PRIMARY KEY (" + String.join(", ", pkColumns) + ")");
         } else {
             warnings.add("PK 컬럼이 없습니다.");
@@ -100,9 +124,24 @@ public final class TableDdlGenerator {
 
         ordered.stream()
                 .filter(c -> Boolean.TRUE.equals(c.getIsUnique()) && !Boolean.TRUE.equals(c.getIsPk()))
-                .forEach(c -> lines.add("    CONSTRAINT " + constraintName(db, "UK_" + tableName + "_" + c.getColumnName()) + " UNIQUE (" + c.getColumnName() + ")"));
+                .forEach(c -> {
+                    uniqueKeys.add(Set.of(c.getColumnName()));
+                    lines.add("    CONSTRAINT " + constraintName(db, "UK_" + tableName + "_" + c.getColumnName()) + " UNIQUE (" + c.getColumnName() + ")");
+                });
 
-        sql.append("CREATE TABLE ").append(tableName).append(" (\n")
+        for (TableConstraint constraint : extras.constraints()) {
+            if (constraint.getConstraintType() == TableConstraint.Type.UNIQUE) {
+                List<String> names = constraint.getColumns().stream().map(TableConstraintColumn::getColumn).map(ColumnInfo::getColumnName).toList();
+                if (uniqueKeys.add(Set.copyOf(names))) {
+                    lines.add("    CONSTRAINT " + constraintName(db, constraint.getConstraintName()) + " UNIQUE (" + String.join(", ", names) + ")");
+                }
+            } else {
+                lines.add("    CONSTRAINT " + constraintName(db, constraint.getConstraintName()) + " CHECK (" + constraint.getCheckExpression() + ")");
+                if (db == DbType.MYSQL) warnings.add(constraint.getConstraintName() + " : MySQL 8.0.16 미만은 CHECK 제약을 무시합니다.");
+            }
+        }
+
+        sql.append("CREATE TABLE ").append(qualifiedName).append(" (\n")
                 .append(String.join(",\n", lines))
                 .append("\n)");
 
@@ -117,14 +156,28 @@ public final class TableDdlGenerator {
         List<ColumnInfo> indexColumns = ordered.stream()
                 .filter(c -> Boolean.TRUE.equals(c.getIsIndex()) && !Boolean.TRUE.equals(c.getIsPk()) && !Boolean.TRUE.equals(c.getIsUnique()))
                 .toList();
-        if (!indexColumns.isEmpty()) {
-            sql.append("\n");
-            indexColumns.forEach(c -> sql.append("CREATE INDEX ").append(constraintName(db, "IX_" + tableName + "_" + c.getColumnName()))
-                    .append(" ON ").append(tableName).append(" (").append(c.getColumnName()).append(");\n"));
+        List<String> indexes = new ArrayList<>();
+        Set<List<String>> indexKeys = new HashSet<>();
+        indexColumns.forEach(c -> {
+            indexKeys.add(List.of(c.getColumnName()));
+            indexes.add("CREATE INDEX " + constraintName(db, "IX_" + tableName + "_" + c.getColumnName())
+                    + " ON " + qualifiedName + " (" + c.getColumnName() + ");");
+        });
+        for (TableIndex index : extras.indexes()) {
+            List<String> names = index.getColumns().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).toList();
+            boolean unique = Boolean.TRUE.equals(index.getIsUnique());
+            if (unique ? uniqueKeys.add(Set.copyOf(names)) : indexKeys.add(names)) {
+                indexes.add("CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + constraintName(db, index.getIndexName())
+                        + " ON " + qualifiedName + " (" + String.join(", ", names) + ");");
+            }
+        }
+        if (!indexes.isEmpty()) {
+            sql.append("\n").append(String.join("\n", indexes)).append("\n");
         }
 
         // 외래키 : 참조 테이블의 단일 PK 를 참조한다. 테이블 생성 순서와 관계없이 실행할 수 있도록 ALTER TABLE 로 따로 만든다.
-        List<String> foreignKeys = foreignKeys(db, tableName, ordered, refPkColumns, warnings);
+        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, warnings);
+        foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), warnings));
         if (!foreignKeys.isEmpty()) {
             sql.append("\n").append(String.join("\n", foreignKeys)).append("\n");
         }
@@ -132,10 +185,10 @@ public final class TableDdlGenerator {
         // 주석 (PostgreSQL / Oracle)
         if (!isMySqlFamily(db)) {
             List<String> comments = new ArrayList<>();
-            if (tableComment != null) comments.add("COMMENT ON TABLE " + tableName + " IS " + quote(tableComment) + ";");
+            if (tableComment != null) comments.add("COMMENT ON TABLE " + qualifiedName + " IS " + quote(tableComment) + ";");
             ordered.stream()
                     .filter(c -> notBlank(c.getColumnDesc()))
-                    .forEach(c -> comments.add("COMMENT ON COLUMN " + tableName + "." + c.getColumnName() + " IS " + quote(c.getColumnDesc()) + ";"));
+                    .forEach(c -> comments.add("COMMENT ON COLUMN " + qualifiedName + "." + c.getColumnName() + " IS " + quote(c.getColumnDesc()) + ";"));
             if (!comments.isEmpty()) {
                 sql.append("\n").append(String.join("\n", comments)).append("\n");
             }
@@ -152,7 +205,7 @@ public final class TableDdlGenerator {
      * - 자기 자신을 참조(계층 구조)할 수도 있다.
      * - 참조 컬럼과 참조 PK 의 타입(대상 DB 타입으로 바꾼 값)이 다르면 FK 는 만들되 경고한다.
      */
-    static List<String> foreignKeys(DbType db, String tableName, List<ColumnInfo> columns,
+    static List<String> foreignKeys(DbType db, String tableName, String qualifiedName, List<ColumnInfo> columns,
                                     Map<String, List<ColumnInfo>> refPkColumns, List<String> warnings) {
         List<String> statements = new ArrayList<>();
 
@@ -173,13 +226,49 @@ public final class TableDdlGenerator {
                 warnings.add(prefix + " 의 PK 가 자기 자신이라 FK 를 만들지 않았습니다.");
             } else {
                 ColumnInfo refPk = pk.get(0);
-                statements.add("ALTER TABLE " + tableName
+                String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo());
+                statements.add("ALTER TABLE " + qualifiedName
                         + " ADD CONSTRAINT " + constraintName(db, "FK_" + tableName + "_" + column.getColumnName())
-                        + " FOREIGN KEY (" + column.getColumnName() + ") REFERENCES " + refTable + " (" + refPk.getColumnName() + ");");
+                        + " FOREIGN KEY (" + column.getColumnName() + ") REFERENCES " + refName + " (" + refPk.getColumnName() + ");");
                 checkReferenceType(db, column, refTable, refPk, warnings);
             }
         }
         return statements;
+    }
+
+    /**
+     * 사용자 정의 관계(복합 FK 포함). 대상 컬럼이 대상 테이블의 PK 전체(또는 고유값 컬럼 1개)일 때만 만들고, 아니면 경고한다.
+     * 컬럼 쌍 순서는 관계에 저장한 순서를 그대로 쓴다.
+     */
+    static List<String> relationForeignKeys(DbType db, String qualifiedName, List<TableRelation> relations, List<String> warnings) {
+        List<String> statements = new ArrayList<>();
+        for (TableRelation relation : relations) {
+            TableInfo target = relation.getTargetTable();
+            List<ColumnInfo> sources = relation.getColumns().stream().map(c -> c.getSourceColumn()).toList();
+            List<ColumnInfo> targets = relation.getColumns().stream().map(c -> c.getTargetColumn()).toList();
+            Set<String> pk = new HashSet<>(target.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList());
+            Set<String> referenced = new HashSet<>(targets.stream().map(ColumnInfo::getColumnName).toList());
+            boolean singleUnique = targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique());
+
+            if (!referenced.equals(pk) && !singleUnique) {
+                warnings.add(relation.getRelationName() + " : 대상 컬럼이 " + target.getTableName() + " 의 PK(또는 고유값 컬럼)가 아니라 FK 를 만들지 않았습니다.");
+                continue;
+            }
+            statements.add("ALTER TABLE " + qualifiedName
+                    + " ADD CONSTRAINT " + constraintName(db, relation.getRelationName())
+                    + " FOREIGN KEY (" + String.join(", ", sources.stream().map(ColumnInfo::getColumnName).toList()) + ") REFERENCES "
+                    + qualifiedName(target) + " (" + String.join(", ", targets.stream().map(ColumnInfo::getColumnName).toList()) + ");");
+            for (int i = 0; i < sources.size(); i++) {
+                checkReferenceType(db, sources.get(i), target.getTableName(), targets.get(i), warnings);
+            }
+        }
+        return statements;
+    }
+
+    /** 기본 스키마가 아닌 스키마의 테이블은 스키마명을 붙인다 (기본 스키마 = 접속 계정의 기본 스키마) */
+    static String qualifiedName(TableInfo table) {
+        if (table.getSchema() == null || Boolean.TRUE.equals(table.getSchema().getIsDefault())) return table.getTableName();
+        return table.getSchema().getSchemaName() + "." + table.getTableName();
     }
 
     /**

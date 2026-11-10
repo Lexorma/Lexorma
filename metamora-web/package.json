@@ -11,7 +11,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "poc:erd": "vite --config vite.poc.config.ts",
+    "poc:erd:build": "vite build --config vite.poc.config.ts",
+    "poc:erd:preview": "vite preview --config vite.poc.config.ts"
   },
   "dependencies": {
     "@primer/octicons-react": "19.15.5",
@@ -23,9 +26,12 @@
     "react-router-dom": "7.6.2"
   },
   "devDependencies": {
+    "@dagrejs/dagre": "3.1.1",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.5.2",
+    "@xyflow/react": "12.12.0",
+    "elkjs": "0.12.0",
     "typescript": "5.8.3",
     "vite": "6.3.5"
   }

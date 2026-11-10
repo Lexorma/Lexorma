@@ -9,7 +9,7 @@ export function followSystemTheme() {
   const apply = () => {
     const theme = media.matches ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.setAttribute('data-bs-theme', theme); // Bootstrap 5.3 / DataTables 다크 스타일
+    document.documentElement.setAttribute('data-bs-theme', theme); // DataTables CSS 다크 스타일
   };
   apply();
   media.addEventListener('change', apply);

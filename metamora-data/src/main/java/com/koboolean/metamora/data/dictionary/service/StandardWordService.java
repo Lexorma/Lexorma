@@ -157,11 +157,11 @@ public class StandardWordService {
                         .useAbbreviation(standardWordEntry.get("standardWordEnglishName").split(" ").length > 1)
                         .build();
 
-                // '_' 가 들어간 단어 / 이미 등록된 단어 / 파일 안에서 중복된 단어는 업로드 전체를 취소한다.
+                // '_' 가 들어간 단어는 업로드 전체를 취소한다. 이미 등록된 단어 / 파일 안에서 앞에 나온 단어는 건너뛴다.
                 validateNoUnderscore(wordName, standardWord.getCommonStandardWordAbbreviation());
 
                 if (existingWordNames.contains(wordName) || !uploadedWordNames.add(wordName)) {
-                    throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, wordName);
+                    continue;
                 }
 
                 String domainCategory = standardWord.getCommonStandardDomainCategory();

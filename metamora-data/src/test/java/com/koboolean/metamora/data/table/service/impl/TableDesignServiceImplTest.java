@@ -19,6 +19,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.koboolean.metamora.data.physical.service.PhysicalModelService;
+import com.koboolean.metamora.data.schema.service.SchemaService;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -49,6 +51,12 @@ class TableDesignServiceImplTest {
 
     @Mock
     ProjectRepository projectRepository; // 기본 : findById → Optional.empty (접두어 없음)
+
+    @Mock
+    SchemaService schemaService; // 기본 : resolveSchema → null (스키마는 SchemaServiceImplTest)
+
+    @Mock
+    PhysicalModelService physicalModelService;
 
     @InjectMocks
     TableDesignServiceImpl service;

@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 @Entity
+@Table(name = "TB_PRJ")
 @Builder
 @Getter
 @Setter
@@ -21,33 +22,36 @@ import java.util.regex.Pattern;
 @AllArgsConstructor
 public class Project extends BaseEntity implements Serializable {
 
-    @Id @GeneratedValue
-    @Column(name = "project_id")
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRJ")
+    @SequenceGenerator(name = "SQ_PRJ", sequenceName = "SQ_PRJ", allocationSize = 50)
+    @Column(name = "PRJ_SN")
     private Long id;
 
-    @Column(name = "project_name")
+    @Column(name = "PRJ_NM")
     private String projectName;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    private Account account;
+    @JoinColumn(name = "MNGR_ACNT_SN")
+    private Account account; // 프로젝트 관리자
 
-    @Column(name = "is_active")
+    @Column(name = "ACTVTN_YN")
     private Boolean isActive;
 
     @OneToMany(mappedBy = "project")
     private List<ProjectMember> projectMember = new ArrayList<>();
 
-    @Column(name = "is_auto_active")
+    @Column(name = "AUTO_APRV_YN")
     private Boolean isAutoActive; // 자동 승인여부
 
-    @Column(name = "is_dic_abbr_used")
+    @Column(name = "DIC_ABBR_USE_YN")
     private Boolean isDicAbbrUsed; // 데이터 사전 약어 사용 여부
 
-    @Column(name = "table_prefix", length = 20)
+    @Column(name = "TBL_PFX_NM", length = 20)
     private String tablePrefix; // 테이블명 접두어 (예: TB_) - 표준 단어 기준 테이블명 생성 시 사용
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "db_type", length = 20, nullable = false)
+    @Column(name = "DB_TYPE_CD", length = 20, nullable = false)
     private DbType dbType; // 대상 DB - 테이블 DDL 생성 기준 (없으면 DbType.DEFAULT)
 
     /**

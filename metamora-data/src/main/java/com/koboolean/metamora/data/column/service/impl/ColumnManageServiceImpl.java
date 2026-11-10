@@ -6,6 +6,7 @@ import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
 import com.koboolean.metamora.data.column.service.ColumnManageService;
 import com.koboolean.metamora.data.column.domain.dto.ColumnInfoDto;
 import com.koboolean.metamora.data.column.repository.ColumnInfoRepository;
+import com.koboolean.metamora.data.physical.service.PhysicalModelService;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
 import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
@@ -48,6 +49,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private final TableInfoRepository tableInfoRepository;
     private final StandardTermRepository standardTermRepository;
     private final EntityManager entityManager;
+    private final PhysicalModelService physicalModelService;
     private static final int FIRST_ROW = 1;
 
     @Override
@@ -166,6 +168,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         columnInfoRepository.save(columnInfo);
         tableInfo.getColumns().add(columnInfo);
         standardTerm.getColumnInfos().add(columnInfo);
+        // 참조 테이블명 → 관계, 새 PK 로 다른 테이블의 참조가 확정될 수도 있다
+        physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
     }
 
     @Override
@@ -213,6 +217,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 //        }
 
         Long projectId = accountDto.getProjectId();
+        Set<Long> tableIds = new HashSet<>();
 
         columnInfoDtos.forEach(columnInfoDto -> {
             ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
@@ -220,6 +225,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             if(columnInfo.getIsApproval()){
                 throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
             }
+
+            // 관계·인덱스·제약조건에 쓰인 컬럼은 삭제할 수 없다 (참조 테이블명에서 만든 관계는 함께 지운다)
+            physicalModelService.releaseColumns(projectId, List.of(columnInfo));
 
             // 테이블명은 변경될 수 있으므로 이름이 아닌 연관관계(table_info_id)로 소속 테이블을 찾는다.
             // 표준용어도 요청 값(그리드 행에는 termId 가 없다)이 아닌 컬럼의 연관관계로 찾는다. (일괄 저장의 삭제와 같음)
@@ -230,12 +238,15 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
             if(tableInfo != null){
                 tableInfo.getColumns().remove(columnInfo);
+                tableIds.add(tableInfo.getId());
             }
             if (standardTerm != null && standardTerm.getColumnInfos() != null) {
                 standardTerm.getColumnInfos().remove(columnInfo);
             }
         });
 
+        // 지운 PK 를 참조하던 다른 테이블의 관계를 다시 맞춘다
+        physicalModelService.syncReferenceRelations(projectId, tableIds);
     }
 
     @Override
@@ -283,6 +294,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
 
             List<ColumnInfo> columnInfos = new ArrayList<>();
+            Set<Long> chunkTableIds = new HashSet<>();
 
             // 행마다 기존과 같은 순서로 검증한다 : 숫자/Y·N 형식 → 테이블 → 표준용어 → 파일 안 중복 → 등록된 컬럼 중복
             for (Map<String, String> map : columnRows) {
@@ -322,6 +334,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 if (termId == null) {
                     throw new CustomException(ErrorCode.TERM_IS_NOT_DEFINED, columnName);
                 }
+
+                chunkTableIds.add(tableInfoId);
 
                 // 같은 테이블 안에서만 컬럼명 중복을 막는다. (화면 등록과 같은 기준) - 하나라도 있으면 업로드 전체 취소
                 String columnKey = tableInfoId + "|" + columnName;
@@ -363,6 +377,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
 
             columnInfoRepository.saveAll(columnInfos);
+            // 참조 테이블명 → 관계 (청크의 테이블 기준, 조회 전에 자동 flush 되어 저장한 행을 DB 에서 다시 읽는다)
+            physicalModelService.syncReferenceRelations(projectId, chunkTableIds);
             entityManager.flush();
             entityManager.clear();
         });
@@ -582,6 +598,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             return ColumnBulkSaveDto.Result.fail(errors);
         }
 
+        // 관계·인덱스·제약조건에 쓰인 컬럼은 삭제할 수 없다 (참조 테이블명에서 만든 관계는 함께 지운다)
+        physicalModelService.releaseColumns(projectId, deletedIds.stream().map(existing::get).toList());
+
         // 3) 저장 : 삭제 → 수정/추가 (화면 순서대로 정렬 순서 부여)
         for (Long id : deletedIds) {
             ColumnInfo column = existing.get(id);
@@ -634,6 +653,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             created++;
         }
 
+        physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
         return new ColumnBulkSaveDto.Result(true, created, updated, deletedIds.size(), List.of());
     }
 

@@ -32,4 +32,7 @@ public interface TableInfoRepository extends JpaRepository<TableInfo, Long> {
 
     /** 엑셀 업로드 : 청크의 테이블명을 한 번에 조회 */
     List<TableInfo> findAllByProjectIdAndTableNameIn(Long projectId, Collection<String> tableNames);
+
+    /** 스키마 삭제 가능 여부 */
+    boolean existsBySchema_Id(Long schemaId);
 }

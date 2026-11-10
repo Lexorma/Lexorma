@@ -17,8 +17,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -124,8 +127,20 @@ public class StandardDomainService {
                 "allowedValues"
         );
 
-        // 청크(500행) 단위로 모아 JDBC 배치로 저장하고, 저장 후 영속성 컨텍스트를 비운다.
+        // 파일 안 중복 확인용 (같은 도메인명은 처음 행만 등록)
+        Set<String> uploadedDomainNames = new HashSet<>();
+
+        // 청크(500행) 단위로 모아 JDBC 배치로 저장하고, 저장 후 영속성 컨텍스트를 비운다. 이미 등록된 도메인명은 청크당 IN 조회 한 번
         ExcelUtils.readExcelRowsInChunks(file, 2, standardDomainHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
+            Set<String> chunkDomainNames = rows.stream()
+                    .map(row -> row.get("standardDomainName"))
+                    .filter(name -> name != null && !name.isEmpty())
+                    .collect(Collectors.toSet());
+            Set<String> existingDomainNames = chunkDomainNames.isEmpty() ? Set.of()
+                    : standardDomainRepository.findAllByProjectIdAndCommonStandardDomainNameIn(projectId, chunkDomainNames).stream()
+                        .map(StandardDomain::getCommonStandardDomainName)
+                        .collect(Collectors.toSet());
+
             List<StandardDomain> standardDomains = new ArrayList<>();
 
             for (Map<String, String> standardDomainEntry : rows) {
@@ -146,7 +161,10 @@ public class StandardDomainService {
                         .isApproval(isApprovalAvailable)
                         .build();
 
-                if(standardDomain.getCommonStandardDomainName() != null && !standardDomain.getCommonStandardDomainName().isEmpty()){
+                String domainName = standardDomain.getCommonStandardDomainName();
+                // 이미 등록된 도메인 / 파일 안에서 앞에 나온 도메인은 건너뛴다
+                if (domainName != null && !domainName.isEmpty()
+                        && !existingDomainNames.contains(domainName) && uploadedDomainNames.add(domainName)) {
                     standardDomains.add(standardDomain);
                 }
             }

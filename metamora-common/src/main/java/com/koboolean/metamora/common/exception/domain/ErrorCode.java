@@ -176,6 +176,31 @@ public enum ErrorCode {
     PASSWORD_CHANGE_REQUIRED(HttpStatus.FORBIDDEN, "PASSWORD_CHANGE_REQUIRED", "초기 비밀번호를 사용 중입니다. 비밀번호를 변경한 뒤 로그인해주세요."),
 
     /**
+     * 스키마를 찾을 수 없습니다.
+     */
+    SCHEMA_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "SCHEMA_IS_NOT_DEFINED", "등록된 스키마 정보가 존재하지 않습니다."),
+
+    /**
+     * 스키마명 형식 오류
+     */
+    INVALID_SCHEMA_NAME(HttpStatus.BAD_REQUEST, "INVALID_SCHEMA_NAME", "스키마명은 영문 또는 _ 로 시작하고 영문/숫자/_/$ 만 사용할 수 있습니다. (최대 63자)"),
+
+    /**
+     * 관계·인덱스·제약조건 정의 오류 (사유는 customMessage)
+     */
+    INVALID_PHYSICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_PHYSICAL_MODEL", "관계·인덱스·제약조건 정의가 올바르지 않습니다."),
+
+    /**
+     * ERD 조회 범위·레이아웃 값 오류 (사유는 customMessage)
+     */
+    INVALID_ERD_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_ERD_REQUEST", "ERD 조회 조건 또는 배치 정보가 올바르지 않습니다."),
+
+    /**
+     * ERD 레이아웃 저장 충돌 : 다른 탭·창에서 먼저 저장함
+     */
+    ERD_LAYOUT_CONFLICT(HttpStatus.CONFLICT, "ERD_LAYOUT_CONFLICT", "다른 창에서 배치가 먼저 저장되었습니다. 저장된 배치를 다시 불러온 뒤 저장해주세요."),
+
+    /**
      * 새 비밀번호가 현재 비밀번호 또는 아이디와 같습니다.
      */
     PASSWORD_NOT_CHANGED(HttpStatus.BAD_REQUEST, "PASSWORD_NOT_CHANGED", "새 비밀번호는 현재 비밀번호 및 아이디와 달라야 합니다.");

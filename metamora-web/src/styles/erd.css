@@ -1,0 +1,58 @@
+/* 물리 ERD (features/erd) : 지연 로딩 화면에서만 불러온다. 색은 --gh-* 토큰만 써서 다크 모드를 따른다 */
+.erd-page { min-width: 0; }
+.erd-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.erd-toolbar select.form-control { width: auto; max-width: 100%; }
+.erd-keyword { width: 240px; max-width: 100%; }
+.erd-muted { color: var(--gh-fg-muted); font-size: 12px; }
+.erd-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; color: var(--gh-fg); background: var(--gh-canvas-subtle); border: 1px solid var(--gh-border); border-radius: 6px 6px 0 0; }
+.erd-pager { display: inline-flex; gap: 4px; margin-left: auto; }
+
+.erd-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: clamp(480px, calc(100vh - 300px), 1200px); border: 1px solid var(--gh-border); border-top: 0; border-radius: 0 0 6px 6px; overflow: hidden; }
+.erd-canvas { position: relative; min-width: 0; background: var(--gh-canvas-subtle); }
+.erd-canvas .react-flow {
+    --xy-background-color: var(--gh-canvas-subtle);
+    --xy-background-pattern-color: var(--gh-border);
+    --xy-controls-button-background-color: var(--gh-canvas);
+    --xy-controls-button-background-color-hover: var(--gh-hover);
+    --xy-controls-button-color: var(--gh-fg);
+    --xy-controls-button-border-color: var(--gh-border);
+    --xy-attribution-background-color: var(--gh-canvas);
+    --xy-handle-background-color: transparent;
+    --xy-handle-border-color: transparent;
+}
+.erd-empty { position: absolute; z-index: 5; top: 16px; left: 16px; padding: 12px 16px; background: var(--gh-canvas); border: 1px solid var(--gh-border); border-radius: 6px; font-size: 14px; }
+
+.erd-detail { min-width: 0; overflow: auto; padding: 12px; background: var(--gh-canvas); border-left: 1px solid var(--gh-border); font-size: 13px; }
+.erd-detail > select.form-control { width: 100%; }
+.erd-detail h3 { margin: 16px 0 4px; font-size: 16px; overflow-wrap: anywhere; }
+.erd-detail h4 { margin: 16px 0 4px; font-size: 13px; }
+.erd-detail p { margin: 4px 0; }
+.erd-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.erd-list { list-style: none; margin: 0; padding: 0; }
+.erd-list li { padding: 6px 0; border-bottom: 1px solid var(--gh-border-muted); overflow-wrap: anywhere; }
+.erd-list small { display: block; color: var(--gh-fg-muted); }
+.erd-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--gh-border); font-size: 12px; }
+.erd-line { display: inline-block; width: 20px; margin-right: 4px; vertical-align: middle; border-top: 2px solid var(--gh-accent); }
+.erd-line.dashed { border-top-style: dashed; }
+.erd-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: middle; }
+
+/* 테이블 노드 : 크기 고정 (model.ts 의 NODE_WIDTH / HEADER_HEIGHT / ROW_HEIGHT 와 맞춘다) */
+.erd-table { position: relative; box-sizing: border-box; background: var(--gh-canvas); border: 1px solid var(--gh-border); border-radius: 6px; color: var(--gh-fg); font-size: 12px; box-shadow: 0 1px 3px #1f232826; }
+.erd-table.selected { outline: 2px solid var(--gh-accent); }
+.erd-related .erd-table { border-color: var(--gh-success); }
+.erd-table header { box-sizing: border-box; height: 52px; padding: 7px 10px; background: var(--gh-canvas-subtle); border-bottom: 1px solid var(--gh-border); border-radius: 6px 6px 0 0; }
+.erd-table header strong, .erd-table header span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erd-table header strong { font-family: var(--gh-mono); font-size: 13px; }
+.erd-table header span { color: var(--gh-fg-muted); font-size: 11px; }
+.erd-column { box-sizing: border-box; display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px 20px; gap: 4px; align-items: center; height: 24px; padding: 0 8px; border-bottom: 1px solid var(--gh-border-muted); }
+.erd-column b { color: var(--gh-accent); font-size: 10px; }
+.erd-column span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--gh-mono); }
+.erd-column small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--gh-fg-muted); font-size: 10px; }
+.erd-column-more { height: 24px; padding: 0 8px; line-height: 24px; color: var(--gh-fg-muted); font-size: 11px; }
+
+/* 작은 화면 : 상세 패널을 캔버스 아래로 내려 캔버스 너비를 지킨다 */
+@media (max-width: 1100px) {
+    .erd-workspace { grid-template-columns: minmax(0, 1fr); height: auto; }
+    .erd-canvas { height: 65vh; min-height: 400px; }
+    .erd-detail { max-height: 360px; border-left: 0; border-top: 1px solid var(--gh-border); }
+}

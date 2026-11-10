@@ -105,7 +105,7 @@ class SmokeTest {
         HttpResponse<String> projects = postJson("/api/login/projects",
                 "{\"username\":\"" + USERNAME + "\",\"password\":\"" + PASSWORD + "\"}");
         assertThat(projects.statusCode()).isEqualTo(200);
-        assertThat(projects.body()).contains("\"projectName\":\"MAIN\"");
+        assertThat(projects.body()).contains("\"projectName\":\"META-MORA\"");
 
         // 5. 로그인 (선택한 프로젝트 포함) : JSON 응답 + 세션 쿠키(HttpOnly)
         HttpResponse<String> login = postForm("/api/auth/login",
@@ -135,7 +135,7 @@ class SmokeTest {
         assertThat(me.body())
                 .contains("\"authenticated\":true")
                 .contains("\"username\":\"admin\"")
-                .contains("\"projectName\":\"MAIN\"")
+                .contains("\"projectName\":\"META-MORA\"")
                 .contains("\"approvalAvailable\":true")
                 .doesNotContain("\":false"); // 모든 메뉴 true
     }
@@ -277,7 +277,7 @@ class SmokeTest {
         assertThat(view.statusCode()).isEqualTo(200);
         assertThat(view.body()).contains(title).contains("\"username\":\"admin\"");
 
-        assertThat(get("/api/selectNotice/projects?type=add", true).body()).contains("\"projectName\":\"MAIN\"");
+        assertThat(get("/api/selectNotice/projects?type=add", true).body()).contains("\"projectName\":\"META-MORA\"");
         assertThat(get("/api/selectNotice/projects?type=modify&id=" + noticeId, true).body()).contains("\"isSelected\":true");
         assertThat(get("/api/selectNotice/permission", true).body()).contains("\"isProjectManager\":true");
     }

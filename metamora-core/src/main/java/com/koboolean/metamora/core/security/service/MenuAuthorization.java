@@ -38,6 +38,7 @@ public class MenuAuthorization {
             // 데이터 관리
             Map.entry("data-dictionary", "VIEWER"),
             Map.entry("table-manage", "VIEWER"),
+            Map.entry("physical-erd", "VIEWER"),
             Map.entry("column-manage", "USER")
     );
 
@@ -45,7 +46,7 @@ public class MenuAuthorization {
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
             "system-management", new String[]{"user-manage", "project-manage", "system-log"},
             "operation-management", new String[]{"notice"},
-            "data-management", new String[]{"data-dictionary", "table-manage", "column-manage"}
+            "data-management", new String[]{"data-dictionary", "table-manage", "column-manage", "physical-erd"}
     );
 
     private final RoleHierarchy roleHierarchy;

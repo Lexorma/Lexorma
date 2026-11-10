@@ -42,4 +42,14 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long> {
     List<Object[]> findTableColumnKeys(@Param("projectId") Long projectId,
                                        @Param("tableInfoIds") Collection<Long> tableInfoIds,
                                        @Param("columnNames") Collection<String> columnNames);
+
+    /** 관계 동기화 : 테이블들의 컬럼 */
+    List<ColumnInfo> findAllByTableInfo_IdIn(Collection<Long> tableInfoIds);
+
+    /** 관계 동기화 : 테이블들의 PK 컬럼 */
+    List<ColumnInfo> findAllByTableInfo_IdInAndIsPkTrue(Collection<Long> tableInfoIds);
+
+    /** 관계 동기화 : 참조 테이블명(대소문자·앞뒤 공백 무시)이 names 중 하나인 컬럼 */
+    @Query("select c from ColumnInfo c where c.projectId = :projectId and upper(trim(c.refTableName)) in :names")
+    List<ColumnInfo> findAllReferencing(@Param("projectId") Long projectId, @Param("names") Collection<String> names);
 }

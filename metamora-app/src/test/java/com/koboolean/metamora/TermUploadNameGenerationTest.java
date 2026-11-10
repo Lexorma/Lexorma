@@ -66,10 +66,11 @@ class TermUploadNameGenerationTest {
     @Test
     @DisplayName("용어명이 영문약어명과 맞지 않으면 표준 단어로 용어명을 만들고 설명에 근거를 남긴다 (맞는 행은 그대로)")
     void generateTermNames() throws IOException {
-        // 템플릿 용어 GIS_자료_여부 / GIS_DATA_YN , HTML_사용_여부 / HTML_USE_YN 을 바탕으로
+        // 템플릿 용어 GIS_자료_여부 / GIS_DATA_YN , SMS_사용_여부 / SMS_USE_YN , HTML_사용_여부 / HTML_USE_YN 을 바탕으로
+        // (용어명·영문약어명·도메인이 모두 같으면 중복으로 건너뛰므로 행마다 다른 용어를 쓴다)
         MockMultipartFile file = templateWithTerms(List.of(
                 new TermRow("GIS_자료_여부", "그대로 두는 행", "GIS_DATA_YN"),          // 맞음 → 그대로
-                new TermRow("GIS자료여부", "구분자 없는 용어명", "GIS_DATA_YN"),         // 구분자 없음 → 생성
+                new TermRow("SMS사용여부", "구분자 없는 용어명", "SMS_USE_YN"),          // 구분자 없음 → 생성
                 new TermRow("HTML 사용 여부 플래그", "", "HTML_USE_YN")                 // 단어 수 다름 + 설명 없음 → 생성
         ));
         AccountDto login = loginToNewProject("term-upload-generate", true);
@@ -87,11 +88,11 @@ class TermUploadNameGenerationTest {
                 .doesNotContain(StandardTermService.GENERATED_NOTE_PREFIX);
 
         StandardTerm noSeparator = byDescriptionStart.get("구분자 없는 용어명");
-        assertThat(noSeparator.getCommonStandardTermName()).isEqualTo("GIS_자료_여부");
+        assertThat(noSeparator.getCommonStandardTermName()).isEqualTo("SMS_사용_여부");
         assertThat(noSeparator.getCommonStandardTermDescription())
                 .startsWith("구분자 없는 용어명\n" + StandardTermService.GENERATED_NOTE_PREFIX)
-                .contains("영문약어명(GIS_DATA_YN)")
-                .contains("원본 표준용어명: GIS자료여부");
+                .contains("영문약어명(SMS_USE_YN)")
+                .contains("원본 표준용어명: SMS사용여부");
 
         StandardTerm wordCount = byDescriptionStart.get(StandardTermService.GENERATED_NOTE_PREFIX
                 + " 영문약어명(HTML_USE_YN)의 표준 단어로 표준용어명을 생성했습니다. (원본 표준용어명: HTML 사용 여부 플래그)");

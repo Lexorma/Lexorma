@@ -1,0 +1,98 @@
+/* ERD PoC - 색은 primer.css 의 --gh-* 토큰만 쓴다 (라이트/다크 자동) */
+html, body, #root { height: 100%; margin: 0; }
+body { font-family: var(--gh-font); font-size: 13px; }
+
+.erd-poc { display: flex; flex-direction: column; height: 100%; }
+.erd-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--gh-border); background: var(--gh-canvas-subtle);
+}
+.erd-toolbar__title { margin-right: 8px; }
+.erd-toolbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--gh-fg-muted); }
+.erd-toolbar select, .erd-search input {
+    height: 28px; padding: 0 8px; border: 1px solid var(--gh-border); border-radius: 6px;
+    background: var(--gh-canvas); color: var(--gh-fg); font: inherit;
+}
+.erd-toolbar .gh-btn { height: 28px; padding: 0 10px; font-size: 13px; }
+.erd-toolbar__checks { display: inline-flex; flex-wrap: wrap; gap: 10px; margin-left: 8px; }
+
+.erd-body { display: flex; flex: 1; min-height: 0; }
+.erd-side {
+    width: 300px; flex-shrink: 0; overflow: auto; padding: 12px;
+    border-right: 1px solid var(--gh-border); background: var(--gh-canvas); color: var(--gh-fg);
+}
+.erd-search { display: flex; align-items: center; gap: 6px; color: var(--gh-fg-muted); }
+.erd-search input { flex: 1; }
+.erd-search__result { list-style: none; margin: 6px 0; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--gh-border); border-radius: 6px; }
+.erd-search__result button { width: 100%; padding: 4px 8px; border: 0; background: none; color: var(--gh-fg); text-align: left; font: inherit; cursor: pointer; }
+.erd-search__result button:hover { background: var(--gh-hover); }
+.erd-detail h3 { margin: 12px 0 6px; font-size: 14px; word-break: break-all; }
+.erd-detail h4 { margin: 10px 0 4px; font-size: 13px; }
+.erd-detail table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.erd-detail td { padding: 2px 4px; border-bottom: 1px solid var(--gh-border-muted); }
+.erd-detail__rel { margin: 0 0 8px; padding-left: 0; list-style: none; font-size: 12px; }
+.erd-detail__rel li { margin: 3px 0; word-break: break-all; }
+.erd-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; font-size: 12px; }
+.erd-legend__item::before { content: ''; display: inline-block; width: 18px; margin-right: 4px; vertical-align: middle; border-top: 2px solid var(--kind); }
+.erd-legend__item.erd-kind--ai-inferred::before { border-top-style: dashed; }
+.erd-metrics { display: grid; grid-template-columns: auto auto; gap: 2px 8px; font-size: 12px; color: var(--gh-fg-muted); }
+.erd-metrics dd { margin: 0; text-align: right; color: var(--gh-fg); }
+
+/* 관계 유형 색 */
+.erd-kind--fk { --kind: var(--gh-accent); }
+.erd-kind--model { --kind: var(--gh-fg-muted); }
+.erd-kind--ai-inferred { --kind: var(--gh-attention); }
+.erd-kind--approved { --kind: var(--gh-success); }
+
+.erd-canvas { position: relative; flex: 1; min-width: 0; }
+.erd-busy {
+    position: absolute; z-index: 10; top: 12px; left: 50%; transform: translateX(-50%);
+    padding: 6px 12px; border: 1px solid var(--gh-border); border-radius: 6px;
+    background: var(--gh-attention-subtle); color: var(--gh-fg);
+}
+.erd-canvas .react-flow {
+    --xy-background-color: var(--gh-canvas);
+    --xy-background-pattern-color: var(--gh-border);
+    --xy-node-border-radius: 6px;
+    --xy-controls-button-background-color: var(--gh-canvas-subtle);
+    --xy-controls-button-color: var(--gh-fg);
+    --xy-controls-button-border-color: var(--gh-border);
+    --xy-minimap-background-color: var(--gh-canvas-subtle);
+}
+
+/* 테이블 노드 (크기는 model.ts 의 NODE_WIDTH / HEADER_HEIGHT / ROW_HEIGHT 와 같다) */
+.erd-table {
+    box-sizing: border-box; width: 240px; overflow: hidden;
+    border: 1px solid var(--gh-border); border-radius: 6px;
+    background: var(--gh-canvas); color: var(--gh-fg); font-size: 12px;
+    box-shadow: 0 1px 0 #1f23280a;
+}
+.erd-table.is-selected { border-color: var(--gh-accent); box-shadow: 0 0 0 2px var(--gh-accent-subtle); }
+.erd-table__header {
+    display: flex; align-items: center; gap: 6px; box-sizing: border-box; height: 30px; padding: 0 8px;
+    border-bottom: 1px solid var(--gh-border); background: var(--gh-canvas-subtle); font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.erd-table__schema { padding: 0 4px; border-radius: 4px; background: var(--gh-neutral-muted); color: var(--gh-fg-muted); font-weight: 500; font-size: 11px; }
+.erd-table__name { overflow: hidden; text-overflow: ellipsis; }
+.erd-table.is-simple { background: var(--gh-canvas-subtle); }
+.erd-table.is-simple .erd-table__header { height: 100%; align-items: flex-start; padding-top: 6px; border-bottom: 0; font-size: 20px; }
+.erd-col { display: flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-bottom: 1px solid var(--gh-border-muted); box-sizing: border-box; }
+.erd-col:last-of-type { border-bottom: 0; }
+.erd-col__key { width: 20px; flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--gh-fg-subtle); }
+.erd-col__key.is-pk { color: var(--gh-attention); }
+.erd-col__key.is-fk { color: var(--gh-accent); }
+.erd-col__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erd-col__type { color: var(--gh-fg-muted); font-size: 11px; white-space: nowrap; }
+.erd-col__null { width: 30px; text-align: right; color: var(--gh-fg-subtle); font-size: 10px; }
+.erd-table .react-flow__handle { width: 6px; height: 6px; min-width: 0; min-height: 0; border: 0; background: var(--gh-border); }
+
+/* 관계선: 실제 FK(파랑 실선) / 모델(회색) / AI 추정(노랑 점선) / 승인(초록) / 복합(굵게) */
+.react-flow__edge-path.erd-edge { stroke-width: 1.2; stroke: var(--kind); }
+.react-flow__edge-path.erd-edge--fk { --kind: var(--gh-accent); }
+.react-flow__edge-path.erd-edge--model { --kind: var(--gh-fg-muted); }
+.react-flow__edge-path.erd-edge--ai-inferred { --kind: var(--gh-attention); stroke-dasharray: 5 4; }
+.react-flow__edge-path.erd-edge--approved { --kind: var(--gh-success); }
+.react-flow__edge-path.erd-edge.is-composite { stroke-width: 2; }
+.has-selection .react-flow__edge:not(.is-active) .erd-edge { opacity: .15; }
+.react-flow__edge.is-active .erd-edge { stroke-width: 2.5; }

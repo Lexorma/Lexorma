@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DialogProvider, useDialog } from '../components/dialog/DialogProvider';
@@ -19,6 +19,8 @@ import { SystemLogPage } from '../features/system/SystemLogPage';
 import { DataDictionaryPage } from '../features/dictionary/DataDictionaryPage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
+
+const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,6 +86,7 @@ export function App() {
                 <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
                 <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DataDictionaryPage /></RequireMenu>} />
                 <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
+                <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>ERD 화면을 불러오는 중…</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
                 <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />

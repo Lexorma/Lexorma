@@ -10,11 +10,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
+@Table(name = "TB_PST_CTGRY")
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
@@ -22,19 +24,19 @@ public class BoardCategory extends BaseEntity implements Serializable {
 
     /* 게시판 카테고리 아이디 */
     @Id
-    @Column(name = "category_id", length = 6, nullable = false)
+    @Column(name = "CTGRY_CD", length = 6, nullable = false)
     private String categoryId;
 
     /* 게시판 카테고리 명 */
-    @Column(name = "category_name", length = 30, nullable = false)
+    @Column(name = "CTGRY_NM", length = 30, nullable = false)
     private String categoryName;
 
     /* 순번 */
-    @Column(name = "order_number", nullable = false)
+    @Column(name = "SORT_ORD", nullable = false)
     private int orderNumber;
 
     /* 사용 여부 */
-    @Column(length = 1, nullable = false)
+    @Column(name = "USE_YN", length = 1, nullable = false)
     private char useYn;
 
     /**

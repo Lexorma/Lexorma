@@ -2,6 +2,7 @@ package com.koboolean.metamora.data.table.domain.entity;
 
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
 import com.koboolean.metamora.common.jpa.BaseEntity;
+import com.koboolean.metamora.data.schema.domain.entity.SchemaInfo;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -9,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "table_info")
+@Table(name = "TB_TBL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,38 +20,43 @@ public class TableInfo extends BaseEntity {
 
     @Id
     // 시퀀스(pooled, 50개씩 할당) : IDENTITY 는 JDBC 배치 INSERT 가 꺼지므로 사용하지 않는다 (V6 마이그레이션)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "table_info_seq")
-    @SequenceGenerator(name = "table_info_seq", sequenceName = "table_info_seq", allocationSize = 50)
-    @Column(name = "table_info_id", nullable = false, unique = true)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL")
+    @SequenceGenerator(name = "SQ_TBL", sequenceName = "SQ_TBL", allocationSize = 50)
+    @Column(name = "TBL_SN", nullable = false, unique = true)
     private Long id;
 
     /** 프로젝트 ID */
-    @Column(nullable = false)
+    @Column(name = "PRJ_SN", nullable = false)
     private Long projectId;
 
     /** 테이블명: ex_table */
-    @Column(nullable = false)
+    @Column(name = "TBL_NM", nullable = false)
     private String tableName;
 
     /** 테이블 설명 */
-    @Column
+    @Column(name = "TBL_EXPLN")
     private String tableDescription;
 
     /** 테이블 한글명: 사용 내역 관리 (표준 단어 기준 테이블명 생성에 사용한 단어) */
-    @Column
+    @Column(name = "TBL_KORN_NM")
     private String tableKorName;
 
     /** 마스터 여부 */
-    @Column
+    @Column(name = "MSTR_TBL_YN")
     private Boolean isMasterTable;
 
     /** 정렬 순서 */
-    @Column
+    @Column(name = "SORT_ORD")
     private Integer sortOrder;
 
     /** 테이블 승인 여부 */
-    @Column
+    @Column(name = "APRV_YN")
     private Boolean isApproval;
+
+    /** 소속 스키마 (V2). 저장 시 지정하지 않으면 프로젝트 기본 스키마 */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "SCHM_SN", nullable = false)
+    private SchemaInfo schema;
 
     @OneToMany(mappedBy = "tableInfo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ColumnInfo> columns = new ArrayList<>();

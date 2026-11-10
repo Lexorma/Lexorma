@@ -1,45 +1,21 @@
 package com.koboolean.metamora.system.systemLog.service.impl;
 
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.logs.domain.dto.LogsDto;
 import com.koboolean.metamora.core.logs.domain.entity.Logs;
 import com.koboolean.metamora.core.logs.repository.LogsRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.system.systemLog.service.SystemLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class SystemLogServiceImpl implements SystemLogService {
 
     private final LogsRepository logsRepository;
-
-    @Override
-    public List<ColumnDto> getSystemLogColumn() {
-        return List.of(
-                new ColumnDto("id","id", ColumnType.NUMBER)
-                , new ColumnDto("요청 URL","logUrl", ColumnType.STRING, true)
-                , new ColumnDto("메소드","method", ColumnType.STRING, true)
-                , new ColumnDto("IP","ip", ColumnType.STRING, true)
-                , new ColumnDto("사용자 ID","username", ColumnType.STRING, true)
-                , new ColumnDto("권한","roleName", ColumnType.STRING)
-                , new ColumnDto("응답 HTTP 상태코드","statusCode", ColumnType.STRING, true)
-                , new ColumnDto("요청 발생시간","timestamp", ColumnType.STRING)
-                , new ColumnDto("상세보기","detailButton", ColumnType.STRING, RowType.BUTTON, false)
-                // 요청/응답 데이터, 에러 메시지, 브라우저 정보는 상세보기 다이얼로그에서 확인 (검색 조건으로는 유지)
-                , new ColumnDto("요청 데이터","requestBody", ColumnType.STRING, true).hidden()
-                , new ColumnDto("응답 데이터","responseBody", ColumnType.STRING, true).hidden()
-                , new ColumnDto("에러 메시지","errorMessage", ColumnType.STRING, true).hidden()
-                , new ColumnDto("브라우저 정보","userAgent", ColumnType.STRING).hidden()
-        );
-    }
 
     @Override
     public Page<LogsDto> getSystemLogData(Pageable pageable, AccountDto accountDto, String searchQuery, String searchColumn) {

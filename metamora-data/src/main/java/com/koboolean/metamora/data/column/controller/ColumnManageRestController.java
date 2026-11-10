@@ -6,7 +6,6 @@ import com.koboolean.metamora.data.column.repository.ColumnInfoRepository;
 import com.koboolean.metamora.data.column.service.ColumnManageService;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.utils.PageableUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,12 +35,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class ColumnManageRestController {
 
     private final ColumnManageService columnManageService;
-
-    @Operation(summary = "테이블 내 컬럼 조회", description = "테이블 내 컬럼 목록을 조회합니다.")
-    @GetMapping("/selectColumn/column")
-    public ResponseEntity<List<ColumnDto>> selectTableColumn() {
-        return ResponseEntity.ok(columnManageService.selectTableColumn());
-    }
 
     @Operation(summary = "테이블 내 데이터 조회", description = "테이블 내 데이터를 조회합니다.")
     @GetMapping("/selectColumn/data")

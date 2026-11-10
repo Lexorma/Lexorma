@@ -335,7 +335,7 @@ function ErdWorkspace() {
         <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title="물리 모델 변경 내용을 다시 불러옵니다"><SyncIcon />새로고침</button>
       </form>
 
-      <div className="erd-toolbar">
+      <div className="erd-toolbar erd-layout-actions">
         <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />자동 배치</button>
         <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />전체 보기</button>
         <button type="button" className="btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? '저장 중…' : '배치 저장'}</button>
@@ -425,12 +425,35 @@ function ErdWorkspace() {
               <span key={source}><i className="erd-swatch" style={{ background: SOURCE_COLOR[source as ErdRelation['relationSource']] }} />{label}</span>
             ))}
             <p className="erd-muted">MetaMora 에 정의한 관계입니다. 원본 DB 의 실제 FK 와 다를 수 있고, 카디널리티는 표시하지 않습니다.</p>
-            <a className="erd-muted" href="/jsons/licenses/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noreferrer">오픈소스 고지</a>
+            <button type="button" className="erd-license-link erd-muted" onClick={() => dialog.open({
+              title: '오픈소스 고지',
+              className: 'dialog-wide',
+              content: <OpenSourceNotices />,
+            })}>오픈소스 고지</button>
           </div>
         </aside>
       </div>
     </div>
   );
+}
+
+function OpenSourceNotices() {
+  const notices = useQuery({
+    queryKey: ['erd-open-source-notices'],
+    queryFn: async () => {
+      const [notice, license] = await Promise.all([
+        api<string>('/jsons/licenses/THIRD_PARTY_NOTICES.txt', { responseType: 'text' }),
+        api<string>('/jsons/licenses/EPL-2.0.md', { responseType: 'text' }),
+      ]);
+      return `${notice}\n\nEPL-2.0 라이선스 전문\n\n${license}`;
+    },
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  if (notices.isPending) return <p role="status">고지 내용을 불러오는 중…</p>;
+  if (notices.isError) return <p role="alert">고지 내용을 불러오지 못했습니다. <button type="button" className="erd-license-link" onClick={() => void notices.refetch()}>다시 시도</button></p>;
+  return <pre className="erd-license-text">{notices.data}</pre>;
 }
 
 function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors }: {

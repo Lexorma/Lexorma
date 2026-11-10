@@ -8,6 +8,7 @@ import { api, download } from '../../lib/api';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
 import { TermCreateForm } from './TermCreateForm';
+import { standardDomainsColumns, standardWordsColumns, standardTermsColumns } from './columns';
 
 const DB_DATA_TYPES = [
   'VARCHAR', 'CHAR', 'TEXT', 'CLOB',
@@ -32,13 +33,14 @@ interface TabDef {
   name: string; // 알림 문구용 (표준 도메인 / 표준 단어 / 표준 용어)
   title: string; // 다이얼로그 제목용 (표준도메인 / 표준단어 / 표준용어)
   dataUrl: string;
+  columns: GridColumn[];
   approvalUrl: string;
 }
 
 const TABS: TabDef[] = [
-  { id: 'standardDomains', target: 'standard-domains', label: '표준 도메인', icon: <RowsIcon />, name: '표준 도메인', title: '표준도메인', dataUrl: '/api/getStandardDomains', approvalUrl: '/api/approvalStandardDomains' },
-  { id: 'standardWords', target: 'standard-words', label: '표준 단어', icon: <TagIcon />, name: '표준 단어', title: '표준단어', dataUrl: '/api/getStandardWords', approvalUrl: '/api/approvalStandardWords' },
-  { id: 'standardTerms', target: 'standard-terms', label: '표준 용어', icon: <BookIcon />, name: '표준 용어', title: '표준용어', dataUrl: '/api/getStandardTerms', approvalUrl: '/api/approvalStandardTerms' },
+  { id: 'standardDomains', target: 'standard-domains', label: '표준 도메인', icon: <RowsIcon />, name: '표준 도메인', title: '표준도메인', dataUrl: '/api/getStandardDomains', columns: standardDomainsColumns, approvalUrl: '/api/approvalStandardDomains' },
+  { id: 'standardWords', target: 'standard-words', label: '표준 단어', icon: <TagIcon />, name: '표준 단어', title: '표준단어', dataUrl: '/api/getStandardWords', columns: standardWordsColumns, approvalUrl: '/api/approvalStandardWords' },
+  { id: 'standardTerms', target: 'standard-terms', label: '표준 용어', icon: <BookIcon />, name: '표준 용어', title: '표준용어', dataUrl: '/api/getStandardTerms', columns: standardTermsColumns, approvalUrl: '/api/approvalStandardTerms' },
 ];
 
 /** 탭별 등록/수정 폼 규칙 (예전 standard_domains.js / standard_words.js / standard_terms.js) */
@@ -271,6 +273,7 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions }: { tab: TabDef; g
     <Grid
       ref={gridRef}
       id={tab.id}
+      columns={tab.columns}
       dataUrl={tab.dataUrl}
       crudActions="anCD"
       extraActions={extraActions}

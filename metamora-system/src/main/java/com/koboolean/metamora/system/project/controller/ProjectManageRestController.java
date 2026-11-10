@@ -1,6 +1,5 @@
 package com.koboolean.metamora.system.project.controller;
 
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
@@ -43,13 +42,6 @@ public class ProjectManageRestController {
                         "isActive", Boolean.TRUE.equals(project.getIsActive()),
                         "isAutoActive", Boolean.TRUE.equals(project.getIsAutoActive())))
                 .toList());
-    }
-
-    @Operation(summary = "프로젝트 Member 컬럼 조회", description = "프로젝트 Member 테이블의 컬럼 목록을 조회합니다.")
-    @PreAuthorize("hasRole('DBA')")
-    @GetMapping("/getProject/{projectId}/column")
-    public ResponseEntity<List<ColumnDto>> getProjectColumn(@PathVariable(value = "projectId") Long projectId) {
-        return ResponseEntity.ok(projectManageService.getProjectColumn(projectId));
     }
 
     @Operation(summary = "프로젝트 Member 데이터 조회", description = "프로젝트 Member 데이터를 조회합니다.")

@@ -5,7 +5,6 @@ import com.koboolean.metamora.data.column.domain.dto.ColumnBulkSaveDto;
 import com.koboolean.metamora.data.column.domain.dto.ColumnInfoDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,10 +12,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 public interface ColumnManageService {
-    List<ColumnDto> selectTableColumn();
 
     Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId);
 

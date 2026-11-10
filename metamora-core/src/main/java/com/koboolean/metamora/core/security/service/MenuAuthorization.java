@@ -1,3 +1,4 @@
+
 package com.koboolean.metamora.core.security.service;
 
 import lombok.RequiredArgsConstructor;
@@ -11,13 +12,22 @@ import java.util.Map;
 
 /**
  * 사이드바 메뉴 노출 권한
+ *
  * <p>
- * 접근할 수 없는 화면은 메뉴에서 아예 보이지 않도록, 화면별 최소 권한을 한 곳에서 관리한다.
- * 최소 권한은 "화면 진입 권한"과 "화면이 호출하는 그리드 API 권한" 중 높은 쪽이다.
+ * 접근할 수 없는 화면은 메뉴에서 아예 보이지 않도록,
+ * 화면별 최소 권한을 한 곳에서 관리한다.
+ *
+ * 최소 권한은 "화면 진입 권한"과
+ * "화면이 호출하는 그리드 API 권한" 중 높은 쪽이다.
  * (예: 컬럼 관리 화면은 VIEWER 이지만 컬럼 API 가 USER 이므로 USER)
+ *
  * <p>
- * 권한 계층(RoleHierarchyConfig)을 적용하므로 상위 권한은 하위 권한 메뉴를 모두 볼 수 있다.
- * Thymeleaf 에서 {@code th:if="${@menuAuth.canView('user-manage')}"} 형태로 사용한다.
+ * 권한 계층(RoleHierarchyConfig)을 적용하므로
+ * 상위 권한은 하위 권한 메뉴를 모두 볼 수 있다.
+ *
+ * Thymeleaf 에서
+ * {@code th:if="${@menuAuth.canView('user-manage')}"}
+ * 형태로 사용한다.
  */
 @Component("menuAuth")
 @RequiredArgsConstructor
@@ -39,14 +49,28 @@ public class MenuAuthorization {
             Map.entry("data-dictionary", "VIEWER"),
             Map.entry("table-manage", "VIEWER"),
             Map.entry("physical-erd", "VIEWER"),
-            Map.entry("column-manage", "USER")
+            Map.entry("column-manage", "USER"),
+
+            // 데이터 모델링 (독립 메뉴)
+            Map.entry("data-modeling", "VIEWER")
     );
 
-    /** 1뎁스 메뉴 그룹 → 하위 메뉴 ID (하위 메뉴가 하나라도 보이면 그룹을 노출) */
+    /**
+     * 1뎁스 메뉴 그룹 → 하위 메뉴 ID
+     * 하위 메뉴가 하나라도 보이면 그룹을 노출한다.
+     */
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
-            "system-management", new String[]{"user-manage", "project-manage", "system-log"},
-            "operation-management", new String[]{"notice"},
-            "data-management", new String[]{"data-dictionary", "table-manage", "column-manage", "physical-erd"}
+            "system-management",
+            new String[]{"user-manage", "project-manage", "system-log"},
+
+            "operation-management",
+            new String[]{"notice"},
+
+            "data-management",
+            new String[]{"data-dictionary", "table-manage", "column-manage", },
+
+            "operation-modeling",
+            new String[]{"physical-erd"}
     );
 
     private final RoleHierarchy roleHierarchy;
@@ -58,7 +82,9 @@ public class MenuAuthorization {
         String[] children = MENU_GROUPS.get(menuId);
         if (children != null) {
             for (String child : children) {
-                if (canView(child)) return true;
+                if (canView(child)) {
+                    return true;
+                }
             }
             return false;
         }
@@ -73,11 +99,18 @@ public class MenuAuthorization {
      * @param role ROLE_ 접두사를 뺀 권한명 (예: USER)
      */
     public boolean hasRole(String role) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) return false;
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
 
         String target = "ROLE_" + role;
-        return roleHierarchy.getReachableGrantedAuthorities(authentication.getAuthorities()).stream()
+
+        return roleHierarchy
+                .getReachableGrantedAuthorities(authentication.getAuthorities())
+                .stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(target::equals);
     }

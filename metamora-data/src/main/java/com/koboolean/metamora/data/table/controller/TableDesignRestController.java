@@ -4,7 +4,6 @@ import com.koboolean.metamora.data.table.domain.dto.TableDdlDto;
 import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
 import com.koboolean.metamora.data.table.domain.dto.TableNameDto;
 import com.koboolean.metamora.data.table.service.TableDesignService;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.utils.PageableUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,13 +32,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class TableDesignRestController {
 
     private final TableDesignService tableDesignService;
-
-    @Operation(summary = "테이블 설계 컬럼 조회", description = "테이블 설계 테이블의 컬럼 목록을 조회합니다.")
-    @PreAuthorize("hasRole('VIEWER')")
-    @GetMapping("/selectTable/column")
-    public ResponseEntity<List<ColumnDto>> selectTableInfoColumn() {
-        return ResponseEntity.ok(tableDesignService.selectTableInfoColumn());
-    }
 
     @Operation(summary = "테이블 설계 데이터 조회", description = "테이블 설계 데이터를 조회합니다.")
     @PreAuthorize("hasRole('VIEWER')")

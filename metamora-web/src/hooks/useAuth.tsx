@@ -14,7 +14,8 @@ export type MenuId =
   | 'column-manage'
   | 'system-management'
   | 'operation-management'
-  | 'data-management';
+  | 'data-management'
+  | 'data-modeling';
 
 export interface AuthUser {
   id: string;

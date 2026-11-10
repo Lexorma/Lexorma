@@ -40,7 +40,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
   {
-    id: 'data-management',
+    id: 'data-modeling',
     label: '데이터 모델링',
     items: [
       { id: 'physical-erd', label: '물리 ERD', path: '/physicalErd' },

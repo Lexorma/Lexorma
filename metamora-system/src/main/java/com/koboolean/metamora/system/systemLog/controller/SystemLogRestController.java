@@ -1,6 +1,5 @@
 package com.koboolean.metamora.system.systemLog.controller;
 
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.logs.domain.dto.LogsDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.system.systemLog.service.SystemLogService;
@@ -18,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 
@@ -30,12 +28,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class SystemLogRestController {
 
     private final SystemLogService systemLogService;
-
-    @Operation(summary = "시스템 로그 컬럼 조회", description = "시스템 로그 테이블의 컬럼 목록을 조회합니다.")
-    @GetMapping("/getSystemLog/column")
-    public ResponseEntity<List<ColumnDto>> getSystemLogColumn() {
-        return ResponseEntity.ok(systemLogService.getSystemLogColumn());
-    }
 
     @Operation(summary = "시스템 로그 데이터 조회", description = "페이징 및 정렬 옵션을 포함한 시스템 로그 데이터를 조회합니다.")
     @GetMapping("/getSystemLog/data")
@@ -59,6 +51,5 @@ public class SystemLogRestController {
 
         return PageableUtil.getGridPageableMap(logsPage);
     }
-
 
 }

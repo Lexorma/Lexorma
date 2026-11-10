@@ -68,6 +68,8 @@ export function setApiErrorListener(listener: ErrorListener | null) {
 }
 
 export interface RequestOptions {
+  /** 정적 고지 파일 등 텍스트 응답은 UTF-8로 읽는다 */
+  responseType?: 'json' | 'text';
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** JSON 으로 보낼 값 (FormData / URLSearchParams 는 그대로 보낸다) */
   body?: unknown;
@@ -81,7 +83,7 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 async function send(url: string, options: RequestOptions, retried = false): Promise<Response> {
   const method = options.method ?? 'GET';
   const headers: Record<string, string> = {
-    Accept: 'application/json',
+    Accept: options.responseType === 'text' ? 'text/plain, text/markdown' : 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
   };
 
@@ -144,7 +146,7 @@ function fail(error: unknown, options: RequestOptions): never {
   throw error;
 }
 
-/** JSON 응답 API */
+/** JSON 응답 API (responseType: text 지정 시 UTF-8 텍스트) */
 export async function api<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
   let res: Response;
   try {
@@ -155,6 +157,7 @@ export async function api<T = unknown>(url: string, options: RequestOptions = {}
   if (!res.ok) fail(await toError(res), options);
   if (res.status === 204) return undefined as T;
   const text = await res.text();
+  if (options.responseType === 'text') return text as T;
   return (text ? JSON.parse(text) : undefined) as T;
 }
 

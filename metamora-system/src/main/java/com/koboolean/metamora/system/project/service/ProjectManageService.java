@@ -1,6 +1,5 @@
 package com.koboolean.metamora.system.project.service;
 
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
@@ -11,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface ProjectManageService {
-    List<ColumnDto> getProjectColumn(Long projectId);
     Page<ProjectMemberDto> getProjectData(Pageable pageable, String searchColumn, String searchQuery, Long projectId);
 
     ProjectDto getEditProjectData(Long projectId, AccountDto accountDto);

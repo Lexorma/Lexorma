@@ -7,7 +7,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.koboolean.metamora.operation.board.domain.dto.BoardDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 
 public interface NoticeService {
@@ -18,12 +17,6 @@ public interface NoticeService {
      */
     Page<BoardDto> getNoticeList(Pageable pageable, Long selectedId, String accountId, String searchQuery, String searchColumn);
 
-    /**
-     * 공지사항 컬럼 조회
-     * @return
-     */
-    List<ColumnDto> getNoticeListColumn(Long selectedId);
-    
     /**
      * 공지사항 등록
      * @param accountDto

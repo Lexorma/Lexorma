@@ -3,6 +3,7 @@ import { Grid } from '../../components/grid/Grid';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { isBlank } from '../../lib/format';
+import { systemLogColumns } from './columns';
 
 const METHOD_VARIANT: Record<string, LabelVariant> = { GET: 'accent', POST: 'success', PUT: 'attention', PATCH: 'attention', DELETE: 'danger' };
 
@@ -62,6 +63,7 @@ export function SystemLogPage() {
       <div id="gridContainer">
         <Grid
           id="logTable"
+          columns={systemLogColumns}
           dataUrl="/api/getSystemLog"
           defaultSort={{ column: 'id', desc: true }}
           onCellButton={openDetail}

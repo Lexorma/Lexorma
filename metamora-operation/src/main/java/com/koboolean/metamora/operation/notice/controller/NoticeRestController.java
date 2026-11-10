@@ -10,7 +10,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import com.koboolean.metamora.operation.board.domain.dto.BoardDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.operation.notice.service.NoticeService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.project.domain.dto.ProjectDto;
@@ -91,20 +90,6 @@ public class NoticeRestController {
         return PageableUtil.getGridPageableMap(selectnoticeListPage);
     }
 
-    /**
-     * 공지사항 리스트 컬럼 조회
-     * @return
-     */
-    @Operation(summary = "공지사항 컬럼 조회", description = "공지사항 리스트의 컬럼을 조회한다.")
-    @PreAuthorize("hasRole('NOT_APPROVE')")
-    @GetMapping("/selectNotice/column")
-    public ResponseEntity<List<ColumnDto>> getNoticeListColumn(@AuthenticationPrincipal AccountDto accountDto ) {
-
-        Long projectId = accountDto.getProjectId();
-
-        return ResponseEntity.ok(noticeService.getNoticeListColumn(projectId));
-    }
-    
     /**
      * 공지사항 게시글 등록
      * @param accountDto

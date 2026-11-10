@@ -158,7 +158,7 @@ class SmokeTest {
     void anonymousAccess() throws Exception {
         HttpClient anonymous = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
 
-        HttpResponse<String> api = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/column")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> api = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/data?page=0&size=10")).GET().build(), HttpResponse.BodyHandlers.ofString());
         assertThat(api.statusCode()).isEqualTo(401);
         assertThat(api.headers().firstValue("Content-Type").orElse("")).contains("application/json");
         assertThat(api.body()).contains("\"code\":\"UNAUTHORIZED\"");
@@ -311,19 +311,32 @@ class SmokeTest {
             "/api/selectNotice", "/api/selectUser", "/api/getSystemLog", "/api/getProject/" + PROJECT_ID
     })
     @Order(20)
-    @DisplayName("그리드 API (column / data)")
+    @DisplayName("그리드 데이터 API")
     void gridApis(String dataUrl) throws Exception {
-        HttpResponse<String> column = get(dataUrl + "/column", true);
-        assertThat(column.statusCode()).as(dataUrl + "/column").isEqualTo(200);
-        assertThat(column.body()).as(dataUrl + "/column").startsWith("[");
+        assertThat(get(dataUrl + "/column", true).statusCode()).isEqualTo(404);
 
         HttpResponse<String> data = get(dataUrl + "/data?page=0&size=10", true);
         assertThat(data.statusCode()).as(dataUrl + "/data").isEqualTo(200);
         assertThat(data.body()).as(dataUrl + "/data").contains("\"recordsTotal\"");
     }
 
+    @ParameterizedTest(name = "표준용어 도메인 정렬 {0}")
+    @ValueSource(strings = {"commonStandardDomainName", "allowedValues", "storageFormat", "displayFormat"})
+    @Order(20)
+    @DisplayName("표준용어의 도메인 필드 정렬은 검색 유무와 관계없이 동작한다")
+    void standardTermDomainSort(String field) throws Exception {
+        for (String direction : List.of("asc", "desc")) {
+            for (String query : List.of("", "&searchColumn=commonStandardDomainName&searchQuery=V")) {
+                HttpResponse<String> response = get("/api/getStandardTerms/data?page=0&size=10&sort="
+                        + field + "," + direction + ";id,asc" + query, true);
+                assertThat(response.statusCode()).as(field + "," + direction + query).isEqualTo(200);
+                assertThat(response.body()).contains("\"recordsTotal\"");
+            }
+        }
+    }
+
     @ParameterizedTest(name = "API {0}")
-    @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/auth/signup/projects", "/v3/api-docs"})
+    @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
     @Order(21)
     @DisplayName("기타 주요 API")
     void apis(String path) throws Exception {
@@ -468,11 +481,11 @@ class SmokeTest {
         }
         assertThat(countLogs("/api/updateName")).isGreaterThan(before);
 
-        // LogsConfig 제외 패턴(/api/**/data, /api/**/column) : 앞 단계에서 호출한 그리드 API는 저장되지 않아야 한다
+        // LogsConfig 제외 패턴(/api/**/data) : 앞 단계에서 호출한 그리드 API는 저장되지 않아야 한다
         assertThat(logsRepository.findAll())
                 .extracting(Logs::getLogUrl)
                 .isNotEmpty()
-                .noneMatch(url -> url.endsWith("/data") || url.endsWith("/column"));
+                .noneMatch(url -> url.endsWith("/data"));
 
         // 로그인 프로젝트 조회 요청은 비밀번호가 포함되므로 저장되더라도 원문이 남지 않아야 한다
         assertThat(logsRepository.findAll())
@@ -489,7 +502,7 @@ class SmokeTest {
         assertThat(logout.statusCode()).isEqualTo(204);
 
         assertThat(get("/api/auth/me", true).body()).contains("\"authenticated\":false");
-        assertThat(get("/api/selectTable/column", true).statusCode()).isEqualTo(401);
+        assertThat(get("/api/selectTable/data?page=0&size=10", true).statusCode()).isEqualTo(401);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION WHERE PRINCIPAL_NAME = ?", Integer.class, USERNAME)).isZero();
 
         // 로그아웃 후에도 새 CSRF 토큰을 받을 수 있다

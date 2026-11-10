@@ -4,7 +4,6 @@ import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
 import com.koboolean.metamora.data.dictionary.service.DataDictionaryService;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.utils.PageableUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,13 +33,6 @@ public class DataDictionaryRestController {
 
     private final DataDictionaryService dataDictionaryService;
 
-    @Operation(summary = "표준 용어 컬럼 조회", description = "표준 용어 테이블의 컬럼 목록을 조회합니다.")
-    @PreAuthorize("hasRole('VIEWER')")
-    @GetMapping("/getStandardTerms/column")
-    public ResponseEntity<List<ColumnDto>> getStandardTermsColumn() {
-        return ResponseEntity.ok(dataDictionaryService.getStandardTermsColumn());
-    }
-
     @Operation(summary = "표준 용어 데이터 조회", description = "표준 용어 데이터를 조회합니다.")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/getStandardTerms/data")
@@ -63,13 +55,6 @@ public class DataDictionaryRestController {
         return PageableUtil.getGridPageableMap(standardTermDataPage);
     }
 
-    @Operation(summary = "표준 단어 컬럼 조회", description = "표준 단어 테이블의 컬럼 목록을 조회합니다.")
-    @PreAuthorize("hasRole('VIEWER')")
-    @GetMapping("/getStandardWords/column")
-    public ResponseEntity<List<ColumnDto>> getStandardWordsColumn() {
-        return ResponseEntity.ok(dataDictionaryService.getStandardWordsColumn());
-    }
-
     @Operation(summary = "표준 단어 데이터 조회", description = "표준 단어 데이터를 조회합니다.")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/getStandardWords/data")
@@ -90,13 +75,6 @@ public class DataDictionaryRestController {
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
         Page<StandardWordDto> standardWordsDataPage = dataDictionaryService.getStandardWordsData(pageable, accountDto, searchColumn, searchQuery);
         return PageableUtil.getGridPageableMap(standardWordsDataPage);
-    }
-
-    @Operation(summary = "표준 도메인 컬럼 조회", description = "표준 도메인 테이블의 컬럼 목록을 조회합니다.")
-    @PreAuthorize("hasRole('VIEWER')")
-    @GetMapping("/getStandardDomains/column")
-    public ResponseEntity<List<ColumnDto>> getStandardDomainsColumn() {
-        return ResponseEntity.ok(dataDictionaryService.getStandardDomainsColumn());
     }
 
     @Operation(summary = "표준 도메인 데이터 조회", description = "표준 도메인 데이터를 조회합니다.")
@@ -178,7 +156,6 @@ public class DataDictionaryRestController {
     @DeleteMapping(value = "/deleteDataDictionary/standardDomains")
     public ResponseEntity<Map<String, Boolean>> deleteDataDictionaryStandardDomains(@RequestBody List<StandardDomainDto> standardDomains
             , @AuthenticationPrincipal AccountDto accountDto) {
-
 
         dataDictionaryService.deleteDataDictionaryStandardDomains(standardDomains, accountDto);
 

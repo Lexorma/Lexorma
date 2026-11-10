@@ -3,7 +3,6 @@ package com.koboolean.metamora.data.table.service;
 import com.koboolean.metamora.data.table.domain.dto.TableDdlDto;
 import com.koboolean.metamora.data.table.domain.dto.TableInfoDto;
 import com.koboolean.metamora.data.table.domain.dto.TableNameDto;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,9 +12,6 @@ import java.io.IOException;
 import java.util.List;
 
 public interface TableDesignService {
-
-    List<ColumnDto> selectTableInfoColumn();
-
     Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);
 
     /**

@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { DeniedPage } from '../auth/DeniedPage';
+import { projectColumns } from './columns';
 
 /** 대상 DB 선택지 (서버 core/project/domain/enums/DbType 과 같은 값) */
 const DB_TYPES = [
@@ -179,6 +180,7 @@ export function ProjectManagePage() {
           key={selected.id}
           ref={grid}
           id="projectMemberGrid"
+          columns={projectColumns}
           dataUrl={`/api/getProject/${selected.id}`}
           crudActions={selected.isAutoActive ? 'cd' : 'ancd'}
           onAction={{ add: addMember, active: () => saveIsActive(true), unactive: () => saveIsActive(false), delete: deleteMembers }}

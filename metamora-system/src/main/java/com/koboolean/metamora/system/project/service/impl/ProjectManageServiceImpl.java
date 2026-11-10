@@ -1,9 +1,6 @@
 package com.koboolean.metamora.system.project.service.impl;
 
 import com.koboolean.metamora.core.project.domain.enums.DbType;
-import com.koboolean.metamora.common.grid.domain.dto.ColumnDto;
-import com.koboolean.metamora.common.grid.enums.ColumnType;
-import com.koboolean.metamora.common.grid.enums.RowType;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.common.exception.CustomException;
@@ -38,21 +35,6 @@ public class ProjectManageServiceImpl implements ProjectManageService {
     private final ProjectRepository projectRepository;
     private final AccountRepository accountRepository;
     private final ApplicationEventPublisher eventPublisher;
-
-    @Override
-    public List<ColumnDto> getProjectColumn(Long projectId) {
-        ColumnDto columnDto = new ColumnDto("활성화여부", "isActive", ColumnType.STRING, RowType.TEXT, true,false);
-
-        // List<String> options = List.of("Y", "N");
-        // columnDto.setOptions(options);
-
-        return List.of(new ColumnDto("id", "id", ColumnType.NUMBER, RowType.CHECKBOX, false),
-                new ColumnDto("프로젝트명", "projectName", ColumnType.STRING, RowType.TEXT, false),
-                new ColumnDto("아이디", "username", ColumnType.STRING, RowType.TEXT, false),
-                new ColumnDto("사용자명", "name", ColumnType.STRING, RowType.TEXT, false),
-                new ColumnDto("프로젝트 관리자", "projectManagerYn", ColumnType.STRING, RowType.TEXT, false),
-                columnDto);
-    }
 
     @Override
     public Page<ProjectMemberDto> getProjectData(Pageable pageable, String searchColumn, String searchQuery, Long projectId) {

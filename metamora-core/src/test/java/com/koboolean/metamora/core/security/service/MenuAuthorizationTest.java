@@ -1,3 +1,4 @@
+
 package com.koboolean.metamora.core.security.service;
 
 import com.koboolean.metamora.core.security.conf.RoleHierarchyConfig;
@@ -10,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MenuAuthorizationTest {
 
-    private final MenuAuthorization menuAuth = new MenuAuthorization(RoleHierarchyConfig.roleHierarchy());
+    private final MenuAuthorization menuAuth =
+            new MenuAuthorization(RoleHierarchyConfig.roleHierarchy());
 
     @AfterEach
     void tearDown() {
@@ -28,6 +30,7 @@ class MenuAuthorizationTest {
 
         assertThat(menuAuth.canView("system-management")).isFalse();
         assertThat(menuAuth.canView("data-management")).isFalse();
+        assertThat(menuAuth.canView("data-modeling")).isFalse();
     }
 
     @Test
@@ -38,6 +41,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("data-dictionary")).isTrue();
         assertThat(menuAuth.canView("table-manage")).isTrue();
         assertThat(menuAuth.canView("data-management")).isTrue();
+        assertThat(menuAuth.canView("data-modeling")).isTrue();
 
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
@@ -56,6 +60,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("system-management")).isTrue();
         assertThat(menuAuth.canView("project-manage")).isTrue();
         assertThat(menuAuth.canView("system-log")).isTrue();
+        assertThat(menuAuth.canView("data-modeling")).isTrue();
         assertThat(menuAuth.canView("user-manage")).isFalse();
     }
 
@@ -65,15 +70,17 @@ class MenuAuthorizationTest {
         SecurityTestSupport.loginAs(1L, "4", "ROLE_MANAGER");
 
         assertThat(menuAuth.canView("project-manage")).isTrue();
+        assertThat(menuAuth.canView("data-modeling")).isTrue();
         assertThat(menuAuth.canView("user-manage")).isFalse();
     }
 
     @Test
-    @DisplayName("USER 는 컬럼 관리까지 보이고 시스템 로그는 숨겨진다")
+    @DisplayName("USER 는 컬럼 관리와 데이터 모델링이 보이고 시스템 로그는 숨겨진다")
     void user() {
         SecurityTestSupport.loginAs(1L, "2", "ROLE_USER");
 
         assertThat(menuAuth.canView("column-manage")).isTrue();
+        assertThat(menuAuth.canView("data-modeling")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 
@@ -84,14 +91,18 @@ class MenuAuthorizationTest {
 
         MenuAuthorization.MENU_ROLES.keySet().forEach(menuId ->
                 assertThat(menuAuth.canView(menuId)).as(menuId).isTrue());
+
         MenuAuthorization.MENU_GROUPS.keySet().forEach(groupId ->
                 assertThat(menuAuth.canView(groupId)).as(groupId).isTrue());
+
+        assertThat(menuAuth.canView("data-modeling")).isTrue();
     }
 
     @Test
     @DisplayName("로그인하지 않았거나 등록되지 않은 메뉴는 보이지 않는다")
     void anonymousOrUnknown() {
         assertThat(menuAuth.canView("dashboard")).isFalse();
+        assertThat(menuAuth.canView("data-modeling")).isFalse();
 
         SecurityTestSupport.loginAsAdmin(1L);
         assertThat(menuAuth.canView("unknown-menu")).isFalse();

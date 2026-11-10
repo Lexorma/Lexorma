@@ -335,7 +335,7 @@ function ErdWorkspace() {
         <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title="물리 모델 변경 내용을 다시 불러옵니다"><SyncIcon />새로고침</button>
       </form>
 
-      <div className="erd-toolbar">
+      <div className="erd-toolbar erd-layout-actions">
         <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />자동 배치</button>
         <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />전체 보기</button>
         <button type="button" className="btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? '저장 중…' : '배치 저장'}</button>

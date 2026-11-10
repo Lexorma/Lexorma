@@ -1,6 +1,7 @@
 /* 물리 ERD (features/erd) : 지연 로딩 화면에서만 불러온다. 색은 --gh-* 토큰만 써서 다크 모드를 따른다 */
 .erd-page { min-width: 0; }
 .erd-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.erd-layout-actions { justify-content: flex-end; }
 .erd-toolbar select.form-control { width: auto; max-width: 100%; }
 .erd-keyword { width: 240px; max-width: 100%; }
 .erd-muted { color: var(--gh-fg-muted); font-size: 12px; }

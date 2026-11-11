@@ -1457,13 +1457,13 @@ dialog .dict-detail .dict-detail-flag-off {
 /* =========================================================
    탭 (Primer UnderlineNav) : Bootstrap nav-tabs 대체
    ========================================================= */
-.content .nav-tabs {
+:is(.content, dialog) .nav-tabs {
     gap: 8px;
     margin-top: 0 !important;
     border-bottom: 1px solid var(--gh-border);
 }
 
-.content .nav-tabs .nav-link {
+:is(.content, dialog) .nav-tabs .nav-link {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -1479,11 +1479,11 @@ dialog .dict-detail .dict-detail-flag-off {
     cursor: pointer;
 }
 
-.content .nav-tabs .nav-link:hover {
+:is(.content, dialog) .nav-tabs .nav-link:hover {
     color: var(--gh-fg);
 }
 
-.content .nav-tabs .nav-link:hover::after {
+:is(.content, dialog) .nav-tabs .nav-link:hover::after {
     content: "";
     position: absolute;
     right: 8px;
@@ -1494,13 +1494,13 @@ dialog .dict-detail .dict-detail-flag-off {
     background-color: var(--gh-border);
 }
 
-.content .nav-tabs .nav-link.active {
+:is(.content, dialog) .nav-tabs .nav-link.active {
     background: transparent;
     color: var(--gh-fg);
     font-weight: 600;
 }
 
-.content .nav-tabs .nav-link.active::after {
+:is(.content, dialog) .nav-tabs .nav-link.active::after {
     content: "";
     position: absolute;
     right: 8px;
@@ -1511,7 +1511,7 @@ dialog .dict-detail .dict-detail-flag-off {
     background-color: #fd8c73; /* GitHub 선택 탭 밑줄 */
 }
 
-.content .nav-tabs .nav-link svg {
+:is(.content, dialog) .nav-tabs .nav-link svg {
     color: var(--gh-fg-muted);
 }
 

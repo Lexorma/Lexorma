@@ -7,6 +7,7 @@ import com.koboolean.metamora.data.dictionary.domain.entity.StandardTermWordMapp
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardWord;
 import com.koboolean.metamora.data.dictionary.repository.StandardDomainRepository;
 import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
+import com.koboolean.metamora.data.logical.repository.LogicalAttributeRepository;
 import com.koboolean.metamora.data.dictionary.repository.StandardWordRepository;
 import com.koboolean.metamora.core.project.repository.ProjectRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
@@ -39,6 +40,7 @@ public class StandardTermService {
     private final StandardDomainRepository standardDomainRepository;
     private final ProjectRepository projectRepository;
     private final EntityManager entityManager;
+    private final LogicalAttributeRepository logicalAttributeRepository;
 
     private static final int FIRST_ROW = 1;
 
@@ -110,6 +112,10 @@ public class StandardTermService {
         standardTerms.forEach(standardDomain -> {
             StandardTerm byIdAndProjectId = standardTermRepository.findByIdAndProjectId(standardDomain.getId(), accountDto.getProjectId());
             if(byIdAndProjectId != null && !byIdAndProjectId.getIsApproval()){
+                // 논리 속성이 참조하는 용어는 지울 수 없다 (TB_LGCL_ATRB.STD_TRM_SN FK)
+                if (logicalAttributeRepository.existsByStandardTerm_Id(standardDomain.getId())) {
+                    throw new CustomException(ErrorCode.RELATION_EXISTS, "논리 속성에서 사용 중인 표준 용어입니다 : {0}", byIdAndProjectId.getCommonStandardTermName());
+                }
                 standardTermRepository.deleteById(standardDomain.getId());
             }
         });

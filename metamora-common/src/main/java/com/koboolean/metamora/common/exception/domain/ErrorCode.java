@@ -207,6 +207,26 @@ public enum ErrorCode {
     INVALID_PHYSICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_PHYSICAL_MODEL"),
 
     /**
+     * 논리 모델·엔터티·속성·식별자·관계 정의 오류 (사유는 customMessage)
+     */
+    INVALID_LOGICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_LOGICAL_MODEL"),
+
+    /**
+     * 논리 모델·엔터티·속성·식별자·관계를 찾을 수 없음 (로그인 프로젝트 기준, 대상은 customMessage)
+     */
+    LOGICAL_MODEL_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "LOGICAL_MODEL_IS_NOT_DEFINED"),
+
+    /**
+     * 논리·물리 매핑 정의 오류 : 부모 매핑과 맞지 않는 속성·컬럼, 속성 매핑이 있는 매핑의 테이블 변경 (사유는 customMessage)
+     */
+    INVALID_MODEL_MAPPING(HttpStatus.BAD_REQUEST, "INVALID_MODEL_MAPPING"),
+
+    /**
+     * 논리·물리 매핑을 찾을 수 없음 (로그인 프로젝트 기준)
+     */
+    MODEL_MAPPING_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "MODEL_MAPPING_IS_NOT_DEFINED"),
+
+    /**
      * ERD 조회 범위·레이아웃 값 오류 (사유는 customMessage)
      */
     INVALID_ERD_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_ERD_REQUEST"),

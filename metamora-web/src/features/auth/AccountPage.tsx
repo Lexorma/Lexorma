@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError } from '../../lib/api';
 import { initial } from '../../lib/format';
 import { t } from '../../lib/i18n';
+import { roleLabel } from '../../lib/roles';
 
 /** 내 정보 (GitHub 설정 화면 형태 : 왼쪽 프로필 / 오른쪽 설정 항목) */
 export function AccountPage() {
@@ -67,7 +68,7 @@ export function AccountPage() {
             <strong>{displayName}</strong>
             <span>{user.username}</span>
           </div>
-          <span className="gh-label gh-label-done">{user.roleName}</span>
+          <span className="gh-label gh-label-done">{roleLabel(user.role || user.roleName)}</span>
         </aside>
 
         <div className="account-main">
@@ -80,7 +81,7 @@ export function AccountPage() {
               </div>
               <div>
                 <dt>{t('권한')}</dt>
-                <dd>{user.roleName}</dd>
+                <dd>{roleLabel(user.role || user.roleName)}</dd>
               </div>
             </dl>
           </section>

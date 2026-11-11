@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { isBlank } from '../../lib/format';
 import { systemLogColumns } from './columns';
 import { t } from '../../lib/i18n';
+import { roleLabel } from '../../lib/roles';
 
 const METHOD_VARIANT: Record<string, LabelVariant> = { GET: 'accent', POST: 'success', PUT: 'attention', PATCH: 'attention', DELETE: 'danger' };
 
@@ -83,7 +84,7 @@ export function SystemLogPage() {
               case 'username':
                 return <User name={row.username} />;
               case 'roleName':
-                return row.roleName ? <Label>{row.roleName}</Label> : <Muted>-</Muted>;
+                return row.roleName ? <Label>{roleLabel(row.roleName)}</Label> : <Muted>-</Muted>;
               case 'timestamp':
                 return <DateTime value={row.timestamp} />;
               default:

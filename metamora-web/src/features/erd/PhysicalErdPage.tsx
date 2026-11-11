@@ -8,6 +8,7 @@ import { NoticeMarkdown } from '../notice/NoticeMarkdown';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
 import { useTableDetail } from '../table/tableDetail';
+import { DICTIONARY_PATHS } from '../dictionary/columns';
 import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
@@ -69,7 +70,7 @@ export default function PhysicalErdPage() {
   const { user } = useAuth();
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('물리 ERD')}
+      <PageHeader category={t('물리 모델 관리')} title={t('물리 ERD')}
         description={t('스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회합니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다.')} />
       <ReactFlowProvider key={user?.projectId}>
         <ErdWorkspace />
@@ -262,11 +263,12 @@ function ErdWorkspace() {
         const self = relation.sourceTableId === relation.targetTableId;
         const highlighted = selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
         const style = {
-          stroke: SOURCE_COLOR[relation.relationSource],
+          // 선택한 테이블에 걸린 관계는 굵기와 색으로 함께 강조한다 (논리 ERD 와 같다). 출처는 상세 패널의 관계 목록에 남는다
+          stroke: highlighted ? 'var(--gh-accent)' : SOURCE_COLOR[relation.relationSource],
           strokeDasharray: relation.relationType === 'LOGICAL' ? '6 4' : undefined,
           strokeWidth: highlighted ? 2.5 : 1.25,
         };
-        const base = { source: String(relation.sourceTableId), target: String(relation.targetTableId), type: 'smoothstep', style, data: { relation } };
+        const base = { source: String(relation.sourceTableId), target: String(relation.targetTableId), type: 'smoothstep', style, zIndex: highlighted ? 1 : 0, data: { relation } };
         const pairs = relation.columns.filter((p) => shown(p.sourceColumnId) && shown(p.targetColumnId));
         const tableEdge = { ...base, id: `r${relation.id}`, sourceHandle: TABLE_HANDLE.out, targetHandle: self ? TABLE_HANDLE.self : TABLE_HANDLE.in };
         if (pairs.length < relation.columns.length) return [tableEdge];
@@ -368,9 +370,9 @@ function ErdWorkspace() {
       title: t('컬럼 상세 · {0}.{1}', tableName, column.columnName),
       content: ({ close }: DialogControls) => (
         <ColumnDetail column={column} tableName={tableName} isFk={isFk}
-          onDictionary={canView('data-dictionary') ? (tab, searchColumn, value) => {
+          onDictionary={canView('standard-term') ? (tab, searchColumn, value) => {
             close();
-            leave(`/dataDictionary?tab=${tab}&searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
+            leave(`${DICTIONARY_PATHS[tab]}?searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
           } : undefined} />
       ),
     });

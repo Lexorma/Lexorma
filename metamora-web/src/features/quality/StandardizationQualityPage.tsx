@@ -57,7 +57,7 @@ export function StandardizationQualityPage() {
 
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('표준화 품질 진단')}
+      <PageHeader category={t('데이터 품질 관리')} title={t('표준화 품질 진단')}
         description={t('물리 컬럼이 표준 용어·도메인을 따르는지 진단합니다. 조회만 하며 컬럼이나 표준 항목을 바꾸지 않습니다.')} />
 
       {summary.isError && <p className="gh-muted" role="alert">{t('진단 요약을 불러오지 못했습니다.')}</p>}

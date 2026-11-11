@@ -26,7 +26,7 @@ const CARD_ROWS = [
 ];
 
 /**
- * 컬럼 순서 변경 (데이터 관리 > 컬럼 관리 > 행 선택 > 컬럼 순서 변경)
+ * 컬럼 순서 변경 (물리 모델 관리 > 컬럼 관리 > 행 선택 > 컬럼 순서 변경)
  * 같은 테이블의 (승인 전) 컬럼을 카드로 보여주고, 화살표로 순서를 바꿔 저장한다.
  */
 export function ColumnOrder({ columnInfos, controls, onSuccess }: { columnInfos: Record<string, any>[]; controls: DialogControls; onSuccess: () => void }) {

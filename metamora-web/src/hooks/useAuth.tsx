@@ -9,6 +9,14 @@ export type MenuId =
   | 'system-log'
   | 'notice'
   | 'data-dictionary'
+  | 'standard-domain'
+  | 'standard-word'
+  | 'standard-term'
+  | 'data-quality'
+  | 'logical-model'
+  | 'logical-erd'
+  /** 화면이 아니라 논리 모델 변경 버튼(등록·수정·삭제) 노출 여부 */
+  | 'logical-model-edit'
   | 'schema-manage'
   | 'table-manage'
   | 'physical-erd'
@@ -16,8 +24,8 @@ export type MenuId =
   | 'standardization-quality'
   | 'system-management'
   | 'operation-management'
-  | 'data-management'
-  | 'data-modeling';
+  | 'logical-modeling'
+  | 'physical-modeling';
 
 export interface AuthUser {
   id: string;

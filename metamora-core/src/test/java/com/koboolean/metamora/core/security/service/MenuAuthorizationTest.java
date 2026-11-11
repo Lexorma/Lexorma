@@ -29,8 +29,11 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("notice")).isTrue();
 
         assertThat(menuAuth.canView("system-management")).isFalse();
-        assertThat(menuAuth.canView("data-management")).isFalse();
-        assertThat(menuAuth.canView("data-modeling")).isFalse();
+        assertThat(menuAuth.canView("data-dictionary")).isFalse();
+        assertThat(menuAuth.canView("logical-modeling")).isFalse();
+        assertThat(menuAuth.canView("physical-modeling")).isFalse();
+        assertThat(menuAuth.canView("standardization-quality")).isFalse();
+        assertThat(menuAuth.canView("data-quality")).isFalse();
     }
 
     @Test
@@ -41,9 +44,20 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("data-dictionary")).isTrue();
         assertThat(menuAuth.canView("table-manage")).isTrue();
         assertThat(menuAuth.canView("schema-manage")).isTrue();
-        assertThat(menuAuth.canView("data-management")).isTrue();
-        assertThat(menuAuth.canView("data-modeling")).isTrue();
+        assertThat(menuAuth.canView("physical-erd")).isTrue();
+        assertThat(menuAuth.canView("physical-modeling")).isTrue();
+        assertThat(menuAuth.canView("logical-model")).isTrue();
+        assertThat(menuAuth.canView("logical-erd")).isTrue();
+        assertThat(menuAuth.canView("logical-modeling")).isTrue();
+        assertThat(menuAuth.canView("standardization-quality")).isTrue();
+        assertThat(menuAuth.canView("data-quality")).isTrue();
+        // 데이터 사전은 그룹이고 표준 도메인·단어·용어가 각각 화면이다
+        assertThat(menuAuth.canView("standard-domain")).isTrue();
+        assertThat(menuAuth.canView("standard-word")).isTrue();
+        assertThat(menuAuth.canView("standard-term")).isTrue();
 
+        // 논리 모델 변경 버튼은 USER 부터
+        assertThat(menuAuth.canView("logical-model-edit")).isFalse();
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
 
@@ -61,7 +75,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("system-management")).isTrue();
         assertThat(menuAuth.canView("project-manage")).isTrue();
         assertThat(menuAuth.canView("system-log")).isTrue();
-        assertThat(menuAuth.canView("data-modeling")).isTrue();
+        assertThat(menuAuth.canView("physical-modeling")).isTrue();
         assertThat(menuAuth.canView("user-manage")).isFalse();
     }
 
@@ -71,17 +85,17 @@ class MenuAuthorizationTest {
         SecurityTestSupport.loginAs(1L, "4", "ROLE_MANAGER");
 
         assertThat(menuAuth.canView("project-manage")).isTrue();
-        assertThat(menuAuth.canView("data-modeling")).isTrue();
+        assertThat(menuAuth.canView("physical-modeling")).isTrue();
         assertThat(menuAuth.canView("user-manage")).isFalse();
     }
 
     @Test
-    @DisplayName("USER 는 컬럼 관리와 데이터 모델링이 보이고 시스템 로그는 숨겨진다")
+    @DisplayName("USER 는 컬럼 관리와 논리 모델 변경 버튼이 보이고 시스템 로그는 숨겨진다")
     void user() {
         SecurityTestSupport.loginAs(1L, "2", "ROLE_USER");
 
         assertThat(menuAuth.canView("column-manage")).isTrue();
-        assertThat(menuAuth.canView("data-modeling")).isTrue();
+        assertThat(menuAuth.canView("logical-model-edit")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 
@@ -96,14 +110,20 @@ class MenuAuthorizationTest {
         MenuAuthorization.MENU_GROUPS.keySet().forEach(groupId ->
                 assertThat(menuAuth.canView(groupId)).as(groupId).isTrue());
 
-        assertThat(menuAuth.canView("data-modeling")).isTrue();
+        assertThat(menuAuth.canView("physical-modeling")).isTrue();
     }
 
     @Test
     @DisplayName("로그인하지 않았거나 등록되지 않은 메뉴는 보이지 않는다")
     void anonymousOrUnknown() {
         assertThat(menuAuth.canView("dashboard")).isFalse();
+        assertThat(menuAuth.canView("logical-modeling")).isFalse();
+
+        // 없앤 메뉴 그룹 ID 는 더 이상 내려가지 않는다
+        SecurityTestSupport.loginAsAdmin(1L);
+        assertThat(menuAuth.canView("data-management")).isFalse();
         assertThat(menuAuth.canView("data-modeling")).isFalse();
+        SecurityTestSupport.clear();
 
         SecurityTestSupport.loginAsAdmin(1L);
         assertThat(menuAuth.canView("unknown-menu")).isFalse();

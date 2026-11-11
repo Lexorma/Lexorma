@@ -1,5 +1,6 @@
 package com.koboolean.metamora.data.physical.service.impl;
 
+import com.koboolean.metamora.data.mapping.repository.AttributeColumnMappingRepository;
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
@@ -39,6 +40,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private final TableIndexRepository indexRepository;
     private final TableConstraintRepository constraintRepository;
     private final EntityManager entityManager;
+    private final AttributeColumnMappingRepository attributeMappingRepository;
 
     // ------------------------------------------------------------------ 조회
 
@@ -236,6 +238,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     public void releaseColumns(Long projectId, Collection<ColumnInfo> columns) {
         if (columns.isEmpty()) return;
         Set<Long> columnIds = new HashSet<>(ids(columns));
+
+        // 논리 속성에 매핑된 컬럼은 삭제할 수 없다. 테이블 행을 잠가 매핑 등록과 엇갈리지 않게 한다 (ID 순 : 교착 방지)
+        columns.stream().map(ColumnInfo::getTableInfo).filter(Objects::nonNull).map(TableInfo::getId).distinct().sorted()
+                .forEach(tableId -> tableInfoRepository.findForUpdate(tableId, projectId));
+        attributeMappingRepository.findFirstByColumn_IdIn(columnIds).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 {0} 에 매핑된 컬럼입니다. 매핑을 먼저 해제해주세요.", m.getAttribute().getAttributeName());
+        });
 
         List<TableRelation> relations = relationRepository.findAllUsingColumns(columnIds);
         relations.stream().filter(r -> r.getRelationSource() != TableRelation.Source.REF_COLUMN).findFirst().ifPresent(r -> {

@@ -41,6 +41,8 @@ class StandardTermServiceTest {
     StandardDomainService standardDomainService;
     @Mock
     StandardWordService standardWordService;
+    @Mock
+    com.koboolean.metamora.data.logical.repository.LogicalAttributeRepository logicalAttributeRepository;
 
     @InjectMocks
     StandardTermService service;

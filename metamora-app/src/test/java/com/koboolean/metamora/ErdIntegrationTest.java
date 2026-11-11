@@ -82,7 +82,9 @@ class ErdIntegrationTest {
 
         ErdDto.Graph graph = erdService.selectGraph(admin, new ErdDto.Search(null, "TB_", null, null), 0, ErdService.MAX_TABLES);
         List<String> names = names(graph);
-        assertThat(names).contains("TB_TBL", "TB_COL", "TB_TBL_REL", "TB_ERD_LYT", "TB_STD_TRM");
+        assertThat(names).contains("TB_TBL", "TB_COL", "TB_TBL_REL", "TB_ERD_LYT", "TB_STD_TRM", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL");
+        // 논리 모델 테이블(M-6) : 같은 테이블을 가리키는 FK 두 개가 각각 관계가 된다
+        assertThat(graph.relations()).filteredOn(r -> r.sourceTableName().equals("TB_LGCL_REL") && r.targetTableName().equals("TB_LGCL_ENTT")).hasSize(2);
         assertThat(graph.columns().stream().filter(c -> c.tableId().equals(id(graph, "TB_TBL"))))
                 .extracting(ErdDto.Column::columnName).startsWith("TBL_SN", "PRJ_SN", "SCHM_SN", "TBL_NM");
         assertThat(graph.relations()).anyMatch(r -> r.sourceTableName().equals("TB_COL") && r.targetTableName().equals("TB_TBL")

@@ -466,6 +466,127 @@ dialog .form-check-label {
     font-weight: 500;
 }
 
+/* =========================================================
+   사용 현황 대화상자 : 공통 그리드를 테이블 상세의 컬럼 목록처럼 촘촘하게 보여 준다
+   ========================================================= */
+dialog.dialog-usage {
+    width: min(960px, calc(100vw - 32px));
+}
+
+/* 겹쳐 여는 팝업에는 본문 여백이 없다 */
+dialog .popup-dialog-body > .dict-usage {
+    padding: 16px;
+}
+
+dialog .dict-usage > p {
+    margin: 0 0 12px;
+    font-size: 12px;
+}
+
+dialog .dict-usage .grid-header {
+    margin-bottom: 8px;
+}
+
+/* 대화상자의 입력 공통 규칙(width: 100%, padding)보다 우선한다 */
+dialog .dict-usage .search-container .search-column-select,
+dialog .dict-usage .search-container .search-input {
+    width: auto;
+    font-size: 13px;
+}
+
+dialog .dict-usage .search-container .search-column-select {
+    min-width: 104px;
+    padding: 0 30px 0 10px;
+    border-radius: 0;
+}
+
+dialog .dict-usage .search-container .search-column-select:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+dialog .dict-usage .search-container .search-input {
+    min-width: 160px;
+    padding: 0 12px 0 32px !important; /* 돋보기 아이콘 자리 */
+    border-radius: 0;
+}
+
+dialog .dict-usage .search-container .grd-select {
+    font-size: 13px;
+}
+
+dialog .dict-usage .button-container {
+    display: none;
+}
+
+dialog .dict-usage div.dt-container .dt-length label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+
+dialog .dict-usage div.dt-container select.dt-input {
+    width: auto;
+    min-height: 28px;
+    height: 28px !important;
+    padding: 0 26px 0 8px;
+    font-size: 12px;
+}
+
+dialog .dict-usage .dt-layout-table .dt-layout-cell {
+    max-height: 400px; /* 10행까지는 스크롤 없이 */
+    overflow: auto;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+}
+
+dialog .dict-usage table.dataTable.table {
+    border: 0;
+    border-radius: 0;
+    font-size: 12px;
+}
+
+dialog .dict-usage table.dataTable > thead > tr > th,
+dialog .dict-usage table.dataTable > tbody > tr > td {
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* 일반 텍스트 셀은 <p> 로 그려지는데 대화상자의 p 공통 규칙(16px, 흐린 색)을 받는다 */
+dialog .dict-usage table.dataTable td p {
+    margin: 0;
+    color: var(--gh-fg);
+    font-size: 12px;
+}
+
+dialog .dict-usage table.dataTable > thead > tr > th:has(.dt-column-order) {
+    padding-right: 24px;
+}
+
+dialog .dict-usage table.dataTable > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+dialog .dict-usage table.dataTable .btn {
+    height: 24px;
+    padding: 0 6px;
+}
+
+dialog .dict-usage div.dt-container .dt-layout-row:last-child {
+    margin-top: 12px;
+}
+
+dialog .dict-usage div.dt-container .dt-paging .dt-paging-button {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 26px;
+}
+
 /* 사용 현황 : 행의 이동 버튼 */
 .dict-usage-links {
     display: inline-flex;

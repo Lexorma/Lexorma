@@ -266,7 +266,7 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
     const name = row.commonStandardTermName ?? row.commonStandardDomainName ?? row.commonStandardWordName ?? '';
     dialog.open({
       title: t('사용 현황 · {0}', name),
-      className: 'dialog-xl',
+      className: 'dialog-usage',
       content: ({ close }: DialogControls) => <DictionaryUsage kind={tab.id} row={row} close={close} />,
     });
   };

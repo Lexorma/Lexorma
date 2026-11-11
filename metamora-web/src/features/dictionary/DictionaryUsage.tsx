@@ -24,7 +24,7 @@ export function DictionaryUsage({ kind, row, close }: { kind: UsageKind; row: Ro
   const dialog = useDialog();
   if (kind === 'standardWords') {
     return (
-      <div className="popup-container dict-usage">
+      <div className="dict-usage">
         <p className="gh-muted">{t('이 표준 단어로 만든 표준 용어입니다. 사용 컬럼 수를 누르면 그 용어를 쓰는 컬럼을 볼 수 있습니다.')}</p>
         <Grid
           id="dictionaryUsageTerms"
@@ -44,7 +44,7 @@ export function DictionaryUsage({ kind, row, close }: { kind: UsageKind; row: Ro
                     size: 'large',
                     // 이동할 때는 이 팝업과 아래 사용 현황 대화상자를 모두 닫는다
                     content: (popup: DialogControls) => (
-                      <div className="popup-container dict-usage">
+                      <div className="dict-usage">
                         <ColumnUsageGrid kind="term" id={term.id} onNavigate={() => { popup.close(); close(); }} />
                       </div>
                     ),
@@ -60,7 +60,7 @@ export function DictionaryUsage({ kind, row, close }: { kind: UsageKind; row: Ro
     );
   }
   return (
-    <div className="popup-container dict-usage">
+    <div className="dict-usage">
       {kind === 'standardDomains' && <p className="gh-muted">{t('컬럼은 표준 도메인을 직접 참조하지 않습니다. 이 도메인에 속한 표준 용어를 쓰는 컬럼을 보여 줍니다.')}</p>}
       <ColumnUsageGrid kind={kind === 'standardTerms' ? 'term' : 'domain'} id={row.id} onNavigate={close} />
     </div>

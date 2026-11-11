@@ -20,6 +20,7 @@ import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/lay
 import { HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, type ErdLayout, type XY } from '../erd/model';
 import { useSimpleNodes } from '../erd/TableNode';
 import { useEntityDetail } from './entityDetail';
+import { mappingPath } from '../mapping/model';
 import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphEntity, type LogicalGraph, type LogicalRelationship } from './model';
 
 type EntityNodeType = Node<{ entity: GraphEntity }, 'entity'>;
@@ -139,6 +140,7 @@ export default function LogicalErdPage() {
               focusEntity={focusEntity}
               onDirty={setDirty}
               onManage={canView('logical-model') ? (entityId) => leave(`/logicalModel?modelId=${selected.id}${entityId != null ? `&entityId=${entityId}` : ''}`) : undefined}
+              onLeave={leave}
               modelSelect={(
                 <select className="search-column-select" aria-label={t('논리 모델')} value={selected.id} onChange={(e) => changeModel(Number(e.target.value))}>
                   {models.map((m) => <option key={m.id} value={m.id}>{m.modelName}</option>)}
@@ -152,15 +154,17 @@ export default function LogicalErdPage() {
   );
 }
 
-function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, modelSelect }: {
+function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelSelect }: {
   modelId: number;
   focusEntity: string | null;
   onDirty: (dirty: boolean) => void;
   /** 논리 모델 관리로 이동 (entityId 를 주면 그 엔터티 상세를 연다). 메뉴 권한이 없으면 undefined */
   onManage?: (entityId?: number) => void;
+  /** 다른 화면으로 이동 (저장하지 않은 배치가 있으면 먼저 확인한다) */
+  onLeave: (path: string) => void;
   modelSelect: ReactNode;
 }) {
-  const { user } = useAuth();
+  const { user, canView } = useAuth();
   const dialog = useDialog();
   const flow = useReactFlow<EntityNodeType, RelationshipEdgeType>();
   const openEntityDetail = useEntityDetail();
@@ -424,8 +428,9 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, modelSelect }: 
               graph={graph.data!}
               entity={selected}
               onFocus={() => focus(String(selected.id))}
-              onDetail={() => openEntityDetail(selected.id, { onChanged: () => void graph.refetch() })}
+              onDetail={() => openEntityDetail(selected.id, { onChanged: () => void graph.refetch(), onNavigate: onLeave })}
               onManage={onManage ? () => onManage(selected.id) : undefined}
+              onMapping={canView('model-mapping') ? () => onLeave(mappingPath(modelId, selected.id)) : undefined}
               onRelationship={(id) => { setSelectedRelationship(id); setSelectedId(null); }}
             />
           ) : relationship ? (
@@ -451,12 +456,14 @@ function ApprovalLabel({ value }: { value: boolean | null }) {
   return value ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>;
 }
 
-function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onRelationship }: {
+function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, onRelationship }: {
   graph: LogicalGraph;
   entity: GraphEntity;
   onFocus: () => void;
   onDetail: () => void;
   onManage?: () => void;
+  /** 논리·물리 매핑 화면으로 (메뉴 권한이 없으면 undefined) */
+  onMapping?: () => void;
   onRelationship: (relationshipId: number) => void;
 }) {
   const relationships = graph.relationships.filter((r) => r.sourceEntityId === entity.id || r.targetEntityId === entity.id);
@@ -469,6 +476,7 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onRelationshi
         <button type="button" className="btn btn-sm" onClick={onFocus}>{t('이동')}</button>
         <button type="button" className="btn btn-sm" onClick={onDetail}>{t('엔터티 상세')}</button>
         {onManage && <button type="button" className="btn btn-sm" onClick={onManage}>{t('관리 화면에서 보기')}</button>}
+        {onMapping && <button type="button" className="btn btn-sm" onClick={onMapping}>{t('매핑 관리')}</button>}
       </div>
 
       <h4>{t('속성 {0}개', entity.attributes.length)}</h4>

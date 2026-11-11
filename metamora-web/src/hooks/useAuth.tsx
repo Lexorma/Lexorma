@@ -17,6 +17,9 @@ export type MenuId =
   | 'logical-erd'
   /** 화면이 아니라 논리 모델 변경 버튼(등록·수정·삭제) 노출 여부 */
   | 'logical-model-edit'
+  | 'model-mapping'
+  /** 화면이 아니라 매핑 등록·변경·해제 버튼 노출 여부 */
+  | 'model-mapping-edit'
   | 'schema-manage'
   | 'table-manage'
   | 'physical-erd'

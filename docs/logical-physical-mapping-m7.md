@@ -1,7 +1,7 @@
 # M-7. 논리·물리 모델 매핑 — 설계 결정과 구현 기록 (1차 : 도메인·API)
 
 > [데이터 모델링 로드맵](data-modeling-roadmap.md) M-7 중 **1차(매핑 저장 구조·관리 API·현황·후보 조회)** 의 기록이다. 작성일 2026-11-11.
-> 매핑 관리 화면, 정합성 비교(이름·타입·NULL 차이), 물리명 추천은 **2차**이고 구현하지 않았다.
+> 매핑 관리 화면과 정합성 비교는 **2차**에서 구현했다 — [model-mapping-quality-m7.md](model-mapping-quality-m7.md). 물리명 추천은 구현하지 않았다. 아래 본문은 1차 시점의 기록이다.
 
 ## 1. 기존 구조 분석과 결정
 
@@ -38,7 +38,7 @@ TB_LGCL_ATRB (LogicalAttribute) ─1:1─ TB_ATRB_COL_MPNG (AttributeColumnMappi
 | 항목 | 정책 |
 |---|---|
 | 매핑 단위 | 엔터티 1 : 테이블 1, 속성 1 : 컬럼 1. 매핑이 없는 엔터티·테이블·속성·컬럼도 그대로 존재한다 |
-| 자동 매핑 | 없다. 명시적으로 등록한 것만 매핑이다 (V0·V1 예제의 논리·물리 모델도 매핑하지 않았다) |
+| 자동 매핑 | 없다. 명시적으로 등록한 것만 매핑이다. (1차 시점에는 예제도 매핑하지 않았고, 이후 `V4__mapping_example_data.sql` 이 예제의 논리·물리 모델을 매핑 데이터로 이었다 — 10장) |
 | 원본 불변 | 매핑 등록·변경·삭제는 엔터티·테이블·속성·컬럼과 그 승인 상태·표준 용어를 바꾸지 않는다 |
 | 부모·자식 | 속성 매핑은 부모(엔터티 ↔ 테이블 매핑)의 엔터티에 속한 속성과 테이블에 속한 컬럼만 연결한다. 그 밖의 조합은 `INVALID_MODEL_MAPPING` |
 | 엔터티 매핑 변경 | 테이블만 바꾼다 (요청의 `entityId` 는 무시). **속성 매핑이 있으면 거절** (`INVALID_MODEL_MAPPING`) — 속성 매핑을 먼저 해제한다. 같은 테이블로 다시 저장하는 것은 허용 |
@@ -142,3 +142,9 @@ METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 - 5장·8장의 "V0 예제에 새 테이블이 없다 / 결정 필요" 는 이 마이그레이션으로 해소됐다.
 - 기존 DB : 프로젝트 0 에 같은 이름의 테이블·단어를 직접 등록해 둔 경우 이름으로 찾는 하위 조회가 여러 행이 되어 V3 가 실패할 수 있다 (V1 과 같은 전제).
 
+## 10. 2차에서 달라진 점
+
+- API 추가 : `GET /entity/lookup`(엔터티 또는 테이블의 매핑 1건), `GET /quality/summary`·`/quality/data`(정합성 비교). 4장의 기존 API 와 DTO 는 바뀌지 않았다.
+- 메뉴 : `model-mapping`(VIEWER)·`model-mapping-edit`(USER) 를 `MENU_ROLES` 에, `model-mapping` 을 `logical-modeling` 그룹에 넣었다.
+- 7장의 "화면 : 매핑 UI 가 없으므로 브라우저 검증 없음"은 2차에서 해소됐다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md).
+- **예제 매핑 (V4)** : `V4__mapping_example_data.sql` 이 META-MORA 예제의 엔터티 37개·속성 357개를 전부 물리 테이블·컬럼에 매핑한다 (엔터티명 = 테이블 한글명, 같은 표준 용어). 5장·7장·9장의 "매핑 테이블은 비어 있다 / 예제를 매핑으로 잇지 않았다"는 V4 로 바뀌었다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md) 8장.

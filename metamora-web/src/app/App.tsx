@@ -17,6 +17,7 @@ import { UserManagePage } from '../features/system/UserManagePage';
 import { ProjectManagePage } from '../features/system/ProjectManagePage';
 import { SystemLogPage } from '../features/system/SystemLogPage';
 import { LogicalModelPage } from '../features/logical/LogicalModelPage';
+import { ModelMappingPage } from '../features/mapping/ModelMappingPage';
 import { DictionaryPage, DictionaryRedirect } from '../features/dictionary/DataDictionaryPage';
 import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
@@ -97,6 +98,7 @@ export function App() {
                 <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DictionaryRedirect /></RequireMenu>} />
                 <Route path="/logicalModel" element={<RequireMenu menuId="logical-model"><LogicalModelPage /></RequireMenu>} />
                 <Route path="/logicalErd" element={<RequireMenu menuId="logical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><LogicalErdPage /></Suspense></RequireMenu>} />
+                <Route path="/modelMapping" element={<RequireMenu menuId="model-mapping"><ModelMappingPage /></RequireMenu>} />
                 <Route path="/schemaManage" element={<RequireMenu menuId="schema-manage"><SchemaManagePage /></RequireMenu>} />
                 <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
                 <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />

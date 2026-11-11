@@ -484,7 +484,7 @@ function ErdWorkspace() {
               onOnlyRelated={setOnlyRelated}
               onFocus={() => focus(String(selected.id))}
               onDdl={() => dialog.popup({ title: `DDL · ${selected.tableName}`, size: 'large', content: <TableDdlView tableId={selected.id} /> })}
-              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch() }) : undefined}
+              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch(), onNavigate: leave }) : undefined}
               onEditColumns={canView('column-manage')
                 ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void graph.refetch() })
                 : undefined}

@@ -28,7 +28,8 @@ class V0SeedMigrationTest {
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
             // V0 (스키마 + 초기 데이터) + V1 (META-MORA 논리 모델 예제) + V2 (논리·물리 매핑 테이블, 데이터 없음) + V3 (매핑 테이블 예제, COMMENT)
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            // + V4 (예제의 논리 모델 ↔ 물리 모델 매핑 데이터)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             var jdbc = new JdbcTemplate(dataSource);
             // V1 : 물리 모델 예제와 같은 수의 엔터티·속성·관계, PK 가 있는 테이블마다 주 식별자, 고아 행 없음
             String s = "\"" + schema + "\".";
@@ -49,9 +50,17 @@ class V0SeedMigrationTest {
             assertThat(columnComments)
                     .isEqualTo(comments(jdbc, "select TBL_NM || '.' || COL_NM, COL_EXPLN from " + s + "TB_COL where PRJ_SN = 0"));
 
-            // V2 : 매핑은 명시적으로 등록한 것만 있다 (예제의 논리·물리 모델을 자동으로 잇지 않는다)
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ENTT_TBL_MPNG", Integer.class)).isZero();
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ATRB_COL_MPNG", Integer.class)).isZero();
+            // V4 : 예제의 엔터티는 모두 한글명이 같은 테이블에, 속성은 모두 같은 표준 용어의 컬럼에 매핑되어 있다 (1:1, 빠진 것 없음)
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ENTT_TBL_MPNG", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT", Integer.class)).isPositive();
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ATRB_COL_MPNG", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ATRB", Integer.class)).isPositive();
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ENTT_TBL_MPNG mp join " + s + "TB_LGCL_ENTT e on e.LGCL_ENTT_SN = mp.LGCL_ENTT_SN join "
+                    + s + "TB_TBL t on t.TBL_SN = mp.TBL_SN where mp.PRJ_SN <> 0 or t.PRJ_SN <> 0 or e.PRJ_SN <> 0 or t.TBL_KORN_NM <> e.ENTT_NM", Integer.class)).isZero();
+            // 속성 매핑은 부모 매핑의 엔터티·테이블 안에서만, 같은 표준 용어끼리 이어진다
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ATRB_COL_MPNG am join " + s + "TB_ENTT_TBL_MPNG mp on mp.ENTT_TBL_MPNG_SN = am.ENTT_TBL_MPNG_SN join "
+                    + s + "TB_LGCL_ATRB a on a.LGCL_ATRB_SN = am.LGCL_ATRB_SN join " + s + "TB_COL c on c.COL_SN = am.COL_SN "
+                    + "where a.LGCL_ENTT_SN <> mp.LGCL_ENTT_SN or c.TBL_SN <> mp.TBL_SN or a.STD_TRM_SN <> c.STD_TRM_SN or a.ATRB_NM <> c.COL_EXPLN", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_MDL where PRJ_SN = 0 and MDL_NM = 'META-MORA'", Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT", Integer.class))
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0", Integer.class)).isPositive();

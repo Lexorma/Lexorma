@@ -1,0 +1,31 @@
+/* 논리·물리 매핑 (features/mapping). 색은 --gh-* 토큰만 써서 다크 모드를 따른다 */
+.mapping-tab { padding-top: 16px; }
+/* primer.css 의 .quality-stats(5열)보다 우선해야 한다 */
+.dash-stats.quality-stats.mapping-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 8px; }
+@media (max-width: 1012px) { .dash-stats.quality-stats.mapping-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .dash-stats.quality-stats.mapping-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mapping-stat-foot { min-height: 18px; color: var(--gh-fg-muted); font-size: 12px; }
+.mapping-note { margin: 0 0 16px; font-size: 12px; }
+.mapping-focus-note { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-accent-subtle); color: var(--gh-fg); }
+table.dataTable > tbody > tr.mapping-focus-row > td { background: var(--gh-accent-subtle); }
+#modelMappingGrid > tbody > tr, #mappingQualityGrid > tbody > tr { cursor: pointer; }
+
+/* 엔터티 매핑 대화상자 */
+.mapping-form .dict-detail { margin-bottom: 12px; }
+.mapping-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mapping-search > select.form-control { width: auto; min-width: 140px; }
+.mapping-search > input.form-control { flex: 1 1 200px; width: auto; }
+.mapping-candidates { max-height: 280px; margin: 0 0 8px; padding: 0; overflow-y: auto; list-style: none; border: 1px solid var(--gh-border); border-radius: 6px; }
+.mapping-candidates li + li { border-top: 1px solid var(--gh-border-muted); }
+.mapping-candidates label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 6px 10px; color: var(--gh-fg); font-weight: 400; cursor: pointer; }
+.mapping-candidates label:hover { background: var(--gh-hover); }
+.mapping-candidates input[type="radio"] { margin: 0; }
+.mapping-pager { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
+/* 속성 ↔ 컬럼 매핑 대화상자 */
+.mapping-detail table.mapping-fixed-table { width: 100%; table-layout: fixed; }
+/* 상세 표의 기본(white-space: nowrap)을 풀어 긴 값은 셀 안에서 줄바꿈한다 */
+dialog .mapping-detail table.mapping-fixed-table td, dialog .mapping-detail table.mapping-fixed-table th { white-space: normal; overflow-wrap: anywhere; }
+.mapping-detail select.mapping-column-select { width: 100%; min-width: 0; height: 28px; padding: 0 8px; font-family: var(--gh-mono); font-size: 12px; }
+.mapping-subtitle { margin: 16px 0 8px; font-size: 14px; }
+.mapping-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }

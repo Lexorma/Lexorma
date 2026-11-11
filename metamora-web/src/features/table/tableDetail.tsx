@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import type { Row } from '../../components/grid/Grid';
 import { useAuth } from '../../hooks/useAuth';
@@ -6,6 +7,7 @@ import { api, ApiError, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
+import { mappingPath, useMappingLookup } from '../mapping/model';
 import { TableDdlView } from './TableDdl';
 import { TableForm } from './TableForm';
 
@@ -16,6 +18,8 @@ interface TableDetailOptions {
   onErd?: () => void;
   /** 컬럼 목록에서 강조할 컬럼 (사용 현황·품질 진단에서 열 때) */
   columnId?: number;
+  /** 다른 화면으로 이동 (ERD 는 저장하지 않은 배치를 먼저 확인한다). 없으면 바로 이동한다 */
+  onNavigate?: (path: string) => void;
 }
 
 /**
@@ -24,8 +28,10 @@ interface TableDetailOptions {
  */
 export function useTableDetail() {
   const dialog = useDialog();
-  const { approvalAvailable } = useAuth();
+  const { approvalAvailable, canView } = useAuth();
+  const navigate = useNavigate();
   const openColumnBulkEditor = useColumnBulkEditor();
+  const mappingVisible = canView('model-mapping');
 
   /** 테이블 ID 로 최신 정보를 받아 상세를 연다 (ERD 에서 열 때, 변경 후 다시 열 때) */
   const openTableDetailById = async (tableId: number, options: TableDetailOptions = {}) => {
@@ -72,6 +78,7 @@ export function useTableDetail() {
             });
           }}
           onErd={options.onErd ? () => { close(); options.onErd?.(); } : undefined}
+          onMapping={mappingVisible ? (path) => { close(); (options.onNavigate ?? navigate)(path); } : undefined}
         />
       ),
     });
@@ -96,9 +103,11 @@ function ynLabel(value: unknown, text: string, variant = 'accent') {
   return value === 'Y' ? <span className={`gh-label gh-label-${variant}`}>{text}</span> : <span className="gh-muted">-</span>;
 }
 
-function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onApproval }: {
+function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMapping, onApproval }: {
   row: Row;
   columnId?: number;
+  /** 논리·물리 매핑 화면으로 (메뉴 권한이 없으면 undefined — 매핑 정보도 조회하지 않는다) */
+  onMapping?: (path: string) => void;
   onEditColumns: () => void;
   onDdl: () => void;
   onEdit?: () => void;
@@ -113,6 +122,10 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onApp
     gcTime: 0,
   });
 
+  // 논리·물리 매핑 (M-7) : 이 테이블에 매핑된 논리 엔터티 (없으면 null)
+  const mapping = useMappingLookup({ tableId: row.id }, !!onMapping);
+  const mapped = mapping.data;
+
   const order = (v?: number | null) => v ?? Number.MAX_SAFE_INTEGER;
   const columns = (data?.columnInfos ?? []).slice().sort((a, b) => order(a.sortOrder) - order(b.sortOrder));
 
@@ -123,6 +136,7 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onApp
     [t('테이블 설명'), row.tableDescription],
     [t('마스터 테이블'), row.isMasterTable === 'Y' ? 'Y' : 'N'],
     [t('정렬 순서'), row.sortOrder],
+    ...(onMapping ? [[t('매핑된 논리 엔터티'), mapped ? `${mapped.entityName} (${mapped.modelName})` : mapping.isPending ? '' : t('미매핑')] as [string, unknown]] : []),
   ];
 
   return (
@@ -186,6 +200,7 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onApp
         {/* DDL 은 승인 여부와 관계없이 볼 수 있다 */}
         <button type="button" className="btn" onClick={onDdl}>{t('DDL 보기')}</button>
         {onErd && <button type="button" className="btn" onClick={onErd}>{t('ERD 에서 보기')}</button>}
+        {onMapping && mapped && <button type="button" className="btn" onClick={() => onMapping(mappingPath(mapped.modelId, mapped.entityId))}>{t('매핑 관리')}</button>}
         {onApproval && (
           <button type="button" className={approved ? 'btn btn-danger' : 'btn btn-primary'} onClick={onApproval}>
             {approved ? t('승인취소') : tc('버튼', '승인')}

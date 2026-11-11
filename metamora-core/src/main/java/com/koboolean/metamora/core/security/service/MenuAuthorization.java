@@ -55,6 +55,9 @@ public class MenuAuthorization {
             Map.entry("logical-erd", "VIEWER"),
             // 화면 메뉴가 아니라 논리 모델 변경 버튼(등록·수정·삭제) 노출용 : 논리 모델 변경 API 의 권한과 같다
             Map.entry("logical-model-edit", "USER"),
+            // 논리·물리 매핑 : 화면(매핑·정합성 조회)은 VIEWER, 매핑 등록·변경·해제 버튼은 USER (매핑 API 의 권한과 같다)
+            Map.entry("model-mapping", "VIEWER"),
+            Map.entry("model-mapping-edit", "USER"),
 
             // 물리 모델 관리
             Map.entry("schema-manage", "VIEWER"),
@@ -81,7 +84,7 @@ public class MenuAuthorization {
             new String[]{"standard-domain", "standard-word", "standard-term"},
 
             "logical-modeling",
-            new String[]{"logical-model", "logical-erd"},
+            new String[]{"logical-model", "logical-erd", "model-mapping"},
 
             "data-quality",
             new String[]{"standardization-quality"},

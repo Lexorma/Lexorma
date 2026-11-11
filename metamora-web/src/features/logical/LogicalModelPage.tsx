@@ -157,7 +157,8 @@ export function LogicalModelPage() {
             <div className="dt-layout-row dt-layout-table">
               <div className="dt-layout-cell dt-layout-full">
                 {tab === 'entities' ? (
-                  <table id="logicalEntityGrid" className="table table-striped table-bordered dataTable">
+                  <table id="logicalEntityGrid" className="table table-striped table-bordered dataTable grid-fixed">
+                    <colgroup>{ENTITY_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
                     <thead><tr>{entityHeaders.map((h) => <th key={h}>{h}</th>)}</tr></thead>
                     <tbody>
                       {entities.map((entity: GraphEntity) => (
@@ -179,7 +180,8 @@ export function LogicalModelPage() {
                     </tbody>
                   </table>
                 ) : (
-                  <table id="logicalRelationshipGrid" className="table table-striped table-bordered dataTable">
+                  <table id="logicalRelationshipGrid" className="table table-striped table-bordered dataTable grid-fixed">
+                    <colgroup>{(canEdit || approvalAvailable ? RELATIONSHIP_WIDTHS_MANAGED : RELATIONSHIP_WIDTHS).map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
                     <thead><tr>{relationshipHeaders.map((h) => <th key={h}>{h}</th>)}</tr></thead>
                     <tbody>
                       {relationships.map((r) => (
@@ -217,6 +219,11 @@ export function LogicalModelPage() {
     </>
   );
 }
+
+/** 목록 컬럼 폭 (고정) : 엔터티 6열, 관계 6열 + 관리 */
+const ENTITY_WIDTHS = ['24%', '34%', '9%', '9%', '11%', '13%'];
+const RELATIONSHIP_WIDTHS = ['20%', '22%', '22%', '12%', '12%', '12%'];
+const RELATIONSHIP_WIDTHS_MANAGED = ['16%', '19%', '19%', '10%', '10%', '10%', '16%'];
 
 const relationLabel = (r: LogicalRelationship) => r.relationshipName || `${r.sourceEntityName} → ${r.targetEntityName}`;
 

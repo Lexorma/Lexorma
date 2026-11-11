@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
 import { searchTerms, termLabel, type Term } from '../column/terms';
+import { mappingPath, useMappingLookup } from '../mapping/model';
 import { cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
 import '../../styles/logical.css';
 
@@ -14,6 +16,8 @@ interface EntityDetailOptions {
   onChanged?: () => void;
   /** [논리 ERD 에서 보기] (ERD 화면에서 열 때는 주지 않는다) */
   onErd?: () => void;
+  /** 다른 화면으로 이동 (ERD 는 저장하지 않은 배치를 먼저 확인한다). 없으면 바로 이동한다 */
+  onNavigate?: (path: string) => void;
 }
 
 /** 엔터티 상세 대화상자 (논리 모델 관리·논리 ERD 공용) : 기본 정보 / 속성 / 식별자 / 관계 탭 */
@@ -32,8 +36,11 @@ type Tab = 'basic' | 'attributes' | 'identifiers' | 'relationships';
 
 function EntityDetail({ entityId, options, controls }: { entityId: number; options: EntityDetailOptions; controls: DialogControls }) {
   const dialog = useDialog();
+  const navigate = useNavigate();
   const { canView, approvalAvailable } = useAuth();
   const [tab, setTab] = useState<Tab>('attributes');
+  // 논리·물리 매핑 (M-7) : 이 엔터티에 매핑된 물리 테이블
+  const mapping = useMappingLookup({ entityId }, canView('model-mapping'));
   const entity = useQuery({
     queryKey: ['logical-entity', entityId],
     queryFn: () => api<LogicalEntity>(`/api/logical/entity/${entityId}`, { silent: true }),
@@ -91,6 +98,9 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
       <div className="dict-detail-status">
         <strong>{data.entityName}</strong>
         {approved ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>}
+        {mapping.data && (mapping.data.mappingId != null
+          ? <Label variant="accent" title={t('매핑된 물리 테이블')}>{t('물리 테이블 {0} · 속성 {1} / {2} 매핑', mapping.data.tableName ?? '', mapping.data.mappedAttributeCount, mapping.data.attributeCount)}</Label>
+          : <Label title={t('물리 테이블에 매핑되지 않았습니다.')}>{t('미매핑')}</Label>)}
         {approved && <span className="gh-muted">{approvalAvailable ? t('승인된 엔터티입니다. 엔터티명·설명 변경과 삭제는 승인취소 후에 할 수 있습니다.') : t('승인된 엔터티는 승인취소 후에 변경할 수 있습니다.')}</span>}
       </div>
 
@@ -111,6 +121,9 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
 
       <div className="gh-dialog-actions">
         {options.onErd && <button type="button" className="btn" onClick={() => { controls.close(); options.onErd?.(); }}>{t('논리 ERD 에서 보기')}</button>}
+        {canView('model-mapping') && (
+          <button type="button" className="btn" onClick={() => { controls.close(); (options.onNavigate ?? navigate)(mappingPath(data.modelId, entityId)); }}>{t('매핑 관리')}</button>
+        )}
         {approvalAvailable && (
           <button type="button" className={approved ? 'btn btn-danger' : 'btn btn-primary'} onClick={toggleApproval}>
             {approved ? t('승인취소') : tc('버튼', '승인')}

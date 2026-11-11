@@ -34,6 +34,8 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("physical-modeling")).isFalse();
         assertThat(menuAuth.canView("standardization-quality")).isFalse();
         assertThat(menuAuth.canView("data-quality")).isFalse();
+        assertThat(menuAuth.canView("model-mapping")).isFalse();
+        assertThat(menuAuth.canView("model-mapping-edit")).isFalse();
     }
 
     @Test
@@ -49,6 +51,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("logical-model")).isTrue();
         assertThat(menuAuth.canView("logical-erd")).isTrue();
         assertThat(menuAuth.canView("logical-modeling")).isTrue();
+        assertThat(menuAuth.canView("model-mapping")).isTrue();
         assertThat(menuAuth.canView("standardization-quality")).isTrue();
         assertThat(menuAuth.canView("data-quality")).isTrue();
         // 데이터 사전은 그룹이고 표준 도메인·단어·용어가 각각 화면이다
@@ -58,6 +61,8 @@ class MenuAuthorizationTest {
 
         // 논리 모델 변경 버튼은 USER 부터
         assertThat(menuAuth.canView("logical-model-edit")).isFalse();
+        // 매핑 등록·변경·해제 버튼도 USER 부터
+        assertThat(menuAuth.canView("model-mapping-edit")).isFalse();
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
 
@@ -96,6 +101,8 @@ class MenuAuthorizationTest {
 
         assertThat(menuAuth.canView("column-manage")).isTrue();
         assertThat(menuAuth.canView("logical-model-edit")).isTrue();
+        assertThat(menuAuth.canView("model-mapping")).isTrue();
+        assertThat(menuAuth.canView("model-mapping-edit")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 

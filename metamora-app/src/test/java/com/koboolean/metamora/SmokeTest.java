@@ -606,6 +606,9 @@ class SmokeTest {
             Map.entry("usageColumnColumns", "/api/dictionaryUsage/term/1"),
             Map.entry("usageTermColumns", "/api/dictionaryUsage/word/12"),
             Map.entry("qualityIssueColumns", "/api/standardizationQuality"),
+            Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
+            // modelId 가 필수라 조회할 때 예제 모델 ID 를 붙인다 (gridSortAndSearch)
+            Map.entry("mappingQualityColumns", "/api/modelMapping/quality"),
             Map.entry("standardTermsColumns", "/api/getStandardTerms"),
             Map.entry("standardWordsColumns", "/api/getStandardWords"),
             Map.entry("standardDomainsColumns", "/api/getStandardDomains"),
@@ -618,37 +621,57 @@ class SmokeTest {
 
     @Test
     @Order(20)
-    @DisplayName("M-7 논리·물리 매핑 API : 현황 → 후보 → 엔터티 매핑 → 속성 매핑 → 상세, 오류 코드, 삭제 순서 (V0·V1 예제의 계정 엔터티 ↔ TB_ACNT)")
+    @DisplayName("M-7 논리·물리 매핑 API : 예제는 전부 매핑(V4) → 계정 매핑 해제 → 후보 → 엔터티 매핑 → 속성 매핑 → 상세, 오류 코드, 삭제 순서 → 예제 매핑 복원")
     void modelMapping() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
-        // 예제의 논리·물리 모델은 자동으로 이어지지 않는다
-        var status = mapper.readTree(get("/api/modelMapping/status", true).body());
-        assertThat(status.toString()).contains("\"modelName\":\"META-MORA\"", "\"mappedEntities\":0", "\"mappedAttributes\":0");
+        // V4 : 예제의 논리·물리 모델은 전부 매핑되어 있다
+        var status = mapper.readTree(get("/api/modelMapping/status", true).body()).get(0);
+        assertThat(status.path("modelName").asString()).isEqualTo("META-MORA");
+        long entities = status.path("totalEntities").asLong();
+        long attributes = status.path("totalAttributes").asLong();
+        assertThat(status.path("mappedEntities").asLong()).isEqualTo(entities).isPositive();
+        assertThat(status.path("mappedAttributes").asLong()).isEqualTo(attributes).isPositive();
 
         // 검색은 부분 일치라 여러 건이 나온다 (이름순은 DB 정렬 규칙에 따라 다르다) : 이름이 같은 행을 고른다
-        var entity = java.util.stream.StreamSupport.stream(mapper.readTree(get("/api/modelMapping/entity/data?page=0&size=50&mapped=false&searchColumn=entityName&searchQuery="
-                        + java.net.URLEncoder.encode("계정", java.nio.charset.StandardCharsets.UTF_8), true).body()).path("data").spliterator(), false)
+        String accountRows = "/api/modelMapping/entity/data?page=0&size=50&searchColumn=entityName&searchQuery=" + java.net.URLEncoder.encode("계정", java.nio.charset.StandardCharsets.UTF_8);
+        var seeded = java.util.stream.StreamSupport.stream(mapper.readTree(get(accountRows, true).body()).path("data").spliterator(), false)
+                .filter(row -> row.path("entityName").asString().equals("계정")).findFirst().orElseThrow();
+        assertThat(seeded.path("tableName").asString()).isEqualTo("TB_ACNT");
+        assertThat(seeded.path("mappedAttributeCount").asLong()).isEqualTo(seeded.path("attributeCount").asLong()).isPositive();
+
+        // 예제의 계정 ↔ TB_ACNT 매핑을 해제한다 (속성 매핑 → 엔터티 매핑). 끝에서 같은 짝으로 되돌린다
+        var seededDetail = mapper.readTree(get("/api/modelMapping/entity/" + seeded.path("mappingId").asLong(), true).body());
+        assertThat(seededDetail.path("unmappedColumns").size()).isZero();
+        List<long[]> seededPairs = new ArrayList<>();
+        for (var attribute : seededDetail.path("attributes")) {
+            assertThat(attribute.path("attributeTermId").asLong()).as(attribute.path("attributeName").asString()).isEqualTo(attribute.path("columnTermId").asLong());
+            seededPairs.add(new long[]{attribute.path("attributeId").asLong(), attribute.path("columnId").asLong()});
+            assertThat(delete("/api/modelMapping/attribute/" + attribute.path("mappingId").asLong()).statusCode()).isEqualTo(200);
+        }
+        assertThat(delete("/api/modelMapping/entity/" + seeded.path("mappingId").asLong()).statusCode()).isEqualTo(200);
+        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":" + (entities - 1), "\"mappedAttributes\":" + (attributes - seededPairs.size()));
+
+        var entity = java.util.stream.StreamSupport.stream(mapper.readTree(get(accountRows + "&mapped=false", true).body()).path("data").spliterator(), false)
                 .filter(row -> row.path("entityName").asString().equals("계정")).findFirst().orElseThrow();
         assertThat(entity.path("mappingId").isNull()).isTrue();
         var table = java.util.stream.StreamSupport.stream(mapper.readTree(get("/api/modelMapping/table/data?page=0&size=50&searchQuery=TB_ACNT", true).body()).path("data").spliterator(), false)
                 .filter(row -> row.path("tableName").asString().equals("TB_ACNT")).findFirst().orElseThrow();
+        String entityMapping = "{\"entityId\":" + entity.path("entityId").asLong() + ",\"tableId\":" + table.path("tableId").asLong() + "}";
 
-        HttpResponse<String> created = postJson("/api/modelMapping/entity", "{\"entityId\":" + entity.path("entityId").asLong() + ",\"tableId\":" + table.path("tableId").asLong() + "}");
+        HttpResponse<String> created = postJson("/api/modelMapping/entity", entityMapping);
         assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
         long mappingId = mapper.readTree(created.body()).path("id").asLong();
-        assertThat(postJson("/api/modelMapping/entity", "{\"entityId\":" + entity.path("entityId").asLong() + ",\"tableId\":" + table.path("tableId").asLong() + "}").body())
-                .contains("SAVED_DATA_EXISTS");
+        assertThat(postJson("/api/modelMapping/entity", entityMapping).body()).contains("SAVED_DATA_EXISTS");
 
         var detail = mapper.readTree(get("/api/modelMapping/entity/" + mappingId, true).body());
         assertThat(detail.path("mapping").path("tableName").asString()).isEqualTo("TB_ACNT");
         assertThat(detail.path("attributes").size()).isEqualTo(detail.path("unmappedColumns").size()).isPositive();
-        long attributeId = detail.path("attributes").get(0).path("attributeId").asLong();
-        long columnId = detail.path("unmappedColumns").get(0).path("columnId").asLong();
+        long attributeId = seededPairs.get(0)[0];
+        long columnId = seededPairs.get(0)[1];
         HttpResponse<String> attributeMapped = postJson("/api/modelMapping/attribute", "{\"mappingId\":" + mappingId + ",\"attributeId\":" + attributeId + ",\"columnId\":" + columnId + "}");
         assertThat(attributeMapped.statusCode()).as(attributeMapped.body()).isEqualTo(200);
-        long attributeMappingId = mapper.readTree(attributeMapped.body()).path("id").asLong();
         assertThat(get("/api/modelMapping/entity/" + mappingId, true).body()).contains("\"mappedAttributeCount\":1", "\"columnTermName\":");
-        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":1", "\"mappedAttributes\":1");
+        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":" + entities, "\"mappedAttributes\":" + (attributes - seededPairs.size() + 1));
 
         // 오류 : 400 + 코드
         assertThat(get("/api/modelMapping/entity/999999999", true).body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
@@ -657,10 +680,52 @@ class SmokeTest {
         assertThat(blocked.statusCode()).isEqualTo(400);
         assertThat(blocked.body()).contains("RELATION_EXISTS");
 
-        // 정리 : 속성 매핑 → 엔터티 매핑 (예제 데이터는 그대로)
-        assertThat(delete("/api/modelMapping/attribute/" + attributeMappingId).statusCode()).isEqualTo(200);
-        assertThat(delete("/api/modelMapping/entity/" + mappingId).statusCode()).isEqualTo(200);
-        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":0");
+        // 예제 매핑 복원 : 나머지 속성을 처음과 같은 컬럼에 다시 잇는다 (다른 테스트는 전부 매핑된 예제를 전제로 한다)
+        for (long[] pair : seededPairs.subList(1, seededPairs.size())) {
+            assertThat(postJson("/api/modelMapping/attribute", "{\"mappingId\":" + mappingId + ",\"attributeId\":" + pair[0] + ",\"columnId\":" + pair[1] + "}").statusCode()).isEqualTo(200);
+        }
+        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":" + entities, "\"mappedAttributes\":" + attributes);
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("M-7 2차 정합성 비교 API : 요약 = 상태별 목록 건수, 매핑 1건 조회, 필수 조건·잘못된 값 400, 메뉴 권한 (예제는 V4 로 전부 매핑)")
+    void modelMappingQuality() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        long modelId = exampleModelId();
+        var summary = mapper.readTree(get("/api/modelMapping/quality/summary?modelId=" + modelId, true).body());
+        assertThat(summary.path("modelName").asString()).isEqualTo("META-MORA");
+        assertThat(summary.path("totalEntities").asLong()).isGreaterThan(0);
+        assertThat(summary.path("unmapped").asLong()).isEqualTo(summary.path("unmappedEntities").asLong() + summary.path("unmappedAttributes").asLong());
+        for (var entry : Map.of("MATCH", "match", "MISMATCH", "mismatch", "NOT_COMPARABLE", "notComparable", "UNMAPPED", "unmapped").entrySet()) {
+            assertThat(mapper.readTree(get("/api/modelMapping/quality/data?page=0&size=1&modelId=" + modelId + "&status=" + entry.getKey(), true).body()).path("recordsTotal").asLong())
+                    .as(entry.getKey()).isEqualTo(summary.path(entry.getValue()).asLong());
+        }
+        // V4 : 예제는 전부 매핑되어 있어 미매핑이 없고, 매핑된 속성마다 진단 유형 6건이 나온다
+        assertThat(summary.path("unmapped").asLong()).isZero();
+        assertThat(summary.path("match").asLong() + summary.path("mismatch").asLong() + summary.path("notComparable").asLong()).isEqualTo(summary.path("mappedAttributes").asLong() * 6);
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=1&modelId=" + modelId + "&type=MAPPING", true).body()).contains("\"recordsTotal\":0");
+        var row = mapper.readTree(get("/api/modelMapping/quality/data?page=0&size=1&modelId=" + modelId + "&type=TERM", true).body()).path("data").get(0);
+        assertThat(row.path("status").asString()).isEqualTo("MATCH");
+        assertThat(row.path("columnName").asString()).isNotBlank();
+        long entityId = row.path("entityId").asLong();
+        assertThat(get("/api/modelMapping/entity/lookup?entityId=" + entityId, true).body()).contains("\"entityId\":" + entityId, "\"modelId\":" + modelId);
+        assertThat(get("/api/modelMapping/entity/lookup?tableId=999999999", true)).extracting(HttpResponse::statusCode, HttpResponse::body).containsExactly(200, "");
+        assertThat(get("/api/modelMapping/entity/lookup", true).body()).contains("INVALID_MODEL_MAPPING");
+
+        assertThat(get("/api/modelMapping/quality/summary", true).statusCode()).as("modelId 없음").isEqualTo(400);
+        assertThat(get("/api/modelMapping/quality/summary?modelId=999999999", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=999999999", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=" + modelId + "&status=UNKNOWN", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=" + modelId + "&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/auth/me", true).body()).contains("\"model-mapping\":true", "\"model-mapping-edit\":true");
+    }
+
+    /** V1 예제 논리 모델(META-MORA)의 ID */
+    private long exampleModelId() throws IOException, InterruptedException {
+        var models = tools.jackson.databind.json.JsonMapper.builder().build().readTree(get("/api/logical/model", true).body());
+        return java.util.stream.StreamSupport.stream(models.spliterator(), false)
+                .filter(model -> "META-MORA".equals(model.path("modelName").asString())).findFirst().orElseThrow().path("id").asLong();
     }
 
     @Test
@@ -688,6 +753,7 @@ class SmokeTest {
                 grids++;
                 String dataUrl = GRID_DATA_URLS.get(gridMatcher.group(1));
                 assertThat(dataUrl).as("GRID_DATA_URLS 에 없는 그리드 : " + gridMatcher.group(1)).isNotNull();
+                String required = "mappingQualityColumns".equals(gridMatcher.group(1)) ? "&modelId=" + exampleModelId() : "";
 
                 Set<String> sorts = new LinkedHashSet<>();
                 List<String> searches = new ArrayList<>(List.of(""));
@@ -706,7 +772,7 @@ class SmokeTest {
                 for (String sort : sorts) {
                     for (String search : searches) {
                         for (String direction : List.of("asc", "desc")) {
-                            String url = dataUrl + "/data?page=0&size=10&sort=" + sort + "," + direction + search;
+                            String url = dataUrl + "/data?page=0&size=10&sort=" + sort + "," + direction + search + required;
                             HttpResponse<String> response = get(url, true);
                             if (response.statusCode() != 200 || !response.body().contains("\"recordsTotal\"")) {
                                 failed.add(url + " → " + response.statusCode());

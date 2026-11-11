@@ -379,8 +379,16 @@ class TableDesignServiceImplTest {
         TableInfo table = table(1L, "TB_USER", false);
         when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
 
-        service.updateTableIsApproval(true, AccountDto.builder().projectId(1L).build(), List.of(TableInfoDto.builder().id(1L).build()));
+        service.updateTableIsApproval(true, SecurityTestSupport.loginAsAdmin(1L), List.of(TableInfoDto.builder().id(1L).build()));
 
         assertThat(table.getIsApproval()).isTrue();
+    }
+
+    @Test
+    @DisplayName("승인 권한이 없으면 승인 상태를 바꿀 수 없다")
+    void approvalDenied() {
+        assertThatThrownBy(() -> service.updateTableIsApproval(true, SecurityTestSupport.loginAsUser(1L), List.of(TableInfoDto.builder().id(1L).build())))
+                .extracting("errorCode").isEqualTo(ErrorCode.APPROVAL_PERMISSION_DENIED);
+        verify(tableInfoRepository, never()).findByIdAndProjectId(any(), any());
     }
 }

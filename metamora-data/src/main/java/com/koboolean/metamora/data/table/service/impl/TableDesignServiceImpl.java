@@ -253,9 +253,10 @@ public class TableDesignServiceImpl implements TableDesignService {
     @Override
     @Transactional
     public void updateTableIsApproval(boolean isApproval, AccountDto accountDto, List<TableInfoDto> tableInfoDtos) {
-//        if(!AuthUtil.isApprovalAvailable()){
-//            throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
-//        }
+        // 승인·승인취소는 승인 권한(관리자·매니저·프로젝트 관리자)만 (화면은 버튼을 숨기지만 API 직접 호출도 막는다)
+        if(!AuthUtil.isApprovalAvailable()){
+            throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
+        }
 
         tableInfoDtos.forEach(tableInfoDto -> {
             TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableInfoDto.getId(), accountDto.getProjectId());

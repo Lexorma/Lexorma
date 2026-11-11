@@ -1,19 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
-import { api, ApiError, download, enc } from '../../lib/api';
-import { isBlank } from '../../lib/format';
+import { api, download, enc } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
-import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { useSchemas } from '../schema/schemas';
-import { TableDdlView } from './TableDdl';
 import { TableForm } from './TableForm';
 import { tableColumns } from './columns';
+import { useTableDetail } from './tableDetail';
 import { t } from '../../lib/i18n';
 
 /** 테이블 관리 : 테이블 설계 정보 등록·승인, 상세(컬럼 목록 / 컬럼 일괄 편집 / DDL) */
@@ -21,13 +18,12 @@ export function TableManagePage() {
   const dialog = useDialog();
   const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const openColumnBulkEditor = useColumnBulkEditor();
+  const { openTableDetail } = useTableDetail();
   const navigate = useNavigate();
   const { canView } = useAuth();
   const { schemas, refresh: refreshSchemas } = useSchemas();
   // 스키마별 조회 : '' = 전체 스키마
   const [schemaId, setSchemaId] = useState('');
-  const [searchParams, setSearchParams] = useSearchParams();
   const reload = () => {
     grid.current?.reload();
     void refreshSchemas(); // 스키마별 테이블 수
@@ -87,42 +83,11 @@ export function TableManagePage() {
     }, clear);
   };
 
-  // 행 선택 : 테이블 상세 (그리드에서 숨긴 항목 + 등록된 컬럼 목록)
-  const openDetail = (row: Row) => {
-    const approved = row.isApproval === 'Y';
-    dialog.open({
-      title: t('테이블 상세 · {0}', row.tableName ?? ''),
-      // 컬럼 목록 표가 들어가므로 넓게 연다
-      className: 'dialog-table-detail',
-      content: ({ close }: DialogControls) => (
-        <TableDetail
-          row={row}
-          onEditColumns={() => {
-            close();
-            openColumnBulkEditor(row, {
-              onSaved: () => {
-                reload();
-                openDetail(row); // 저장한 컬럼으로 상세를 다시 연다
-              },
-            });
-          }}
-          onDdl={() => dialog.popup({ title: `DDL · ${row.tableName ?? ''}`, size: 'large', content: <TableDdlView tableId={row.id} /> })}
-          onEdit={approved ? undefined : () => { close(); openForm('U', row); }}
-          onErd={canView('physical-erd') ? () => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.id)}`); } : undefined}
-        />
-      ),
-    });
-  };
-
-  // 다른 화면(물리 ERD)에서 테이블 ID 로 넘어오면 그 테이블의 상세를 연다
-  const linkedTableId = searchParams.get('tableId');
-  const openedLink = useRef<string | null>(null);
-  useEffect(() => {
-    if (!linkedTableId || openedLink.current === linkedTableId) return;
-    openedLink.current = linkedTableId;
-    setSearchParams({}, { replace: true });
-    api<Row>(`/api/selectTable/detail/${enc(linkedTableId)}`).then(openDetail).catch(() => undefined);
-  }, [linkedTableId]);
+  // 행 선택 : 테이블 상세 (그리드에서 숨긴 항목 + 등록된 컬럼 목록, 컬럼 편집 / DDL / 승인 / 수정)
+  const openDetail = (row: Row) => openTableDetail(row, {
+    onChanged: reload,
+    onErd: canView('physical-erd') ? () => navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.id)}`) : undefined,
+  });
 
   return (
     <>
@@ -163,108 +128,5 @@ export function TableManagePage() {
         />
       </div>
     </>
-  );
-}
-
-interface ColumnInfo {
-  id: number;
-  columnName: string;
-  columnDesc?: string;
-  dataType?: string;
-  maxLength?: number;
-  isPk?: string;
-  isNullable?: string;
-  isApproval?: string;
-  sortOrder?: number;
-}
-
-function ynLabel(value: unknown, text: string, variant = 'accent') {
-  return value === 'Y' ? <span className={`gh-label gh-label-${variant}`}>{text}</span> : <span className="gh-muted">-</span>;
-}
-
-function TableDetail({ row, onEditColumns, onDdl, onEdit, onErd }: { row: Row; onEditColumns: () => void; onDdl: () => void; onEdit?: () => void; onErd?: () => void }) {
-  const approved = row.isApproval === 'Y';
-  const { data, error } = useQuery({
-    queryKey: ['table-columns', row.id],
-    queryFn: () => api<{ columnInfos?: ColumnInfo[] }>(`/api/selectColumn/tableColumn/${enc(row.id)}`, { silent: true }),
-    gcTime: 0,
-  });
-
-  const order = (v?: number | null) => v ?? Number.MAX_SAFE_INTEGER;
-  const columns = (data?.columnInfos ?? []).slice().sort((a, b) => order(a.sortOrder) - order(b.sortOrder));
-
-  const items: [string, unknown, boolean?][] = [
-    [t('스키마'), row.schemaName, true],
-    [t('테이블명'), row.tableName, true],
-    [t('테이블 한글명'), row.tableKorName],
-    [t('테이블 설명'), row.tableDescription],
-    [t('마스터 테이블'), row.isMasterTable === 'Y' ? 'Y' : 'N'],
-    [t('정렬 순서'), row.sortOrder],
-  ];
-
-  return (
-    <div>
-      <div className="dict-detail-status">
-        <span className={`gh-label gh-label-dot ${approved ? 'gh-label-success' : 'gh-label-attention'}`}>{approved ? t('승인') : t('승인 대기')}</span>
-        <span className="gh-muted">{approved ? t('승인된 테이블은 수정할 수 없습니다.') : ''}</span>
-      </div>
-      <dl className="dict-detail">
-        {items.map(([label, value, mono]) => {
-          const empty = isBlank(value);
-          return [
-            <dt key={`t-${label}`}>{label}</dt>,
-            <dd key={`d-${label}`} className={[empty ? 'gh-muted' : '', !empty && mono ? 'gh-mono' : ''].filter(Boolean).join(' ') || undefined}>
-              {empty ? '-' : String(value)}
-            </dd>,
-          ];
-        })}
-      </dl>
-
-      <div className="dict-detail-columns">
-        <h4>{data && columns.length > 0 ? t('컬럼 목록 ({0})', columns.length) : t('컬럼 목록')}</h4>
-        {error ? (
-          <p className="gh-muted">{error instanceof ApiError && error.status === 403 ? t('컬럼 목록을 조회할 권한이 없습니다.') : t('컬럼 목록을 불러오지 못했습니다.')}</p>
-        ) : !data ? (
-          <p className="gh-muted">{t('컬럼을 조회하고 있습니다.')}</p>
-        ) : columns.length === 0 ? (
-          <p className="gh-muted">{t('등록된 컬럼이 없습니다.')}</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  {['#', t('컬럼명'), t('컬럼 설명'), t('데이터 타입'), 'PK', 'NULL', t('승인')].map((h) => <th key={h}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {columns.map((col, idx) => (
-                  <tr key={col.id}>
-                    <td className="text-center">{idx + 1}</td>
-                    <td className="gh-mono">{col.columnName ?? '-'}</td>
-                    <td>{col.columnDesc ?? '-'}</td>
-                    <td className="gh-mono">{col.dataType ? `${col.dataType}${col.maxLength ? `(${col.maxLength})` : ''}` : '-'}</td>
-                    <td className="text-center">{ynLabel(col.isPk, 'PK')}</td>
-                    <td className="text-center">{ynLabel(col.isNullable, 'Y')}</td>
-                    <td className="text-center">{ynLabel(col.isApproval, t('승인'), 'success')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="gh-dialog-actions">
-        {/* 컬럼 일괄 편집 : 승인된 테이블에만 컬럼을 등록할 수 있다 */}
-        <button type="button" className="btn" disabled={!approved} onClick={onEditColumns}
-          title={approved ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
-          {t('컬럼 편집')}
-        </button>
-        {/* DDL 은 승인 여부와 관계없이 볼 수 있다 */}
-        <button type="button" className="btn" onClick={onDdl}>{t('DDL 보기')}</button>
-        {onErd && <button type="button" className="btn" onClick={onErd}>{t('ERD 에서 보기')}</button>}
-        {onEdit && <button type="button" className="btn btn-primary" onClick={onEdit}>{t('수정')}</button>}
-      </div>
-    </div>
   );
 }

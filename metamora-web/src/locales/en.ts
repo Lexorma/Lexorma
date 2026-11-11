@@ -708,6 +708,9 @@ export const en = {
   '영문 또는 _ 로 시작하고 영문/숫자/_/$ 만 쓸 수 있습니다. (최대 63자) 이름을 바꾸면 소속 테이블의 DDL 접두어에 바로 반영됩니다.':
     'Must start with a letter or _ and contain only letters, numbers, _ and $. (up to 63 characters) Renaming is applied to the DDL prefix of its tables immediately.',
   'ERD 에서 보기': 'View in ERD',
+  '테이블 상세': 'Table details',
+  '이 테이블을 승인하시겠습니까?': 'Do you want to approve this table?',
+  '이 테이블을 승인취소하시겠습니까?': 'Do you want to cancel the approval of this table?',
   '스키마명 포함': 'Include schema name',
   '적용': 'Apply',
   '기본 스키마에 붙일 스키마명': 'Schema name for the default schema',

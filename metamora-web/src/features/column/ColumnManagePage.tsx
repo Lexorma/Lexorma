@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
@@ -47,8 +47,6 @@ export function ColumnManagePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { canView } = useAuth();
-  // 다른 화면(물리 ERD)에서 테이블명으로 넘어오면 그 테이블의 컬럼만 조회한 상태로 연다
-  const linkedTableName = useSearchParams()[0].get('tableName');
   const reload = () => grid.current?.reload();
 
   const add = () => {
@@ -178,7 +176,6 @@ export function ColumnManagePage() {
           id="columnManageGrid"
           columns={columnColumns}
           dataUrl="/api/selectColumn"
-          initialSearch={linkedTableName ? { column: 'tableName', query: linkedTableName } : undefined}
           crudActions="anCD"
           extraActions={
             <>

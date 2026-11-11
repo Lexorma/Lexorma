@@ -245,9 +245,16 @@ class ColumnManageServiceImplTest {
         ColumnInfo column = column(1L, false);
         when(columnInfoRepository.findByProjectIdAndId(1L, 1L)).thenReturn(column);
 
-        service.updateColumnApproval(AccountDto.builder().projectId(1L).build(), List.of(ColumnInfoDto.builder().id(1L).build()), "true");
+        service.updateColumnApproval(SecurityTestSupport.loginAsAdmin(1L), List.of(ColumnInfoDto.builder().id(1L).build()), "true");
 
         assertThat(column.getIsApproval()).isTrue();
+    }
+
+    @Test
+    @DisplayName("승인 권한이 없으면 컬럼 승인 상태를 바꿀 수 없다")
+    void approvalDenied() {
+        assertThatThrownBy(() -> service.updateColumnApproval(SecurityTestSupport.loginAsUser(1L), List.of(ColumnInfoDto.builder().id(1L).build()), "true"))
+                .extracting("errorCode").isEqualTo(ErrorCode.APPROVAL_PERMISSION_DENIED);
     }
 
     @Test

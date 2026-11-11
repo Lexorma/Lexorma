@@ -220,7 +220,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Override
     @Transactional
     public void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval) {
-        if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
+        if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
         Long projectId = accountDto.getProjectId();
         switch (kind) {
             case RELATION -> relationRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound).setIsApproval(isApproval);

@@ -5,7 +5,9 @@ import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useR
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import { NoticeMarkdown } from '../notice/NoticeMarkdown';
+import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
+import { useTableDetail } from '../table/tableDetail';
 import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
@@ -82,6 +84,9 @@ function ErdWorkspace() {
   const navigate = useNavigate();
   const flow = useReactFlow<TableNodeType, RelationEdge>();
   const simple = useSimpleNodes();
+  // 테이블 상세·컬럼 편집은 화면을 옮기지 않고 이 화면에서 연다 (테이블 관리와 같은 대화상자)
+  const { openTableDetailById } = useTableDetail();
+  const openColumnBulkEditor = useColumnBulkEditor();
 
   // 테이블·컬럼 관리에서 넘어온 경우 (?schemaId=&tableId=) : 그 스키마를 조회하고 해당 테이블을 선택·가운데로 옮긴다
   const [linked] = useState(() => {
@@ -477,8 +482,10 @@ function ErdWorkspace() {
               onOnlyRelated={setOnlyRelated}
               onFocus={() => focus(String(selected.id))}
               onDdl={() => dialog.popup({ title: `DDL · ${selected.tableName}`, size: 'large', content: <TableDdlView tableId={selected.id} /> })}
-              onOpenTable={canView('table-manage') ? () => leave(`/tableManage?tableId=${enc(selected.id)}`) : undefined}
-              onOpenColumns={canView('column-manage') ? () => leave(`/columnManage?tableName=${enc(selected.tableName)}`) : undefined}
+              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch() }) : undefined}
+              onEditColumns={canView('column-manage')
+                ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void graph.refetch() })
+                : undefined}
               onColumn={openColumn}
               onNeighbors={() => setScope({
                 kind: 'neighbors', tableId: selected.id, tableName: selected.tableName, depth,
@@ -571,7 +578,7 @@ function ColumnDetail({ column, tableName, isFk, onDictionary }: {
   );
 }
 
-function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onOpenTable, onOpenColumns, onColumn }: {
+function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn }: {
   graph: ErdGraph;
   tableId: number;
   schemaName: string;
@@ -582,9 +589,9 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   onFocus: () => void;
   onNeighbors: () => void;
   onDdl: () => void;
-  /** 테이블 관리 / 컬럼 관리로 이동 (메뉴 권한이 없으면 undefined) */
-  onOpenTable?: () => void;
-  onOpenColumns?: () => void;
+  /** 테이블 상세 / 컬럼 편집 대화상자 (메뉴 권한이 없으면 undefined) */
+  onTableDetail?: () => void;
+  onEditColumns?: () => void;
   onColumn: (column: ErdColumn, tableName: string, isFk: boolean) => void;
 }) {
   const table = graph.tables.find((t) => t.id === tableId)!;
@@ -613,8 +620,13 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
       <label className="erd-check"><input type="checkbox" checked={onlyRelated} onChange={(e) => onOnlyRelated(e.target.checked)} /> {t('연결된 테이블만 보기')}</label>
       <div className="erd-toolbar erd-links">
         <button type="button" className="btn btn-sm" onClick={onDdl}>{t('DDL 보기')}</button>
-        {onOpenTable && <button type="button" className="btn btn-sm" onClick={onOpenTable}>{t('테이블 관리')}</button>}
-        {onOpenColumns && <button type="button" className="btn btn-sm" onClick={onOpenColumns}>{t('컬럼 관리')}</button>}
+        {onTableDetail && <button type="button" className="btn btn-sm" onClick={onTableDetail}>{t('테이블 상세')}</button>}
+        {onEditColumns && (
+          <button type="button" className="btn btn-sm" disabled={!table.isApproval} onClick={onEditColumns}
+            title={table.isApproval ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
+            {t('컬럼 편집')}
+          </button>
+        )}
       </div>
 
       <h4>{t('컬럼 {0}개', columns.length)}</h4>

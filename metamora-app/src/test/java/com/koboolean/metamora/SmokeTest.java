@@ -246,7 +246,7 @@ class SmokeTest {
 
     @ParameterizedTest(name = "화면 {0}")
     @ValueSource(strings = {
-            "/", "/login", "/signup", "/account", "/notice", "/dataDictionary", "/tableManage", "/columnManage",
+            "/", "/login", "/signup", "/account", "/notice", "/dataDictionary", "/schemaManage", "/tableManage", "/columnManage", "/physicalErd",
             "/userManage", "/systemLog", "/projectManage", "/help", "/denied"
     })
     @Order(10)
@@ -387,6 +387,49 @@ class SmokeTest {
                 assertThat(response.body()).contains("\"recordsTotal\"");
             }
         }
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("M-3 스키마 관리 API : 목록(테이블 수·등록 정보) → 등록 → 이름 변경 → 스키마별 테이블 조회 → 삭제, 기본 스키마 보호")
+    void schemaManagement() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var defaultSchema = mapper.readTree(get("/api/schema", true).body()).get(0);
+        assertThat(defaultSchema.path("isDefault").asBoolean()).isTrue();
+        assertThat(defaultSchema.path("schemaName").asString()).isEqualTo("DEFAULT");
+        assertThat(defaultSchema.path("tableCount").asLong()).as("V0 예제 테이블").isPositive();
+        assertThat(defaultSchema.path("created").asString()).isNotBlank();
+        long defaultId = defaultSchema.path("id").asLong();
+
+        String name = "smoke_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        HttpResponse<String> created = postJson("/api/schema", "{\"schemaName\":\"" + name + "\",\"schemaDescription\":\"스모크\"}");
+        assertThat(created.statusCode()).isEqualTo(200);
+        long id = mapper.readTree(created.body()).path("id").asLong();
+        assertThat(postJson("/api/schema", "{\"schemaName\":\"" + name.toUpperCase() + "\"}").body()).contains("SAVED_DATA_EXISTS");
+
+        HttpResponse<String> renamed = postJson("/api/schema", "{\"id\":" + id + ",\"schemaName\":\"" + name + "_v2\"}");
+        assertThat(mapper.readTree(renamed.body()).path("id").asLong()).as("이름을 바꿔도 ID 는 그대로").isEqualTo(id);
+        assertThat(get("/api/schema", true).body()).contains("\"schemaName\":\"" + name + "_v2\"").contains("\"tableCount\":0");
+
+        // 테이블 목록 : 스키마별 조회 (빈 스키마는 0건, 기본 스키마는 예제 테이블), 테이블 1건 조회
+        assertThat(get("/api/selectTable/data?page=0&size=10&schemaId=" + id, true).body()).contains("\"recordsTotal\":0");
+        var tables = mapper.readTree(get("/api/selectTable/data?page=0&size=10&sort=schemaName,asc&schemaId=" + defaultId, true).body());
+        assertThat(tables.path("recordsTotal").asLong()).isEqualTo(defaultSchema.path("tableCount").asLong());
+        var table = tables.path("data").get(0);
+        assertThat(table.path("schemaName").asString()).isEqualTo("DEFAULT");
+        var detail = mapper.readTree(get("/api/selectTable/detail/" + table.path("id").asLong(), true).body());
+        assertThat(detail.path("tableName").asString()).isEqualTo(table.path("tableName").asString());
+        assertThat(get("/api/selectTable/detail/999999999", true).body()).contains("TABLE_IS_NOT_DEFINED");
+
+        // 컬럼 목록에는 소속 스키마와 테이블 ID, ERD 컬럼에는 표준 도메인명이 함께 내려온다
+        assertThat(get("/api/selectColumn/data?page=0&size=1", true).body()).contains("\"schemaName\":\"DEFAULT\"").contains("\"tableInfoId\":");
+        assertThat(get("/api/erd?page=0&size=5", true).body()).contains("\"domainName\":");
+
+        // 기본 스키마 : 이름 변경·삭제 불가
+        assertThat(postJson("/api/schema", "{\"id\":" + defaultId + ",\"schemaName\":\"main\"}").body()).contains("INVALID_SCHEMA_NAME");
+        assertThat(delete("/api/schema/" + defaultId).statusCode()).isEqualTo(400);
+        assertThat(delete("/api/schema/" + id).statusCode()).isEqualTo(200);
+        assertThat(get("/api/schema", true).body()).doesNotContain(name);
     }
 
     /** 화면의 그리드 컬럼 정의(metamora-web 의 features 별 columns.ts) → 그리드 데이터 API */
@@ -665,6 +708,14 @@ class SmokeTest {
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("X-XSRF-TOKEN", csrfToken())
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> delete(String path) throws IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(uri(path))
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-XSRF-TOKEN", csrfToken())
+                .DELETE()
                 .build(), HttpResponse.BodyHandlers.ofString());
     }
 

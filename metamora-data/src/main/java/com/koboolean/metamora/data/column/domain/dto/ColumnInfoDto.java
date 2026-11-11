@@ -3,6 +3,8 @@ package com.koboolean.metamora.data.column.domain.dto;
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
+import com.koboolean.metamora.data.schema.domain.entity.SchemaInfo;
+import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
@@ -23,6 +25,10 @@ public class ColumnInfoDto {
 
     private Long termId;
     private Long tableInfoId;
+
+    /** 소속 테이블의 스키마 (조회 전용 : 컬럼에는 스키마를 따로 저장하지 않는다) */
+    private Long schemaId;
+    private String schemaName;
 
     /** 테이블명 */
     private String tableName;
@@ -88,9 +94,14 @@ public class ColumnInfoDto {
     private String isApproval;
 
     public static ColumnInfoDto fromEntity(ColumnInfo entity) {
+        TableInfo tableInfo = entity.getTableInfo();
+        SchemaInfo schema = tableInfo == null ? null : tableInfo.getSchema();
         return ColumnInfoDto.builder()
                 .id(entity.getId())
                 .projectId(entity.getProjectId())
+                .tableInfoId(tableInfo == null ? null : tableInfo.getId())
+                .schemaId(schema == null ? null : schema.getId())
+                .schemaName(schema == null ? null : schema.getSchemaName())
                 .tableName(entity.getTableName())
                 .columnName(entity.getColumnName())
                 .columnDesc(entity.getColumnDesc())

@@ -21,6 +21,9 @@ public class SchemaInfo extends BaseEntity {
     /** V2 마이그레이션이 기존 프로젝트마다 만드는 기본 스키마의 이름 (DBMS 마다 기본 스키마가 달라 실제 이름 대신 쓴다) */
     public static final String DEFAULT_NAME = "DEFAULT";
 
+    /** 따옴표 없는 식별자로 쓸 수 있는 이름 (PostgreSQL 63자 제한). 대소문자 정규화는 하지 않는다 (AI 로드맵 U-24 에서 결정) */
+    public static final java.util.regex.Pattern NAME_PATTERN = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_$]{0,62}$");
+
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_SCHM")
     @SequenceGenerator(name = "SQ_SCHM", sequenceName = "SQ_SCHM", allocationSize = 50)

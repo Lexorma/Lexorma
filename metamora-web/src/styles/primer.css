@@ -466,6 +466,18 @@ dialog .form-check-label {
     font-weight: 500;
 }
 
+/* 스키마 관리 : 행의 수정·삭제 버튼 */
+.schema-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* 조회 조건 select 가 여러 개 (스키마 필터 등) : 뒤따르는 select 는 입력 그룹 가운데 칸 */
+.search-container .search-column-select + .search-column-select {
+    margin-left: -1px;
+    border-radius: 0;
+}
+
 .search-container .search-column-select:focus,
 .search-container .search-input:focus {
     position: relative;

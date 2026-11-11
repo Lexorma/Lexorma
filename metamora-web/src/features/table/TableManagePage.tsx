@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
@@ -7,7 +8,9 @@ import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, ApiError, download, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
+import { useAuth } from '../../hooks/useAuth';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
+import { useSchemas } from '../schema/schemas';
 import { TableDdlView } from './TableDdl';
 import { TableForm } from './TableForm';
 import { tableColumns } from './columns';
@@ -19,12 +22,21 @@ export function TableManagePage() {
   const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const openColumnBulkEditor = useColumnBulkEditor();
-  const reload = () => grid.current?.reload();
+  const navigate = useNavigate();
+  const { canView } = useAuth();
+  const { schemas, refresh: refreshSchemas } = useSchemas();
+  // 스키마별 조회 : '' = 전체 스키마
+  const [schemaId, setSchemaId] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reload = () => {
+    grid.current?.reload();
+    void refreshSchemas(); // 스키마별 테이블 수
+  };
 
   const openForm = (type: 'C' | 'U', row?: Row) => {
     dialog.open({
       title: type === 'C' ? t('테이블 등록') : t('테이블 수정'),
-      content: ({ close }: DialogControls) => <TableForm type={type} row={row} onSaved={() => { close(); reload(); }} />,
+      content: ({ close }: DialogControls) => <TableForm type={type} row={row} schemas={schemas} onSaved={() => { close(); reload(); }} />,
     });
   };
 
@@ -96,10 +108,21 @@ export function TableManagePage() {
           }}
           onDdl={() => dialog.popup({ title: `DDL · ${row.tableName ?? ''}`, size: 'large', content: <TableDdlView tableId={row.id} /> })}
           onEdit={approved ? undefined : () => { close(); openForm('U', row); }}
+          onErd={canView('physical-erd') ? () => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.id)}`); } : undefined}
         />
       ),
     });
   };
+
+  // 다른 화면(물리 ERD)에서 테이블 ID 로 넘어오면 그 테이블의 상세를 연다
+  const linkedTableId = searchParams.get('tableId');
+  const openedLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedTableId || openedLink.current === linkedTableId) return;
+    openedLink.current = linkedTableId;
+    setSearchParams({}, { replace: true });
+    api<Row>(`/api/selectTable/detail/${enc(linkedTableId)}`).then(openDetail).catch(() => undefined);
+  }, [linkedTableId]);
 
   return (
     <>
@@ -113,6 +136,13 @@ export function TableManagePage() {
           id="tableManageGrid"
           columns={tableColumns}
           dataUrl="/api/selectTable"
+          params={schemaId ? { schemaId } : undefined}
+          searchFilters={
+            <select className="search-column-select" aria-label={t('스키마')} value={schemaId} onChange={(e) => setSchemaId(e.target.value)}>
+              <option value="">{t('전체 스키마')}</option>
+              {schemas.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
+            </select>
+          }
           crudActions="anCD"
           extraActions={
             <>
@@ -125,7 +155,7 @@ export function TableManagePage() {
           onAction={{ add: () => openForm('C'), delete: remove, active: () => updateActive(true), unactive: () => updateActive(false) }}
           onRowClick={openDetail}
           renderCell={(field, row) => {
-            if (field === 'tableName') return <Mono>{row.tableName}</Mono>;
+            if (field === 'tableName' || field === 'schemaName') return <Mono>{row[field]}</Mono>;
             if (field === 'isMasterTable') return <YN value={row.isMasterTable} text={t('마스터')} />;
             if (field === 'isApproval') return <Approval value={row.isApproval} />;
             return undefined;
@@ -152,7 +182,7 @@ function ynLabel(value: unknown, text: string, variant = 'accent') {
   return value === 'Y' ? <span className={`gh-label gh-label-${variant}`}>{text}</span> : <span className="gh-muted">-</span>;
 }
 
-function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditColumns: () => void; onDdl: () => void; onEdit?: () => void }) {
+function TableDetail({ row, onEditColumns, onDdl, onEdit, onErd }: { row: Row; onEditColumns: () => void; onDdl: () => void; onEdit?: () => void; onErd?: () => void }) {
   const approved = row.isApproval === 'Y';
   const { data, error } = useQuery({
     queryKey: ['table-columns', row.id],
@@ -164,6 +194,7 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
   const columns = (data?.columnInfos ?? []).slice().sort((a, b) => order(a.sortOrder) - order(b.sortOrder));
 
   const items: [string, unknown, boolean?][] = [
+    [t('스키마'), row.schemaName, true],
     [t('테이블명'), row.tableName, true],
     [t('테이블 한글명'), row.tableKorName],
     [t('테이블 설명'), row.tableDescription],
@@ -231,6 +262,7 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit }: { row: Row; onEditCo
         </button>
         {/* DDL 은 승인 여부와 관계없이 볼 수 있다 */}
         <button type="button" className="btn" onClick={onDdl}>{t('DDL 보기')}</button>
+        {onErd && <button type="button" className="btn" onClick={onErd}>{t('ERD 에서 보기')}</button>}
         {onEdit && <button type="button" className="btn btn-primary" onClick={onEdit}>{t('수정')}</button>}
       </div>
     </div>

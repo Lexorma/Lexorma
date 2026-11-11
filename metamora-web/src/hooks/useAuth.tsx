@@ -9,6 +9,7 @@ export type MenuId =
   | 'system-log'
   | 'notice'
   | 'data-dictionary'
+  | 'schema-manage'
   | 'table-manage'
   | 'physical-erd'
   | 'column-manage'

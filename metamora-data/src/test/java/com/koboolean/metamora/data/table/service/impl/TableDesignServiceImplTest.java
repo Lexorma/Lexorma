@@ -358,7 +358,7 @@ class TableDesignServiceImplTest {
 
             assertThatThrownBy(() -> service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login))
                     .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
-            verify(tableInfoRepository, never()).delete(any());
+            verify(tableInfoRepository, never()).delete(any(TableInfo.class));
         }
 
         @Test

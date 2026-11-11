@@ -73,9 +73,18 @@ public final class TableDdlGenerator {
     }
 
     public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns, Extras extras) {
+        return generate(dbType, table, columns, refPkColumns, extras, null);
+    }
+
+    /**
+     * @param defaultSchemaName 기본 스키마 테이블에 붙일 실제 스키마명 (DDL 보기의 "스키마명 포함"). null 이면 붙이지 않는다.
+     *                          기본 스키마가 아닌 테이블은 이 값과 관계없이 자기 스키마명을 붙인다.
+     */
+    public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns, Extras extras,
+                                  String defaultSchemaName) {
         DbType db = DbType.orDefault(dbType);
         String tableName = table.getTableName();
-        String qualifiedName = qualifiedName(table);
+        String qualifiedName = qualifiedName(table, defaultSchemaName);
         List<String> warnings = new ArrayList<>();
 
         List<ColumnInfo> ordered = columns.stream()
@@ -177,8 +186,8 @@ public final class TableDdlGenerator {
         }
 
         // 외래키 : 참조 테이블의 단일 PK 를 참조한다. 테이블 생성 순서와 관계없이 실행할 수 있도록 ALTER TABLE 로 따로 만든다.
-        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, warnings);
-        foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), warnings));
+        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, warnings, defaultSchemaName);
+        foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), warnings, defaultSchemaName));
         if (!foreignKeys.isEmpty()) {
             sql.append("\n").append(String.join("\n", foreignKeys)).append("\n");
         }
@@ -207,7 +216,7 @@ public final class TableDdlGenerator {
      * - 참조 컬럼과 참조 PK 의 타입(대상 DB 타입으로 바꾼 값)이 다르면 FK 는 만들되 경고한다.
      */
     static List<String> foreignKeys(DbType db, String tableName, String qualifiedName, List<ColumnInfo> columns,
-                                    Map<String, List<ColumnInfo>> refPkColumns, List<String> warnings) {
+                                    Map<String, List<ColumnInfo>> refPkColumns, List<String> warnings, String defaultSchemaName) {
         List<String> statements = new ArrayList<>();
 
         for (ColumnInfo column : columns) {
@@ -227,7 +236,7 @@ public final class TableDdlGenerator {
                 warnings.add(Messages.get("{0} : 참조 테이블 {1} 의 PK 가 자기 자신이라 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else {
                 ColumnInfo refPk = pk.get(0);
-                String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo());
+                String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo(), defaultSchemaName);
                 statements.add("ALTER TABLE " + qualifiedName
                         + " ADD CONSTRAINT " + constraintName(db, "FK_" + tableName + "_" + column.getColumnName())
                         + " FOREIGN KEY (" + column.getColumnName() + ") REFERENCES " + refName + " (" + refPk.getColumnName() + ");");
@@ -241,7 +250,7 @@ public final class TableDdlGenerator {
      * 사용자 정의 관계(복합 FK 포함). 대상 컬럼이 대상 테이블의 PK 전체(또는 고유값 컬럼 1개)일 때만 만들고, 아니면 경고한다.
      * 컬럼 쌍 순서는 관계에 저장한 순서를 그대로 쓴다.
      */
-    static List<String> relationForeignKeys(DbType db, String qualifiedName, List<TableRelation> relations, List<String> warnings) {
+    static List<String> relationForeignKeys(DbType db, String qualifiedName, List<TableRelation> relations, List<String> warnings, String defaultSchemaName) {
         List<String> statements = new ArrayList<>();
         for (TableRelation relation : relations) {
             TableInfo target = relation.getTargetTable();
@@ -258,7 +267,7 @@ public final class TableDdlGenerator {
             statements.add("ALTER TABLE " + qualifiedName
                     + " ADD CONSTRAINT " + constraintName(db, relation.getRelationName())
                     + " FOREIGN KEY (" + String.join(", ", sources.stream().map(ColumnInfo::getColumnName).toList()) + ") REFERENCES "
-                    + qualifiedName(target) + " (" + String.join(", ", targets.stream().map(ColumnInfo::getColumnName).toList()) + ");");
+                    + qualifiedName(target, defaultSchemaName) + " (" + String.join(", ", targets.stream().map(ColumnInfo::getColumnName).toList()) + ");");
             for (int i = 0; i < sources.size(); i++) {
                 checkReferenceType(db, sources.get(i), target.getTableName(), targets.get(i), warnings);
             }
@@ -266,9 +275,14 @@ public final class TableDdlGenerator {
         return statements;
     }
 
-    /** 기본 스키마가 아닌 스키마의 테이블은 스키마명을 붙인다 (기본 스키마 = 접속 계정의 기본 스키마) */
-    static String qualifiedName(TableInfo table) {
-        if (table.getSchema() == null || Boolean.TRUE.equals(table.getSchema().getIsDefault())) return table.getTableName();
+    /**
+     * 기본 스키마가 아닌 스키마의 테이블은 스키마명을 붙인다 (기본 스키마 = 접속 계정의 기본 스키마).
+     * 기본 스키마 테이블은 defaultSchemaName 을 받았을 때만 그 이름을 붙인다 (저장된 이름 DEFAULT 는 실제 스키마가 아니다).
+     */
+    static String qualifiedName(TableInfo table, String defaultSchemaName) {
+        if (table.getSchema() == null || Boolean.TRUE.equals(table.getSchema().getIsDefault())) {
+            return defaultSchemaName == null ? table.getTableName() : defaultSchemaName + "." + table.getTableName();
+        }
         return table.getSchema().getSchemaName() + "." + table.getTableName();
     }
 

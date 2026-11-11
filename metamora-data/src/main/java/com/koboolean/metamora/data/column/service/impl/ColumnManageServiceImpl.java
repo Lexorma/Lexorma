@@ -51,6 +51,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private static final int FIRST_ROW = 1;
 
     @Override
+    @Transactional(readOnly = true) // DTO 가 소속 테이블·스키마(지연 로딩)를 읽는다
     public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
         Long projectId = accountDto.getProjectId();
 
@@ -156,6 +157,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     }
 
     @Override
+    @Transactional(readOnly = true) // DTO 가 소속 테이블·스키마(지연 로딩)를 읽는다
     public List<ColumnInfoDto> selectDuplicateColumns(AccountDto accountDto, Long tableInfoId, String columnName) {
         return columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(accountDto.getProjectId(), tableInfoId, columnName).stream()
                 .map(ColumnInfoDto::fromEntity)

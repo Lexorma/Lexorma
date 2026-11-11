@@ -250,6 +250,28 @@ dialog.popup-dialog .popup-dialog-body {
     margin-bottom: 12px;
 }
 
+/* DDL 스키마명 포함 옵션 */
+.table-ddl-schema {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.table-ddl-schema-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+
+.table-ddl-schema .form-control {
+    flex: 0 1 280px;
+    width: auto;
+}
+
 .table-ddl-meta {
     display: flex;
     flex-wrap: wrap;

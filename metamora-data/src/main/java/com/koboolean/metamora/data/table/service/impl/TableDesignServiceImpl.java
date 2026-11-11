@@ -25,9 +25,13 @@ import com.koboolean.metamora.core.project.domain.entity.ProjectMember;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.common.utils.ExcelUtils;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,30 +59,44 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final PhysicalModelService physicalModelService;
     private static final int FIRST_ROW = 1;
 
+    /** 그리드 검색 컬럼 → 엔티티 필드 (부분 일치) */
+    private static final Set<String> SEARCH_COLUMNS = Set.of("tableName", "tableDescription", "tableKorName");
+
     @Override
-    public Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {
+    @Transactional(readOnly = true)
+    public Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long schemaId) {
         Long projectId = accountDto.getProjectId();
 
-        if (searchQuery == null || searchQuery.trim().isEmpty()) {
-            // 검색어가 없을 경우 전체 조회
-            return tableInfoRepository.findAllByProjectId(projectId, pageable).map(TableInfoDto::fromEntity);
-        }
-
-        if(!searchQuery.isEmpty()) {
-            searchQuery = "%" + searchQuery + "%";
-        }
-
-        Page<TableInfo> tableInfoDtos = switch (searchColumn) {
-            case "tableName" ->
-                    tableInfoRepository.findAllByProjectIdAndTableNameLike(projectId, searchQuery, pageable);
-            case "tableDescription" ->
-                    tableInfoRepository.findAllByProjectIdAndTableDescriptionLike(projectId, searchQuery, pageable);
-            case "tableKorName" ->
-                    tableInfoRepository.findAllByProjectIdAndTableKorNameLike(projectId, searchQuery, pageable);
-            default -> null;
+        Specification<TableInfo> where = (root, query, builder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(builder.equal(root.get("projectId"), projectId));
+            if (schemaId != null) {
+                // 다른 프로젝트의 스키마 ID 는 projectId 조건 때문에 결과가 없다
+                predicates.add(builder.equal(root.get("schema").get("id"), schemaId));
+            }
+            if (searchQuery != null && !searchQuery.trim().isEmpty() && searchColumn != null && SEARCH_COLUMNS.contains(searchColumn)) {
+                predicates.add(builder.like(root.get(searchColumn), "%" + searchQuery + "%"));
+            }
+            return builder.and(predicates.toArray(Predicate[]::new));
         };
 
-        return tableInfoDtos.map(TableInfoDto::fromEntity);
+        // DTO 에 펼쳐진 스키마명을 실제 엔티티 연관관계 경로로 정렬한다.
+        Sort sort = Sort.by(pageable.getSort().stream()
+                .map(order -> "schemaName".equals(order.getProperty()) ? order.withProperty("schema.schemaName") : order)
+                .toList());
+
+        return tableInfoRepository.findAll(where, PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort))
+                .map(TableInfoDto::fromEntity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TableInfoDto selectTable(Long tableId, AccountDto accountDto) {
+        TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableId, accountDto.getProjectId());
+        if (tableInfo == null) {
+            throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        }
+        return TableInfoDto.fromEntity(tableInfo);
     }
 
     @Override
@@ -362,8 +380,14 @@ public class TableDesignServiceImpl implements TableDesignService {
 
     @Override
     @Transactional(readOnly = true)
-    public TableDdlDto generateTableDdl(Long tableId, AccountDto accountDto) {
+    public TableDdlDto generateTableDdl(Long tableId, AccountDto accountDto, String defaultSchemaName) {
         Long projectId = accountDto.getProjectId();
+
+        // DDL 에 그대로 들어가는 값이라 스키마명 규칙을 그대로 적용한다
+        String schemaName = defaultSchemaName == null || defaultSchemaName.isBlank() ? null : defaultSchemaName.trim();
+        if (schemaName != null && !SchemaInfo.NAME_PATTERN.matcher(schemaName).matches()) {
+            throw new CustomException(ErrorCode.INVALID_SCHEMA_NAME);
+        }
 
         // 로그인 프로젝트의 테이블만 (다른 프로젝트 테이블 ID 로는 조회할 수 없다)
         TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableId, projectId);
@@ -377,7 +401,7 @@ public class TableDesignServiceImpl implements TableDesignService {
                 .orElse(DbType.DEFAULT);
 
         TableDdlGenerator.Result result = TableDdlGenerator.generate(dbType, tableInfo, tableInfo.getColumns(),
-                referencedPkColumns(projectId, tableInfo.getColumns()), physicalModelService.ddlExtras(tableInfo));
+                referencedPkColumns(projectId, tableInfo.getColumns()), physicalModelService.ddlExtras(tableInfo), schemaName);
         return new TableDdlDto(dbType.name(), dbType.getLabel(), tableInfo.getTableName(), result.ddl(), result.warnings());
     }
 }

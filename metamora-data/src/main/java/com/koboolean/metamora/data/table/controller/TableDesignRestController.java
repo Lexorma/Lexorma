@@ -49,19 +49,31 @@ public class TableDesignRestController {
             @Parameter(description = "조회 용어명", example = "용어명1")
             @RequestParam(required = false, value = "searchQuery") String searchQuery,
             @Parameter(description = "조회컬럼 명", example = "id")
-            @RequestParam(required = false, value = "searchColumn") String searchColumn
+            @RequestParam(required = false, value = "searchColumn") String searchColumn,
+            @Parameter(description = "스키마 ID (없으면 전체 스키마)")
+            @RequestParam(required = false, value = "schemaId") Long schemaId
     ) {
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
-        Page<TableInfoDto> tableDesigns = tableDesignService.selectTableInfoData(pageable, accountDto, searchColumn, searchQuery);
+        Page<TableInfoDto> tableDesigns = tableDesignService.selectTableInfoData(pageable, accountDto, searchColumn, searchQuery, schemaId);
         return PageableUtil.getGridPageableMap(tableDesigns);
+    }
+
+    @Operation(summary = "테이블 1건 조회", description = "테이블 ID 로 테이블 정보를 조회합니다. (ERD 등 다른 화면에서 테이블 상세를 열 때)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/selectTable/detail/{tableId}")
+    public ResponseEntity<TableInfoDto> selectTable(@PathVariable(value = "tableId") Long tableId,
+                                                    @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(tableDesignService.selectTable(tableId, accountDto));
     }
 
     @Operation(summary = "테이블 DDL 생성", description = "테이블과 연결된 컬럼으로 프로젝트 대상 DB(시스템 관리 > 프로젝트 관리) 기준 DDL 을 생성합니다.")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/selectTable/ddl/{tableId}")
     public ResponseEntity<TableDdlDto> generateTableDdl(@PathVariable(value = "tableId") Long tableId,
+                                                        @Parameter(description = "기본 스키마 테이블에 붙일 스키마명 (없으면 붙이지 않는다)", example = "public")
+                                                        @RequestParam(required = false, value = "defaultSchemaName") String defaultSchemaName,
                                                         @AuthenticationPrincipal AccountDto accountDto) {
-        return ResponseEntity.ok(tableDesignService.generateTableDdl(tableId, accountDto));
+        return ResponseEntity.ok(tableDesignService.generateTableDdl(tableId, accountDto, defaultSchemaName));
     }
 
     @Operation(summary = "표준 단어 기준 테이블명 생성", description = "테이블 한글명(예: 사용_내역_관리)을 승인된 표준 단어의 영문약어로 변환합니다.")

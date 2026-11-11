@@ -1,6 +1,7 @@
 package com.koboolean.metamora.data.erd.repository.impl;
 
 import com.koboolean.metamora.data.column.domain.entity.QColumnInfo;
+import com.koboolean.metamora.data.dictionary.domain.entity.QStandardDomain;
 import com.koboolean.metamora.data.dictionary.domain.entity.QStandardTerm;
 import com.koboolean.metamora.data.erd.domain.dto.ErdDto;
 import com.koboolean.metamora.data.erd.repository.ErdGraphRepository;
@@ -62,12 +63,14 @@ public class ErdGraphRepositoryImpl implements ErdGraphRepository {
         }
         QColumnInfo column = QColumnInfo.columnInfo;
         QStandardTerm term = QStandardTerm.standardTerm;
+        QStandardDomain domain = QStandardDomain.standardDomain;
         return query.select(Projections.constructor(ErdDto.Column.class,
                         column.id, column.tableInfo.id, column.columnName, term.commonStandardTermName, column.columnDesc,
                         column.dataType, column.maxLength, column.precision, column.scale, column.isNullable, column.isPk,
-                        column.isApproval))
+                        column.isApproval, domain.commonStandardDomainName))
                 .from(column)
                 .leftJoin(column.standardTerms, term)
+                .leftJoin(term.standardDomain, domain)
                 .where(column.projectId.eq(projectId), column.tableInfo.id.in(tableIds))
                 .orderBy(column.tableInfo.id.asc(), column.sortOrder.asc().nullsLast(), column.id.asc())
                 .fetch();

@@ -85,6 +85,12 @@ export interface GridProps {
   rowClassName?: (row: Row) => string | undefined;
   /** 처음 정렬 (서버 컬럼명). 없으면 DataTables 처럼 첫 컬럼 오름차순 */
   defaultSort?: { column: string; desc?: boolean };
+  /** 조회 API 에 함께 보내는 조건 (예: 스키마 필터). 바뀌면 첫 페이지부터 다시 조회한다 */
+  params?: Record<string, string>;
+  /** 검색 줄 앞에 붙는 조회 조건 (예: 스키마 select). 값은 params 로 넘긴다 */
+  searchFilters?: ReactNode;
+  /** 처음 열 때의 검색 조건 (다른 화면에서 넘어온 경우) */
+  initialSearch?: { column: string; query: string };
 }
 
 interface PageData {
@@ -93,7 +99,7 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort } = props;
+  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
@@ -102,9 +108,10 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
   // null = 처음 정렬 : defaultSort, 없으면 첫 컬럼 오름차순 (숨김 컬럼이어도 기준이 된다. 예: 컬럼 관리의 sortOrder)
   const [sortingState, setSortingState] = useState<SortingState | null>(null);
-  const [searchColumn, setSearchColumn] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState({ column: '', query: '' });
+  const [searchColumn, setSearchColumn] = useState(initialSearch?.column ?? '');
+  const [searchInput, setSearchInput] = useState(initialSearch?.query ?? '');
+  const [search, setSearch] = useState({ column: initialSearch?.column ?? '', query: initialSearch?.query ?? '' });
+  const paramsKey = JSON.stringify(params ?? {});
   const [reloadKey, setReloadKey] = useState(0);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [edits, setEdits] = useState<Record<number, Row>>({});
@@ -135,12 +142,12 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   const { pageIndex: page, pageSize: size } = pagination;
 
   const dataQuery = useQuery({
-    queryKey: ['grid-data', dataUrl, page, size, sort, search.column, search.query, reloadKey],
+    queryKey: ['grid-data', dataUrl, page, size, sort, search.column, search.query, paramsKey, reloadKey],
     queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), size: String(size), sort });
-      if (search.column) params.set('searchColumn', search.column);
-      params.set('searchQuery', search.query);
-      return api<PageData>(`${dataUrl}/data?${params}`);
+      const query = new URLSearchParams({ ...params, page: String(page), size: String(size), sort });
+      if (search.column) query.set('searchColumn', search.column);
+      query.set('searchQuery', search.query);
+      return api<PageData>(`${dataUrl}/data?${query}`);
     },
     enabled: columns.length > 0,
     placeholderData: (prev) => prev,
@@ -161,6 +168,11 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   useEffect(() => {
     clearRowState();
   }, [dataQuery.data, clearRowState]);
+
+  // 조회 조건(params)이 바뀌면 첫 페이지부터
+  useEffect(() => {
+    setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
+  }, [paramsKey]);
 
   const reload = useCallback(() => {
     clearRowState();
@@ -307,6 +319,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
       <div className="grid-header">
         {searchColumns.length > 0 && (
           <div className="search-container">
+            {searchFilters}
             <select className="search-column-select" value={searchColumn} onChange={(e) => { setSearchColumn(e.target.value); setSearchInput(''); }}>
               {searchColumns.map((c) => (
                 <option key={c.column} value={c.column}>

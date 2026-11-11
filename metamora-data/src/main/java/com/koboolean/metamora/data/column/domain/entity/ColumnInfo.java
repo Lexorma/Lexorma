@@ -1,5 +1,6 @@
 package com.koboolean.metamora.data.column.domain.entity;
 
+import com.koboolean.metamora.data.physical.sync.ReferenceSyncListener;
 import com.koboolean.metamora.data.dictionary.domain.entity.StandardTerm;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 import com.koboolean.metamora.common.jpa.BaseEntity;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@EntityListeners(ReferenceSyncListener.class) // 저장·수정·삭제 시 참조 관계 동기화 대상으로 표시
 @Table(name = "TB_COL")
 @AllArgsConstructor
 @NoArgsConstructor

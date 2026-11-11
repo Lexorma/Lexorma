@@ -36,6 +36,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     label: t('데이터 관리'),
     items: [
       { id: 'data-dictionary', label: t('데이터 사전'), path: '/dataDictionary' },
+      { id: 'schema-manage', label: t('스키마 관리'), path: '/schemaManage' },
       { id: 'table-manage', label: t('테이블 관리'), path: '/tableManage' },
       { id: 'column-manage', label: t('컬럼 관리'), path: '/columnManage' },
     ],

@@ -7,6 +7,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,11 +27,31 @@ class V0SeedMigrationTest {
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema)
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            // V0 (스키마 + 초기 데이터) + V1 (META-MORA 논리 모델 예제)
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+            // V0 (스키마 + 초기 데이터) + V1 (META-MORA 논리 모델 예제) + V2 (논리·물리 매핑 테이블, 데이터 없음) + V3 (매핑 테이블 예제, COMMENT)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             var jdbc = new JdbcTemplate(dataSource);
             // V1 : 물리 모델 예제와 같은 수의 엔터티·속성·관계, PK 가 있는 테이블마다 주 식별자, 고아 행 없음
             String s = "\"" + schema + "\".";
+            // 실제 스키마의 TB_ 테이블·컬럼은 모두 META-MORA 물리 모델 예제에 있고 (논리 예제는 아래에서 물리 예제와 수를 맞춘다),
+            // 테이블 COMMENT = 예제의 한글명, 컬럼 COMMENT = 예제의 컬럼 설명이다.
+            // 테이블·컬럼을 추가하면 같은 마이그레이션에 COMMENT 와 예제(물리·논리)를 넣어야 이 검사를 통과한다.
+            boolean h2 = vendor.equals("h2");
+            Map<String, String> tableComments = comments(jdbc, h2
+                    ? "select TABLE_NAME, REMARKS from INFORMATION_SCHEMA.TABLES where TABLE_SCHEMA = ? and TABLE_NAME like 'TB\\_%' escape '\\'"
+                    : "select upper(c.relname), obj_description(c.oid) from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+                    + "where n.nspname = ? and c.relkind = 'r' and c.relname like 'tb\\_%'", schema);
+            Map<String, String> columnComments = comments(jdbc, h2
+                    ? "select TABLE_NAME || '.' || COLUMN_NAME, REMARKS from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = ? and TABLE_NAME like 'TB\\_%' escape '\\'"
+                    : "select upper(c.relname || '.' || a.attname), col_description(c.oid, a.attnum) from pg_attribute a join pg_class c on c.oid = a.attrelid "
+                    + "join pg_namespace n on n.oid = c.relnamespace where n.nspname = ? and c.relkind = 'r' and c.relname like 'tb\\_%' and a.attnum > 0 and not a.attisdropped", schema);
+            assertThat(tableComments).hasSizeGreaterThan(30)
+                    .isEqualTo(comments(jdbc, "select TBL_NM, TBL_KORN_NM from " + s + "TB_TBL where PRJ_SN = 0"));
+            assertThat(columnComments)
+                    .isEqualTo(comments(jdbc, "select TBL_NM || '.' || COL_NM, COL_EXPLN from " + s + "TB_COL where PRJ_SN = 0"));
+
+            // V2 : 매핑은 명시적으로 등록한 것만 있다 (예제의 논리·물리 모델을 자동으로 잇지 않는다)
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ENTT_TBL_MPNG", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_ATRB_COL_MPNG", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_MDL where PRJ_SN = 0 and MDL_NM = 'META-MORA'", Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT", Integer.class))
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0", Integer.class)).isPositive();
@@ -77,7 +99,7 @@ class V0SeedMigrationTest {
                     : "nextval('" + schema + ".SQ_PST')";
             assertThat(jdbc.queryForObject("select " + nextPostId, Long.class)).isEqualTo(51L);
 
-            // 재시작과 동일하게 별도 Flyway 인스턴스에서도 V0·V1 은 재실행되지 않는다.
+            // 재시작과 동일하게 별도 Flyway 인스턴스에서도 V0~V3 은 재실행되지 않는다.
             Flyway restarted = Flyway.configure().dataSource(dataSource).schemas(schema)
                     .locations("classpath:db/migration/" + vendor).load();
             assertThat(restarted.migrate().migrationsExecuted).isZero();
@@ -87,5 +109,14 @@ class V0SeedMigrationTest {
             // UUID로 만든 검증 전용 스키마만 정리한다.
             flyway.clean();
         }
+    }
+
+    /** 이름 → 설명 (설명이 없으면 빈 문자열 : 빠진 COMMENT 가 비교에서 드러난다) */
+    private static Map<String, String> comments(JdbcTemplate jdbc, String sql, Object... args) {
+        Map<String, String> result = new TreeMap<>();
+        jdbc.query(sql, rs -> {
+            result.put(rs.getString(1), rs.getString(2) == null ? "" : rs.getString(2));
+        }, args);
+        return result;
     }
 }

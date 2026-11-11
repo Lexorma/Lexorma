@@ -618,6 +618,53 @@ class SmokeTest {
 
     @Test
     @Order(20)
+    @DisplayName("M-7 논리·물리 매핑 API : 현황 → 후보 → 엔터티 매핑 → 속성 매핑 → 상세, 오류 코드, 삭제 순서 (V0·V1 예제의 계정 엔터티 ↔ TB_ACNT)")
+    void modelMapping() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        // 예제의 논리·물리 모델은 자동으로 이어지지 않는다
+        var status = mapper.readTree(get("/api/modelMapping/status", true).body());
+        assertThat(status.toString()).contains("\"modelName\":\"META-MORA\"", "\"mappedEntities\":0", "\"mappedAttributes\":0");
+
+        // 검색은 부분 일치라 여러 건이 나온다 (이름순은 DB 정렬 규칙에 따라 다르다) : 이름이 같은 행을 고른다
+        var entity = java.util.stream.StreamSupport.stream(mapper.readTree(get("/api/modelMapping/entity/data?page=0&size=50&mapped=false&searchColumn=entityName&searchQuery="
+                        + java.net.URLEncoder.encode("계정", java.nio.charset.StandardCharsets.UTF_8), true).body()).path("data").spliterator(), false)
+                .filter(row -> row.path("entityName").asString().equals("계정")).findFirst().orElseThrow();
+        assertThat(entity.path("mappingId").isNull()).isTrue();
+        var table = java.util.stream.StreamSupport.stream(mapper.readTree(get("/api/modelMapping/table/data?page=0&size=50&searchQuery=TB_ACNT", true).body()).path("data").spliterator(), false)
+                .filter(row -> row.path("tableName").asString().equals("TB_ACNT")).findFirst().orElseThrow();
+
+        HttpResponse<String> created = postJson("/api/modelMapping/entity", "{\"entityId\":" + entity.path("entityId").asLong() + ",\"tableId\":" + table.path("tableId").asLong() + "}");
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+        long mappingId = mapper.readTree(created.body()).path("id").asLong();
+        assertThat(postJson("/api/modelMapping/entity", "{\"entityId\":" + entity.path("entityId").asLong() + ",\"tableId\":" + table.path("tableId").asLong() + "}").body())
+                .contains("SAVED_DATA_EXISTS");
+
+        var detail = mapper.readTree(get("/api/modelMapping/entity/" + mappingId, true).body());
+        assertThat(detail.path("mapping").path("tableName").asString()).isEqualTo("TB_ACNT");
+        assertThat(detail.path("attributes").size()).isEqualTo(detail.path("unmappedColumns").size()).isPositive();
+        long attributeId = detail.path("attributes").get(0).path("attributeId").asLong();
+        long columnId = detail.path("unmappedColumns").get(0).path("columnId").asLong();
+        HttpResponse<String> attributeMapped = postJson("/api/modelMapping/attribute", "{\"mappingId\":" + mappingId + ",\"attributeId\":" + attributeId + ",\"columnId\":" + columnId + "}");
+        assertThat(attributeMapped.statusCode()).as(attributeMapped.body()).isEqualTo(200);
+        long attributeMappingId = mapper.readTree(attributeMapped.body()).path("id").asLong();
+        assertThat(get("/api/modelMapping/entity/" + mappingId, true).body()).contains("\"mappedAttributeCount\":1", "\"columnTermName\":");
+        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":1", "\"mappedAttributes\":1");
+
+        // 오류 : 400 + 코드
+        assertThat(get("/api/modelMapping/entity/999999999", true).body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
+        assertThat(postJson("/api/modelMapping/attribute", "{\"mappingId\":" + mappingId + ",\"attributeId\":999999999,\"columnId\":" + columnId + "}").body()).contains("INVALID_MODEL_MAPPING");
+        HttpResponse<String> blocked = delete("/api/modelMapping/entity/" + mappingId);
+        assertThat(blocked.statusCode()).isEqualTo(400);
+        assertThat(blocked.body()).contains("RELATION_EXISTS");
+
+        // 정리 : 속성 매핑 → 엔터티 매핑 (예제 데이터는 그대로)
+        assertThat(delete("/api/modelMapping/attribute/" + attributeMappingId).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/modelMapping/entity/" + mappingId).statusCode()).isEqualTo(200);
+        assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":0");
+    }
+
+    @Test
+    @Order(20)
     @DisplayName("그리드 정렬·검색 : 화면에 정의한 정렬 컬럼(처음 정렬되는 첫 컬럼 포함) × 검색 컬럼이 모두 오류 없이 조회된다")
     void gridSortAndSearch() throws Exception {
         Pattern grid = Pattern.compile("export const (\\w+): GridColumn\\[] = \\[(.*?)\\n];", Pattern.DOTALL);

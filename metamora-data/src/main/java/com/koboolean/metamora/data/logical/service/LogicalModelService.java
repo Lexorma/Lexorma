@@ -11,6 +11,8 @@ import com.koboolean.metamora.data.dictionary.repository.StandardTermRepository;
 import com.koboolean.metamora.data.logical.domain.dto.LogicalModelDto;
 import com.koboolean.metamora.data.logical.domain.entity.*;
 import com.koboolean.metamora.data.logical.repository.*;
+import com.koboolean.metamora.data.mapping.repository.AttributeColumnMappingRepository;
+import com.koboolean.metamora.data.mapping.repository.EntityTableMappingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -36,7 +38,7 @@ import java.util.stream.Collectors;
  * <li>물리 모델과 독립이다. 테이블·컬럼을 참조하지 않고, 표준 용어만 ID 로 연결한다 (도메인은 용어의 도메인).</li>
  * <li>프로젝트는 항상 로그인 프로젝트이고, 모든 ID 는 그 프로젝트 것인지 확인한다.</li>
  * <li>변경은 모델 행(모델 등록은 프로젝트 행)을 잠근 뒤 검사하므로 동시 요청에도 이름 중복·주 식별자·삭제 검사가 맞는다.</li>
- * <li>삭제 : 모델은 엔터티가 없을 때, 엔터티는 관계가 없을 때, 속성은 식별자에 쓰이지 않을 때만. 엔터티의 속성·식별자는 엔터티와 함께 지운다.</li>
+ * <li>삭제 : 모델은 엔터티가 없을 때, 엔터티는 관계가 없을 때, 속성은 식별자에 쓰이지 않을 때만. 물리 테이블·컬럼에 매핑된 엔터티·속성은 매핑 해제 후에만 (M-7). 엔터티의 속성·식별자는 엔터티와 함께 지운다.</li>
  * <li>승인 권한자(관리자·매니저·프로젝트 관리자)가 등록한 엔터티·관계는 바로 승인된다 (테이블·컬럼·물리 관계와 같다).</li>
  * <li>승인된 엔터티·관계 자체(이름·설명·삭제, 관계 정의)는 승인 취소 후에만 바꿀 수 있다. 승인된 엔터티의 속성·식별자는 승인 권한자만 바꿀 수 있다.</li>
  * </ul>
@@ -61,6 +63,8 @@ public class LogicalModelService {
     private final StandardTermRepository standardTermRepository;
     private final ProjectRepository projectRepository;
     private final LogicalErdLayoutRepository layoutRepository;
+    private final EntityTableMappingRepository entityTableMappingRepository;
+    private final AttributeColumnMappingRepository attributeColumnMappingRepository;
 
     // ------------------------------------------------------------------ 논리 모델
 
@@ -138,6 +142,10 @@ public class LogicalModelService {
         relationshipRepository.findFirstBySourceEntity_IdOrTargetEntity_Id(entityId, entityId).ifPresent(r -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 {0} 에서 사용 중인 엔터티입니다.", relationLabel(r));
         });
+        // 물리 테이블에 매핑된 엔터티는 매핑을 먼저 해제해야 한다 (M-7). 속성 매핑은 엔터티 매핑이 있어야만 존재한다
+        entityTableMappingRepository.findByEntity_Id(entityId).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "테이블 {0} 에 매핑된 엔터티입니다. 매핑을 먼저 해제해주세요.", m.getTable().getTableName());
+        });
         // 속성·식별자는 엔터티에 딸린 데이터라 함께 지운다. 식별자-속성 연결이 속성보다 먼저 지워지도록 식별자부터 내보낸다 (FK)
         entity.getIdentifiers().clear();
         entityRepository.flush();
@@ -196,6 +204,9 @@ public class LogicalModelService {
         // 식별자에서 먼저 빼야 한다 (식별자 구성을 말없이 바꾸지 않는다)
         entity.getIdentifiers().stream().filter(i -> i.getAttributes().stream().anyMatch(a -> a.getAttribute().getId().equals(attributeId))).findFirst().ifPresent(i -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "식별자 {0} 에서 사용 중인 속성입니다.", i.getIdentifierName());
+        });
+        attributeColumnMappingRepository.findByAttribute_Id(attributeId).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "컬럼 {0} 에 매핑된 속성입니다. 매핑을 먼저 해제해주세요.", m.getColumn().getColumnName());
         });
         entity.getAttributes().removeIf(a -> a.getId().equals(attributeId));
     }

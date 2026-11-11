@@ -60,6 +60,7 @@
 | 도메인 | `DMN` |
 | 레이아웃 | `LYT` |
 | 마스터 | `MSTR` |
+| 매핑 | `MPNG` |
 | 목록 | `LIST` |
 | 민감 | `SNSTV` |
 | 배율 | `MGNF` |
@@ -554,6 +555,36 @@
 | `SCRN_Y_CRDNT` | 화면_Y_좌표 |
 | `SCRN_MGNF` | 화면_배율 |
 | `VER_NO` | 버전_번호 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_ENTT_TBL_MPNG (엔터티 테이블 매핑)
+
+시퀀스 : `SQ_ENTT_TBL_MPNG`. `V2__logical_physical_mapping.sql` 에서 만든다 (V0 의 예제 물리 모델에는 없다).
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `ENTT_TBL_MPNG_SN` | 엔터티_테이블_매핑_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `LGCL_ENTT_SN` | 논리_엔터티_일련번호 |
+| `TBL_SN` | 테이블_일련번호 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_ATRB_COL_MPNG (속성 컬럼 매핑)
+
+시퀀스 : `SQ_ATRB_COL_MPNG`. `V2__logical_physical_mapping.sql` 에서 만든다 (V0 의 예제 물리 모델에는 없다).
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `ATRB_COL_MPNG_SN` | 속성_컬럼_매핑_일련번호 |
+| `ENTT_TBL_MPNG_SN` | 엔터티_테이블_매핑_일련번호 |
+| `LGCL_ATRB_SN` | 논리_속성_일련번호 |
+| `COL_SN` | 컬럼_일련번호 |
 | `REG_DT` | 등록_일시 |
 | `MDFCN_DT` | 수정_일시 |
 | `RGTR_ID` | 등록자_아이디 |

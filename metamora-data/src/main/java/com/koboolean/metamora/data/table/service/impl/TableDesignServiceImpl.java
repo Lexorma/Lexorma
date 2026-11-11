@@ -1,5 +1,6 @@
 package com.koboolean.metamora.data.table.service.impl;
 
+import com.koboolean.metamora.data.mapping.repository.EntityTableMappingRepository;
 import com.koboolean.metamora.core.project.domain.enums.DbType;
 import com.koboolean.metamora.data.physical.service.PhysicalModelService;
 import com.koboolean.metamora.data.schema.domain.entity.SchemaInfo;
@@ -57,6 +58,7 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final EntityManager entityManager;
     private final SchemaService schemaService;
     private final PhysicalModelService physicalModelService;
+    private final EntityTableMappingRepository entityTableMappingRepository;
     private static final int FIRST_ROW = 1;
 
     /** 그리드 검색 컬럼 → 엔티티 필드 (부분 일치) */
@@ -273,7 +275,12 @@ public class TableDesignServiceImpl implements TableDesignService {
         Long projectId = accountDto.getProjectId();
 
         tableInfoDtos.forEach(tableInfoDto -> {
-            TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableInfoDto.getId(), projectId);
+            // 행을 잠가 논리·물리 매핑 등록과 엇갈리지 않게 한다
+            TableInfo tableInfo = tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+
+            entityTableMappingRepository.findByTable_Id(tableInfoDto.getId()).ifPresent(mapping -> {
+                throw new CustomException(ErrorCode.RELATION_EXISTS, "엔터티 {0} 에 매핑된 테이블입니다. 매핑을 먼저 해제해주세요.", mapping.getEntity().getEntityName());
+            });
 
             if(!tableInfo.getColumns().isEmpty()){
                 // 컬럼이 등록되어있을경우 삭제 불가능

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.koboolean.metamora.data.mapping.repository.EntityTableMappingRepository;
 import com.koboolean.metamora.data.physical.service.PhysicalModelService;
 import com.koboolean.metamora.data.schema.service.SchemaService;
 import org.mockito.ArgumentCaptor;
@@ -57,6 +58,9 @@ class TableDesignServiceImplTest {
 
     @Mock
     PhysicalModelService physicalModelService;
+
+    @Mock
+    EntityTableMappingRepository entityTableMappingRepository; // 기본 : findByTable_Id → Optional.empty (매핑 없음)
 
     @InjectMocks
     TableDesignServiceImpl service;
@@ -345,7 +349,7 @@ class TableDesignServiceImplTest {
         void hasColumns() {
             TableInfo table = table(1L, "TB_USER", false);
             table.getColumns().add(new ColumnInfo());
-            when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
 
             assertThatThrownBy(() -> service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login))
                     .extracting("errorCode").isEqualTo(ErrorCode.COLUMN_DEPENDENCY_EXISTS);
@@ -354,7 +358,7 @@ class TableDesignServiceImplTest {
         @Test
         @DisplayName("승인된 테이블은 삭제할 수 없다")
         void approved() {
-            when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table(1L, "TB_USER", true));
+            when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table(1L, "TB_USER", true)));
 
             assertThatThrownBy(() -> service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login))
                     .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
@@ -365,7 +369,7 @@ class TableDesignServiceImplTest {
         @DisplayName("컬럼 없는 미승인 테이블은 삭제한다")
         void delete() {
             TableInfo table = table(1L, "TB_USER", false);
-            when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
 
             service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login);
 

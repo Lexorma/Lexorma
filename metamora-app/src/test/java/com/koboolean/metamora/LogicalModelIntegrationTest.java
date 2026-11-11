@@ -487,12 +487,12 @@ class LogicalModelIntegrationTest {
         return new Relationship(id, model.id(), name, null, source.id(), null, target.id(), null, identifying, sourceMin, sourceMax, targetMin, targetMax, null, null);
     }
 
-    private interface Task {
+    interface Task {
         String run(int index) throws Exception;
     }
 
-    /** 같은 로그인으로 동시에 실행한다. 거절되면 오류 코드를 결과로 돌려준다 */
-    private static List<String> concurrently(int threads, Task task) throws Exception {
+    /** 같은 로그인으로 동시에 실행한다. 거절되면 오류 코드를 결과로 돌려준다 (ModelMappingIntegrationTest 도 쓴다) */
+    static List<String> concurrently(int threads, Task task) throws Exception {
         SecurityContext context = SecurityContextHolder.getContext();
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch start = new CountDownLatch(1);

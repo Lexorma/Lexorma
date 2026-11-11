@@ -315,3 +315,11 @@ V0 의 권한 설명(`TB_ROLE.ROLE_EXPLN`)이 영문(Administrator, Manager, …
 - `./gradlew clean build` : 341 tests, 실패 0, 건너뜀 2. PostgreSQL 18.6 격리 DB(`metamora_m6d_test`, 실행 후 삭제) : 101 tests, 실패 0, 건너뜀 0 — Flyway 이력 V0·V1 성공, `META-MORA` 엔터티 35·관계 39 확인.
 - 브라우저(Chrome, ADMIN, 인메모리 H2) : 메뉴 순서, 내 정보의 권한명 "관리자"(서버 값은 Administrator), 논리 모델 관리에 `META-MORA` 모델(엔터티 35·관계 39), 논리 ERD 자동 배치 표시. 콘솔 오류 0.
 - **미검증** : 이미 데이터가 있는 DB 에 V1 을 적용하는 경우(빈 DB 에서만 실행), 영어 화면.
+
+## 11. M-7 1차 이후 달라진 점 (논리·물리 매핑)
+
+- 논리 모델은 여전히 물리 객체를 참조하지 않는다. 연결은 별도 매핑 테이블(`TB_ENTT_TBL_MPNG`·`TB_ATRB_COL_MPNG`)이 맡는다 — [logical-physical-mapping-m7.md](logical-physical-mapping-m7.md).
+- **삭제 정책 추가** : 물리 테이블에 매핑된 엔터티, 물리 컬럼에 매핑된 속성은 삭제할 수 없다 (`RELATION_EXISTS`). 매핑을 먼저 해제한다. 모델 삭제는 그대로다 (엔터티가 없어야 하므로 매핑도 없다).
+- 매핑 변경도 엔터티의 논리 모델 행을 잠근다 (3장의 잠금과 같은 행).
+- 마이그레이션 : V0·V1 은 바꾸지 않았고 매핑 테이블은 `V2__logical_physical_mapping.sql` 로 추가했다. 8.6 의 수동 DDL 과는 무관하다.
+

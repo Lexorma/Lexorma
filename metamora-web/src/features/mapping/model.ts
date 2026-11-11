@@ -126,8 +126,90 @@ export const CHECK_STATUSES: { status: CheckStatus; label: string; variant: Labe
 
 export const checkTypeLabel = (type: CheckType) => CHECK_TYPES.find((e) => e.type === type)?.label ?? type;
 
-/** 매핑 관리 화면 주소 : 모델을 고르고 그 엔터티로 좁혀 연다 */
-export const mappingPath = (modelId: number, entityId?: number) => `/modelMapping?modelId=${enc(modelId)}${entityId != null ? `&entityId=${enc(entityId)}` : ''}`;
+export type MappingTab = 'mapping' | 'quality' | 'recommendation';
+
+/** 매핑 관리 화면 주소 : 모델을 고르고 그 엔터티(ID)로 좁혀 연다. tab·attributeId 는 정합성 비교·물리명 추천 탭으로 바로 갈 때 */
+export const mappingPath = (modelId: number, entityId?: number, options: { tab?: MappingTab; attributeId?: number } = {}) =>
+  `/modelMapping?modelId=${enc(modelId)}${entityId != null ? `&entityId=${enc(entityId)}` : ''}`
+  + `${options.attributeId != null ? `&attributeId=${enc(options.attributeId)}` : ''}${options.tab ? `&tab=${options.tab}` : ''}`;
+
+export type RecommendationStatus = 'AVAILABLE' | 'ALREADY_MATCHED' | 'UNAVAILABLE' | 'CONFLICT';
+export type RecommendationSource = 'STANDARD_TERM' | 'STANDARD_WORD';
+
+/** GET /api/modelMapping/recommendation/column/data 의 1행 = 논리 속성 1개. 추천 컬럼명 = 연결된 표준 용어의 영문약어 */
+export interface ColumnRecommendation {
+  id: string;
+  modelId: number;
+  modelName: string;
+  entityId: number;
+  entityName: string;
+  mappingId: number | null;
+  schemaId: number | null;
+  schemaName: string | null;
+  tableId: number | null;
+  tableName: string | null;
+  logicalAttributeId: number;
+  logicalName: string;
+  termId: number | null;
+  termName: string | null;
+  termAbbreviation: string | null;
+  physicalColumnId: number | null;
+  currentPhysicalName: string | null;
+  recommendedPhysicalName: string | null;
+  status: RecommendationStatus;
+  source: RecommendationSource | null;
+  reason: string;
+}
+
+/** GET /api/modelMapping/recommendation/column/summary : total = 모델의 속성 수 = 네 상태의 합 */
+export interface ColumnRecommendationSummary {
+  modelId: number;
+  total: number;
+  available: number;
+  alreadyMatched: number;
+  unavailable: number;
+  conflict: number;
+}
+
+/** 엔터티명을 나눈 단어 1개의 표준 단어 변환 결과 (TableNameDto.Word) */
+export interface TableNameWord {
+  word: string;
+  abbreviation: string | null;
+  englishName: string | null;
+  status: 'APPROVED' | 'NOT_APPROVED' | 'NOT_FOUND';
+}
+
+/** GET /api/modelMapping/recommendation/table/data 의 1행 = 논리 엔터티 1개. 추천 테이블명 = 접두어 + 승인된 표준 단어의 영문약어 */
+export interface TableRecommendation {
+  id: string;
+  modelId: number;
+  modelName: string;
+  logicalEntityId: number;
+  logicalName: string;
+  mappingId: number | null;
+  schemaId: number | null;
+  schemaName: string | null;
+  physicalTableId: number | null;
+  currentPhysicalName: string | null;
+  recommendedPhysicalName: string | null;
+  status: RecommendationStatus;
+  source: RecommendationSource | null;
+  reason: string;
+  tablePrefix: string | null;
+  words: TableNameWord[];
+}
+
+export const RECOMMENDATION_STATUSES: { status: RecommendationStatus; label: string; variant: LabelVariant; count: 'available' | 'alreadyMatched' | 'unavailable' | 'conflict' }[] = [
+  { status: 'AVAILABLE', label: t('추천 가능'), variant: 'accent', count: 'available' },
+  { status: 'ALREADY_MATCHED', label: t('일치'), variant: 'success', count: 'alreadyMatched' },
+  { status: 'UNAVAILABLE', label: t('추천 불가'), variant: '', count: 'unavailable' },
+  { status: 'CONFLICT', label: t('충돌'), variant: 'danger', count: 'conflict' },
+];
+
+export const RECOMMENDATION_SOURCES: Record<RecommendationSource, string> = {
+  STANDARD_TERM: t('표준 용어의 영문약어'),
+  STANDARD_WORD: t('표준 단어의 영문약어 + 테이블 접두어'),
+};
 
 /** 비율 표시 (전체가 0 이면 계산하지 않는다) */
 export const rate = (part: number, total: number) => (total > 0 ? `${((part / total) * 100).toFixed(1)}%` : '-');
@@ -142,6 +224,17 @@ export function useMappingLookup(target: { entityId?: number; tableId?: number }
     queryKey: ['mapping-lookup', key],
     queryFn: () => api<MappingRow | undefined>(`/api/modelMapping/entity/lookup?${key}`, { silent: true }).then((row) => row ?? null),
     enabled: enabled && (target.entityId != null || target.tableId != null),
+    gcTime: 0,
+  });
+}
+
+/** 물리 컬럼 하나에 대한 컬럼명 추천 (컬럼 상세의 추천 표시). 컬럼이 논리 속성에 매핑되지 않았으면 null */
+export function useColumnRecommendation(columnId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['mapping-recommendation', 'column', columnId],
+    queryFn: () => api<{ data: ColumnRecommendation[] }>(`/api/modelMapping/recommendation/column/data?page=0&size=1&columnId=${enc(columnId)}`, { silent: true })
+      .then((page) => page.data[0] ?? null),
+    enabled: enabled && columnId != null,
     gcTime: 0,
   });
 }

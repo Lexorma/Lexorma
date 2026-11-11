@@ -75,6 +75,7 @@ public class ModelMappingQueryRepository {
     public Page<ModelMappingDto.EntityRow> findEntityRows(Long projectId, ModelMappingDto.EntitySearch search, Pageable pageable) {
         BooleanBuilder where = new BooleanBuilder(entity.projectId.eq(projectId));
         if (search.modelId() != null) where.and(model.id.eq(search.modelId()));
+        if (search.entityId() != null) where.and(entity.id.eq(search.entityId()));
         if (search.schemaId() != null) where.and(schema.id.eq(search.schemaId()));
         if (search.mapped() != null) where.and(search.mapped() ? mapping.id.isNotNull() : mapping.id.isNull());
         if (search.searchQuery() != null && !search.searchQuery().isBlank()) {

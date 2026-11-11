@@ -135,23 +135,50 @@ public class TableDesignServiceImpl implements TableDesignService {
     @Override
     public TableNameDto generateTableName(String tableKorName, AccountDto accountDto) {
         Long projectId = accountDto.getProjectId();
+        return generateTableName(tableKorName, tablePrefix(projectId),
+                word -> standardWordRepository.findAllByProjectIdAndCommonStandardWordName(projectId, word));
+    }
 
-        // "사용_내역_관리", "사용 내역 관리" 모두 허용
-        List<String> inputWords = Arrays.stream((tableKorName == null ? "" : tableKorName).trim().split("[_\\s]+"))
-                .filter(word -> !word.isBlank())
-                .toList();
+    @Override
+    public Map<String, TableNameDto> generateTableNames(java.util.Collection<String> tableKorNames, AccountDto accountDto) {
+        Long projectId = accountDto.getProjectId();
+        Set<String> wordNames = tableKorNames.stream().flatMap(name -> splitWords(name).stream()).collect(Collectors.toSet());
+        // 단어마다 조회하지 않고 한 번에 읽는다 (같은 이름이 여러 건이면 ID 순 — 승인된 단어 우선은 toTableNameWord 가 고른다)
+        Map<String, List<StandardWord>> wordsByName = wordNames.isEmpty() ? Map.of()
+                : standardWordRepository.findAllByProjectIdAndCommonStandardWordNameIn(projectId, wordNames).stream()
+                        .sorted(java.util.Comparator.comparing(StandardWord::getId))
+                        .collect(Collectors.groupingBy(StandardWord::getCommonStandardWordName));
+        String tablePrefix = tablePrefix(projectId);
+        Map<String, TableNameDto> result = new java.util.LinkedHashMap<>();
+        for (String name : tableKorNames) {
+            result.computeIfAbsent(name, key -> generateTableName(key, tablePrefix, word -> wordsByName.getOrDefault(word, List.of())));
+        }
+        return result;
+    }
 
-        List<TableNameDto.Word> words = inputWords.stream()
-                .map(word -> toTableNameWord(word, projectId))
-                .toList();
-
-        boolean isValid = !words.isEmpty() && words.stream().allMatch(word -> word.status() == TableNameDto.Status.APPROVED);
-
-        // 프로젝트 설정의 접두어 (예: TB_) - 저장 시 정규화되어 있으므로 그대로 붙인다.
-        String tablePrefix = projectRepository.findById(projectId)
+    /** 프로젝트 설정의 접두어 (예: TB_) - 저장 시 정규화되어 있으므로 그대로 붙인다. 없으면 null */
+    private String tablePrefix(Long projectId) {
+        return projectRepository.findById(projectId)
                 .map(Project::getTablePrefix)
                 .filter(prefix -> !prefix.isBlank())
                 .orElse(null);
+    }
+
+    /** "사용_내역_관리", "사용 내역 관리" 모두 허용 */
+    private static List<String> splitWords(String tableKorName) {
+        return Arrays.stream((tableKorName == null ? "" : tableKorName).trim().split("[_\\s]+"))
+                .filter(word -> !word.isBlank())
+                .toList();
+    }
+
+    private TableNameDto generateTableName(String tableKorName, String tablePrefix, java.util.function.Function<String, List<StandardWord>> wordLookup) {
+        List<String> inputWords = splitWords(tableKorName);
+
+        List<TableNameDto.Word> words = inputWords.stream()
+                .map(word -> toTableNameWord(word, wordLookup.apply(word)))
+                .toList();
+
+        boolean isValid = !words.isEmpty() && words.stream().allMatch(word -> word.status() == TableNameDto.Status.APPROVED);
 
         String tableName = isValid
                 ? (tablePrefix == null ? "" : tablePrefix)
@@ -164,8 +191,7 @@ public class TableDesignServiceImpl implements TableDesignService {
     /**
      * 단어 하나를 표준 단어로 찾는다. 같은 이름이 여러 건이면 승인된 단어를 우선한다.
      */
-    private TableNameDto.Word toTableNameWord(String word, Long projectId) {
-        List<StandardWord> standardWords = standardWordRepository.findAllByProjectIdAndCommonStandardWordName(projectId, word);
+    private TableNameDto.Word toTableNameWord(String word, List<StandardWord> standardWords) {
 
         Optional<StandardWord> approved = standardWords.stream()
                 .filter(standardWord -> Boolean.TRUE.equals(standardWord.getIsApproval()))

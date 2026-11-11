@@ -23,6 +23,13 @@ public interface TableDesignService {
      */
     TableNameDto generateTableName(String tableKorName, AccountDto accountDto);
 
+    /**
+     * 여러 한글명을 같은 규칙({@link #generateTableName})으로 변환한다. 표준 단어는 한 번에 조회한다 (물리명 추천 목록용).
+     *
+     * @return 입력한 한글명 → 변환 결과 (입력 순서)
+     */
+    java.util.Map<String, TableNameDto> generateTableNames(java.util.Collection<String> tableKorNames, AccountDto accountDto);
+
     void saveTable(TableInfoDto tableInfoDto, AccountDto accountDto);
 
     void updateTable(TableInfoDto tableInfoDto, AccountDto accountDto);

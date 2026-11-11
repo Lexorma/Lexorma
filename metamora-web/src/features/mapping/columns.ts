@@ -22,3 +22,23 @@ export const mappingQualityColumns: GridColumn[] = [
   { columnName: t('물리 측 값'), column: 'physicalValue', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
   { columnName: t('사유'), column: 'reason', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '15%' },
 ];
+
+/** 컬럼명 추천 목록 (GET /api/modelMapping/recommendation/column/data) : 행 1개 = 논리 속성 1개. 상태·근거는 서버에서 정렬하지 않는다 */
+export const recommendationColumnColumns: GridColumn[] = [
+  { columnName: t('논리 엔터티'), column: 'entityName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '13%' },
+  { columnName: t('논리 속성'), column: 'logicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '15%' },
+  { columnName: t('표준 용어'), column: 'termName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '13%' },
+  { columnName: t('현재 컬럼명'), column: 'currentPhysicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '14%' },
+  { columnName: t('추천 컬럼명'), column: 'recommendedPhysicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '14%' },
+  { columnName: t('추천 상태'), column: 'status', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '10%' },
+  { columnName: t('추천 근거'), column: 'reason', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '21%' },
+];
+
+/** 테이블명 추천 목록 (GET /api/modelMapping/recommendation/table/data) : 행 1개 = 논리 엔터티 1개 */
+export const recommendationTableColumns: GridColumn[] = [
+  { columnName: t('논리 엔터티'), column: 'logicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '18%' },
+  { columnName: t('현재 테이블명'), column: 'currentPhysicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '19%' },
+  { columnName: t('추천 테이블명'), column: 'recommendedPhysicalName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '19%' },
+  { columnName: t('추천 상태'), column: 'status', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
+  { columnName: t('추천 근거'), column: 'reason', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '33%' },
+];

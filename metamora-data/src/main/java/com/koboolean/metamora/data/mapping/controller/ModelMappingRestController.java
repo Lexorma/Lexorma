@@ -4,6 +4,8 @@ import com.koboolean.metamora.common.utils.PageableUtil;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.data.mapping.domain.dto.ModelMappingDto;
 import com.koboolean.metamora.data.mapping.domain.dto.ModelMappingQualityDto;
+import com.koboolean.metamora.data.mapping.domain.dto.PhysicalNameRecommendationDto;
+import com.koboolean.metamora.data.mapping.service.PhysicalNameRecommendationService;
 import com.koboolean.metamora.data.mapping.service.ModelMappingQualityService;
 import com.koboolean.metamora.data.mapping.service.ModelMappingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,7 +21,7 @@ import java.util.Map;
 
 /**
  * 논리·물리 모델 매핑 API (M-7). 조회는 VIEWER, 변경은 USER (논리·물리 모델 API 와 같다). 매핑에는 승인 절차가 없다.
- * 저장(POST)은 id 가 없으면 등록, 있으면 변경이다. 정합성 비교(/quality)는 조회 전용이다.
+ * 저장(POST)은 id 가 없으면 등록, 있으면 변경이다. 정합성 비교(/quality)와 물리명 추천(/recommendation)은 조회 전용이다.
  */
 @RestController
 @RequestMapping("/api/modelMapping")
@@ -31,8 +33,9 @@ public class ModelMappingRestController {
 
     private final ModelMappingService modelMappingService;
     private final ModelMappingQualityService modelMappingQualityService;
+    private final PhysicalNameRecommendationService recommendationService;
 
-    @Operation(summary = "엔터티 기준 매핑 목록", description = "프로젝트의 엔터티와 매핑된 테이블. 조건 : modelId, schemaId, mapped(true 매핑됨 / false 매핑 후보 엔터티), 검색 : entityName / tableName")
+    @Operation(summary = "엔터티 기준 매핑 목록", description = "프로젝트의 엔터티와 매핑된 테이블. 조건 : modelId, schemaId, mapped(true 매핑됨 / false 매핑 후보 엔터티), entityId(그 엔터티 1건), 검색 : entityName / tableName")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/entity/data")
     public ResponseEntity<Map<String, Object>> selectEntityRows(@AuthenticationPrincipal AccountDto accountDto,
@@ -43,9 +46,10 @@ public class ModelMappingRestController {
                                                                 @RequestParam(value = "searchQuery", required = false) String searchQuery,
                                                                 @RequestParam(value = "modelId", required = false) Long modelId,
                                                                 @RequestParam(value = "schemaId", required = false) Long schemaId,
-                                                                @RequestParam(value = "mapped", required = false) Boolean mapped) {
+                                                                @RequestParam(value = "mapped", required = false) Boolean mapped,
+                                                                @RequestParam(value = "entityId", required = false) Long entityId) {
         return PageableUtil.getGridPageableMap(modelMappingService.selectEntityRows(accountDto,
-                new ModelMappingDto.EntitySearch(modelId, schemaId, mapped, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new ModelMappingDto.EntitySearch(modelId, schemaId, mapped, searchColumn, searchQuery, entityId), PageableUtil.getGridPageable(page, size, sort)));
     }
 
     @Operation(summary = "엔터티 또는 테이블의 매핑 1건", description = "entityId 와 tableId 중 하나만 준다. 엔터티는 매핑이 없어도 1행(mappingId null), 테이블은 매핑된 경우만. 없으면 본문 없음")
@@ -135,5 +139,45 @@ public class ModelMappingRestController {
                                                                  @RequestParam(value = "status", required = false) ModelMappingQualityDto.CheckStatus status) {
         return PageableUtil.getGridPageableMap(modelMappingQualityService.selectRows(accountDto,
                 new ModelMappingQualityDto.Search(modelId, entityId, type, status, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+    }
+
+    @Operation(summary = "컬럼명 추천 요약", description = "논리 모델 1개의 속성 수와 추천 상태별 건수 : 추천 가능·일치·추천 불가·충돌")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/recommendation/column/summary")
+    public ResponseEntity<PhysicalNameRecommendationDto.ColumnSummary> selectColumnRecommendationSummary(@AuthenticationPrincipal AccountDto accountDto, @RequestParam(value = "modelId") Long modelId) {
+        return ResponseEntity.ok(recommendationService.selectColumnSummary(accountDto, modelId));
+    }
+
+    @Operation(summary = "컬럼명 추천 목록", description = "논리 속성의 표준 용어 영문약어 = 추천 컬럼명. 조회 전용이며 컬럼명을 바꾸지 않는다. 조건 : modelId(attributeId·columnId 가 없으면 필수), entityId, attributeId, columnId, status, 검색 : entityName / logicalName / currentPhysicalName / recommendedPhysicalName")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/recommendation/column/data")
+    public ResponseEntity<Map<String, Object>> selectColumnRecommendations(@AuthenticationPrincipal AccountDto accountDto,
+                                                                           @RequestParam(value = "page") int page,
+                                                                           @RequestParam(value = "size") int size,
+                                                                           @RequestParam(value = "sort", required = false) String sort,
+                                                                           @RequestParam(value = "searchColumn", required = false) String searchColumn,
+                                                                           @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                           @RequestParam(value = "modelId", required = false) Long modelId,
+                                                                           @RequestParam(value = "entityId", required = false) Long entityId,
+                                                                           @RequestParam(value = "attributeId", required = false) Long attributeId,
+                                                                           @RequestParam(value = "columnId", required = false) Long columnId,
+                                                                           @RequestParam(value = "status", required = false) PhysicalNameRecommendationDto.Status status) {
+        return PageableUtil.getGridPageableMap(recommendationService.selectColumnRows(accountDto,
+                new PhysicalNameRecommendationDto.ColumnSearch(modelId, entityId, attributeId, columnId, status, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+    }
+
+    @Operation(summary = "테이블명 추천 목록", description = "엔터티명을 표준 단어로 나눠 테이블명 생성 규칙(접두어 + 승인된 단어의 영문약어)으로 만든 추천 테이블명. 조회 전용. 조건 : modelId(entityId 가 없으면 필수), entityId, 검색 : entityName / tableName")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/recommendation/table/data")
+    public ResponseEntity<Map<String, Object>> selectTableRecommendations(@AuthenticationPrincipal AccountDto accountDto,
+                                                                          @RequestParam(value = "page") int page,
+                                                                          @RequestParam(value = "size") int size,
+                                                                          @RequestParam(value = "sort", required = false) String sort,
+                                                                          @RequestParam(value = "searchColumn", required = false) String searchColumn,
+                                                                          @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                          @RequestParam(value = "modelId", required = false) Long modelId,
+                                                                          @RequestParam(value = "entityId", required = false) Long entityId) {
+        return PageableUtil.getGridPageableMap(recommendationService.selectTableRows(accountDto,
+                new PhysicalNameRecommendationDto.TableSearch(modelId, entityId, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
     }
 }

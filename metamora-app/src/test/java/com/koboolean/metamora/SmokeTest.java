@@ -609,6 +609,8 @@ class SmokeTest {
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             // modelId 가 필수라 조회할 때 예제 모델 ID 를 붙인다 (gridSortAndSearch)
             Map.entry("mappingQualityColumns", "/api/modelMapping/quality"),
+            Map.entry("recommendationColumnColumns", "/api/modelMapping/recommendation/column"),
+            Map.entry("recommendationTableColumns", "/api/modelMapping/recommendation/table"),
             Map.entry("standardTermsColumns", "/api/getStandardTerms"),
             Map.entry("standardWordsColumns", "/api/getStandardWords"),
             Map.entry("standardDomainsColumns", "/api/getStandardDomains"),
@@ -721,6 +723,51 @@ class SmokeTest {
         assertThat(get("/api/auth/me", true).body()).contains("\"model-mapping\":true", "\"model-mapping-edit\":true");
     }
 
+    @Test
+    @Order(20)
+    @DisplayName("M-7 3차 물리명 추천 API : 예제는 컬럼명·테이블명이 모두 추천명과 같다, 요약 = 상태별 목록, 속성·컬럼·엔터티 조건, 필수 조건·잘못된 값 400")
+    void physicalNameRecommendation() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        long modelId = exampleModelId();
+        String columns = "/api/modelMapping/recommendation/column";
+        var summary = mapper.readTree(get(columns + "/summary?modelId=" + modelId, true).body());
+        // 예제의 컬럼명은 표준 용어의 영문약어이고(M-5 진단 0건) 속성은 같은 용어의 컬럼에 매핑되어 있다(V4)
+        assertThat(summary.path("total").asLong()).isEqualTo(summary.path("alreadyMatched").asLong()).isPositive();
+        for (var entry : Map.of("AVAILABLE", "available", "ALREADY_MATCHED", "alreadyMatched", "UNAVAILABLE", "unavailable", "CONFLICT", "conflict").entrySet()) {
+            assertThat(mapper.readTree(get(columns + "/data?page=0&size=1&modelId=" + modelId + "&status=" + entry.getKey(), true).body()).path("recordsTotal").asLong())
+                    .as(entry.getKey()).isEqualTo(summary.path(entry.getValue()).asLong());
+        }
+        var row = mapper.readTree(get(columns + "/data?page=0&size=1&modelId=" + modelId, true).body()).path("data").get(0);
+        assertThat(row.path("recommendedPhysicalName").asString()).isEqualTo(row.path("currentPhysicalName").asString()).isEqualTo(row.path("termAbbreviation").asString());
+        assertThat(row.path("source").asString()).isEqualTo("STANDARD_TERM");
+        assertThat(row.path("reason").asString()).isNotBlank();
+        // 속성·컬럼으로 1건 조회 (modelId 없이)
+        assertThat(get(columns + "/data?page=0&size=5&attributeId=" + row.path("logicalAttributeId").asLong(), true).body())
+                .contains("\"recordsTotal\":1", "\"physicalColumnId\":" + row.path("physicalColumnId").asLong());
+        assertThat(get(columns + "/data?page=0&size=5&columnId=" + row.path("physicalColumnId").asLong(), true).body())
+                .contains("\"recordsTotal\":1", "\"logicalAttributeId\":" + row.path("logicalAttributeId").asLong());
+
+        // 테이블명 : 예제의 엔터티명은 테이블 한글명이라 추천 테이블명 = 현재 테이블명
+        String tables = "/api/modelMapping/recommendation/table";
+        var tableRows = mapper.readTree(get(tables + "/data?page=0&size=100&modelId=" + modelId, true).body());
+        assertThat(tableRows.path("recordsTotal").asLong()).isEqualTo(tableRows.path("data").size()).isPositive();
+        for (var table : tableRows.path("data")) {
+            assertThat(table.path("status").asString()).as(table.path("logicalName").asString()).isEqualTo("ALREADY_MATCHED");
+            assertThat(table.path("recommendedPhysicalName").asString()).isEqualTo(table.path("currentPhysicalName").asString());
+        }
+        long entityId = tableRows.path("data").get(0).path("logicalEntityId").asLong();
+        assertThat(get(tables + "/data?page=0&size=5&entityId=" + entityId, true).body()).contains("\"recordsTotal\":1", "\"source\":\"STANDARD_WORD\"", "\"words\":[");
+        // 매핑 목록의 엔터티 ID 조건
+        assertThat(get("/api/modelMapping/entity/data?page=0&size=5&modelId=" + modelId + "&entityId=" + entityId, true).body()).contains("\"recordsTotal\":1", "\"entityId\":" + entityId);
+        assertThat(get("/api/modelMapping/entity/data?page=0&size=5&modelId=" + modelId + "&entityId=999999999", true).body()).contains("\"recordsTotal\":0");
+
+        assertThat(get(columns + "/summary", true).statusCode()).as("modelId 없음").isEqualTo(400);
+        assertThat(get(columns + "/data?page=0&size=5", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(get(tables + "/data?page=0&size=5", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(get(columns + "/data?page=0&size=5&modelId=999999999", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(get(columns + "/data?page=0&size=5&modelId=" + modelId + "&status=UNKNOWN", true).statusCode()).isEqualTo(400);
+    }
+
     /** V1 예제 논리 모델(META-MORA)의 ID */
     private long exampleModelId() throws IOException, InterruptedException {
         var models = tools.jackson.databind.json.JsonMapper.builder().build().readTree(get("/api/logical/model", true).body());
@@ -753,7 +800,7 @@ class SmokeTest {
                 grids++;
                 String dataUrl = GRID_DATA_URLS.get(gridMatcher.group(1));
                 assertThat(dataUrl).as("GRID_DATA_URLS 에 없는 그리드 : " + gridMatcher.group(1)).isNotNull();
-                String required = "mappingQualityColumns".equals(gridMatcher.group(1)) ? "&modelId=" + exampleModelId() : "";
+                String required = Set.of("mappingQualityColumns", "recommendationColumnColumns", "recommendationTableColumns").contains(gridMatcher.group(1)) ? "&modelId=" + exampleModelId() : "";
 
                 Set<String> sorts = new LinkedHashSet<>();
                 List<String> searches = new ArrayList<>(List.of(""));

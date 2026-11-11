@@ -12,17 +12,22 @@ import { useLogicalModels } from '../logical/model';
 import { useSchemas } from '../schema/schemas';
 import { mappingEntityColumns } from './columns';
 import { MappingQuality } from './MappingQuality';
+import { MappingRecommendation } from './MappingRecommendation';
 import { AttributeMappingDetail, EntityMappingForm } from './mappingDialogs';
-import { rate, useMappingLookup, type MappingRow, type MappingStatus } from './model';
+import { rate, useMappingLookup, type MappingRow, type MappingStatus, type MappingTab } from './model';
 import '../../styles/logical.css';
 import '../../styles/mapping.css';
 
-type Tab = 'mapping' | 'quality';
+type Tab = MappingTab;
+
+const initialTab = (value: string | null): Tab => (value === 'quality' || value === 'recommendation' ? value : 'mapping');
 
 /**
- * 논리·물리 매핑 (M-7 2차) : 논리 모델을 골라 엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고(매핑 관리 탭) 매핑된 쌍의 차이를 본다(정합성 비교 탭).
+ * 논리·물리 매핑 (M-7) : 논리 모델을 골라 엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고(매핑 관리 탭) 매핑된 쌍의 차이를 보고(정합성 비교 탭)
+ * 표준 사전 기준의 추천 물리명을 본다(물리명 추천 탭).
  * 조회는 VIEWER, 매핑 등록·변경·해제 버튼은 USER 이상(model-mapping-edit) — 서버 API 가 같은 기준으로 다시 검사한다.
- * 주소 : /modelMapping?modelId=&entityId=&tab= (entityId 가 있으면 그 엔터티로 좁혀 보여 주고, 매핑되어 있으면 상세를 한 번 연다)
+ * 주소 : /modelMapping?modelId=&entityId=&attributeId=&tab= — entityId 가 있으면 세 탭 모두 그 엔터티(ID)로 좁혀 보여 주고,
+ * 매핑 관리 탭으로 들어왔고 매핑되어 있으면 속성 매핑 상세를 한 번 연다. attributeId 는 물리명 추천 탭을 그 속성으로 좁힌다.
  */
 export function ModelMappingPage() {
   const dialog = useDialog();
@@ -32,11 +37,9 @@ export function ModelMappingPage() {
   const { schemas } = useSchemas();
   const grid = useRef<GridHandle>(null);
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(params.get('tab') === 'quality' ? 'quality' : 'mapping');
+  const [tab, setTab] = useState<Tab>(() => initialTab(params.get('tab')));
   const [mapped, setMapped] = useState('');
   const [schemaId, setSchemaId] = useState('');
-  // 정합성 비교 탭을 한 엔터티로 좁혀 볼 때
-  const [qualityEntity, setQualityEntity] = useState<{ id: number; name: string } | null>(null);
 
   const modelId = selected?.id;
   const status = useQuery({
@@ -46,8 +49,10 @@ export function ModelMappingPage() {
     staleTime: 0,
   });
 
-  // 다른 화면에서 넘어온 엔터티 (?entityId=) : 고른 모델의 엔터티일 때만 그 엔터티로 좁힌다
-  const focusId = /^\d+$/.test(params.get('entityId') ?? '') ? Number(params.get('entityId')) : undefined;
+  // 좁혀 볼 엔터티 (?entityId=) : 고른 모델의 엔터티일 때만 그 엔터티(ID)로 좁힌다. 잘못된 ID·다른 프로젝트·다른 모델의 엔터티는 무시한다
+  const digits = (value: string | null) => (/^\d+$/.test(value ?? '') ? Number(value) : undefined);
+  const focusId = digits(params.get('entityId'));
+  const focusAttributeId = digits(params.get('attributeId'));
   const lookup = useMappingLookup({ entityId: focusId }, focusId != null);
   const focus = focusId != null && lookup.data && lookup.data.modelId === modelId ? lookup.data : null;
   const focusPending = focusId != null && lookup.isPending;
@@ -64,13 +69,22 @@ export function ModelMappingPage() {
       className: 'dialog-xl',
       content: (controls: DialogControls) => (
         <AttributeMappingDetail mappingId={mappingId} canEdit={canEdit} controls={controls} onChanged={reload}
-          onQuality={(mapping) => { setQualityEntity({ id: mapping.entityId, name: mapping.entityName }); setTab('quality'); }} />
+          onQuality={(mapping) => scope(mapping.entityId, 'quality')}
+          onRecommendation={(mapping) => scope(mapping.entityId, 'recommendation')} />
       ),
     });
   };
 
-  // 넘어온 엔터티가 매핑되어 있으면 상세를 한 번 연다
+  // 화면 안에서 한 엔터티로 좁히며 탭을 옮긴다 (주소에 남겨 새로 고쳐도 유지된다). 이미 보던 엔터티라 상세를 다시 열지 않는다
   const opened = useRef<number | null>(null);
+  const scope = (entityId: number, next: Tab) => {
+    if (modelId == null) return;
+    opened.current = next === 'mapping' ? null : entityId;
+    setTab(next);
+    setParams({ modelId: String(modelId), entityId: String(entityId) }, { replace: true });
+  };
+
+  // 다른 화면에서 매핑 관리 탭으로 넘어온 엔터티가 매핑되어 있으면 상세를 한 번 연다
   useEffect(() => {
     if (!focus || tab !== 'mapping' || opened.current === focus.entityId) return;
     opened.current = focus.entityId;
@@ -99,16 +113,13 @@ export function ModelMappingPage() {
     });
   };
 
-  const goMapping = (entityId: number) => {
-    if (modelId == null) return;
-    opened.current = null;
-    setTab('mapping');
-    setParams({ modelId: String(modelId), entityId: String(entityId) }, { replace: true });
-  };
+  const goMapping = (entityId: number) => scope(entityId, 'mapping');
 
   const gridParams: Record<string, string> = { modelId: String(modelId ?? '') };
   if (mapped) gridParams.mapped = mapped;
   if (schemaId) gridParams.schemaId = schemaId;
+  if (focus) gridParams.entityId = String(focus.entityId);
+  const focusEntity = focus ? { id: focus.entityId, name: focus.entityName } : null;
 
   const count = (key: keyof MappingStatus) => (status.data ? status.data[key] : '-');
   const filterCard = (label: string, key: keyof MappingStatus, value: string, foot?: string) => (
@@ -126,7 +137,7 @@ export function ModelMappingPage() {
     </div>
   );
 
-  const tabs: [Tab, string][] = [['mapping', t('매핑 관리')], ['quality', t('정합성 비교')]];
+  const tabs: [Tab, string][] = [['mapping', t('매핑 관리')], ['quality', t('정합성 비교')], ['recommendation', t('물리명 추천')]];
 
   return (
     <>
@@ -136,7 +147,7 @@ export function ModelMappingPage() {
       <div className="grid-header">
         <div className="search-container">
           <select className="search-column-select" aria-label={t('논리 모델')} value={selected?.id ?? ''} disabled={!models.length}
-            onChange={(e) => { setQualityEntity(null); select(Number(e.target.value)); }}>
+            onChange={(e) => select(Number(e.target.value))}>
             {!models.length && <option value="">{isPending ? t('불러오는 중입니다.') : t('논리 모델 없음')}</option>}
             {models.map((m) => <option key={m.id} value={m.id}>{m.modelName}</option>)}
           </select>
@@ -171,20 +182,18 @@ export function ModelMappingPage() {
 
               {focus && (
                 <p className="mapping-focus-note" role="status">
-                  {t('{0} 엔터티로 검색한 결과입니다.', focus.entityName)} <button type="button" className="logical-link" onClick={clearFocus}>{t('전체 보기')}</button>
+                  {t('{0} 엔터티만 보고 있습니다.', focus.entityName)} <button type="button" className="logical-link" onClick={clearFocus}>{t('전체 보기')}</button>
                 </p>
               )}
 
               {!focusPending && (
                 <Grid
-                  // 넘어온 엔터티가 바뀌거나 풀리면 검색 조건을 새로 잡는다
-                  key={`${modelId}:${focus?.entityId ?? ''}`}
+                  key={modelId}
                   ref={grid}
                   id="modelMappingGrid"
                   columns={mappingEntityColumns}
                   dataUrl="/api/modelMapping/entity"
                   params={gridParams}
-                  initialSearch={focus ? { column: 'entityName', query: focus.entityName } : undefined}
                   searchFilters={
                     <>
                       <select className="search-column-select" aria-label={t('매핑 여부')} value={mapped} onChange={(e) => setMapped(e.target.value)}>
@@ -198,7 +207,7 @@ export function ModelMappingPage() {
                       </select>
                     </>
                   }
-                  emptyText={mapped || schemaId ? t('조건에 맞는 엔터티가 없습니다.') : t('이 논리 모델에 엔터티가 없습니다.')}
+                  emptyText={mapped || schemaId || focus ? t('조건에 맞는 엔터티가 없습니다.') : t('이 논리 모델에 엔터티가 없습니다.')}
                   rowClassName={(row) => (focus && row.entityId === focus.entityId ? 'mapping-focus-row' : undefined)}
                   onRowClick={(row) => { if (row.mappingId != null) openDetail(row.mappingId); }}
                   renderCell={(field, row: Row) => {
@@ -232,9 +241,14 @@ export function ModelMappingPage() {
                 />
               )}
             </div>
+          ) : tab === 'quality' ? (
+            <div className="mapping-tab">
+              <MappingQuality key={selected.id} modelId={selected.id} entity={focusPending ? null : focusEntity} onClearEntity={clearFocus} onMapping={goMapping} />
+            </div>
           ) : (
             <div className="mapping-tab">
-              <MappingQuality key={selected.id} modelId={selected.id} entity={qualityEntity} onClearEntity={() => setQualityEntity(null)} onMapping={goMapping} />
+              <MappingRecommendation key={selected.id} modelId={selected.id} entity={focusPending ? null : focusEntity}
+                attributeId={focus ? focusAttributeId : undefined} onClearEntity={clearFocus} onMapping={goMapping} />
             </div>
           )}
         </>

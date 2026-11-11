@@ -148,3 +148,8 @@ METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 - 메뉴 : `model-mapping`(VIEWER)·`model-mapping-edit`(USER) 를 `MENU_ROLES` 에, `model-mapping` 을 `logical-modeling` 그룹에 넣었다.
 - 7장의 "화면 : 매핑 UI 가 없으므로 브라우저 검증 없음"은 2차에서 해소됐다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md).
 - **예제 매핑 (V4)** : `V4__mapping_example_data.sql` 이 META-MORA 예제의 엔터티 37개·속성 357개를 전부 물리 테이블·컬럼에 매핑한다 (엔터티명 = 테이블 한글명, 같은 표준 용어). 5장·7장·9장의 "매핑 테이블은 비어 있다 / 예제를 매핑으로 잇지 않았다"는 V4 로 바뀌었다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md) 8장.
+
+## 11. 3차에서 달라진 점
+
+- API 추가 : `GET /recommendation/column/summary`·`/recommendation/column/data`·`/recommendation/table/data`(물리명 추천, 조회 전용). `GET /entity/data` 에 `entityId` 조건이 생겼다 (요청·응답의 나머지는 그대로, `EntitySearch` 에 필드 1개 추가).
+- 8장의 "물리명 추천은 미구현"은 3차에서 해소됐다 — [physical-name-recommendation-m7.md](physical-name-recommendation-m7.md).

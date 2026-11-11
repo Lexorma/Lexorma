@@ -168,17 +168,18 @@ public class ModelMappingQualityService {
                 same ? null : Messages.get("논리 속성과 물리 컬럼의 표준 용어가 다릅니다."));
     }
 
-    /** 논리명(회원번호)과 물리명(MBR_ID)의 문자열은 비교하지 않는다. 물리명 규칙은 "컬럼명 = 표준 용어의 영문약어" 하나뿐이다 */
+    /**
+     * 논리명(회원번호)과 물리명(MBR_ID)의 문자열은 비교하지 않는다. 물리명 규칙은 "컬럼명 = 표준 용어의 영문약어" 하나뿐이고,
+     * 기대 컬럼명은 물리명 추천({@link PhysicalNameRecommendationService#recommendColumnName})이 계산한다 (추천과 진단이 같은 이름을 쓴다).
+     * 추천할 수 없으면 불일치가 아니라 비교 불가다. 추천명 충돌은 명칭 일치 여부와 다른 개념이라 여기서 보지 않는다
+     */
     private static Row name(Source s) {
-        if (s.attributeTermId() == null) {
-            return row(s, true, CheckType.NAME, CheckStatus.NOT_COMPARABLE, null, s.columnName(), Messages.get("논리 속성에 표준 용어가 없어 기대 컬럼명을 알 수 없습니다."));
+        PhysicalNameRecommendationService.ColumnName expected = PhysicalNameRecommendationService.recommendColumnName(s.attributeTermId(), s.attributeTermAbbreviation());
+        if (!expected.available()) {
+            return row(s, true, CheckType.NAME, CheckStatus.NOT_COMPARABLE, null, s.columnName(), expected.unavailableReason());
         }
-        String abbreviation = s.attributeTermAbbreviation() == null ? "" : s.attributeTermAbbreviation().trim();
-        if (abbreviation.isEmpty()) {
-            return row(s, true, CheckType.NAME, CheckStatus.NOT_COMPARABLE, null, s.columnName(), Messages.get("논리 속성의 표준 용어에 영문약어가 없어 기대 컬럼명을 알 수 없습니다."));
-        }
-        boolean same = abbreviation.equalsIgnoreCase(s.columnName() == null ? "" : s.columnName().trim());
-        return row(s, true, CheckType.NAME, same ? CheckStatus.MATCH : CheckStatus.MISMATCH, abbreviation, s.columnName(),
+        boolean same = PhysicalNameRecommendationService.sameName(s.columnName(), expected.name());
+        return row(s, true, CheckType.NAME, same ? CheckStatus.MATCH : CheckStatus.MISMATCH, expected.name(), s.columnName(),
                 same ? null : Messages.get("컬럼명이 논리 속성의 표준 용어 영문약어와 다릅니다."));
     }
 

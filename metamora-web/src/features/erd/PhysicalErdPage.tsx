@@ -8,6 +8,7 @@ import { NoticeMarkdown } from '../notice/NoticeMarkdown';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
 import { useTableDetail } from '../table/tableDetail';
+import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { DICTIONARY_PATHS } from '../dictionary/columns';
 import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
@@ -370,6 +371,7 @@ function ErdWorkspace() {
       title: t('컬럼 상세 · {0}.{1}', tableName, column.columnName),
       content: ({ close }: DialogControls) => (
         <ColumnDetail column={column} tableName={tableName} isFk={isFk}
+          onNavigate={(path) => { close(); leave(path); }}
           onDictionary={canView('standard-term') ? (tab, searchColumn, value) => {
             close();
             leave(`${DICTIONARY_PATHS[tab]}?searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
@@ -537,10 +539,12 @@ function OpenSourceNotices() {
 }
 
 /** 컬럼 상세 : 조회한 ERD 데이터로 보여 주고(VIEWER 도 가능), 표준 용어·도메인은 데이터 사전으로 이동할 수 있다 */
-function ColumnDetail({ column, tableName, isFk, onDictionary }: {
+function ColumnDetail({ column, tableName, isFk, onDictionary, onNavigate }: {
   column: ErdColumn;
   tableName: string;
   isFk: boolean;
+  /** 다른 화면으로 이동 (저장하지 않은 배치 확인 포함) */
+  onNavigate: (path: string) => void;
   onDictionary?: (tab: 'standardTerms' | 'standardDomains', searchColumn: string, value: string) => void;
 }) {
   const keys = [column.isPk ? 'PK' : '', isFk ? 'FK' : ''].filter(Boolean).join(' / ');
@@ -576,6 +580,7 @@ function ColumnDetail({ column, tableName, isFk, onDictionary }: {
           ];
         })}
       </dl>
+      <ColumnRecommendationNote columnId={column.id} onNavigate={onNavigate} />
     </div>
   );
 }

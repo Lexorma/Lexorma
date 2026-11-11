@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
@@ -10,6 +10,7 @@ import { api, download, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
+import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { columnColumns } from './columns';
 import { t } from '../../lib/i18n';
 
@@ -48,6 +49,13 @@ export function ColumnManagePage() {
   const navigate = useNavigate();
   const { canView } = useAuth();
   const reload = () => grid.current?.reload();
+  // 다른 화면에서 넘어온 검색 조건 (?searchColumn=tableName&searchQuery=…) — 데이터 사전과 같은 방식
+  const [initialSearch] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const column = params.get('searchColumn');
+    const query = params.get('searchQuery');
+    return column && query ? { column, query } : undefined;
+  });
 
   const add = () => {
     dialog.open({
@@ -152,6 +160,8 @@ export function ColumnManagePage() {
               </div>
             </dd>
           </dl>
+          {/* 논리 속성에 매핑된 컬럼이면 표준 용어 기준의 추천 컬럼명을 보여 준다 (조회만, 이름은 바꾸지 않는다) */}
+          <ColumnRecommendationNote columnId={row.id} onNavigate={(path) => { close(); navigate(path); }} />
           <div className="gh-dialog-actions">
             {canView('physical-erd') && row.tableInfoId != null && (
               <button type="button" className="btn" onClick={() => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.tableInfoId)}`); }}>
@@ -176,6 +186,7 @@ export function ColumnManagePage() {
           id="columnManageGrid"
           columns={columnColumns}
           dataUrl="/api/selectColumn"
+          initialSearch={initialSearch}
           crudActions="anCD"
           extraActions={
             <>

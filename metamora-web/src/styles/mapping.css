@@ -29,3 +29,7 @@ dialog .mapping-detail table.mapping-fixed-table td, dialog .mapping-detail tabl
 .mapping-detail select.mapping-column-select { width: 100%; min-width: 0; height: 28px; padding: 0 8px; font-family: var(--gh-mono); font-size: 12px; }
 .mapping-subtitle { margin: 16px 0 8px; font-size: 14px; }
 .mapping-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
+
+/* 물리명 추천 */
+.mapping-target { display: inline-flex; gap: 4px; margin: 0 0 12px; }
+dialog .mapping-recommendation-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; padding: 8px 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); font-size: 12px; overflow-wrap: anywhere; }

@@ -116,7 +116,7 @@ const includes = (value: string | null | undefined, keyword: string) => (value ?
  * 컬럼 후보는 매핑된 테이블의 컬럼 중 아직 속성에 연결하지 않은 것뿐이다 (다른 속성에 매핑된 컬럼은 고를 수 없다 — 서버도 1:1 을 검사한다).
  * 표준 용어가 서로 달라도 매핑을 막거나 풀지 않는다.
  */
-export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged, onQuality }: {
+export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged, onQuality, onRecommendation }: {
   mappingId: number;
   canEdit: boolean;
   controls: DialogControls;
@@ -124,6 +124,8 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
   onChanged: () => void;
   /** [정합성 비교 보기] */
   onQuality?: (mapping: MappingRow) => void;
+  /** [물리명 추천 보기] */
+  onRecommendation?: (mapping: MappingRow) => void;
 }) {
   const dialog = useDialog();
   const detail = useQuery({
@@ -258,6 +260,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
 
       <div className="gh-dialog-actions">
         {onQuality && <button type="button" className="btn" onClick={() => { controls.close(); onQuality(mapping); }}>{t('정합성 비교 보기')}</button>}
+        {onRecommendation && <button type="button" className="btn" onClick={() => { controls.close(); onRecommendation(mapping); }}>{t('물리명 추천 보기')}</button>}
       </div>
     </div>
   );

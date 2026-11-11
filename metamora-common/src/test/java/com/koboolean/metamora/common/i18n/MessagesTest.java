@@ -35,23 +35,23 @@ class MessagesTest {
     @Test
     @DisplayName("요청이 없거나 Accept-Language 가 없으면 한국어 원문이다")
     void koreanByDefault() {
-        assertThat(Messages.get("로그인이 필요합니다.")).isEqualTo("로그인이 필요합니다.");
+        assertThat(Messages.error("UNAUTHORIZED")).isEqualTo("로그인이 필요합니다.");
 
         request(null);
-        assertThat(Messages.get("로그인이 필요합니다.")).isEqualTo("로그인이 필요합니다.");
+        assertThat(Messages.error("UNAUTHORIZED")).isEqualTo("로그인이 필요합니다.");
     }
 
     @Test
     @DisplayName("Accept-Language 가 한국어면 한국어, 그 밖의 언어면 영어다")
     void followsAcceptLanguage() {
         request("ko-KR,ko;q=0.9,en;q=0.8");
-        assertThat(Messages.get("로그인이 필요합니다.")).isEqualTo("로그인이 필요합니다.");
+        assertThat(Messages.error("UNAUTHORIZED")).isEqualTo("로그인이 필요합니다.");
 
         request("en");
-        assertThat(Messages.get("로그인이 필요합니다.")).isEqualTo("Login is required.");
+        assertThat(Messages.error("UNAUTHORIZED")).isEqualTo("Login is required.");
 
         request("ja,en;q=0.8");
-        assertThat(Messages.get("로그인이 필요합니다.")).isEqualTo("Login is required.");
+        assertThat(Messages.error("UNAUTHORIZED")).isEqualTo("Login is required.");
     }
 
     @Test
@@ -76,9 +76,16 @@ class MessagesTest {
     }
 
     @Test
-    @DisplayName("모든 ErrorCode 에 영어 문구가 있다")
-    void everyErrorCodeHasEnglish() {
-        assertThat(Arrays.stream(ErrorCode.values()).filter(code -> !Messages.hasEnglish(code.getMessage())))
+    @DisplayName("모든 ErrorCode 는 code 가 겹치지 않고, code 로 한국어·영어 문구가 등록되어 있다")
+    void everyErrorCodeHasMessages() {
+        assertThat(Arrays.stream(ErrorCode.values()).map(ErrorCode::getCode)).doesNotHaveDuplicates();
+        assertThat(Arrays.stream(ErrorCode.values()).filter(code -> !Messages.hasError(code.getCode())))
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("등록되지 않은 code 는 code 를 그대로 돌려준다")
+    void unknownErrorCode() {
+        assertThat(Messages.error("NO_SUCH_CODE")).isEqualTo("NO_SUCH_CODE");
     }
 }

@@ -39,8 +39,7 @@ public class ProjectAccessInterceptor implements HandlerInterceptor {
         if (session != null) session.invalidate();
         SecurityContextHolder.clearContext();
 
-        JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PROJECT_ACCESS_REVOKED",
-                "현재 프로젝트에 더 이상 접근할 수 없습니다. 다시 로그인해주세요.");
+        JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PROJECT_ACCESS_REVOKED");
         return false;
     }
 }

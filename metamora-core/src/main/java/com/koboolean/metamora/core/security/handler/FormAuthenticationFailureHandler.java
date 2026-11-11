@@ -21,16 +21,15 @@ public class FormAuthenticationFailureHandler implements AuthenticationFailureHa
     public void onAuthenticationFailure(final HttpServletRequest request, final HttpServletResponse response, final AuthenticationException exception) throws IOException {
 
         if (exception instanceof CredentialsExpiredException) {
-            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PASSWORD_CHANGE_REQUIRED", exception.getMessage());
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PASSWORD_CHANGE_REQUIRED");
         } else if (exception instanceof ProjectAccessException) {
-            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PROJECT_ACCESS_DENIED", exception.getMessage());
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "PROJECT_ACCESS_DENIED");
         } else if (exception instanceof SessionAuthenticationException) {
             // maximumSessions(1) + maxSessionsPreventsLogin : 이미 로그인된 세션이 있다
-            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "SESSION_LIMIT_EXCEEDED",
-                    "이미 다른 곳에서 로그인되어 있습니다. 기존 세션에서 로그아웃하거나 세션이 만료된 뒤 다시 시도해주세요.");
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "SESSION_LIMIT_EXCEEDED");
         } else {
             // 아이디 없음 / 비밀번호 불일치는 아이디 존재 여부가 드러나지 않도록 같은 메시지 사용
-            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_CREDENTIALS", "아이디 또는 비밀번호가 잘못되었습니다.");
+            JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_CREDENTIALS");
         }
     }
 }

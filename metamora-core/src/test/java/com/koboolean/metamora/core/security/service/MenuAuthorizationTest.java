@@ -63,6 +63,8 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("logical-model-edit")).isFalse();
         // 매핑 등록·변경·해제 버튼도 USER 부터
         assertThat(menuAuth.canView("model-mapping-edit")).isFalse();
+        // 물리 ERD 편집 모드도 USER 부터
+        assertThat(menuAuth.canView("physical-model-edit")).isFalse();
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
 
@@ -103,6 +105,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("logical-model-edit")).isTrue();
         assertThat(menuAuth.canView("model-mapping")).isTrue();
         assertThat(menuAuth.canView("model-mapping-edit")).isTrue();
+        assertThat(menuAuth.canView("physical-model-edit")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 

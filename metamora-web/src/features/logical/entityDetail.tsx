@@ -18,6 +18,10 @@ interface EntityDetailOptions {
   onErd?: () => void;
   /** 다른 화면으로 이동 (ERD 는 저장하지 않은 배치를 먼저 확인한다). 없으면 바로 이동한다 */
   onNavigate?: (path: string) => void;
+  /** 변경 버튼을 숨긴다 (논리 ERD 의 조회 모드). 승인·승인취소는 편집이 아니라 그대로 둔다 */
+  readOnly?: boolean;
+  /** 처음 열 탭 (기본 : 속성) */
+  initialTab?: EntityDetailTab;
 }
 
 /** 엔터티 상세 대화상자 (논리 모델 관리·논리 ERD 공용) : 기본 정보 / 속성 / 식별자 / 관계 탭 */
@@ -32,13 +36,14 @@ export function useEntityDetail() {
   };
 }
 
-type Tab = 'basic' | 'attributes' | 'identifiers' | 'relationships';
+export type EntityDetailTab = 'basic' | 'attributes' | 'identifiers' | 'relationships';
+type Tab = EntityDetailTab;
 
 function EntityDetail({ entityId, options, controls }: { entityId: number; options: EntityDetailOptions; controls: DialogControls }) {
   const dialog = useDialog();
   const navigate = useNavigate();
   const { canView, approvalAvailable } = useAuth();
-  const [tab, setTab] = useState<Tab>('attributes');
+  const [tab, setTab] = useState<Tab>(options.initialTab ?? 'attributes');
   // 논리·물리 매핑 (M-7) : 이 엔터티에 매핑된 물리 테이블
   const mapping = useMappingLookup({ entityId }, canView('model-mapping'));
   const entity = useQuery({
@@ -62,8 +67,9 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
   // 변경 버튼 (서버도 같은 기준으로 다시 검사한다)
   // - 엔터티 자체(이름·설명·삭제) : 변경 권한(USER 이상)이 있고 승인 전일 때만
   // - 속성·식별자 : 승인된 엔터티는 승인 권한자만 (승인 권한자가 등록한 엔터티는 바로 승인되므로 이어서 편집할 수 있어야 한다)
-  const editable = canView('logical-model-edit') && !approved;
-  const detailEditable = canView('logical-model-edit') && (!approved || approvalAvailable);
+  const canEdit = canView('logical-model-edit') && !options.readOnly;
+  const editable = canEdit && !approved;
+  const detailEditable = canEdit && (!approved || approvalAvailable);
   const related = (relationships.data ?? []).filter((r) => r.sourceEntityId === entityId || r.targetEntityId === entityId);
   const changed = () => {
     void entity.refetch();
@@ -254,7 +260,8 @@ interface LinkedTerm {
   domainDataType: string | null;
 }
 
-function AttributeForm({ entityId, attribute, onSaved }: { entityId: number; attribute?: LogicalAttribute; onSaved: () => void }) {
+/** 속성 등록·수정 (엔터티 상세·논리 ERD 편집 공용) : 표준 용어 검색·연결·해제 포함. 도메인은 용어의 도메인을 서버가 내려준다 */
+export function AttributeForm({ entityId, attribute, onSaved }: { entityId: number; attribute?: LogicalAttribute; onSaved: () => void }) {
   const dialog = useDialog();
   const [name, setName] = useState(attribute?.attributeName ?? '');
   const [description, setDescription] = useState(attribute?.attributeDescription ?? '');
@@ -401,7 +408,8 @@ function IdentifierTab({ entity, editable, onChanged }: { entity: LogicalEntity;
   );
 }
 
-function IdentifierForm({ entity, identifier, onSaved }: { entity: LogicalEntity; identifier?: LogicalIdentifier; onSaved: () => void }) {
+/** 식별자 등록·수정 (엔터티 상세·논리 ERD 편집 공용) : 주/보조 구분, 구성 속성을 고른 순서대로 (복합 가능) */
+export function IdentifierForm({ entity, identifier, onSaved }: { entity: LogicalEntity; identifier?: LogicalIdentifier; onSaved: () => void }) {
   const dialog = useDialog();
   const [name, setName] = useState(identifier?.identifierName ?? '');
   const [primary, setPrimary] = useState(!!identifier?.isPrimary);
@@ -491,5 +499,35 @@ function RelationshipTab({ relationships, loading }: { relationships: LogicalRel
       </div>
       <p className="gh-muted">{t('관계는 논리 모델 관리 화면의 관계 탭에서 등록·수정합니다.')}</p>
     </div>
+  );
+}
+
+/** 엔터티 등록 (논리 모델 관리·논리 ERD 편집 공용). 이름 중복(모델 안, 대소문자 무시)·권한은 서버에서 검증한다 */
+export function EntityForm({ modelId, onSaved }: { modelId: number; onSaved: (entityId: number) => void }) {
+  const dialog = useDialog();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return dialog.alert(t('엔터티명은(는) 필수 입력 항목입니다.'));
+    dialog.confirm(t('저장하시겠습니까?'), async () => {
+      const saved = await api<{ id: number }>('/api/logical/entity', { method: 'POST', body: { modelId, entityName: name.trim(), entityDescription: description.trim() || null } });
+      onSaved(saved.id);
+    });
+  };
+
+  return (
+    <form className="edit-form" onSubmit={onSubmit}>
+      <div className="form-group">
+        <label htmlFor="newEntityName">{t('엔터티명')}</label>
+        <input type="text" className="form-control" id="newEntityName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label htmlFor="newEntityDescription">{t('설명')}</label>
+        <textarea className="form-control" id="newEntityDescription" maxLength={1000} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
+      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+    </form>
   );
 }

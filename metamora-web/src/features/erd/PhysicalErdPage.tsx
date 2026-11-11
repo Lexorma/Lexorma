@@ -8,9 +8,14 @@ import { NoticeMarkdown } from '../notice/NoticeMarkdown';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
 import { useTableDetail } from '../table/tableDetail';
+import { TableForm } from '../table/TableForm';
+import type { Schema as TableSchema } from '../schema/schemas';
+import type { Row } from '../../components/grid/Grid';
+import { ErdModeToggle, findFreePosition, type ErdMode } from './editing';
+import { RelationForm, RelationPanel, TableKeys } from './physicalEditing';
 import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { DICTIONARY_PATHS } from '../dictionary/columns';
-import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { ArrowLeftIcon, CheckIcon, GitMergeIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -66,13 +71,16 @@ const SOURCE_LABEL: Record<ErdRelation['relationSource'], string> = {
 
 const toLayoutNode = (n: TableNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.columns.length) });
 
-/** 물리 ERD : 저장된 물리 모델 조회 전용 (테이블·컬럼·관계는 바꾸지 않는다) + 내 배치 저장 */
+/**
+ * 물리 ERD : 저장된 물리 모델 조회 + 내 배치 저장. 편집 모드(M-8 3차, 물리 모델 변경 권한)에서는 테이블·컬럼·관계·인덱스·제약조건을 바꾼다 —
+ * 저장은 테이블·컬럼 관리와 같은 API 이고, 성공한 뒤 ERD 를 다시 조회한다. 배치는 모델 데이터와 따로 [배치 저장] 으로 저장한다.
+ */
 export default function PhysicalErdPage() {
   const { user } = useAuth();
   return (
     <>
       <PageHeader category={t('물리 모델 관리')} title={t('물리 ERD')}
-        description={t('스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회합니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다.')} />
+        description={t('스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회하고, 편집 모드에서 테이블·컬럼·관계(FK)·인덱스·제약조건을 추가·수정·삭제합니다(변경 권한 필요). FK 는 테이블 오른쪽 연결점을 참조할 테이블의 왼쪽 연결점으로 끌어 등록할 수 있습니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다.')} />
       <ReactFlowProvider key={user?.projectId}>
         <ErdWorkspace />
       </ReactFlowProvider>
@@ -81,7 +89,13 @@ export default function PhysicalErdPage() {
 }
 
 function ErdWorkspace() {
-  const { user, canView } = useAuth();
+  const { user, canView, approvalAvailable } = useAuth();
+  // 조회 / 편집 모드 (M-8) : 편집 모드는 물리 모델 변경 권한(USER 이상)이 있어야 들어간다. 서버 API 가 같은 기준으로 다시 검사한다
+  const canEdit = canView('physical-model-edit');
+  const [mode, setMode] = useState<ErdMode>('view');
+  const editing = canEdit && mode === 'edit';
+  const canvas = useRef<HTMLDivElement>(null);
+  const [selectedRelation, setSelectedRelation] = useState<number | null>(null);
   const dialog = useDialog();
   const navigate = useNavigate();
   const flow = useReactFlow<TableNodeType, RelationEdge>();
@@ -211,7 +225,8 @@ function ErdWorkspace() {
       }
       if (cancelled) return;
       setNodes(built);
-      setSelectedId((id) => (id && built.some((n) => n.id === id) ? id : scope.kind === 'neighbors' ? String(scope.tableId) : null));
+      setSelectedId((id) => (id && built.some((n) => n.id === id) ? id : scope.kind === 'neighbors' && !focusRequest.current ? String(scope.tableId) : null));
+      setSelectedRelation((id) => (id != null && data.relations.some((r) => r.id === id) ? id : null));
 
       const requested = focusRequest.current;
       if (requested) {
@@ -262,7 +277,7 @@ function ErdWorkspace() {
 
     return shownRelations.flatMap((relation) => {
         const self = relation.sourceTableId === relation.targetTableId;
-        const highlighted = selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
+        const highlighted = selectedRelation === relation.id || selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
         const style = {
           // 선택한 테이블에 걸린 관계는 굵기와 색으로 함께 강조한다 (논리 ERD 와 같다). 출처는 상세 패널의 관계 목록에 남는다
           stroke: highlighted ? 'var(--gh-accent)' : SOURCE_COLOR[relation.relationSource],
@@ -280,7 +295,7 @@ function ErdWorkspace() {
           targetHandle: columnHandle(p.targetColumnId, self ? 'self' : 'in'),
         }));
       });
-  }, [graph.data, shownRelations, simple, selectedId]);
+  }, [graph.data, shownRelations, simple, selectedId, selectedRelation]);
 
   const related = useMemo(() => {
     if (!selectedId) return null;
@@ -302,6 +317,7 @@ function ErdWorkspace() {
 
   const focus = (id: string) => {
     setSelectedId(id);
+    setSelectedRelation(null);
     const node = flow.getNode(id);
     if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(node.data.columns.length) / 2, { zoom: 1, duration: 300 });
   };
@@ -380,7 +396,122 @@ function ErdWorkspace() {
     });
   };
 
+  // ------------------------------------------------------------------ 편집 (M-8 3차)
+  // 모델 데이터는 테이블·컬럼 관리와 같은 API 로 바로 저장하고, 성공한 뒤 ERD 를 다시 조회한다 (실패하면 공통 알림만 뜨고 화면은 그대로다).
+  // 다시 조회해도 기존 노드의 위치는 positions 에서 그대로 온다. 배치 API 는 부르지 않는다.
+  const refresh = () => graph.refetch();
+  const schemaLabel = (schemaId: number) => schemaName.get(schemaId) ?? '';
+
+  /**
+   * 새 테이블 : 보고 있는 화면 가운데에서 기존 노드(범위 밖에 저장된 위치 포함)와 겹치지 않는 자리에 두고 저장하지 않은 배치로 표시한다.
+   * 지금 조회 범위(스키마·검색·페이지)에 들어오면 선택·포커스하고, 범위 밖이면 범위를 조용히 바꾸지 않고 물어본다.
+   */
+  const placeNewTable = async (tableName: string) => {
+    const found = await api<{ data: Row[] }>(`/api/selectTable/data?page=0&size=20&sort=tableName,asc&searchColumn=tableName&searchQuery=${enc(tableName)}`);
+    const created = found.data.find((row) => row.tableName === tableName);
+    if (!created) return void refresh();
+    const id = String(created.id);
+    const rect = canvas.current?.getBoundingClientRect();
+    const center = rect ? flow.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 0, y: 0 };
+    const size = { width: NODE_WIDTH, height: nodeHeight(0) };
+    const heights = new Map(nodes.map((n) => [n.id, nodeHeight(n.data.columns.length)]));
+    const occupied = [...positions.current.entries()].map(([nodeId, position]) => ({ ...position, width: NODE_WIDTH, height: heights.get(nodeId) ?? nodeHeight(8) }));
+    markPending([{ id, position: findFreePosition({ x: Math.round(center.x - size.width / 2), y: Math.round(center.y - size.height / 2) }, size, occupied) }]);
+    const result = await refresh();
+    if (result.data?.tables.some((table) => String(table.id) === id)) {
+      setMessage(t('테이블을 추가했습니다. 새 테이블의 위치는 [배치 저장] 을 눌러야 저장됩니다.'));
+      setSelectedRelation(null);
+      setSelectedId(id);
+      requestAnimationFrame(() => {
+        const node = flow.getNode(id);
+        if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(0) / 2, { zoom: 1, duration: 300 });
+      });
+      return;
+    }
+    dialog.confirm(t('{0} 테이블을 등록했습니다. 지금 조회 범위(스키마·검색 조건·페이지)에는 포함되지 않아 화면에 보이지 않습니다. 이 테이블 기준 이웃 조회로 바꿔서 보시겠습니까?', tableName), () => {
+      focusRequest.current = id;
+      setScope({ kind: 'neighbors', tableId: created.id, tableName, depth: 1, back: scope.kind === 'neighbors' ? scope.back : scope });
+    });
+  };
+
+  const addTable = () => {
+    dialog.open({
+      title: t('테이블 등록'),
+      content: ({ close }: DialogControls) => (
+        <TableForm type="C" schemas={(schemas.data ?? []) as unknown as TableSchema[]} onSaved={(saved) => { close(); void placeNewTable(saved.tableName); }} />
+      ),
+    });
+  };
+
+  const editTable = async (tableId: number) => {
+    const row = await api<Row>(`/api/selectTable/detail/${enc(tableId)}`);
+    dialog.open({
+      title: t('테이블 수정'),
+      // 수정은 스키마를 표시만 하므로 스키마 목록이 필요 없다 (테이블 상세와 같다)
+      content: ({ close }: DialogControls) => <TableForm type="U" row={row} schemas={[]} onSaved={() => { close(); void refresh(); }} />,
+    });
+  };
+
+  const removeTable = (table: { id: number; schemaId: number; tableName: string }) => {
+    dialog.confirm(t('{0}.{1} 테이블을 삭제하시겠습니까? 컬럼·관계·매핑이 남아 있으면 삭제되지 않습니다.', schemaLabel(table.schemaId), table.tableName), async () => {
+      // 삭제할 수 없으면(컬럼·승인·논리 엔터티 매핑) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다
+      const response = await api<{ result: boolean }>('/api/deleteTable', { method: 'DELETE', body: [{ id: table.id }] });
+      if (!response.result) return;
+      setSelectedId(null);
+      setMessage(t('테이블을 삭제했습니다.'));
+      await refresh();
+    });
+  };
+
+  const openKeys = (table: ErdGraph['tables'][number]) => {
+    dialog.open({
+      title: t('인덱스·제약조건 · {0}', table.tableName),
+      className: 'dialog-xl',
+      content: (
+        <TableKeys table={table} columns={(graph.data?.columns ?? []).filter((c) => c.tableId === table.id)} editable={editing} approvalAvailable={approvalAvailable}
+          onChanged={() => void refresh()} />
+      ),
+    });
+  };
+
+  // 연결점을 잇는 것은 FK 등록의 시작일 뿐이다. 선을 추가하지 않고 등록 대화상자를 열며, 저장에 성공해 다시 조회한 뒤에야 선이 생긴다.
+  const openRelationForm = (initial: { sourceTableId?: number; targetTableId?: number }) => {
+    if (!graph.data?.tables.length) return;
+    dialog.open({
+      title: t('외래키 등록'),
+      className: 'dialog-wide',
+      content: ({ close }: DialogControls) => (
+        <RelationForm tables={graph.data!.tables} columns={graph.data!.columns} schemaName={schemaLabel} initial={initial}
+          onSaved={(saved) => {
+            close();
+            setSelectedId(null);
+            setSelectedRelation(saved.id);
+            void refresh();
+          }} />
+      ),
+    });
+  };
+
+  const removeRelation = (relation: ErdRelation) => {
+    const pairs = relation.columns.map((p) => `${p.sourceColumnName} → ${p.targetColumnName}`).join(', ');
+    dialog.confirm(t('{0} 관계를 삭제하시겠습니까? ({1} → {2} : {3}) 테이블과 컬럼은 바뀌지 않습니다.', relation.relationName ?? '', relation.sourceTableName, relation.targetTableName, pairs), async () => {
+      await api(`/api/physical/relation/${relation.id}`, { method: 'DELETE' });
+      setSelectedRelation(null);
+      setMessage(t('관계를 삭제했습니다.'));
+      await refresh();
+    });
+  };
+
+  const toggleRelationApproval = (relation: ErdRelation) => {
+    const approved = !!relation.isApproval;
+    dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
+      await api(`/api/physical/relation/${relation.id}/approval/${!approved}`, { method: 'PATCH' });
+      await refresh();
+    });
+  };
+
   const selected = graph.data?.tables.find((t) => String(t.id) === selectedId);
+  const relation = graph.data?.relations.find((r) => r.id === selectedRelation);
   const loading = layout.isFetching || graph.isFetching || arranging;
   const error = layout.error ?? graph.error;
 
@@ -409,6 +540,8 @@ function ErdWorkspace() {
         </form>
 
         <div className="button-container">
+          {canEdit && <ErdModeToggle mode={mode} onChange={setMode} />}
+          {editing && <button type="button" className="grd-add btn btn-primary" disabled={!graph.data} onClick={addTable}><PlusIcon />{t('테이블 추가')}</button>}
           <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
@@ -439,12 +572,13 @@ function ErdWorkspace() {
             <button type="button" className="btn btn-sm" disabled={loading || !graph.data?.truncated} onClick={() => setScope({ ...scope, page: scope.page + 1 })}>{t('다음 {0}개', PAGE_SIZE)}</button>
           </span>
         )}
+        {editing && <span className="erd-mode-note">{t('편집 모드 · 테이블·컬럼·관계 변경은 바로 저장됩니다. 배치는 [배치 저장] 을 눌러야 저장됩니다.')}</span>}
         {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
       </div>
 
       <div className="erd-workspace">
-        <div className="erd-canvas" aria-label={t('물리 ERD')}>
+        <div className={`erd-canvas${editing ? ' erd-editing' : ''}`} ref={canvas} aria-label={t('물리 ERD')}>
           {error && <div className="erd-empty" role="alert">{t('ERD 를 불러오지 못했습니다.')} {error.message}</div>}
           {!error && !loading && graph.data && !graph.data.tables.length && (
             <div className="erd-empty">{scope.kind === 'search' && (scope.keyword || scope.isApproval || scope.isMasterTable) ? t('검색 결과가 없습니다.') : t('조회 범위에 등록된 테이블이 없습니다.')}</div>
@@ -455,10 +589,13 @@ function ErdWorkspace() {
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onNodeDragStop={(_, __, dragged) => markPending(dragged)}
-            onNodeClick={(_, node) => setSelectedId(node.id)}
-            onPaneClick={() => setSelectedId(null)}
+            onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedRelation(null); }}
+            onEdgeClick={(_, edge) => { setSelectedRelation(edge.data?.relation.id ?? null); setSelectedId(null); }}
+            onPaneClick={() => { setSelectedId(null); setSelectedRelation(null); }}
             nodesDraggable={!arranging}
-            nodesConnectable={false}
+            // 편집 모드에서만 연결할 수 있다. 연결은 선을 만들지 않고 FK 등록 대화상자를 연다 (취소하거나 저장에 실패하면 아무것도 생기지 않는다)
+            nodesConnectable={editing}
+            onConnect={(connection) => openRelationForm({ sourceTableId: Number(connection.source), targetTableId: Number(connection.target) })}
             elementsSelectable={false}
             deleteKeyCode={null}
             onlyRenderVisibleElements
@@ -486,8 +623,15 @@ function ErdWorkspace() {
               onOnlyRelated={setOnlyRelated}
               onFocus={() => focus(String(selected.id))}
               onDdl={() => dialog.popup({ title: `DDL · ${selected.tableName}`, size: 'large', content: <TableDdlView tableId={selected.id} /> })}
-              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch(), onNavigate: leave }) : undefined}
-              onEditColumns={canView('column-manage')
+              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch(), onNavigate: leave, readOnly: !editing }) : undefined}
+              onKeys={() => openKeys(selected)}
+              onRelation={(id) => { setSelectedRelation(id); setSelectedId(null); }}
+              edit={editing ? {
+                onEditTable: () => void editTable(selected.id),
+                onDeleteTable: () => removeTable(selected),
+                onAddRelation: () => openRelationForm({ sourceTableId: selected.id }),
+              } : undefined}
+              onEditColumns={editing && canView('column-manage')
                 ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void graph.refetch() })
                 : undefined}
               onColumn={openColumn}
@@ -496,8 +640,13 @@ function ErdWorkspace() {
                 back: scope.kind === 'neighbors' ? scope.back : scope,
               })}
             />
+          ) : relation ? (
+            <RelationPanel relation={relation} onTable={(tableId) => focus(String(tableId))}
+              outOfScope={!graph.data!.tables.some((t) => t.id === relation.sourceTableId) || !graph.data!.tables.some((t) => t.id === relation.targetTableId)}
+              onApproval={approvalAvailable ? () => toggleRelationApproval(relation) : undefined}
+              onDelete={editing ? () => removeRelation(relation) : undefined} />
           ) : (
-            <p className="erd-muted">{t('테이블을 누르면 컬럼과 관계를 볼 수 있습니다.')}</p>
+            <p className="erd-muted">{t('테이블이나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}
           <div className="erd-legend">
             <span><i className="erd-line" />FK</span>
@@ -585,7 +734,7 @@ function ColumnDetail({ column, tableName, isFk, onDictionary, onNavigate }: {
   );
 }
 
-function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn }: {
+function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn, onKeys, onRelation, edit }: {
   graph: ErdGraph;
   tableId: number;
   schemaName: string;
@@ -596,9 +745,15 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   onFocus: () => void;
   onNeighbors: () => void;
   onDdl: () => void;
-  /** 테이블 상세 / 컬럼 편집 대화상자 (메뉴 권한이 없으면 undefined) */
+  /** 테이블 상세 / 컬럼 편집 대화상자 (메뉴 권한이 없으면 undefined). 컬럼 편집은 편집 모드에서만 */
   onTableDetail?: () => void;
   onEditColumns?: () => void;
+  /** 인덱스·제약조건 (조회 모드에서는 조회만) */
+  onKeys: () => void;
+  /** 관계 목록에서 관계를 고른다 (관계 패널로) */
+  onRelation: (relationId: number) => void;
+  /** 편집 모드의 테이블 동작 */
+  edit?: { onEditTable: () => void; onDeleteTable: () => void; onAddRelation: () => void };
   onColumn: (column: ErdColumn, tableName: string, isFk: boolean) => void;
 }) {
   const table = graph.tables.find((t) => t.id === tableId)!;
@@ -606,6 +761,9 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   const relations = graph.relations.filter((r) => r.sourceTableId === tableId || r.targetTableId === tableId);
   const fkColumns = new Set(relations.filter((r) => r.relationType === 'FK' && r.sourceTableId === tableId).flatMap((r) => r.columns.map((p) => p.sourceColumnId)));
   const loaded = new Set(graph.tables.map((t) => t.id));
+  // 테이블 관리와 같은 삭제 조건 (서버가 다시 검사한다. 논리 엔터티 매핑은 서버 오류로 알린다)
+  const deleteBlocked = !edit ? '' : table.isApproval ? t('승인된 테이블은 삭제할 수 없습니다. 승인취소 후에 삭제해주세요.')
+    : columns.length ? t('컬럼이 있는 테이블은 삭제할 수 없습니다. 컬럼을 먼저 삭제해주세요.') : '';
 
   return (
     <>
@@ -628,6 +786,7 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
       <div className="erd-toolbar erd-links">
         <button type="button" className="btn btn-sm" onClick={onDdl}>{t('DDL 보기')}</button>
         {onTableDetail && <button type="button" className="btn btn-sm" onClick={onTableDetail}>{t('테이블 상세')}</button>}
+        <button type="button" className="btn btn-sm" onClick={onKeys}>{t('인덱스·제약조건')}</button>
         {onEditColumns && (
           <button type="button" className="btn btn-sm" disabled={!table.isApproval} onClick={onEditColumns}
             title={table.isApproval ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
@@ -635,6 +794,14 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
           </button>
         )}
       </div>
+
+      {edit && (
+        <div className="erd-toolbar erd-links erd-edit-actions">
+          <button type="button" className="btn btn-sm" disabled={!!table.isApproval} title={table.isApproval ? t('승인된 테이블은 수정할 수 없습니다.') : undefined} onClick={edit.onEditTable}>{t('테이블 수정')}</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={edit.onAddRelation}>{t('FK 추가')}</button>
+          <button type="button" className="btn btn-sm btn-danger" disabled={!!deleteBlocked} title={deleteBlocked || undefined} onClick={edit.onDeleteTable}>{t('테이블 삭제')}</button>
+        </div>
+      )}
 
       <h4>{t('컬럼 {0}개', columns.length)}</h4>
       <ul className="erd-list">
@@ -655,12 +822,14 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
             const other = r.sourceTableId === tableId ? r.targetTableId : r.sourceTableId;
             return (
               <li key={r.id}>
-                <strong><Mono>{r.sourceTableName}</Mono> → <Mono>{r.targetTableName}</Mono></strong>
-                <small>
-                  {r.relationName ?? ''} · {r.relationType === 'FK' ? 'FK' : t('논리')} · {SOURCE_LABEL[r.relationSource]} · {r.isApproval ? t('승인') : t('승인 대기')}
-                  {!loaded.has(other) && t(' · 조회 범위 밖')}
-                </small>
-                {r.columns.map((p, i) => <small key={i}>{p.sourceColumnName} → {p.targetColumnName}</small>)}
+                <button type="button" className="erd-list-button" title={t('관계 상세 보기')} onClick={() => onRelation(r.id)}>
+                  <strong><Mono>{r.sourceTableName}</Mono> → <Mono>{r.targetTableName}</Mono></strong>
+                  <small>
+                    {r.relationName ?? ''} · {r.relationType === 'FK' ? 'FK' : t('논리')} · {SOURCE_LABEL[r.relationSource]} · {r.isApproval ? t('승인') : t('승인 대기')}
+                    {!loaded.has(other) && t(' · 조회 범위 밖')}
+                  </small>
+                  {r.columns.map((p, i) => <small key={i}>{p.sourceColumnName} → {p.targetColumnName}</small>)}
+                </button>
               </li>
             );
           })}

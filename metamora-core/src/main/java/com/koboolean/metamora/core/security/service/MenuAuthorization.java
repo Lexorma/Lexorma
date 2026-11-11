@@ -64,6 +64,8 @@ public class MenuAuthorization {
             Map.entry("table-manage", "VIEWER"),
             Map.entry("column-manage", "USER"),
             Map.entry("physical-erd", "VIEWER"),
+            // 화면 메뉴가 아니라 물리 ERD 편집 모드(테이블·컬럼·관계·인덱스·제약 변경) 노출용 : 물리 모델 변경 API 의 권한과 같다
+            Map.entry("physical-model-edit", "USER"),
 
             // 데이터 품질 관리
             Map.entry("standardization-quality", "VIEWER")

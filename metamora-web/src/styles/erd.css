@@ -72,3 +72,30 @@
     .erd-canvas { height: 65vh; min-height: 400px; }
     .erd-detail { max-height: 360px; border-left: 0; border-top: 1px solid var(--gh-border); }
 }
+
+/* ERD 편집 (M-8) : 조회·편집 모드 전환, 편집 모드의 패널 동작 */
+.erd-mode { display: inline-flex; }
+.erd-mode .btn { border-radius: 0; }
+.erd-mode .btn:first-child { border-radius: 6px 0 0 6px; }
+.erd-mode .btn:last-child { margin-left: -1px; border-radius: 0 6px 6px 0; }
+.erd-mode-note { padding: 0 8px; border-radius: 2em; background: var(--gh-accent-subtle); color: var(--gh-fg); font-size: 12px; }
+.erd-edit-actions { margin-top: 6px; }
+.erd-attribute-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.erd-attribute-actions .btn { height: 22px; padding: 0 6px; font-size: 11px; line-height: 20px; }
+/* 편집 모드의 연결점 : 끌어서 관계 등록을 시작한다 (조회 모드에서는 보이지 않는다) */
+.erd-editing .react-flow__handle.connectable { width: 10px; height: 10px; border: 2px solid var(--gh-canvas); background: var(--gh-accent); cursor: crosshair; }
+.logical-end-markers { position: absolute; width: 0; height: 0; }
+/* 물리 ERD 편집 (M-8 3차) : FK 등록 폼, 관계 패널, 인덱스·제약조건 */
+.erd-pair-list { margin: 0 0 8px; padding-left: 24px; }
+.erd-pair-list li { padding: 3px 0; }
+.erd-pair-list li > * { vertical-align: middle; }
+.erd-pair-list select.form-control { display: inline-block; width: calc(50% - 60px); min-width: 120px; margin: 0 6px; }
+.erd-form-notes { margin: 0 0 12px; padding: 8px 12px 8px 28px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-attention-subtle, var(--gh-canvas-subtle)); color: var(--gh-fg); font-size: 12px; }
+.erd-pairs { margin: 0 0 8px; padding-left: 20px; font-size: 12px; overflow-wrap: anywhere; }
+.erd-keys h4 { margin: 16px 0 8px; font-size: 14px; }
+.erd-keys .dict-detail-columns td { white-space: normal; overflow-wrap: anywhere; }
+.erd-key-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0; }
+dialog .erd-key-form .form-control { flex: 0 1 200px; width: 200px; min-width: 140px; height: 30px; margin: 0; }
+dialog .erd-key-form .form-control.erd-key-wide { flex: 1 1 260px; }
+dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
+.erd-key-columns { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 260px; }

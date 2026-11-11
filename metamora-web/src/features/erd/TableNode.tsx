@@ -10,7 +10,7 @@ export const useSimpleNodes = () => useStore((s) => s.transform[2] * NODE_WIDTH 
 export const columnHandle = (columnId: number, side: 'in' | 'out' | 'self') => `c${columnId}-${side}`;
 export const TABLE_HANDLE = { in: 'table-in', out: 'table-out', self: 'table-self' } as const;
 
-export const TableNode = memo(function TableNode({ data, selected }: NodeProps<TableNodeType>) {
+export const TableNode = memo(function TableNode({ data, selected, isConnectable }: NodeProps<TableNodeType>) {
   const simple = useSimpleNodes();
   const { table, columns } = data;
   const rows = columns.slice(0, MAX_ROWS);
@@ -39,8 +39,9 @@ export const TableNode = memo(function TableNode({ data, selected }: NodeProps<T
       })}
       {!simple && columns.length > MAX_ROWS && <div className="erd-column-more">{t('외 {0}개 컬럼 · 상세 패널에서 확인', columns.length - MAX_ROWS)}</div>}
 
-      <Handle type="target" id={TABLE_HANDLE.in} position={Position.Left} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
-      <Handle type="source" id={TABLE_HANDLE.out} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
+      {/* isConnectable 은 화면의 nodesConnectable(물리 ERD 편집 모드)이다 : 오른쪽 연결점(참조하는 쪽)을 끌어 왼쪽 연결점(참조되는 쪽)에 놓으면 FK 등록 대화상자가 열린다 */}
+      <Handle type="target" id={TABLE_HANDLE.in} position={Position.Left} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={isConnectable} />
+      <Handle type="source" id={TABLE_HANDLE.out} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={isConnectable} />
       <Handle type="target" id={TABLE_HANDLE.self} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
       {!simple && rows.map((c, i) => data.linkedColumns.has(c.id) && (
         <Fragment key={c.id}>

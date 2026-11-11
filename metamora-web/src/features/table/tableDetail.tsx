@@ -20,6 +20,8 @@ interface TableDetailOptions {
   columnId?: number;
   /** 다른 화면으로 이동 (ERD 는 저장하지 않은 배치를 먼저 확인한다). 없으면 바로 이동한다 */
   onNavigate?: (path: string) => void;
+  /** 변경 버튼(컬럼 편집·수정)을 숨긴다 (물리 ERD 의 조회 모드). 승인·승인취소는 편집이 아니라 그대로 둔다 */
+  readOnly?: boolean;
 }
 
 /**
@@ -63,13 +65,13 @@ export function useTableDetail() {
         <TableDetail
           row={row}
           columnId={options.columnId}
-          onEditColumns={() => {
+          onEditColumns={options.readOnly ? undefined : () => {
             close();
             void openColumnBulkEditor(row, { onSaved: changed });
           }}
           onDdl={() => dialog.popup({ title: `DDL · ${row.tableName ?? ''}`, size: 'large', content: <TableDdlView tableId={row.id} /> })}
           onApproval={approvalAvailable ? () => toggleApproval(close) : undefined}
-          onEdit={approved ? undefined : () => {
+          onEdit={approved || options.readOnly ? undefined : () => {
             close();
             dialog.open({
               title: t('테이블 수정'),
@@ -106,9 +108,10 @@ function ynLabel(value: unknown, text: string, variant = 'accent') {
 function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMapping, onApproval }: {
   row: Row;
   columnId?: number;
+  /** 컬럼 일괄 편집 (조회 전용으로 열면 undefined) */
+  onEditColumns?: () => void;
   /** 논리·물리 매핑 화면으로 (메뉴 권한이 없으면 undefined — 매핑 정보도 조회하지 않는다) */
   onMapping?: (path: string) => void;
-  onEditColumns: () => void;
   onDdl: () => void;
   onEdit?: () => void;
   onErd?: () => void;
@@ -193,10 +196,12 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
 
       <div className="gh-dialog-actions">
         {/* 컬럼 일괄 편집 : 승인된 테이블에만 컬럼을 등록할 수 있다 */}
-        <button type="button" className="btn" disabled={!approved} onClick={onEditColumns}
-          title={approved ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
-          {t('컬럼 편집')}
-        </button>
+        {onEditColumns && (
+          <button type="button" className="btn" disabled={!approved} onClick={onEditColumns}
+            title={approved ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
+            {t('컬럼 편집')}
+          </button>
+        )}
         {/* DDL 은 승인 여부와 관계없이 볼 수 있다 */}
         <button type="button" className="btn" onClick={onDdl}>{t('DDL 보기')}</button>
         {onErd && <button type="button" className="btn" onClick={onErd}>{t('ERD 에서 보기')}</button>}

@@ -8,24 +8,28 @@ import {
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import '../../styles/logical.css';
-import { CheckIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
-import { useDialog } from '../../components/dialog/DialogProvider';
+import { CheckIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
-import { t } from '../../lib/i18n';
+import { t, tc } from '../../lib/i18n';
 // 물리 ERD 와 같이 쓰는 것 : 자동 배치(ELK 워커), 노드 크기 규칙, 축소 시 행 생략, 스타일(erd.css). 데이터·레이아웃 저장은 따로다
 import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/layout';
 import { HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, type ErdLayout, type XY } from '../erd/model';
 import { useSimpleNodes } from '../erd/TableNode';
-import { useEntityDetail } from './entityDetail';
+import { ErdModeToggle, findFreePosition, type ErdMode } from '../erd/editing';
+import { AttributeForm, EntityForm, IdentifierForm, useEntityDetail, type EntityDetailTab } from './entityDetail';
+import { relationLabel, RelationshipForm } from './relationshipForm';
 import { mappingPath } from '../mapping/model';
-import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphEntity, type LogicalGraph, type LogicalRelationship } from './model';
+import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalIdentifier, type LogicalRelationship } from './model';
 
-type EntityNodeType = Node<{ entity: GraphEntity }, 'entity'>;
+/** connectable : 편집 모드에서만 연결점을 끌어 관계 등록을 시작할 수 있다 */
+type EntityNodeType = Node<{ entity: GraphEntity; connectable?: boolean }, 'entity'>;
 /** sourceSlot·targetSlot : 같은 연결점을 쓰는 관계 중 몇 번째인지 (참여 수 글자가 겹치지 않게 옆으로 민다) */
-type RelationshipEdgeType = Edge<{ relationship: LogicalRelationship; selected: boolean; sourceSlot: number; targetSlot: number }, 'relationship'>;
+/** parallel : 같은 두 엔터티 사이의 관계 중 몇 번째인지 (선이 겹쳐 고를 수 없게 되지 않도록 조금씩 띄운다) */
+type RelationshipEdgeType = Edge<{ relationship: LogicalRelationship; selected: boolean; sourceSlot: number; targetSlot: number; parallel: number }, 'relationship'>;
 
 /** 연결점 : 왼쪽(들어옴) / 오른쪽(나감) / 자기 참조는 오른쪽 위에서 나가 오른쪽 아래로 들어온다 */
 const HANDLE = { in: 'in', out: 'out', selfOut: 'self-out', self: 'self' } as const;
@@ -37,6 +41,7 @@ const LAYER_GAP = 260;
 const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<EntityNodeType>) {
   const simple = useSimpleNodes();
   const { entity } = data;
+  const connectable = !!data.connectable;
   return (
     <div className={`erd-table${selected ? ' selected' : ''}`} style={{ width: NODE_WIDTH, height: nodeHeight(entity.attributes.length) }}>
       <header title={entity.name}>
@@ -52,27 +57,51 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<Entity
         </div>
       ))}
       {!simple && entity.attributes.length > MAX_ROWS && <div className="erd-column-more">{t('외 {0}개 속성 · 상세 패널에서 확인', entity.attributes.length - MAX_ROWS)}</div>}
-      <Handle type="target" id={HANDLE.in} position={Position.Left} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
-      <Handle type="source" id={HANDLE.out} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={false} />
+      {/* 편집 모드 : 오른쪽 연결점(출발)을 끌어 다른 엔터티(또는 자기 자신)의 왼쪽 연결점(도착)에 놓으면 관계 등록 대화상자가 열린다 */}
+      <Handle type="target" id={HANDLE.in} position={Position.Left} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={connectable} />
+      <Handle type="source" id={HANDLE.out} position={Position.Right} style={{ top: HEADER_HEIGHT / 2 }} isConnectable={connectable} />
       <Handle type="source" id={HANDLE.selfOut} position={Position.Right} style={{ top: 8 }} isConnectable={false} />
       <Handle type="target" id={HANDLE.self} position={Position.Right} style={{ top: HEADER_HEIGHT - 8 }} isConnectable={false} />
     </div>
   );
 });
 
+/** 관계선 끝 표기 (Crow's Foot) : 참여 수의 최소(0 = 선택 ○ / 1 이상 = 필수 |)와 최대(1 = | / 여러 건 = 까치발). 표시일 뿐 데이터의 뜻은 옆의 참여 수 글자와 같다 */
+const END_MARKERS = ['one', 'zero-one', 'one-many', 'zero-many'] as const;
+const endMarker = (min: number, max: number | null) => `logical-end-${max === 1 ? (min === 0 ? 'zero-one' : 'one') : (min === 0 ? 'zero-many' : 'one-many')}`;
+
+/** 관계선 끝 표기 정의. 선과 같은 색(context-stroke)으로 그리고, 시작 쪽은 뒤집어 쓴다 (auto-start-reverse) */
+function EndMarkers() {
+  return (
+    <svg className="logical-end-markers" aria-hidden>
+      <defs>
+        {END_MARKERS.map((kind) => (
+          <marker key={kind} id={`logical-end-${kind}`} viewBox="0 0 24 16" markerWidth="24" markerHeight="16" refX="24" refY="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+            <g fill="none" stroke="context-stroke" strokeWidth="1.5" strokeDasharray="none">
+              {kind.endsWith('many') ? <path d="M12 8 L24 2 M12 8 L24 14" /> : <path d="M19 2 V14" />}
+              {kind.startsWith('zero') ? <circle cx={kind.endsWith('many') ? 7 : 10} cy="8" r="3.5" fill="var(--gh-canvas)" /> : <path d={kind.endsWith('many') ? 'M9 2 V14' : 'M14 2 V14'} />}
+            </g>
+          </marker>
+        ))}
+      </defs>
+    </svg>
+  );
+}
+
 /**
- * 관계선 : 각 엔터티 옆에 **그 엔터티 쪽의 참여 수**를 적는다 (출발 쪽 = sourceMin..sourceMax, 도착 쪽 = targetMin..targetMax).
- * 실선 = 식별 관계, 점선 = 비식별 관계.
+ * 관계선 : 각 엔터티 옆에 **그 엔터티 쪽의 참여 수**를 적고(출발 쪽 = sourceMin..sourceMax, 도착 쪽 = targetMin..targetMax) 선 끝에 같은 뜻의 표기를 그린다.
+ * 실선 = 식별 관계, 점선 = 비식별 관계. 같은 두 엔터티 사이의 관계는 parallel 만큼 띄워 그린다.
  */
-function RelationshipEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data }: EdgeProps<RelationshipEdgeType>) {
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+function RelationshipEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerStart, markerEnd }: EdgeProps<RelationshipEdgeType>) {
+  const shift = (data?.parallel ?? 0) * 16;
+  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY: sourceY + shift, targetX, targetY: targetY + shift, sourcePosition, targetPosition });
   if (!data) return <BaseEdge id={id} path={path} style={style} />;
   const r = data.relationship;
   // 도착 연결점이 오른쪽이면(자기 참조) 글자를 오른쪽에, 보통은 엔터티 왼쪽 바깥에 둔다
   const targetRight = targetPosition === Position.Right;
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} />
+      <BaseEdge id={id} path={path} style={style} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={16} />
       <EdgeLabelRenderer>
         <span className={`logical-edge-label${data.selected ? ' selected' : ''}`} data-end="source" style={{ transform: `translate(0, -100%) translate(${sourceX + 6 + data.sourceSlot * SLOT_WIDTH}px, ${sourceY - 2}px)` }}>
           {participation(r.sourceMin, r.sourceMax)}
@@ -110,6 +139,9 @@ export default function LogicalErdPage() {
     if (params.has('entityId')) setParams(params.get('modelId') ? { modelId: params.get('modelId')! } : {}, { replace: true });
   }, []);
   const [dirty, setDirty] = useState(false);
+  // 조회 / 편집 모드 (M-8) : 모델을 바꿔도 유지한다. 편집 모드는 논리 모델 변경 권한(USER 이상)이 있어야 들어간다
+  const canEdit = canView('logical-model-edit');
+  const [mode, setMode] = useState<ErdMode>('view');
 
   const changeModel = (modelId: number) => {
     if (dirty) dialog.confirm(t('저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?'), () => select(modelId));
@@ -123,7 +155,7 @@ export default function LogicalErdPage() {
   return (
     <>
       <PageHeader category={t('논리 모델 관리')} title={t('논리 ERD')}
-        description={t('논리 모델의 엔터티·속성·관계를 조회합니다. 엔터티를 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 모델마다 따로 나에게만 보입니다. 편집은 논리 모델 관리에서 합니다.')} />
+        description={t('논리 모델의 엔터티·속성·관계를 조회하고, 편집 모드에서 엔터티·속성·식별자·관계를 추가·수정·삭제합니다(변경 권한 필요). 관계는 엔터티 오른쪽 연결점을 다른 엔터티의 왼쪽 연결점으로 끌어 등록할 수 있습니다. 엔터티를 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 모델마다 따로 나에게만 보입니다.')} />
       <div className="erd-page">
         {isError && <p role="alert">{t('논리 모델 목록을 불러오지 못했습니다.')}</p>}
         {!isPending && !isError && !selected && (
@@ -141,6 +173,8 @@ export default function LogicalErdPage() {
               onDirty={setDirty}
               onManage={canView('logical-model') ? (entityId) => leave(`/logicalModel?modelId=${selected.id}${entityId != null ? `&entityId=${entityId}` : ''}`) : undefined}
               onLeave={leave}
+              mode={canEdit ? mode : 'view'}
+              onMode={canEdit ? setMode : undefined}
               modelSelect={(
                 <select className="search-column-select" aria-label={t('논리 모델')} value={selected.id} onChange={(e) => changeModel(Number(e.target.value))}>
                   {models.map((m) => <option key={m.id} value={m.id}>{m.modelName}</option>)}
@@ -154,7 +188,7 @@ export default function LogicalErdPage() {
   );
 }
 
-function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelSelect }: {
+function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, onMode, modelSelect }: {
   modelId: number;
   focusEntity: string | null;
   onDirty: (dirty: boolean) => void;
@@ -162,9 +196,14 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
   onManage?: (entityId?: number) => void;
   /** 다른 화면으로 이동 (저장하지 않은 배치가 있으면 먼저 확인한다) */
   onLeave: (path: string) => void;
+  mode: ErdMode;
+  /** 모드 전환 (변경 권한이 없으면 undefined — 조회 모드만) */
+  onMode?: (mode: ErdMode) => void;
   modelSelect: ReactNode;
 }) {
-  const { user, canView } = useAuth();
+  const { user, canView, approvalAvailable } = useAuth();
+  const editing = mode === 'edit';
+  const canvas = useRef<HTMLDivElement>(null);
   const dialog = useDialog();
   const flow = useReactFlow<EntityNodeType, RelationshipEdgeType>();
   const openEntityDetail = useEntityDetail();
@@ -279,6 +318,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
       used.set(key, index + 1);
       return index;
     };
+    const pair = (r: LogicalRelationship) => `pair:${Math.min(r.sourceEntityId, r.targetEntityId)}:${Math.max(r.sourceEntityId, r.targetEntityId)}`;
     return (graph.data?.relationships ?? []).map((relationship) => {
     const self = relationship.sourceEntityId === relationship.targetEntityId;
     const sourceHandle = self ? HANDLE.selfOut : HANDLE.out;
@@ -296,15 +336,18 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
       // 선택한 엔터티에 걸린 관계(또는 선택한 관계)는 굵기와 색으로 함께 강조한다
       style: { stroke: highlighted ? 'var(--gh-accent)' : 'var(--gh-fg-muted)', strokeDasharray: relationship.isIdentifying ? undefined : '6 4', strokeWidth: highlighted ? 2.5 : 1.25 },
       zIndex: highlighted ? 1 : 0, // 강조한 선이 다른 선 위에 그려지게
+      // 선 끝 표기 : 출발 쪽 = 출발 엔터티의 참여 수, 도착 쪽 = 도착 엔터티의 참여 수
+      markerStart: endMarker(relationship.sourceMin, relationship.sourceMax),
+      markerEnd: endMarker(relationship.targetMin, relationship.targetMax),
       data: {
-        relationship, selected: highlighted,
+        relationship, selected: highlighted, parallel: slot(pair(relationship)),
         sourceSlot: slot(`${relationship.sourceEntityId}:${sourceHandle}`), targetSlot: slot(`${relationship.targetEntityId}:${targetHandle}`),
       },
     };
     });
   }, [graph.data, selectedId, selectedRelationship]);
 
-  const displayNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedId })), [nodes, selectedId]);
+  const displayNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedId, data: { ...n.data, connectable: editing } })), [nodes, selectedId, editing]);
 
   const focus = (id: string) => {
     setSelectedId(id);
@@ -357,6 +400,128 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
     }
   }
 
+  // ------------------------------------------------------------------ 편집 (M-8 1차 : 엔터티·속성)
+  // 모델 데이터는 논리 모델 관리와 같은 API 로 바로 저장하고, 성공한 뒤 ERD 를 다시 조회한다 (실패하면 공통 알림만 뜨고 화면은 그대로다).
+  // 배치는 건드리지 않는다 — 다시 조회해도 기존 노드의 위치는 positions 에서 그대로 온다.
+  const refresh = () => graph.refetch();
+
+  const openDetail = (entityId: number, initialTab?: EntityDetailTab) =>
+    openEntityDetail(entityId, { onChanged: () => void refresh(), onNavigate: onLeave, readOnly: !editing, initialTab });
+
+  /** 새 엔터티 : 보고 있는 화면 가운데에서 기존 노드와 겹치지 않는 자리에 두고 선택·포커스한다. 위치는 [배치 저장] 을 눌러야 저장된다 */
+  const placeNewEntity = async (entityId: number) => {
+    const id = String(entityId);
+    const rect = canvas.current?.getBoundingClientRect();
+    const center = rect ? flow.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 0, y: 0 };
+    const size = { width: NODE_WIDTH, height: nodeHeight(0) };
+    const position = findFreePosition({ x: Math.round(center.x - size.width / 2), y: Math.round(center.y - size.height / 2) }, size,
+      nodes.map((n) => ({ ...n.position, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) })));
+    positions.current.set(id, position);
+    focusRequest.current = id;
+    setDirty(true);
+    setMessage(t('엔터티를 추가했습니다. 새 엔터티의 위치는 [배치 저장] 을 눌러야 저장됩니다.'));
+    await refresh();
+  };
+
+  const addEntity = () => {
+    dialog.open({
+      title: t('엔터티 등록'),
+      content: ({ close }: DialogControls) => <EntityForm modelId={modelId} onSaved={(entityId) => { close(); void placeNewEntity(entityId); }} />,
+    });
+  };
+
+  const removeEntity = (entity: GraphEntity) => {
+    dialog.confirm(t('{0} 엔터티를 삭제하시겠습니까? 속성과 식별자도 함께 삭제됩니다.', entity.name), async () => {
+      // 삭제할 수 없으면(관계·매핑·승인) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다
+      await api(`/api/logical/entity/${entity.id}`, { method: 'DELETE' });
+      positions.current.delete(String(entity.id));
+      setSelectedId(null);
+      setMessage(t('엔터티를 삭제했습니다.'));
+      await refresh();
+    });
+  };
+
+  const openAttributeForm = (entity: GraphEntity, attribute?: GraphAttribute) => {
+    const open = (detail?: LogicalEntity) => dialog.open({
+      title: attribute ? t('속성 수정') : t('속성 추가'),
+      className: 'dialog-wide',
+      content: ({ close }: DialogControls) => (
+        <AttributeForm entityId={entity.id} attribute={detail?.attributes.find((a) => a.id === attribute?.id)} onSaved={() => { close(); void refresh(); }} />
+      ),
+    });
+    // 수정은 설명까지 포함한 최신 값을 받아 연다 (ERD 조회에는 설명이 없다)
+    if (attribute) void api<LogicalEntity>(`/api/logical/entity/${entity.id}`).then(open);
+    else open();
+  };
+
+  const removeAttribute = (attribute: GraphAttribute) => {
+    dialog.confirm(t('{0} 속성을 삭제하시겠습니까?', attribute.name), async () => {
+      await api(`/api/logical/attribute/${attribute.id}`, { method: 'DELETE' });
+      await refresh();
+    });
+  };
+
+  /** 순서 변경 : 엔터티의 속성 ID 전체를 새 순서로 보낸다 (엔터티 상세와 같은 API) */
+  const moveAttribute = async (entity: GraphEntity, index: number, delta: number) => {
+    const ids = entity.attributes.map((a) => a.id);
+    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: ids });
+    await refresh();
+  };
+
+  // ------------------------------------------------------------------ 편집 (M-8 2차 : 관계·식별자)
+  // 연결점을 잇는 것은 관계 등록의 시작일 뿐이다. 화면에 선을 추가하지 않고 관계 폼을 열며, 저장에 성공해 다시 조회한 뒤에야 선이 생긴다.
+  const openRelationshipForm = (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
+    const entities = graph.data?.entities ?? [];
+    if (!entities.length) return;
+    dialog.open({
+      title: relationship ? t('관계 수정') : t('관계 등록'),
+      className: 'dialog-wide',
+      content: ({ close }: DialogControls) => (
+        <RelationshipForm modelId={modelId} entities={entities} relationship={relationship} initial={initial}
+          onSaved={(saved) => {
+            close();
+            setSelectedRelationship(saved.id);
+            setSelectedId(null);
+            void refresh();
+          }} />
+      ),
+    });
+  };
+
+  const removeRelationship = (relationship: LogicalRelationship) => {
+    dialog.confirm(t('{0} 관계를 삭제하시겠습니까? (출발 : {1}, 도착 : {2}) 엔터티·속성·식별자는 바뀌지 않습니다.', relationLabel(relationship), relationship.sourceEntityName, relationship.targetEntityName), async () => {
+      await api(`/api/logical/relationship/${relationship.id}`, { method: 'DELETE' });
+      setSelectedRelationship(null);
+      setMessage(t('관계를 삭제했습니다.'));
+      await refresh();
+    });
+  };
+
+  const toggleRelationshipApproval = (relationship: LogicalRelationship) => {
+    const approved = !!relationship.isApproval;
+    dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
+      await api(`/api/logical/relationship/${relationship.id}/approval/${!approved}`, { method: 'PATCH' });
+      await refresh();
+    });
+  };
+
+  const openIdentifierForm = (detail: LogicalEntity, identifier?: LogicalIdentifier) => {
+    if (!detail.attributes.length) return dialog.alert(t('속성을 먼저 등록해주세요.'));
+    dialog.open({
+      title: identifier ? t('식별자 수정') : t('식별자 추가'),
+      className: 'dialog-wide',
+      content: ({ close }: DialogControls) => <IdentifierForm entity={detail} identifier={identifier} onSaved={() => { close(); void refresh(); }} />,
+    });
+  };
+
+  const removeIdentifier = (identifier: LogicalIdentifier) => {
+    dialog.confirm(t('{0} 식별자를 삭제하시겠습니까?', identifier.identifierName), async () => {
+      await api(`/api/logical/identifier/${identifier.id}`, { method: 'DELETE' });
+      await refresh();
+    });
+  };
+
   const selected = graph.data?.entities.find((e) => String(e.id) === selectedId);
   const relationship = graph.data?.relationships.find((r) => r.id === selectedRelationship);
   const loading = layout.isFetching || graph.isFetching || arranging;
@@ -365,8 +530,12 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
   return (
     <>
       <div className="grid-header">
-        <div className="search-container">{modelSelect}</div>
+        <div className="search-container">
+          {modelSelect}
+          {onMode && <ErdModeToggle mode={mode} onChange={onMode} />}
+        </div>
         <div className="button-container">
+          {editing && <button type="button" className="grd-add btn btn-primary" disabled={!graph.data} onClick={addEntity}><PlusIcon />{t('엔터티 추가')}</button>}
           <span className="erd-muted">{dirty ? t('저장하지 않은 배치가 있습니다') : t('저장된 배치와 같습니다')}</span>
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('논리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
@@ -380,12 +549,14 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
       <div className="erd-status" role="status">
         <span>{t('엔터티 {0}개', graph.data?.entities.length ?? 0)}</span>
         <span>{t('· 관계 {0}개', graph.data?.relationships.length ?? 0)}</span>
+        {editing && <span className="erd-mode-note">{t('편집 모드 · 엔터티·속성 변경은 바로 저장됩니다. 배치는 [배치 저장] 을 눌러야 저장됩니다.')}</span>}
         {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
       </div>
 
       <div className="erd-workspace">
-        <div className="erd-canvas" aria-label={t('논리 ERD')}>
+        <div className={`erd-canvas${editing ? ' erd-editing' : ''}`} ref={canvas} aria-label={t('논리 ERD')}>
+          <EndMarkers />
           {error && <div className="erd-empty" role="alert">{t('ERD 를 불러오지 못했습니다.')} {error.message}</div>}
           {!error && !loading && graph.data && !graph.data.entities.length && <div className="erd-empty">{t('이 논리 모델에 등록된 엔터티가 없습니다.')}</div>}
           <ReactFlow
@@ -403,10 +574,13 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
               if (moved.length) setDirty(true);
             }}
             onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedRelationship(null); }}
+            onNodeDoubleClick={(_, node) => openDetail(node.data.entity.id)}
             onEdgeClick={(_, edge) => { setSelectedRelationship(edge.data?.relationship.id ?? null); setSelectedId(null); }}
             onPaneClick={() => { setSelectedId(null); setSelectedRelationship(null); }}
             nodesDraggable={!arranging}
-            nodesConnectable={false}
+            // 편집 모드에서만 연결할 수 있다. 연결은 선을 만들지 않고 관계 등록 대화상자를 연다 (취소하거나 저장에 실패하면 아무것도 생기지 않는다)
+            nodesConnectable={editing}
+            onConnect={(connection) => openRelationshipForm(undefined, { sourceId: Number(connection.source), targetId: Number(connection.target) })}
             elementsSelectable={false}
             deleteKeyCode={null}
             onlyRenderVisibleElements
@@ -428,13 +602,31 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, modelS
               graph={graph.data!}
               entity={selected}
               onFocus={() => focus(String(selected.id))}
-              onDetail={() => openEntityDetail(selected.id, { onChanged: () => void graph.refetch(), onNavigate: onLeave })}
+              onDetail={() => openDetail(selected.id)}
+              version={graph.dataUpdatedAt}
+              edit={editing ? {
+                onAddRelationship: () => openRelationshipForm(undefined, { sourceId: selected.id }),
+                onAddIdentifier: (detail) => openIdentifierForm(detail),
+                onEditIdentifier: openIdentifierForm,
+                onDeleteIdentifier: removeIdentifier,
+                // 엔터티 상세와 같은 기준 (서버도 다시 검사한다) : 엔터티 자체는 승인 전에만, 속성은 승인된 엔터티면 승인 권한자만
+                entityEditable: !selected.isApproval,
+                attributeEditable: !selected.isApproval || approvalAvailable,
+                onEditEntity: () => openDetail(selected.id, 'basic'),
+                onDeleteEntity: () => removeEntity(selected),
+                onAddAttribute: () => openAttributeForm(selected),
+                onEditAttribute: (attribute) => openAttributeForm(selected, attribute),
+                onDeleteAttribute: removeAttribute,
+                onMoveAttribute: (index, delta) => void moveAttribute(selected, index, delta),
+              } : undefined}
               onManage={onManage ? () => onManage(selected.id) : undefined}
               onMapping={canView('model-mapping') ? () => onLeave(mappingPath(modelId, selected.id)) : undefined}
               onRelationship={(id) => { setSelectedRelationship(id); setSelectedId(null); }}
             />
           ) : relationship ? (
-            <RelationshipPanel relationship={relationship} onEntity={focus} />
+            <RelationshipPanel relationship={relationship} onEntity={focus}
+              onApproval={approvalAvailable ? () => toggleRelationshipApproval(relationship) : undefined}
+              edit={editing ? { onEdit: () => openRelationshipForm(relationship), onDelete: () => removeRelationship(relationship) } : undefined} />
           ) : (
             <p className="erd-muted">{t('엔터티나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}
@@ -456,7 +648,23 @@ function ApprovalLabel({ value }: { value: boolean | null }) {
   return value ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>;
 }
 
-function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, onRelationship }: {
+/** 편집 모드의 엔터티 패널 동작. 조회 모드에서는 주지 않는다 */
+interface EntityEdit {
+  entityEditable: boolean;
+  attributeEditable: boolean;
+  onEditEntity: () => void;
+  onDeleteEntity: () => void;
+  onAddAttribute: () => void;
+  onEditAttribute: (attribute: GraphAttribute) => void;
+  onDeleteAttribute: (attribute: GraphAttribute) => void;
+  onMoveAttribute: (index: number, delta: number) => void;
+  onAddRelationship: () => void;
+  onAddIdentifier: (detail: LogicalEntity) => void;
+  onEditIdentifier: (detail: LogicalEntity, identifier: LogicalIdentifier) => void;
+  onDeleteIdentifier: (identifier: LogicalIdentifier) => void;
+}
+
+function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
   graph: LogicalGraph;
   entity: GraphEntity;
   onFocus: () => void;
@@ -465,8 +673,21 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
   /** 논리·물리 매핑 화면으로 (메뉴 권한이 없으면 undefined) */
   onMapping?: () => void;
   onRelationship: (relationshipId: number) => void;
+  edit?: EntityEdit;
+  /** ERD 조회 시각 : 바뀌면 식별자 목록도 다시 받는다 */
+  version: number;
 }) {
   const relationships = graph.relationships.filter((r) => r.sourceEntityId === entity.id || r.targetEntityId === entity.id);
+  // 식별자(이름·주/보조·구성 속성 순서)는 ERD 조회에 없어 엔터티 상세와 같은 API 로 받는다
+  const detail = useQuery({
+    queryKey: ['logical-erd-entity', entity.id, version],
+    queryFn: () => api<LogicalEntity>(`/api/logical/entity/${entity.id}`, { silent: true }),
+    gcTime: 0,
+  });
+  const identifiers = detail.data?.identifiers ?? [];
+  const approvedNote = t('승인된 엔터티는 승인취소 후에 변경할 수 있습니다.');
+  const deleteBlocked = !edit ? '' : !edit.entityEditable ? approvedNote
+    : relationships.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : '';
   return (
     <>
       <h3>{entity.name}</h3>
@@ -478,18 +699,58 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
         {onManage && <button type="button" className="btn btn-sm" onClick={onManage}>{t('관리 화면에서 보기')}</button>}
         {onMapping && <button type="button" className="btn btn-sm" onClick={onMapping}>{t('매핑 관리')}</button>}
       </div>
+      {edit && (
+        <div className="erd-toolbar erd-links erd-edit-actions">
+          <button type="button" className="btn btn-sm" onClick={edit.onEditEntity} title={edit.entityEditable ? undefined : approvedNote}>{t('엔터티 수정')}</button>
+          <button type="button" className="btn btn-sm btn-primary" disabled={!edit.attributeEditable} title={edit.attributeEditable ? undefined : approvedNote} onClick={edit.onAddAttribute}>{t('속성 추가')}</button>
+          <button type="button" className="btn btn-sm btn-danger" disabled={!!deleteBlocked} title={deleteBlocked || undefined} onClick={edit.onDeleteEntity}>{t('엔터티 삭제')}</button>
+        </div>
+      )}
 
       <h4>{t('속성 {0}개', entity.attributes.length)}</h4>
       <ul className="erd-list">
-        {entity.attributes.map((a) => (
+        {entity.attributes.map((a, index) => (
           <li key={a.id}>
             <strong>{a.primaryIdentifier ? 'PI ' : a.identifier ? 'AI ' : ''}{a.name}{a.isRequired || a.primaryIdentifier ? ' *' : ''}</strong>
             <small>{[a.termName?.replaceAll('_', ' '), a.domainName, a.dataType].filter(Boolean).join(' · ') || t('연결된 표준 용어가 없습니다.')}</small>
+            {edit?.attributeEditable && (
+              <span className="erd-attribute-actions">
+                <button type="button" className="btn btn-sm" aria-label={t('위로')} title={t('위로')} disabled={index === 0} onClick={() => edit.onMoveAttribute(index, -1)}>↑</button>
+                <button type="button" className="btn btn-sm" aria-label={t('아래로')} title={t('아래로')} disabled={index === entity.attributes.length - 1} onClick={() => edit.onMoveAttribute(index, 1)}>↓</button>
+                <button type="button" className="btn btn-sm" onClick={() => edit.onEditAttribute(a)}>{t('수정')}</button>
+                <button type="button" className="btn btn-sm btn-danger" disabled={a.identifier} onClick={() => edit.onDeleteAttribute(a)}
+                  title={a.identifier ? t('식별자에 포함된 속성은 삭제할 수 없습니다. 식별자에서 먼저 빼주세요.') : undefined}>{t('삭제')}</button>
+              </span>
+            )}
           </li>
         ))}
       </ul>
 
+      <h4>{detail.data ? t('식별자 {0}개', identifiers.length) : t('식별자')}</h4>
+      {edit?.attributeEditable && detail.data && (
+        <div className="erd-toolbar erd-links"><button type="button" className="btn btn-sm" onClick={() => edit.onAddIdentifier(detail.data)}>{t('식별자 추가')}</button></div>
+      )}
+      {detail.isError ? <p className="erd-muted" role="alert">{t('식별자를 불러오지 못했습니다.')}</p> : !detail.data ? <p className="erd-muted">{t('불러오는 중…')}</p> : identifiers.length ? (
+        <ul className="erd-list">
+          {identifiers.map((identifier) => (
+            <li key={identifier.id}>
+              <strong>{identifier.isPrimary ? 'PI ' : 'AI '}{identifier.identifierName}</strong>
+              <small>{identifier.isPrimary ? t('주 식별자') : t('보조 식별자')} · {identifier.attributeNames.join(' + ')}{identifier.attributeIds.length > 1 ? ` · ${t('복합')}` : ''}</small>
+              {edit?.attributeEditable && (
+                <span className="erd-attribute-actions">
+                  <button type="button" className="btn btn-sm" onClick={() => edit.onEditIdentifier(detail.data, identifier)}>{t('수정')}</button>
+                  <button type="button" className="btn btn-sm btn-danger" onClick={() => edit.onDeleteIdentifier(identifier)}>{t('삭제')}</button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="erd-muted">{t('등록된 식별자가 없습니다.')}</p>
+      )}
+
       <h4>{t('관계 {0}개', relationships.length)}</h4>
+      {edit && <div className="erd-toolbar erd-links"><button type="button" className="btn btn-sm" onClick={edit.onAddRelationship}>{t('관계 추가')}</button></div>}
       {relationships.length ? (
         <ul className="erd-list">
           {relationships.map((r) => (
@@ -508,7 +769,15 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
   );
 }
 
-function RelationshipPanel({ relationship: r, onEntity }: { relationship: LogicalRelationship; onEntity: (entityId: string) => void }) {
+function RelationshipPanel({ relationship: r, onEntity, onApproval, edit }: {
+  relationship: LogicalRelationship;
+  onEntity: (entityId: string) => void;
+  /** 승인·승인취소 (승인 권한자만). 편집이 아니라 승인 절차라 조회 모드에서도 보인다 */
+  onApproval?: () => void;
+  /** 편집 모드의 수정·삭제. 승인된 관계는 승인취소 후에 바꿀 수 있다 (서버도 같은 기준) */
+  edit?: { onEdit: () => void; onDelete: () => void };
+}) {
+  const approvedNote = r.isApproval ? t('승인된 관계는 승인취소 후에 변경할 수 있습니다.') : undefined;
   const side = (label: string, entityId: number, name: string, min: number, max: number | null) => (
     <li>
       <button type="button" className="erd-list-button" title={t('엔터티로 이동')} onClick={() => onEntity(String(entityId))}>
@@ -524,10 +793,18 @@ function RelationshipPanel({ relationship: r, onEntity }: { relationship: Logica
         <ApprovalLabel value={r.isApproval} /> <Label variant={r.isIdentifying ? 'accent' : ''}>{r.isIdentifying ? t('식별 관계') : t('비식별 관계')}</Label> <Label>{r.cardinality}</Label>
       </p>
       <p className="erd-muted">{r.relationshipDescription || t('설명 없음')}</p>
+      {(edit || onApproval) && (
+        <div className="erd-toolbar erd-links erd-edit-actions">
+          {edit && <button type="button" className="btn btn-sm" disabled={!!r.isApproval} title={approvedNote} onClick={edit.onEdit}>{t('관계 수정')}</button>}
+          {edit && <button type="button" className="btn btn-sm btn-danger" disabled={!!r.isApproval} title={approvedNote} onClick={edit.onDelete}>{t('관계 삭제')}</button>}
+          {onApproval && <button type="button" className="btn btn-sm" onClick={onApproval}>{r.isApproval ? t('승인취소') : tc('버튼', '승인')}</button>}
+        </div>
+      )}
       <ul className="erd-list">
         {side(t('출발 엔터티'), r.sourceEntityId, r.sourceEntityName, r.sourceMin, r.sourceMax)}
         {side(t('도착 엔터티'), r.targetEntityId, r.targetEntityName, r.targetMin, r.targetMax)}
       </ul>
+      <p className="erd-muted">{t('참여 수 {0} · 식별 여부는 관계에만 저장됩니다. 관계를 바꿔도 엔터티의 식별자는 자동으로 바뀌지 않습니다.', cardinalityText(r))}</p>
     </>
   );
 }

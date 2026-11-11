@@ -2,14 +2,15 @@ import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useDialog, type DialogApi, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridColumn, type GridHandle, type Row } from '../../components/grid/Grid';
-import { BookIcon, DownloadIcon, RowsIcon, TagIcon, UploadIcon } from '@primer/octicons-react';
+import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
+import { Navigate } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, download } from '../../lib/api';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
 import { TermCreateForm } from './TermCreateForm';
-import { standardDomainsColumns, standardWordsColumns, standardTermsColumns } from './columns';
+import { DICTIONARY_PATHS, standardDomainsColumns, standardWordsColumns, standardTermsColumns } from './columns';
 import { t } from '../../lib/i18n';
 
 const DB_DATA_TYPES = [
@@ -29,9 +30,8 @@ const YN_OPTIONS = [
 
 interface TabDef {
   id: DictionaryTable;
-  target: string;
   label: string;
-  icon: ReactNode;
+  description: string;
   name: string; // 알림 문구용 (표준 도메인 / 표준 단어 / 표준 용어)
   title: string; // 다이얼로그 제목용 (표준도메인 / 표준단어 / 표준용어)
   dataUrl: string;
@@ -40,9 +40,9 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'standardDomains', target: 'standard-domains', label: t('표준 도메인'), icon: <RowsIcon />, name: t('표준 도메인'), title: t('표준도메인'), dataUrl: '/api/getStandardDomains', columns: standardDomainsColumns, approvalUrl: '/api/approvalStandardDomains' },
-  { id: 'standardWords', target: 'standard-words', label: t('표준 단어'), icon: <TagIcon />, name: t('표준 단어'), title: t('표준단어'), dataUrl: '/api/getStandardWords', columns: standardWordsColumns, approvalUrl: '/api/approvalStandardWords' },
-  { id: 'standardTerms', target: 'standard-terms', label: t('표준 용어'), icon: <BookIcon />, name: t('표준 용어'), title: t('표준용어'), dataUrl: '/api/getStandardTerms', columns: standardTermsColumns, approvalUrl: '/api/approvalStandardTerms' },
+  { id: 'standardDomains', label: t('표준 도메인'), description: t('프로젝트의 표준 도메인을 관리합니다. 표준 용어의 데이터 타입·길이 기준이 됩니다.'), name: t('표준 도메인'), title: t('표준도메인'), dataUrl: '/api/getStandardDomains', columns: standardDomainsColumns, approvalUrl: '/api/approvalStandardDomains' },
+  { id: 'standardWords', label: t('표준 단어'), description: t('프로젝트의 표준 단어를 관리합니다. 표준 용어와 테이블명을 이루는 단어와 영문약어입니다.'), name: t('표준 단어'), title: t('표준단어'), dataUrl: '/api/getStandardWords', columns: standardWordsColumns, approvalUrl: '/api/approvalStandardWords' },
+  { id: 'standardTerms', label: t('표준 용어'), description: t('프로젝트의 표준 용어를 관리합니다. 표준 단어를 조합해 만들고 표준 도메인을 연결합니다.'), name: t('표준 용어'), title: t('표준용어'), dataUrl: '/api/getStandardTerms', columns: standardTermsColumns, approvalUrl: '/api/approvalStandardTerms' },
 ];
 
 /** 탭별 등록/수정 폼 규칙 (예전 standard_domains.js / standard_words.js / standard_terms.js) */
@@ -86,25 +86,20 @@ const FORM_CONFIG: Record<DictionaryTable, { add?: FormConfig; edit: FormConfig 
   },
 };
 
-/** 데이터 사전 : 표준 도메인 / 단어 / 용어 관리, 엑셀 업로드·다운로드 */
-export function DataDictionaryPage() {
+/**
+ * 데이터 사전 화면 (표준 도메인 / 표준 단어 / 표준 용어 각각 한 화면). 엑셀 템플릿·다운로드·업로드는 세 항목을 함께 다루므로 어느 화면에서나 쓸 수 있다.
+ * 다른 화면에서 넘어온 경우 ?searchColumn=...&searchQuery=... 로 검색한 상태로 연다.
+ */
+export function DictionaryPage({ table }: { table: DictionaryTable }) {
   const dialog = useDialog();
-  // 다른 화면(물리 ERD)에서 넘어온 경우 : ?tab=standardTerms&searchColumn=...&searchQuery=... 로 그 탭을 검색한 상태로 연다
-  const [linked] = useState(() => {
+  const tab = TABS.find((candidate) => candidate.id === table)!;
+  const [initialSearch] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    const tab = TABS.find((candidate) => candidate.id === params.get('tab'));
     const column = params.get('searchColumn');
     const query = params.get('searchQuery');
-    return tab ? { tab: tab.id, search: column && query ? { column, query } : undefined } : null;
+    return column && query ? { column, query } : undefined;
   });
-  const [active, setActive] = useState<DictionaryTable>(linked?.tab ?? 'standardDomains');
-  // 탭은 처음 열 때 그리드를 만들고 이후에는 유지한다 (검색 조건/페이지 유지)
-  const [visited, setVisited] = useState<Set<DictionaryTable>>(new Set([linked?.tab ?? 'standardDomains']));
-  const grids = {
-    standardDomains: useRef<GridHandle>(null),
-    standardWords: useRef<GridHandle>(null),
-    standardTerms: useRef<GridHandle>(null),
-  };
+  const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const openTemplateDialog = () => {
@@ -143,7 +138,7 @@ export function DataDictionaryPage() {
           const response = await api<{ result: string }>('/api/uploadDataDictionaryExcelFile', { method: 'POST', body: formData });
           if (response.result === 'success') {
             dialog.alert(t('업로드가 완료되었습니다.'));
-            Object.values(grids).forEach((g) => g.current?.resetSearch());
+            grid.current?.resetSearch();
           }
         } finally {
           if (fileRef.current) fileRef.current.value = '';
@@ -167,36 +162,20 @@ export function DataDictionaryPage() {
 
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('데이터 사전')} description={t('프로젝트의 표준 도메인·단어·용어를 관리합니다. 엑셀로 한 번에 등록하거나 등록된 항목을 내려받을 수 있습니다.')} />
+      <PageHeader category={t('데이터 사전')} title={tab.label} description={tab.description} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
-
-      <ul className="nav nav-tabs">
-        {TABS.map((tab) => (
-          <li className="nav-item" key={tab.id}>
-            <a href={`#${tab.target}`} className={`nav-link${active === tab.id ? ' active' : ''}`} id={`${tab.target}-tab`}
-              onClick={(e) => {
-                e.preventDefault();
-                setActive(tab.id);
-                setVisited((v) => new Set(v).add(tab.id));
-              }}>
-              {tab.icon}{tab.label}
-            </a>
-          </li>
-        ))}
-      </ul>
-
-      <div className="tab-content mt-3">
-        {TABS.map((tab) => (
-          <div key={tab.id} className={`tab-pane fade${active === tab.id ? ' show active' : ''}`} id={tab.target}>
-            {visited.has(tab.id) && (
-              <DictionaryGrid tab={tab} gridRef={grids[tab.id]} dialog={dialog} extraActions={active === tab.id ? extraActions : undefined}
-                initialSearch={linked?.tab === tab.id ? linked.search : undefined} />
-            )}
-          </div>
-        ))}
-      </div>
+      <DictionaryGrid tab={tab} gridRef={grid} dialog={dialog} extraActions={extraActions} initialSearch={initialSearch} />
     </>
   );
+}
+
+/** 예전 주소 /dataDictionary?tab=standardTerms&searchColumn=… → 해당 화면 (검색 조건 유지). tab 이 없으면 표준 도메인 */
+export function DictionaryRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = TABS.find((candidate) => candidate.id === params.get('tab')) ?? TABS[0];
+  params.delete('tab');
+  const search = params.toString();
+  return <Navigate to={`${DICTIONARY_PATHS[tab.id]}${search ? `?${search}` : ''}`} replace />;
 }
 
 function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {

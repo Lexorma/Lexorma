@@ -91,7 +91,7 @@ export function TableManagePage() {
 
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('테이블 관리')}
+      <PageHeader category={t('물리 모델 관리')} title={t('테이블 관리')}
         description={t('테이블 설계 정보를 등록하고 승인합니다. 테이블명은 한글명(예: 사용_내역_관리)을 승인된 표준 단어의 영문약어로 바꿔 만듭니다. 행을 누르면 테이블 정보를 수정할 수 있습니다.')} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
 

@@ -207,6 +207,16 @@ public enum ErrorCode {
     INVALID_PHYSICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_PHYSICAL_MODEL"),
 
     /**
+     * 논리 모델·엔터티·속성·식별자·관계 정의 오류 (사유는 customMessage)
+     */
+    INVALID_LOGICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_LOGICAL_MODEL"),
+
+    /**
+     * 논리 모델·엔터티·속성·식별자·관계를 찾을 수 없음 (로그인 프로젝트 기준, 대상은 customMessage)
+     */
+    LOGICAL_MODEL_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "LOGICAL_MODEL_IS_NOT_DEFINED"),
+
+    /**
      * ERD 조회 범위·레이아웃 값 오류 (사유는 customMessage)
      */
     INVALID_ERD_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_ERD_REQUEST"),

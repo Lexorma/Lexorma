@@ -8,6 +8,7 @@ import { NoticeMarkdown } from '../notice/NoticeMarkdown';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
 import { useTableDetail } from '../table/tableDetail';
+import { DICTIONARY_PATHS } from '../dictionary/columns';
 import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
@@ -69,7 +70,7 @@ export default function PhysicalErdPage() {
   const { user } = useAuth();
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('물리 ERD')}
+      <PageHeader category={t('물리 모델 관리')} title={t('물리 ERD')}
         description={t('스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회합니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다.')} />
       <ReactFlowProvider key={user?.projectId}>
         <ErdWorkspace />
@@ -368,9 +369,9 @@ function ErdWorkspace() {
       title: t('컬럼 상세 · {0}.{1}', tableName, column.columnName),
       content: ({ close }: DialogControls) => (
         <ColumnDetail column={column} tableName={tableName} isFk={isFk}
-          onDictionary={canView('data-dictionary') ? (tab, searchColumn, value) => {
+          onDictionary={canView('standard-term') ? (tab, searchColumn, value) => {
             close();
-            leave(`/dataDictionary?tab=${tab}&searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
+            leave(`${DICTIONARY_PATHS[tab]}?searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
           } : undefined} />
       ),
     });

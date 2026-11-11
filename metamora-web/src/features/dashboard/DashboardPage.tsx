@@ -38,7 +38,7 @@ export function DashboardPage() {
       </div>
 
       {/* 승인 대기 현황 : 볼 수 있는 화면(메뉴 권한)만 표시 */}
-      {canView('data-management') && (
+      {(canView('standard-domain') || canView('table-manage') || canView('column-manage')) && (
         <>
           <div className="dash-section-head">
             <h2 className="dash-section-title">{t('승인 대기')}</h2>
@@ -46,8 +46,8 @@ export function DashboardPage() {
           </div>
 
           <div className="dash-stats">
-            {canView('data-dictionary') && (
-              <Stat to="/dataDictionary" icon={<NoteIcon />} color="icon-blue" label={t('표준 도메인/단어/용어')} value={data.pendingStandardCount} foot={t('데이터사전 바로가기')} />
+            {canView('standard-domain') && (
+              <Stat to="/standardDomain" icon={<NoteIcon />} color="icon-blue" label={t('표준 도메인/단어/용어')} value={data.pendingStandardCount} foot={t('데이터사전 바로가기')} />
             )}
             {canView('table-manage') && (
               <Stat to="/tableManage" icon={<TableIcon />} color="icon-green" label={t('테이블 관리')} value={data.pendingTableCount} foot={t('테이블 관리 바로가기')} />

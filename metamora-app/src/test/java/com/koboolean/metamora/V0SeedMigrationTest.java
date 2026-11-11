@@ -25,8 +25,22 @@ class V0SeedMigrationTest {
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema)
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            // V0 (스키마 + 초기 데이터) + V1 (META-MORA 논리 모델 예제)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
             var jdbc = new JdbcTemplate(dataSource);
+            // V1 : 물리 모델 예제와 같은 수의 엔터티·속성·관계, PK 가 있는 테이블마다 주 식별자, 고아 행 없음
+            String s = "\"" + schema + "\".";
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_MDL where PRJ_SN = 0 and MDL_NM = 'META-MORA'", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0", Integer.class)).isPositive();
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ATRB", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0", Integer.class));
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_REL", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_REL where PRJ_SN = 0", Integer.class));
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_IDNTFR_ATRB", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0 and PK_YN = true", Integer.class));
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ATRB where STD_TRM_SN is null", Integer.class))
+                    .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0 and STD_TRM_SN is null", Integer.class));
             String terms = "\"" + schema + "\".TB_STD_TRM";
             String domains = "\"" + schema + "\".TB_STD_DMN";
             assertThat(jdbc.queryForList("select t.TRM_NM || ':' || d.DMN_NM from " + terms + " t join " + domains
@@ -63,7 +77,7 @@ class V0SeedMigrationTest {
                     : "nextval('" + schema + ".SQ_PST')";
             assertThat(jdbc.queryForObject("select " + nextPostId, Long.class)).isEqualTo(51L);
 
-            // 재시작과 동일하게 별도 Flyway 인스턴스에서도 V0는 재실행되지 않는다.
+            // 재시작과 동일하게 별도 Flyway 인스턴스에서도 V0·V1 은 재실행되지 않는다.
             Flyway restarted = Flyway.configure().dataSource(dataSource).schemas(schema)
                     .locations("classpath:db/migration/" + vendor).load();
             assertThat(restarted.migrate().migrationsExecuted).isZero();

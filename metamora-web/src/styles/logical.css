@@ -1,0 +1,27 @@
+/* 논리 모델 관리·논리 ERD (features/logical). 색은 --gh-* 토큰만 써서 다크 모드를 따른다 */
+.logical-empty { padding: 24px 16px; color: var(--gh-fg-muted); background: var(--gh-canvas-subtle); border: 1px solid var(--gh-border); border-radius: 6px; }
+.logical-actions { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.logical-link { padding: 0; border: 0; background: none; color: var(--gh-accent); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.logical-link:hover, .logical-link:focus-visible { text-decoration: underline; }
+
+/* 엔터티 상세 대화상자 */
+.logical-detail-body { min-height: 220px; padding: 12px 0; }
+.logical-tab-actions { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.logical-form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+@media (max-width: 600px) { .logical-form-pair { grid-template-columns: minmax(0, 1fr); } }
+.logical-term { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.logical-term-search { display: flex; gap: 8px; }
+.logical-term-results { max-height: 200px; margin: 8px 0 0; padding: 0; overflow-y: auto; list-style: none; border: 1px solid var(--gh-border); border-radius: 6px; }
+.logical-term-results button { display: block; width: 100%; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--gh-border-muted); background: none; color: var(--gh-fg); font: inherit; text-align: left; cursor: pointer; }
+.logical-term-results button:hover, .logical-term-results button:focus-visible { background: var(--gh-hover); }
+.logical-term-results small { display: block; color: var(--gh-fg-muted); }
+.logical-order-list { margin: 0 0 8px; padding-left: 24px; }
+.logical-order-list li { padding: 4px 0; }
+.logical-order-list li > span:first-child { display: inline-block; min-width: 160px; margin-right: 8px; }
+
+/* 논리 ERD : 엔터티·속성 이름은 업무 용어라 고정폭 글꼴을 쓰지 않는다 (노드 크기는 물리 ERD 와 같다) */
+.erd-table header strong.logical-entity-name, .erd-column span.logical-attribute-name { font-family: inherit; }
+.logical-edge-label { position: absolute; padding: 0 3px; border-radius: 3px; background: var(--gh-canvas-subtle); color: var(--gh-fg); font-family: var(--gh-mono); font-size: 11px; line-height: 16px; white-space: nowrap; pointer-events: none; }
+.logical-edge-name { background: var(--gh-canvas); border: 1px solid var(--gh-border); color: var(--gh-fg-muted); font-family: inherit; }
+.logical-edge-name.selected { border-color: var(--gh-accent); color: var(--gh-accent); }
+.erd-legend b { color: var(--gh-accent); font-size: 11px; }

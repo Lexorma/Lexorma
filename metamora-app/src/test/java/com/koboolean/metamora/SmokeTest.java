@@ -525,6 +525,81 @@ class SmokeTest {
         assertThat(get("/api/auth/me", true).body()).contains("\"standardization-quality\":true");
     }
 
+    @Test
+    @Order(20)
+    @DisplayName("M-6 논리 모델 API : 모델 → 엔터티 → 속성(표준 용어) → 식별자 → 관계 → 논리 ERD, 오류 코드, 삭제 순서")
+    void logicalModel() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        String name = "smoke-" + UUID.randomUUID().toString().substring(0, 8);
+
+        HttpResponse<String> created = postJson("/api/logical/model", "{\"modelName\":\"" + name + "\",\"modelDescription\":\"스모크\"}");
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+        long modelId = mapper.readTree(created.body()).path("id").asLong();
+        assertThat(postJson("/api/logical/model", "{\"modelName\":\"" + name.toUpperCase() + "\"}").body()).contains("SAVED_DATA_EXISTS");
+        assertThat(get("/api/logical/model", true).body()).contains(name);
+        assertThat(get("/api/logical/model/" + modelId, true).body()).contains("스모크");
+
+        long entityId = mapper.readTree(postJson("/api/logical/entity", "{\"modelId\":" + modelId + ",\"entityName\":\"계정\"}").body()).path("id").asLong();
+        // V0 예제의 표준 용어 1 (계정_일련번호) 을 연결한다 : 도메인이 용어를 거쳐 내려온다
+        var attribute = mapper.readTree(postJson("/api/logical/attribute", "{\"entityId\":" + entityId + ",\"attributeName\":\"계정번호\",\"isRequired\":true,\"termId\":1}").body());
+        assertThat(attribute.path("termName").asString()).isEqualTo("계정_일련번호");
+        assertThat(attribute.path("domainName").asString()).isNotBlank();
+        long attributeId = attribute.path("id").asLong();
+        long identifierId = mapper.readTree(postJson("/api/logical/identifier",
+                "{\"entityId\":" + entityId + ",\"identifierName\":\"계정 식별자\",\"isPrimary\":true,\"attributeIds\":[" + attributeId + "]}").body()).path("id").asLong();
+        var relationship = mapper.readTree(postJson("/api/logical/relationship", "{\"modelId\":" + modelId + ",\"relationshipName\":\"추천\",\"sourceEntityId\":" + entityId
+                + ",\"targetEntityId\":" + entityId + ",\"sourceMin\":0,\"sourceMax\":1,\"targetMin\":0}").body());
+        assertThat(relationship.path("cardinality").asString()).isEqualTo("1:N");
+        long relationshipId = relationship.path("id").asLong();
+
+        var graph = mapper.readTree(get("/api/logical/model/" + modelId + "/erd", true).body());
+        assertThat(graph.path("entities").size()).isEqualTo(1);
+        assertThat(graph.path("entities").get(0).path("attributes").get(0).path("primaryIdentifier").asBoolean()).isTrue();
+        assertThat(graph.path("relationships").size()).isEqualTo(1);
+        assertThat(get("/api/logical/entity/" + entityId, true).body()).contains("계정 식별자");
+        assertThat(get("/api/logical/model/" + modelId + "/entity", true).body()).contains("계정");
+        assertThat(get("/api/logical/entity/" + entityId + "/attribute", true).body()).contains("계정번호");
+        assertThat(get("/api/logical/entity/" + entityId + "/identifier", true).body()).contains("계정 식별자");
+        assertThat(get("/api/logical/model/" + modelId + "/relationship", true).body()).contains("추천");
+
+        // M-6 2차 : 내 논리 ERD 배치 (모델별) 저장 → 조회, 오래된 version 은 409, 메뉴 권한
+        String layoutUrl = "/api/logical/model/" + modelId + "/erd/layout";
+        assertThat(get(layoutUrl, true).body()).contains("\"version\":null");
+        HttpResponse<String> layoutSaved = putJson(layoutUrl, "{\"version\":null,\"nodes\":{\"" + entityId + "\":{\"x\":12.5,\"y\":-3}},\"viewport\":{\"x\":0,\"y\":0,\"zoom\":1}}");
+        assertThat(layoutSaved.statusCode()).as(layoutSaved.body()).isEqualTo(200);
+        assertThat(get(layoutUrl, true).body()).contains("\"" + entityId + "\":{\"x\":12.5,\"y\":-3.0}");
+        HttpResponse<String> layoutStale = putJson(layoutUrl, "{\"version\":null,\"nodes\":{},\"viewport\":{\"x\":0,\"y\":0,\"zoom\":1}}");
+        assertThat(layoutStale.statusCode()).isEqualTo(409);
+        assertThat(layoutStale.body()).contains("ERD_LAYOUT_CONFLICT");
+        assertThat(get("/api/auth/me", true).body())
+                .contains("\"logical-model\":true", "\"logical-erd\":true", "\"logical-model-edit\":true", "\"logical-modeling\":true", "\"physical-modeling\":true")
+                .contains("\"data-dictionary\":true", "\"standard-domain\":true", "\"standard-word\":true", "\"standard-term\":true", "\"data-quality\":true")
+                .doesNotContain("data-management", "data-modeling", "operation-modeling");
+
+        // 오류 : 400 + 코드
+        assertThat(get("/api/logical/model/999999999/erd", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(postJson("/api/logical/entity", "{\"modelId\":" + modelId + ",\"entityName\":\" \"}").body()).contains("INVALID_LOGICAL_MODEL");
+        // 관리자(승인 권한자)가 등록한 엔터티·관계는 바로 승인된다 → 승인 취소 전에는 지울 수 없다
+        assertThat(get("/api/logical/entity/" + entityId, true).body()).contains("\"isApproval\":true");
+        assertThat(relationship.path("isApproval").asBoolean()).isTrue();
+        assertThat(delete("/api/logical/entity/" + entityId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
+        assertThat(delete("/api/logical/relationship/" + relationshipId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
+        assertThat(patch("/api/logical/entity/" + entityId + "/approval/false").statusCode()).isEqualTo(200);
+        assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false").statusCode()).isEqualTo(200);
+        HttpResponse<String> blocked = delete("/api/logical/entity/" + entityId);
+        assertThat(blocked.statusCode()).isEqualTo(400);
+        assertThat(blocked.body()).contains("RELATION_EXISTS");
+        assertThat(delete("/api/logical/attribute/" + attributeId).body()).contains("RELATION_EXISTS");
+        assertThat(delete("/api/logical/model/" + modelId).body()).contains("RELATION_EXISTS");
+
+        // 정리 : 관계 → 식별자 → 엔터티(속성 포함) → 모델
+        assertThat(delete("/api/logical/relationship/" + relationshipId).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/identifier/" + identifierId).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/entity/" + entityId).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/model/" + modelId).statusCode()).isEqualTo(200);
+        assertThat(get("/api/logical/model", true).body()).doesNotContain(name);
+    }
+
     /** 화면의 그리드 컬럼 정의(metamora-web 의 features 별 columns.ts) → 그리드 데이터 API */
     private static final Map<String, String> GRID_DATA_URLS = Map.ofEntries(
             // 사용 현황 (V0 예제 : 표준 용어 1, 표준 단어 12)
@@ -805,6 +880,23 @@ class SmokeTest {
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("X-XSRF-TOKEN", csrfToken())
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> putJson(String path, String json) throws IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(uri(path))
+                .header("Content-Type", "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-XSRF-TOKEN", csrfToken())
+                .PUT(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> patch(String path) throws IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(uri(path))
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-XSRF-TOKEN", csrfToken())
+                .method("PATCH", HttpRequest.BodyPublishers.noBody())
                 .build(), HttpResponse.BodyHandlers.ofString());
     }
 

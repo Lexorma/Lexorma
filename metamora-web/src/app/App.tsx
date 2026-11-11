@@ -16,7 +16,8 @@ import { HelpPage } from '../features/help/HelpPage';
 import { UserManagePage } from '../features/system/UserManagePage';
 import { ProjectManagePage } from '../features/system/ProjectManagePage';
 import { SystemLogPage } from '../features/system/SystemLogPage';
-import { DataDictionaryPage } from '../features/dictionary/DataDictionaryPage';
+import { LogicalModelPage } from '../features/logical/LogicalModelPage';
+import { DictionaryPage, DictionaryRedirect } from '../features/dictionary/DataDictionaryPage';
 import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
@@ -24,6 +25,7 @@ import { StandardizationQualityPage } from '../features/quality/StandardizationQ
 import { t } from '../lib/i18n';
 
 const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
+const LogicalErdPage = lazy(() => import('../features/logical/LogicalErdPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,7 +90,13 @@ export function App() {
                 <Route path="/userManage" element={<RequireMenu menuId="user-manage"><UserManagePage /></RequireMenu>} />
                 <Route path="/projectManage" element={<RequireMenu menuId="project-manage"><ProjectManagePage /></RequireMenu>} />
                 <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
-                <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DataDictionaryPage /></RequireMenu>} />
+                <Route path="/standardDomain" element={<RequireMenu menuId="standard-domain"><DictionaryPage key="standardDomains" table="standardDomains" /></RequireMenu>} />
+                <Route path="/standardWord" element={<RequireMenu menuId="standard-word"><DictionaryPage key="standardWords" table="standardWords" /></RequireMenu>} />
+                <Route path="/standardTerm" element={<RequireMenu menuId="standard-term"><DictionaryPage key="standardTerms" table="standardTerms" /></RequireMenu>} />
+                {/* 예전 주소 (/dataDictionary?tab=…) : 탭에 해당하는 화면으로 옮긴다 */}
+                <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DictionaryRedirect /></RequireMenu>} />
+                <Route path="/logicalModel" element={<RequireMenu menuId="logical-model"><LogicalModelPage /></RequireMenu>} />
+                <Route path="/logicalErd" element={<RequireMenu menuId="logical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><LogicalErdPage /></Suspense></RequireMenu>} />
                 <Route path="/schemaManage" element={<RequireMenu menuId="schema-manage"><SchemaManagePage /></RequireMenu>} />
                 <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
                 <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />

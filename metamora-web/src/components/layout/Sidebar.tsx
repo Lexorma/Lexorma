@@ -2,15 +2,17 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, type MenuId } from '../../hooks/useAuth';
 // 사이드바 아이콘은 Lucide (그 외 화면은 GitHub Octicons - @primer/octicons-react)
-import {Bell, ChevronDown, Database, LayoutGrid, Menu, SlidersHorizontal, Workflow} from 'lucide-react';
-import { MENU_GROUPS } from './menu';
+import {Bell, BookOpen, ChevronDown, ClipboardCheck, Database, LayoutGrid, Menu, SlidersHorizontal, Workflow} from 'lucide-react';
+import { isGroup, MENU, type MenuGroup } from './menu';
 import { t } from '../../lib/i18n';
 
-const GROUP_ICONS: Partial<Record<MenuId, ReactNode>> = {
+const MENU_ICONS: Partial<Record<MenuId, ReactNode>> = {
   'operation-management': <Bell className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'system-management': <SlidersHorizontal className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
-  'data-management': <Database className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
-  'data-modeling': <Workflow className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'data-dictionary': <BookOpen className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'logical-modeling': <Workflow className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'physical-modeling': <Database className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'data-quality': <ClipboardCheck className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
 };
 
 function isCollapsed() {
@@ -34,7 +36,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
   const [collapsed, setCollapsed] = useState(isCollapsed);
 
   // 현재 화면이 속한 메뉴 그룹을 연다
-  const currentGroup = MENU_GROUPS.find((g) => g.items.some((item) => location.pathname === item.path))?.id ?? null;
+  const currentGroup = MENU.filter(isGroup).find((g) => g.items.some((item) => location.pathname === item.path))?.id ?? null;
   const [openGroup, setOpenGroup] = useState<MenuId | null>(currentGroup);
   useEffect(() => {
     if (currentGroup) setOpenGroup(currentGroup);
@@ -73,7 +75,17 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
           </NavLink>
         )}
 
-        {MENU_GROUPS.filter((group) => canView(group.id)).map((group) => {
+        {MENU.filter((entry) => canView(entry.id)).map((entry) => {
+          // 하위 메뉴가 없는 1뎁스 메뉴 : 대시보드처럼 바로 이동한다
+          if (!isGroup(entry)) {
+            return (
+              <NavLink key={entry.id} to={entry.path} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} title={entry.label}>
+                {MENU_ICONS[entry.id]}
+                <span className="sidebar-label">{entry.label}</span>
+              </NavLink>
+            );
+          }
+          const group: MenuGroup = entry;
           const open = openGroup === group.id && !collapsed;
           return (
             <Fragment key={group.id}>
@@ -87,7 +99,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
                   toggleGroup(group.id);
                 }}
               >
-                {GROUP_ICONS[group.id]}
+                {MENU_ICONS[group.id]}
                 <span className="sidebar-label">{group.label}</span>
                 <ChevronDown className="sidebar-chevron" aria-hidden />
               </a>

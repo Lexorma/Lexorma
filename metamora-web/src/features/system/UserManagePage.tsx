@@ -7,6 +7,7 @@ import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
+import { roleLabel } from '../../lib/roles';
 
 /** 사용자 관리 : 권한 변경 / 비밀번호 초기화 / 삭제 */
 export function UserManagePage() {
@@ -62,7 +63,7 @@ export function UserManagePage() {
           renderCell={(field, row) => {
             if (field === 'username') return <Mono>{row.username}</Mono>;
             if (field === 'name') return <User name={row.name} />;
-            if (field === 'roleName' && row.roleName) return <Label variant="done">{row.roleName}</Label>;
+            if (field === 'roleName' && row.roleName) return <Label variant="done">{roleLabel(row.role || row.roleName)}</Label>;
             return undefined;
           }}
         />

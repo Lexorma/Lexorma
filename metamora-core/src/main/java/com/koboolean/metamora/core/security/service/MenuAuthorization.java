@@ -45,16 +45,25 @@ public class MenuAuthorization {
             // 운영 관리
             Map.entry("notice", "NOT_APPROVE"),
 
-            // 데이터 관리
-            Map.entry("data-dictionary", "VIEWER"),
+            // 데이터 사전
+            Map.entry("standard-domain", "VIEWER"),
+            Map.entry("standard-word", "VIEWER"),
+            Map.entry("standard-term", "VIEWER"),
+
+            // 논리 모델 관리
+            Map.entry("logical-model", "VIEWER"),
+            Map.entry("logical-erd", "VIEWER"),
+            // 화면 메뉴가 아니라 논리 모델 변경 버튼(등록·수정·삭제) 노출용 : 논리 모델 변경 API 의 권한과 같다
+            Map.entry("logical-model-edit", "USER"),
+
+            // 물리 모델 관리
             Map.entry("schema-manage", "VIEWER"),
             Map.entry("table-manage", "VIEWER"),
-            Map.entry("physical-erd", "VIEWER"),
             Map.entry("column-manage", "USER"),
-            Map.entry("standardization-quality", "VIEWER"),
+            Map.entry("physical-erd", "VIEWER"),
 
-            // 데이터 모델링 (독립 메뉴)
-            Map.entry("data-modeling", "VIEWER")
+            // 데이터 품질 관리
+            Map.entry("standardization-quality", "VIEWER")
     );
 
     /**
@@ -68,11 +77,17 @@ public class MenuAuthorization {
             "operation-management",
             new String[]{"notice"},
 
-            "data-management",
-            new String[]{"data-dictionary", "schema-manage", "table-manage", "column-manage", "standardization-quality"},
+            "data-dictionary",
+            new String[]{"standard-domain", "standard-word", "standard-term"},
 
-            "operation-modeling",
-            new String[]{"physical-erd"}
+            "logical-modeling",
+            new String[]{"logical-model", "logical-erd"},
+
+            "data-quality",
+            new String[]{"standardization-quality"},
+
+            "physical-modeling",
+            new String[]{"schema-manage", "table-manage", "column-manage", "physical-erd"}
     );
 
     private final RoleHierarchy roleHierarchy;

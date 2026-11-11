@@ -36,7 +36,7 @@ export function SchemaManagePage() {
 
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('스키마 관리')}
+      <PageHeader category={t('물리 모델 관리')} title={t('스키마 관리')}
         description={t('프로젝트의 스키마를 관리합니다. 테이블은 하나의 스키마에 속하며, 기본 스키마의 테이블은 DDL 에 스키마명을 붙이지 않습니다.')} />
 
       <div className="grid-header">

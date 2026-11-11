@@ -236,5 +236,34 @@ final class EnglishMessages {
 
                 Thank you.
                 **Metamora**""");
+
+        // ---------------------------------------------------------------- 논리 모델
+        add("{0} 에 엔터티가 있습니다.", "{0} contains entities.");
+        add("관계 {0} 에서 사용 중인 엔터티입니다.", "The entity is used by relationship {0}.");
+        add("식별자 {0} 에서 사용 중인 속성입니다.", "The attribute is used by identifier {0}.");
+        add("논리 속성에서 사용 중인 표준 용어입니다 : {0}", "The standard term is used by a logical attribute: {0}");
+        add("엔터티의 속성 전체를 한 번씩 지정해주세요.", "Specify every attribute of the entity exactly once.");
+        add("주 식별자는 엔터티에 하나만 둘 수 있습니다. (현재 주 식별자 : {0})", "An entity can have only one primary identifier. (Current primary identifier: {0})");
+        add("식별자 속성을 1개 이상 지정해주세요.", "Specify at least one identifier attribute.");
+        add("같은 속성을 두 번 지정할 수 없습니다.", "The same attribute cannot be specified twice.");
+        add("식별자에는 같은 엔터티의 속성만 넣을 수 있습니다.", "An identifier can only contain attributes of its own entity.");
+        add("관계의 엔터티는 같은 논리 모델에 있어야 합니다.", "Both entities of a relationship must belong to the same logical model.");
+        add("{0}을(를) 입력해주세요.", "Enter the {0}.");
+        add("{0}은(는) {1}자까지 입력할 수 있습니다.", "The {0} can be up to {1} characters long.");
+        add("최소 참여 수는 0 이상이어야 합니다.", "The minimum participation must be 0 or greater.");
+        add("최대 참여 수는 1 이상이고 최소 참여 수보다 작을 수 없습니다.", "The maximum participation must be at least 1 and not less than the minimum.");
+        add("{0}을(를) 찾을 수 없습니다.", "The {0} could not be found.");
+        add("모델명", "model name");
+        add("엔터티명", "entity name");
+        add("속성명", "attribute name");
+        add("식별자명", "identifier name");
+        add("관계명", "relationship name");
+        add("데이터 유형", "data type");
+        add("설명", "description");
+        add("논리 모델", "logical model");
+        add("엔터티", "entity");
+        add("속성", "attribute");
+        add("식별자", "identifier");
+        add("관계", "relationship");
     }
 }

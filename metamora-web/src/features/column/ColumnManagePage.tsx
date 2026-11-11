@@ -167,7 +167,7 @@ export function ColumnManagePage() {
 
   return (
     <>
-      <PageHeader category={t('데이터 관리')} title={t('컬럼 관리')} description={t('테이블별 컬럼 정보를 표준 용어 기준으로 등록하고 승인합니다.')} />
+      <PageHeader category={t('물리 모델 관리')} title={t('컬럼 관리')} description={t('테이블별 컬럼 정보를 표준 용어 기준으로 등록하고 승인합니다.')} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
 
       <div id="gridContainer">

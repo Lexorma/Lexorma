@@ -30,19 +30,20 @@ export function cancelLayout() {
   cancelCurrent?.();
 }
 
-export async function runLayout(nodes: LayoutNode[], edges: LayoutEdge[]): Promise<Record<string, XY>> {
+/** layerGap : 관계로 이어진 노드 사이 간격 (논리 ERD 는 관계선 양 끝에 참여 수를 적어 더 넓게 쓴다) */
+export async function runLayout(nodes: LayoutNode[], edges: LayoutEdge[], layerGap = LAYER_GAP): Promise<Record<string, XY>> {
   cancelCurrent?.();
   const links = edges.filter((e) => e.source !== e.target);
   const linked = new Set(links.flatMap((e) => [e.source, e.target]));
   const connected = nodes.filter((n) => linked.has(n.id));
   const isolated = nodes.filter((n) => !linked.has(n.id));
 
-  const positions = connected.length ? await elkInWorker(connected, links) : {};
+  const positions = connected.length ? await elkInWorker(connected, links, layerGap) : {};
   packIsolated(positions, connected, isolated);
   return positions;
 }
 
-function elkInWorker(nodes: LayoutNode[], edges: LayoutEdge[]): Promise<Record<string, XY>> {
+function elkInWorker(nodes: LayoutNode[], edges: LayoutEdge[], layerGap: number): Promise<Record<string, XY>> {
   return new Promise((resolve, reject) => {
     const elk = new ElkApi({ workerUrl: elkWorkerUrl });
     const stop = (message: string) => {
@@ -58,7 +59,7 @@ function elkInWorker(nodes: LayoutNode[], edges: LayoutEdge[]): Promise<Record<s
         'elk.algorithm': 'layered',
         'elk.direction': 'RIGHT',
         'elk.spacing.nodeNode': String(NODE_GAP),
-        'elk.layered.spacing.nodeNodeBetweenLayers': String(LAYER_GAP),
+        'elk.layered.spacing.nodeNodeBetweenLayers': String(layerGap),
         'elk.separateConnectedComponents': 'true',
       },
       children: nodes.map((n) => ({ id: n.id, width: n.width, height: n.height })),

@@ -76,3 +76,6 @@ export const usageTermColumns: GridColumn[] = [
   { columnName: t('승인여부'), column: 'isApproval', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
   { columnName: t('사용 컬럼'), column: 'columnCount', columnType: 'NUMBER', isSearch: false, isFilter: false, rowType: 'TEXT' },
 ];
+
+/** 데이터 사전 항목별 화면 경로 (다른 화면에서 검색 조건을 붙여 이동할 때 쓴다) */
+export const DICTIONARY_PATHS = { standardDomains: '/standardDomain', standardWords: '/standardWord', standardTerms: '/standardTerm' } as const;

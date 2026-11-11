@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * 프레임워크 업그레이드(Boot 3.5 / 4.x) 시 테스트 자동 설정 모듈 변경의 영향을 받지 않도록
  * MockMvc/TestRestTemplate 대신 JDK HttpClient를 사용한다.
- * 동시 세션이 1개로 제한(maximumSessions(1))되어 있으므로 클래스 단위로 한 번만 로그인하고 종료 시 로그아웃한다.
+ * 동시 세션이 1개로 제한(maximumSessions(1), 나중 로그인 우선)되어 있으므로 클래스 단위로 한 번만 로그인하고 종료 시 로그아웃한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -216,19 +216,31 @@ class SmokeTest {
 
     @Test
     @Order(3)
-    @DisplayName("로그인된 계정은 다른 곳에서 동시에 로그인할 수 없다 (maximumSessions=1, 세션 DB 기준)")
-    void concurrentLoginBlocked() throws Exception {
+    @DisplayName("다른 곳에서 로그인하면 먼저 로그인한 세션이 중복 로그인 안내(401)를 받고 로그아웃된다 (maximumSessions=1, 세션 DB 기준)")
+    void laterLoginExpiresEarlierSession() throws Exception {
         CookieManager otherCookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
         HttpClient other = HttpClient.newBuilder().cookieHandler(otherCookies).followRedirects(HttpClient.Redirect.NEVER).build();
+        String form = "username=" + USERNAME + "&password=" + PASSWORD + "&project_id=" + PROJECT_ID;
 
         HttpResponse<String> login = other.send(HttpRequest.newBuilder(uri("/api/auth/login"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("X-XSRF-TOKEN", readCsrf(other))
-                .POST(HttpRequest.BodyPublishers.ofString("username=" + USERNAME + "&password=" + PASSWORD + "&project_id=" + PROJECT_ID))
+                .POST(HttpRequest.BodyPublishers.ofString(form))
                 .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(login.statusCode()).as(login.body()).isEqualTo(200);
 
-        assertThat(login.statusCode()).isEqualTo(401);
-        assertThat(login.body()).contains("\"code\":\"SESSION_LIMIT_EXCEEDED\"");
+        // 먼저 로그인한 쪽 : 다음 요청에서 안내를 받고, 그 뒤로는 로그인하지 않은 상태다
+        HttpResponse<String> expired = get("/api/selectTable/data?page=0&size=10", true);
+        assertThat(expired.statusCode()).isEqualTo(401);
+        assertThat(expired.body()).contains("\"code\":\"DUPLICATE_LOGIN\"");
+        assertThat(get("/api/auth/me", true).body()).contains("\"authenticated\":false");
+
+        // 나머지 테스트가 쓰는 세션으로 다시 로그인한다 (이번에는 other 쪽이 만료된다)
+        refreshCsrf();
+        assertThat(postForm("/api/auth/login", form).statusCode()).isEqualTo(200);
+        refreshCsrf();
+        HttpResponse<String> otherExpired = other.send(HttpRequest.newBuilder(uri("/api/auth/me")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(otherExpired.body()).contains("\"code\":\"DUPLICATE_LOGIN\"");
     }
 
     @Test
@@ -432,17 +444,100 @@ class SmokeTest {
         assertThat(get("/api/schema", true).body()).doesNotContain(name);
     }
 
+    @Test
+    @Order(20)
+    @DisplayName("M-5 사용 현황 API : 목록의 사용 건수, 용어·도메인 → 컬럼, 단어 → 용어, 조건, 없는 ID")
+    void dictionaryUsage() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+
+        // 목록 3종에 사용 건수가 내려온다 (V0 예제 : 표준 용어 1 을 쓰는 컬럼이 있다)
+        var term = mapper.readTree(get("/api/getStandardTerms/data?page=0&size=1&sort=id,asc", true).body()).path("data").get(0);
+        assertThat(term.path("id").asLong()).isEqualTo(1L);
+        long termUsage = term.path("usageCount").asLong();
+        assertThat(termUsage).isPositive();
+        assertThat(get("/api/getStandardWords/data?page=0&size=1", true).body()).contains("\"usageCount\":");
+        assertThat(get("/api/getStandardDomains/data?page=0&size=1", true).body()).contains("\"usageCount\":");
+
+        // 용어 → 컬럼 : 건수가 목록의 사용 건수와 같고, 이동에 필요한 ID 가 함께 온다
+        var columns = mapper.readTree(get("/api/dictionaryUsage/term/1/data?page=0&size=5", true).body());
+        assertThat(columns.path("recordsTotal").asLong()).isEqualTo(termUsage);
+        var column = columns.path("data").get(0);
+        assertThat(column.path("tableId").asLong()).isPositive();
+        assertThat(column.path("schemaName").asString()).isEqualTo("DEFAULT");
+        assertThat(column.path("termName").asString()).isEqualTo(term.path("commonStandardTermName").asString());
+        long tableId = column.path("tableId").asLong();
+        long schemaId = column.path("schemaId").asLong();
+
+        // 조건 : 스키마(있는 것 / 다른 프로젝트·없는 것), 승인 상태, 검색
+        assertThat(mapper.readTree(get("/api/dictionaryUsage/term/1/data?page=0&size=5&schemaId=" + schemaId, true).body()).path("recordsTotal").asLong()).isEqualTo(termUsage);
+        assertThat(get("/api/dictionaryUsage/term/1/data?page=0&size=5&schemaId=999999999", true).body()).contains("\"recordsTotal\":0");
+        assertThat(get("/api/dictionaryUsage/term/1/data?page=0&size=5&isApproval=false&searchColumn=tableName&searchQuery=TB_", true).statusCode()).isEqualTo(200);
+
+        // 도메인 → 컬럼 (용어를 거친 간접 참조), 단어 → 용어 (용어별 사용 컬럼 수)
+        long domainId = jdbcTemplate.queryForObject("select STD_DMN_SN from TB_STD_TRM where STD_TRM_SN = 1", Long.class);
+        assertThat(mapper.readTree(get("/api/dictionaryUsage/domain/" + domainId + "/data?page=0&size=5", true).body()).path("recordsTotal").asLong())
+                .isGreaterThanOrEqualTo(termUsage);
+        var terms = mapper.readTree(get("/api/dictionaryUsage/word/12/data?page=0&size=100", true).body());
+        assertThat(terms.path("recordsTotal").asLong()).isPositive();
+        assertThat(terms.path("data").get(0).has("columnCount")).isTrue();
+
+        // 없는 표준 항목
+        assertThat(get("/api/dictionaryUsage/term/999999999/data?page=0&size=5", true).body()).contains("NOT_FOUND_TERM_DATA");
+        assertThat(get("/api/dictionaryUsage/domain/999999999/data?page=0&size=5", true).body()).contains("NOT_FOUND_DOMAIN_DATA");
+        assertThat(get("/api/dictionaryUsage/word/999999999/data?page=0&size=5", true).body()).contains("NOT_FOUND_WORD_DATA");
+
+        // 컬럼 관리 이동 : 테이블 ID 로 그 테이블의 컬럼만
+        var tableColumns = mapper.readTree(get("/api/selectColumn/data?page=0&size=100&tableId=" + tableId, true).body()).path("data");
+        assertThat(tableColumns.size()).isPositive();
+        for (var tableColumn : tableColumns) {
+            assertThat(tableColumn.path("tableInfoId").asLong()).isEqualTo(tableId);
+        }
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("M-5 표준화 품질 진단 API : 요약과 목록의 건수가 같고, 유형 조건·잘못된 유형·메뉴 권한")
+    void standardizationQuality() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+
+        var summary = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
+        assertThat(summary.path("totalColumns").asLong()).as("V0 예제 물리 모델").isPositive();
+        long byType = 0;
+        for (var type : Map.of("TERM_NOT_LINKED", "termNotLinked", "COLUMN_NAME_MISMATCH", "columnNameMismatch",
+                "DOMAIN_DEFINITION_MISMATCH", "domainDefinitionMismatch").entrySet()) {
+            var issues = mapper.readTree(get("/api/standardizationQuality/data?page=0&size=5&type=" + type.getKey(), true).body());
+            assertThat(issues.path("recordsTotal").asLong()).as(type.getKey()).isEqualTo(summary.path(type.getValue()).asLong());
+            for (var issue : issues.path("data")) {
+                assertThat(issue.path("type").asString()).isEqualTo(type.getKey());
+                assertThat(issue.path("tableId").asLong()).isPositive();
+                assertThat(issue.path("schemaName").asString()).isEqualTo("DEFAULT");
+            }
+            byType += issues.path("recordsTotal").asLong();
+        }
+        assertThat(mapper.readTree(get("/api/standardizationQuality/data?page=0&size=5", true).body()).path("recordsTotal").asLong()).isEqualTo(byType);
+        assertThat(summary.path("issueColumns").asLong()).isBetween(byType == 0 ? 0L : 1L, Math.min(byType, summary.path("totalColumns").asLong()));
+
+        assertThat(get("/api/standardizationQuality/data?page=0&size=5&schemaId=999999999", true).body()).contains("\"recordsTotal\":0");
+        assertThat(get("/api/standardizationQuality/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/standardizationQuality/data", true).statusCode()).as("page·size 없음").isEqualTo(400);
+        assertThat(get("/api/auth/me", true).body()).contains("\"standardization-quality\":true");
+    }
+
     /** 화면의 그리드 컬럼 정의(metamora-web 의 features 별 columns.ts) → 그리드 데이터 API */
-    private static final Map<String, String> GRID_DATA_URLS = Map.of(
-            "standardTermsColumns", "/api/getStandardTerms",
-            "standardWordsColumns", "/api/getStandardWords",
-            "standardDomainsColumns", "/api/getStandardDomains",
-            "tableColumns", "/api/selectTable",
-            "columnColumns", "/api/selectColumn",
-            "noticeColumns", "/api/selectNotice",
-            "userColumns", "/api/selectUser",
-            "projectColumns", "/api/getProject/" + PROJECT_ID,
-            "systemLogColumns", "/api/getSystemLog");
+    private static final Map<String, String> GRID_DATA_URLS = Map.ofEntries(
+            // 사용 현황 (V0 예제 : 표준 용어 1, 표준 단어 12)
+            Map.entry("usageColumnColumns", "/api/dictionaryUsage/term/1"),
+            Map.entry("usageTermColumns", "/api/dictionaryUsage/word/12"),
+            Map.entry("qualityIssueColumns", "/api/standardizationQuality"),
+            Map.entry("standardTermsColumns", "/api/getStandardTerms"),
+            Map.entry("standardWordsColumns", "/api/getStandardWords"),
+            Map.entry("standardDomainsColumns", "/api/getStandardDomains"),
+            Map.entry("tableColumns", "/api/selectTable"),
+            Map.entry("columnColumns", "/api/selectColumn"),
+            Map.entry("noticeColumns", "/api/selectNotice"),
+            Map.entry("userColumns", "/api/selectUser"),
+            Map.entry("projectColumns", "/api/getProject/" + PROJECT_ID),
+            Map.entry("systemLogColumns", "/api/getSystemLog"));
 
     @Test
     @Order(20)

@@ -4,6 +4,7 @@ import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
 import com.koboolean.metamora.data.dictionary.service.DataDictionaryService;
+import com.koboolean.metamora.data.dictionary.service.DictionaryUsageService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.utils.PageableUtil;
 import com.koboolean.metamora.common.i18n.Messages;
@@ -33,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class DataDictionaryRestController {
 
     private final DataDictionaryService dataDictionaryService;
+    private final DictionaryUsageService dictionaryUsageService;
 
     @Operation(summary = "표준 용어 데이터 조회", description = "표준 용어 데이터를 조회합니다.")
     @PreAuthorize("hasRole('VIEWER')")
@@ -53,6 +55,7 @@ public class DataDictionaryRestController {
     ) {
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
         Page<StandardTermDto> standardTermDataPage = dataDictionaryService.getStandardTermsData(pageable, accountDto, searchColumn, searchQuery);
+        dictionaryUsageService.fillTermUsage(accountDto, standardTermDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardTermDataPage);
     }
 
@@ -75,6 +78,7 @@ public class DataDictionaryRestController {
     ) {
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
         Page<StandardWordDto> standardWordsDataPage = dataDictionaryService.getStandardWordsData(pageable, accountDto, searchColumn, searchQuery);
+        dictionaryUsageService.fillWordUsage(accountDto, standardWordsDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardWordsDataPage);
     }
 
@@ -99,6 +103,7 @@ public class DataDictionaryRestController {
     ) {
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
         Page<StandardDomainDto> standardDomainsDataPage = dataDictionaryService.getStandardDomainsData(pageable, accountDto, searchColumn, searchQuery);
+        dictionaryUsageService.fillDomainUsage(accountDto, standardDomainsDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardDomainsDataPage);
     }
 

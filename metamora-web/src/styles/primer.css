@@ -466,6 +466,38 @@ dialog .form-check-label {
     font-weight: 500;
 }
 
+/* 사용 현황 : 행의 이동 버튼 */
+.dict-usage-links {
+    display: inline-flex;
+    gap: 4px;
+}
+
+/* 테이블 상세 : 사용 현황·품질 진단에서 연 컬럼 강조 */
+dialog .dict-detail-columns tr.is-highlight > td {
+    background: var(--gh-accent-subtle);
+}
+
+/* 표준화 품질 진단 : 요약 카드 (대시보드 dash-stat 을 필터 버튼으로 쓴다) */
+/* dashboard.css 의 .dash-stats(3열)보다 우선해야 한다 */
+.dash-stats.quality-stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.quality-stats .dash-stat {
+    width: 100%;
+    font: inherit;
+    text-align: left;
+}
+.quality-stats button.dash-stat {
+    cursor: pointer;
+}
+.quality-stats button.dash-stat[aria-pressed="true"] {
+    border-color: var(--gh-accent);
+    box-shadow: inset 0 0 0 1px var(--gh-accent);
+}
+@media (max-width: 1012px) {
+    .dash-stats.quality-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* 스키마 관리 : 행의 수정·삭제 버튼 */
 .schema-actions {
     display: flex;

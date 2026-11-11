@@ -26,6 +26,9 @@ public class StandardWordDto {
     private String restrictedWords;
     private String isApprovalYn;
 
+    /** 사용 건수 (목록 조회 전용) : 이 단어를 쓰는 표준 용어 수 */
+    private Long usageCount;
+
     public static StandardWordDto fromEntity(StandardWord entity) {
         return StandardWordDto.builder()
                 .id(entity.getId())

@@ -708,6 +708,19 @@ export const en = {
   '영문 또는 _ 로 시작하고 영문/숫자/_/$ 만 쓸 수 있습니다. (최대 63자) 이름을 바꾸면 소속 테이블의 DDL 접두어에 바로 반영됩니다.':
     'Must start with a letter or _ and contain only letters, numbers, _ and $. (up to 63 characters) Renaming is applied to the DDL prefix of its tables immediately.',
   'ERD 에서 보기': 'View in ERD',
+  '사용 현황': 'Usage',
+  '사용 현황 · {0}': 'Usage · {0}',
+  '사용 현황 보기': 'View usage',
+  '사용 컬럼': 'Columns',
+  '사용 용어': 'Terms',
+  '이 용어를 쓰는 컬럼 보기': 'View the columns that use this term',
+  '이 표준 단어로 만든 표준 용어입니다. 사용 컬럼 수를 누르면 그 용어를 쓰는 컬럼을 볼 수 있습니다.':
+    'Standard terms built from this standard word. Click a column count to see the columns that use the term.',
+  '컬럼은 표준 도메인을 직접 참조하지 않습니다. 이 도메인에 속한 표준 용어를 쓰는 컬럼을 보여 줍니다.':
+    'Columns do not reference a standard domain directly. These are the columns that use a standard term of this domain.',
+  '이 표준 용어를 사용하는 컬럼이 없습니다.': 'No columns use this standard term.',
+  '이 표준 도메인을 사용하는 컬럼이 없습니다.': 'No columns use this standard domain.',
+  '이 표준 단어를 사용하는 표준 용어가 없습니다.': 'No standard terms use this standard word.',
   '테이블 상세': 'Table details',
   '이 테이블을 승인하시겠습니까?': 'Do you want to approve this table?',
   '이 테이블을 승인취소하시겠습니까?': 'Do you want to cancel the approval of this table?',
@@ -720,4 +733,20 @@ export const en = {
   '연결된 표준 용어가 없습니다.': 'No standard term is linked.',
   '컬럼 상세 보기': 'View column details',
   '저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?': 'You have unsaved layout changes. Leave without saving?',
+
+  // ---------------------------------------------------------------- 표준화 품질 진단
+  '표준화 품질 진단': 'Standardization quality',
+  '물리 컬럼이 표준 용어·도메인을 따르는지 진단합니다. 조회만 하며 컬럼이나 표준 항목을 바꾸지 않습니다.': 'Checks whether physical columns follow their standard terms and domains. Read-only: nothing is changed.',
+  '검사 대상 컬럼': 'Columns checked',
+  '문제가 있는 컬럼': 'Columns with issues',
+  '표준 용어 미연결': 'No standard term',
+  '컬럼명 불일치': 'Column name mismatch',
+  '도메인 정의 불일치': 'Domain definition mismatch',
+  '진단 요약을 불러오지 못했습니다.': 'Could not load the diagnosis summary.',
+  '진단 유형': 'Issue type',
+  '실제 값': 'Actual',
+  '기대 값': 'Expected',
+  '문제 설명': 'Description',
+  '진단 결과가 없습니다. 모든 컬럼이 표준을 따르고 있습니다.': 'No issues found. Every column follows the standard.',
+  '조건에 맞는 진단 결과가 없습니다.': 'No issues match the selected conditions.',
 } satisfies Record<string, string>;

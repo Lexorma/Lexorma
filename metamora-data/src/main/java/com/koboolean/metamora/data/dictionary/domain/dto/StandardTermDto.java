@@ -31,6 +31,9 @@ public class StandardTermDto {
     private String synonyms;
     private String isApprovalYn;
 
+    /** 사용 건수 (목록 조회 전용) : 이 용어를 쓰는 물리 컬럼 수 */
+    private Long usageCount;
+
     private String dataType;
 
     public static StandardTermDto fromEntity(StandardTerm entity) {

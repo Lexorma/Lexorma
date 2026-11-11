@@ -38,6 +38,13 @@ final class EnglishMessages {
         // ---------------------------------------------------------------- 데이터 사전
         add("누락된 문자열 : {0}", "Missing word: {0}");
         add("도메인을 찾을 수 없습니다: {0}", "Domain not found: {0}");
+        add("표준 단어를 찾을 수 없습니다.", "The standard word could not be found.");
+        add("표준 용어가 연결되지 않았습니다.", "No standard term is linked.");
+        add("컬럼명이 표준 용어의 영문약어와 다릅니다.", "The column name differs from the abbreviation of its standard term.");
+        add("표준 도메인 정의와 다릅니다 : {0}", "Differs from the standard domain definition: {0}");
+        add("길이", "length");
+        add("정밀도", "precision");
+        add("소수 자릿수", "scale");
         add("승인된 도메인은 삭제할 수 없습니다: {0}", "Approved domains cannot be deleted: {0}");
         add("표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: {0}", "Domains used by standard terms cannot be deleted: {0}");
 

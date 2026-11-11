@@ -125,6 +125,6 @@ export function fieldsFromRow(row: Record<string, unknown>, columns: { column: s
 /** 그리드 컬럼 정의로 등록 폼 필드 목록 (id / 승인여부 제외) */
 export function fieldsFromColumns(columns: { column: string; columnName: string }[]): FieldSpec[] {
   return columns
-    .filter((c) => c.column !== 'id' && c.column !== 'isApprovalYn')
+    .filter((c) => c.column !== 'id' && c.column !== 'isApprovalYn' && c.column !== 'usageCount')
     .map((c) => ({ key: c.column, label: c.columnName || c.column }));
 }

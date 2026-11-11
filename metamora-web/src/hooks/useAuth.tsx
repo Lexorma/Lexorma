@@ -13,6 +13,7 @@ export type MenuId =
   | 'table-manage'
   | 'physical-erd'
   | 'column-manage'
+  | 'standardization-quality'
   | 'system-management'
   | 'operation-management'
   | 'data-management'

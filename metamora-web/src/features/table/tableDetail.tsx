@@ -14,6 +14,8 @@ interface TableDetailOptions {
   onChanged?: () => void;
   /** [ERD 에서 보기] (ERD 화면에서 열 때는 주지 않는다) */
   onErd?: () => void;
+  /** 컬럼 목록에서 강조할 컬럼 (사용 현황·품질 진단에서 열 때) */
+  columnId?: number;
 }
 
 /**
@@ -54,6 +56,7 @@ export function useTableDetail() {
       content: ({ close }: DialogControls) => (
         <TableDetail
           row={row}
+          columnId={options.columnId}
           onEditColumns={() => {
             close();
             void openColumnBulkEditor(row, { onSaved: changed });
@@ -93,8 +96,9 @@ function ynLabel(value: unknown, text: string, variant = 'accent') {
   return value === 'Y' ? <span className={`gh-label gh-label-${variant}`}>{text}</span> : <span className="gh-muted">-</span>;
 }
 
-function TableDetail({ row, onEditColumns, onDdl, onEdit, onErd, onApproval }: {
+function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onApproval }: {
   row: Row;
+  columnId?: number;
   onEditColumns: () => void;
   onDdl: () => void;
   onEdit?: () => void;
@@ -157,7 +161,7 @@ function TableDetail({ row, onEditColumns, onDdl, onEdit, onErd, onApproval }: {
               </thead>
               <tbody>
                 {columns.map((col, idx) => (
-                  <tr key={col.id}>
+                  <tr key={col.id} className={col.id === columnId ? 'is-highlight' : undefined}>
                     <td className="text-center">{idx + 1}</td>
                     <td className="gh-mono">{col.columnName ?? '-'}</td>
                     <td>{col.columnDesc ?? '-'}</td>

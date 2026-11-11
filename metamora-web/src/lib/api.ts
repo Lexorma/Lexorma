@@ -142,7 +142,8 @@ async function toError(res: Response): Promise<ApiError> {
 }
 
 function fail(error: unknown, options: RequestOptions): never {
-  if (error instanceof ApiError && !options.silent && errorListener) {
+  // 중복 로그인으로 로그아웃된 안내는 silent 요청(새로고침 직후의 /api/auth/me)이어도 보여 준다
+  if (error instanceof ApiError && (!options.silent || error.code === 'DUPLICATE_LOGIN') && errorListener) {
     error.handled = true;
     errorListener(error);
   }

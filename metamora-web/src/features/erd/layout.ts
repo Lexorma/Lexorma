@@ -1,6 +1,7 @@
 import ElkApi from 'elkjs/lib/elk-api.js';
 import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url';
 import type { XY } from './model';
+import { t } from '../../lib/i18n';
 
 /**
  * 레이아웃 어댑터 (M-0 PoC engine.ts 의 ELK 경로) : 화면은 이 입출력만 안다. 엔진을 바꿔도 노드·저장 형식(id → x, y)은 그대로다.
@@ -48,8 +49,8 @@ function elkInWorker(nodes: LayoutNode[], edges: LayoutEdge[]): Promise<Record<s
       elk.terminateWorker();
       reject(new Error(message));
     };
-    const timer = setTimeout(() => stop('자동 배치 시간이 초과되었습니다. 조회 범위를 줄여주세요.'), TIMEOUT_MS);
-    cancelCurrent = () => stop('자동 배치 취소');
+    const timer = setTimeout(() => stop(t('자동 배치 시간이 초과되었습니다. 조회 범위를 줄여주세요.')), TIMEOUT_MS);
+    cancelCurrent = () => stop(t('자동 배치 취소'));
     const pairs = new Map(edges.map((e) => [`${e.source}>${e.target}`, e]));
     elk.layout({
       id: 'root',

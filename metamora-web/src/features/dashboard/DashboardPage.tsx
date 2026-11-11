@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
 import { formatDateTime, formatRelative, initial } from '../../lib/format';
 import { useNoticeDialogs } from '../notice/noticeDialogs';
+import { t, tv, tx } from '../../lib/i18n';
 
 interface Dashboard {
   pendingStandardCount: number;
@@ -30,9 +31,9 @@ export function DashboardPage() {
         <div className="dash-avatar dash-avatar-lg">{initial(displayName)}</div>
         <div>
           <h1 className="dash-hero-title">
-            <span>{displayName}</span>님, 안녕하세요
+            {tx('{0}님, 안녕하세요', <span>{displayName}</span>)}
           </h1>
-          <p className="dash-hero-sub">프로젝트의 승인 대기 현황과 최근 활동을 한눈에 확인하세요.</p>
+          <p className="dash-hero-sub">{t('프로젝트의 승인 대기 현황과 최근 활동을 한눈에 확인하세요.')}</p>
         </div>
       </div>
 
@@ -40,19 +41,19 @@ export function DashboardPage() {
       {canView('data-management') && (
         <>
           <div className="dash-section-head">
-            <h2 className="dash-section-title">승인 대기</h2>
+            <h2 className="dash-section-title">{t('승인 대기')}</h2>
             <span className="dash-counter">{pendingTotal}</span>
           </div>
 
           <div className="dash-stats">
             {canView('data-dictionary') && (
-              <Stat to="/dataDictionary" icon={<NoteIcon />} color="icon-blue" label="표준 도메인/단어/용어" value={data.pendingStandardCount} foot="데이터사전 바로가기" />
+              <Stat to="/dataDictionary" icon={<NoteIcon />} color="icon-blue" label={t('표준 도메인/단어/용어')} value={data.pendingStandardCount} foot={t('데이터사전 바로가기')} />
             )}
             {canView('table-manage') && (
-              <Stat to="/tableManage" icon={<TableIcon />} color="icon-green" label="테이블 관리" value={data.pendingTableCount} foot="테이블 관리 바로가기" />
+              <Stat to="/tableManage" icon={<TableIcon />} color="icon-green" label={t('테이블 관리')} value={data.pendingTableCount} foot={t('테이블 관리 바로가기')} />
             )}
             {canView('column-manage') && (
-              <Stat to="/columnManage" icon={<ColumnsIcon />} color="icon-purple" label="컬럼 관리" value={data.pendingColumnCount} foot="컬럼 관리 바로가기" />
+              <Stat to="/columnManage" icon={<ColumnsIcon />} color="icon-purple" label={t('컬럼 관리')} value={data.pendingColumnCount} foot={t('컬럼 관리 바로가기')} />
             )}
           </div>
         </>
@@ -61,7 +62,7 @@ export function DashboardPage() {
       <div className="dash-grid">
         <div className="dash-box">
           <div className="dash-box-header">
-            <h2 className="dash-box-title">최근 활동</h2>
+            <h2 className="dash-box-title">{t('최근 활동')}</h2>
           </div>
           {data.recentChanges.length > 0 ? (
             <ul className="dash-timeline">
@@ -70,9 +71,12 @@ export function DashboardPage() {
                   <div className="dash-avatar">{initial(item.modifiedBy)}</div>
                   <div className="dash-timeline-body">
                     <div className="dash-timeline-text">
-                      <strong>{item.modifiedBy ?? '알 수 없음'}</strong> 님이{' '}
-                      <span className="dash-label" data-type={item.type}>{item.type}</span>{' '}
-                      <code className="dash-name">{item.name}</code> 을(를) 수정했습니다.
+                      {tx(
+                        '{0} 님이 {1} {2} 을(를) 수정했습니다.',
+                        <strong>{item.modifiedBy ?? t('알 수 없음')}</strong>,
+                        <span className="dash-label" data-type={item.type}>{tv(item.type)}</span>,
+                        <code className="dash-name">{item.name}</code>,
+                      )}
                     </div>
                     {item.modifiedAt && <RelativeTime value={item.modifiedAt} className="dash-time" />}
                   </div>
@@ -82,15 +86,15 @@ export function DashboardPage() {
           ) : (
             <div className="dash-blank">
               <ClockIcon size={24} />
-              <p>최근 변경된 항목이 없습니다.</p>
+              <p>{t('최근 변경된 항목이 없습니다.')}</p>
             </div>
           )}
         </div>
 
         <div className="dash-box">
           <div className="dash-box-header">
-            <h2 className="dash-box-title">프로젝트 공지사항</h2>
-            <Link to="/notice" className="dash-btn">전체 보기</Link>
+            <h2 className="dash-box-title">{t('프로젝트 공지사항')}</h2>
+            <Link to="/notice" className="dash-btn">{t('전체 보기')}</Link>
           </div>
           {data.notices.length > 0 ? (
             <ul className="dash-list" id="noticeList">
@@ -106,7 +110,7 @@ export function DashboardPage() {
                       }
                     }}
                   >
-                    <span className={`dash-unread-dot${read ? ' is-read' : ''}`} title={notice.isHit} />
+                    <span className={`dash-unread-dot${read ? ' is-read' : ''}`} title={tv(notice.isHit)} />
                     <div className="dash-list-body">
                       <div className="dash-list-title">{notice.title}</div>
                       <div className="dash-list-meta">
@@ -115,7 +119,7 @@ export function DashboardPage() {
                         <RelativeTime value={notice.created} />
                       </div>
                     </div>
-                    <span className={`dash-state ${read ? 'is-read' : 'is-new'}`}>{read ? '읽음' : '새 글'}</span>
+                    <span className={`dash-state ${read ? 'is-read' : 'is-new'}`}>{read ? t('읽음') : t('새 글')}</span>
                   </li>
                 );
               })}
@@ -123,7 +127,7 @@ export function DashboardPage() {
           ) : (
             <div className="dash-blank">
               <BellIcon size={24} />
-              <p>공지사항이 없습니다.</p>
+              <p>{t('공지사항이 없습니다.')}</p>
             </div>
           )}
         </div>

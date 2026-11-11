@@ -4,6 +4,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { isBlank } from '../../lib/format';
 import { systemLogColumns } from './columns';
+import { t } from '../../lib/i18n';
 
 const METHOD_VARIANT: Record<string, LabelVariant> = { GET: 'accent', POST: 'success', PUT: 'attention', PATCH: 'attention', DELETE: 'danger' };
 
@@ -19,10 +20,10 @@ function statusVariant(code: unknown): LabelVariant {
 
 // 상세보기에 표시할 항목
 const DETAIL_FIELDS = [
-  { field: 'requestBody', label: '요청 데이터' },
-  { field: 'responseBody', label: '응답 데이터' },
-  { field: 'errorMessage', label: '에러 메시지' },
-  { field: 'userAgent', label: '브라우저 정보' },
+  { field: 'requestBody', label: t('요청 데이터') },
+  { field: 'responseBody', label: t('응답 데이터') },
+  { field: 'errorMessage', label: t('에러 메시지') },
+  { field: 'userAgent', label: t('브라우저 정보') },
 ];
 
 /** JSON 문자열이면 보기 좋게 정렬하고, 값이 없으면 '-' */
@@ -59,7 +60,7 @@ export function SystemLogPage() {
 
   return (
     <>
-      <PageHeader category="시스템 관리" title="시스템 로그" description="프로젝트에서 발생한 요청 이력을 조회합니다. 상세보기에서 요청/응답 데이터를 확인할 수 있습니다." />
+      <PageHeader category={t('시스템 관리')} title={t('시스템 로그')} description={t('프로젝트에서 발생한 요청 이력을 조회합니다. 상세보기에서 요청/응답 데이터를 확인할 수 있습니다.')} />
       <div id="gridContainer">
         <Grid
           id="logTable"

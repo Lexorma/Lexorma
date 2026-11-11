@@ -1,5 +1,6 @@
 package com.koboolean.metamora.operation.board.domain.dto;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import lombok.*;
 
@@ -53,6 +54,9 @@ public class BoardDto {
     private String isHit;
 
     private List<Long> projectIds;
+
+    /* 시스템이 등록한 공지 여부 (수정 불가) */
+    private boolean systemNotice;
     
     /* 빌더 호출 */
     public static BoardDto fromEntity(Board entity) {
@@ -61,18 +65,22 @@ public class BoardDto {
 
         Set<AccountDto> collect = entity.getAccounts().stream().map(AccountDto::fromEntity).collect(Collectors.toSet());
 
+        boolean systemNotice = entity.isSystemNotice();
+
         return BoardDto.builder()
                        .id          (entity.getId()       )
                        .projectId   (entity.getProjectId())
                        .username    (entity.getUsername() )
-                       .title       (entity.getTitle()    )
-                       .content     (entity.getContent()  )
+                       // 시스템 공지는 요청 언어로 보여 준다. (영어판은 EnglishMessages)
+                       .title       (systemNotice ? Messages.get(entity.getTitle()) : entity.getTitle())
+                       .content     (systemNotice ? Messages.get(entity.getContent()) : entity.getContent())
                        .deleteYn    (entity.getDeleteYn() )
                        .updatedTime (entity.getUpdatedTime())
                        .categoryName(boardCategoryDto.getCategoryName())
                        .categoryId  (boardCategoryDto.getCategoryId())
                        .accounts    (collect)
                        .projectIds  (entity.getProjectIds())
+                       .systemNotice(systemNotice)
                        .isHit("")
                        .build()
         ;
@@ -81,32 +89,11 @@ public class BoardDto {
     /* 빌더 호출 */
     public static BoardDto fromEntity(Board entity, String accountId) {
 
-        BoardCategoryDto boardCategoryDto = BoardCategoryDto.fromEntity(entity.getBoardCategory());
+        BoardDto boardDto = fromEntity(entity);
 
-        Set<AccountDto> collect = entity.getAccounts().stream().map(AccountDto::fromEntity).collect(Collectors.toSet());
+        boolean isHits = boardDto.getAccounts().stream().anyMatch(account -> account.getId().equals(accountId));
+        boardDto.setIsHit(isHits ? "확인" : "미확인");
 
-        Boolean isHits = false;
-
-        for(AccountDto account : collect) {
-            if(account.getId().equals(accountId)){
-                isHits = true;
-            }
-        }
-
-        return BoardDto.builder()
-                .id          (entity.getId()       )
-                .projectId   (entity.getProjectId())
-                .username    (entity.getUsername() )
-                .title       (entity.getTitle()    )
-                .content     (entity.getContent()  )
-                .deleteYn    (entity.getDeleteYn() )
-                .updatedTime (entity.getUpdatedTime())
-                .categoryName(boardCategoryDto.getCategoryName())
-                .categoryId  (boardCategoryDto.getCategoryId())
-                .accounts    (collect)
-                .projectIds  (entity.getProjectIds())
-                .isHit(isHits ? "확인" : "미확인")
-                .build()
-                ;
+        return boardDto;
     }
 }

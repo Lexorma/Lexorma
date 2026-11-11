@@ -65,7 +65,7 @@ public class CommonColumnServiceImpl implements CommonColumnService {
         Long projectId = accountDto.getProjectId();
         List<CommonColumnDto> requested = items == null ? List.of() : items.stream().filter(Objects::nonNull).toList();
         if (requested.size() > MAX_ITEMS) {
-            throw new CustomException(ErrorCode.COMMON_COLUMN_TOO_MANY, "공통 컬럼은 " + MAX_ITEMS + "개까지 등록할 수 있습니다.");
+            throw new CustomException(ErrorCode.COMMON_COLUMN_TOO_MANY, "공통 컬럼은 {0}개까지 등록할 수 있습니다.", MAX_ITEMS);
         }
 
         // 로그인 프로젝트의 용어만, 같은 컬럼명(영문약어명)은 한 번만
@@ -74,10 +74,10 @@ public class CommonColumnServiceImpl implements CommonColumnService {
         for (CommonColumnDto item : requested) {
             StandardTerm term = item.getTermId() == null ? null : terms.get(item.getTermId());
             if (term == null) {
-                throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA, "공통 컬럼의 표준용어를 찾을 수 없습니다. (ID " + item.getTermId() + ")");
+                throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA, "공통 컬럼의 표준용어를 찾을 수 없습니다. (ID {0})", item.getTermId());
             }
             if (!abbreviations.add(term.getCommonStandardTermAbbreviation())) {
-                throw new CustomException(ErrorCode.COMMON_COLUMN_DUPLICATED, "공통 컬럼 세트에 같은 컬럼명이 중복되어 있습니다 : " + term.getCommonStandardTermAbbreviation());
+                throw new CustomException(ErrorCode.COMMON_COLUMN_DUPLICATED, "공통 컬럼 세트에 같은 컬럼명이 중복되어 있습니다 : {0}", term.getCommonStandardTermAbbreviation());
             }
         }
 

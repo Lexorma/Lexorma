@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { api, ApiError, enc } from '../../lib/api';
+import { t } from '../../lib/i18n';
 
 interface TableDdl {
   dbType: string;
@@ -48,7 +49,7 @@ export function TableDdlView({ tableId }: { tableId: number }) {
     }
     temp.remove();
     if (ok) done();
-    else dialog.alert('복사하지 못했습니다. DDL 을 직접 선택해 복사해주세요.');
+    else dialog.alert(t('복사하지 못했습니다. DDL 을 직접 선택해 복사해주세요.'));
   };
 
   const warnings = data?.warnings ?? [];
@@ -57,9 +58,9 @@ export function TableDdlView({ tableId }: { tableId: number }) {
       <div className="table-ddl-toolbar">
         <div className="table-ddl-meta">
           <span className="gh-label gh-label-accent">{data ? (data.dbTypeLabel ?? data.dbType ?? '-') : '-'}</span>
-          <span className="gh-muted">대상 DB 는 시스템 관리 &gt; 프로젝트 관리에서 바꿀 수 있습니다.</span>
+          <span className="gh-muted">{t('대상 DB 는 시스템 관리 > 프로젝트 관리에서 바꿀 수 있습니다.')}</span>
         </div>
-        <button type="button" className="btn btn-sm" disabled={!data} onClick={copy}>{copied ? '복사됨' : '복사'}</button>
+        <button type="button" className="btn btn-sm" disabled={!data} onClick={copy}>{copied ? t('복사됨') : t('복사')}</button>
       </div>
       {warnings.length > 0 && (
         <ul className="table-ddl-warnings">
@@ -67,7 +68,7 @@ export function TableDdlView({ tableId }: { tableId: number }) {
         </ul>
       )}
       <pre className="table-ddl-code">
-        <code>{error ? (error instanceof ApiError ? error.message : 'DDL 을 생성하지 못했습니다.') : data ? data.ddl : 'DDL 을 생성하고 있습니다.'}</code>
+        <code>{error ? (error instanceof ApiError ? error.message : t('DDL 을 생성하지 못했습니다.')) : data ? data.ddl : t('DDL 을 생성하고 있습니다.')}</code>
       </pre>
     </div>
   );

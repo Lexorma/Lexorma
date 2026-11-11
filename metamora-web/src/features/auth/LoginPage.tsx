@@ -4,6 +4,7 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { AlertIcon, ArrowRightIcon, RepoIcon } from '@primer/octicons-react';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError, resetCsrf } from '../../lib/api';
+import { t } from '../../lib/i18n';
 
 interface LoginProject {
   id: number;
@@ -34,7 +35,7 @@ export function LoginPage() {
         silent: true,
       });
     } catch (e) {
-      dialog.alert(e instanceof ApiError ? e.message : '로그인 중 문제가 발생했습니다.');
+      dialog.alert(e instanceof ApiError ? e.message : t('로그인 중 문제가 발생했습니다.'));
       return;
     }
     // 로그인하면 세션 ID 와 CSRF 토큰이 바뀐다
@@ -44,8 +45,8 @@ export function LoginPage() {
   };
 
   const openProjectDialog = async (user: string, pass: string) => {
-    if (!user) return dialog.alert('아이디를 입력하세요.');
-    if (!pass) return dialog.alert('패스워드를 입력하세요.');
+    if (!user) return dialog.alert(t('아이디를 입력하세요.'));
+    if (!pass) return dialog.alert(t('패스워드를 입력하세요.'));
 
     let projects: LoginProject[];
     try {
@@ -56,21 +57,21 @@ export function LoginPage() {
         openChangePasswordDialog(user, pass);
         return;
       }
-      dialog.alert(e instanceof ApiError ? e.message : '로그인 정보를 확인하는 중 문제가 발생했습니다.');
+      dialog.alert(e instanceof ApiError ? e.message : t('로그인 정보를 확인하는 중 문제가 발생했습니다.'));
       return;
     }
 
     // 선택할 프로젝트가 하나면 바로 로그인
     if (projects.length === 1) {
-      dialog.confirm(`${projects[0].projectName} 프로젝트로 로그인됩니다.`, () => login(user, pass, projects[0]));
+      dialog.confirm(t('{0} 프로젝트로 로그인됩니다.', projects[0].projectName), () => login(user, pass, projects[0]));
       return;
     }
 
     dialog.open({
-      title: '프로젝트 선택',
+      title: t('프로젝트 선택'),
       content: ({ close }: DialogControls) => (
         <div>
-          <p className="gh-dialog-text">로그인할 프로젝트를 선택하세요.</p>
+          <p className="gh-dialog-text">{t('로그인할 프로젝트를 선택하세요.')}</p>
           <ul className="auth-project-list" id="projectSelect">
             {projects.map((project) => (
               <li key={project.id}>
@@ -95,7 +96,7 @@ export function LoginPage() {
 
   const openChangePasswordDialog = (user: string, pass: string) => {
     dialog.open({
-      title: '비밀번호 변경',
+      title: t('비밀번호 변경'),
       content: ({ close }: DialogControls) => (
         <InitialPasswordForm
           username={user}
@@ -104,7 +105,7 @@ export function LoginPage() {
             close();
             setPassword(newPassword);
             // 새 비밀번호로 로그인 계속 진행 (프로젝트 선택)
-            dialog.alert('비밀번호가 변경되었습니다. 로그인할 프로젝트를 선택합니다.', () => openProjectDialog(user, newPassword));
+            dialog.alert(t('비밀번호가 변경되었습니다. 로그인할 프로젝트를 선택합니다.'), () => openProjectDialog(user, newPassword));
           }}
         />
       ),
@@ -121,28 +122,28 @@ export function LoginPage() {
       <div className="auth-logo">
         <img src="/images/favicon.svg" alt="" width="48" height="48" />
       </div>
-      <h1 className="auth-title">MetaMora 로그인</h1>
+      <h1 className="auth-title">{t('MetaMora 로그인')}</h1>
 
       <div className="auth-box">
         <form id="loginForm" onSubmit={onSubmit}>
           <div className="auth-field">
-            <label htmlFor="username">아이디</label>
+            <label htmlFor="username">{t('아이디')}</label>
             <input type="text" className="form-control" id="username" name="username" autoComplete="username" autoCapitalize="off"
               autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
           <div className="auth-field">
-            <label htmlFor="password">비밀번호</label>
+            <label htmlFor="password">{t('비밀번호')}</label>
             <input type="password" className="form-control" id="password" name="password" autoComplete="current-password" required
               value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
 
-          <button type="submit" id="project-btn" className="btn btn-primary auth-submit">로그인</button>
-          <p className="auth-hint">로그인할 프로젝트는 다음 단계에서 선택합니다.</p>
+          <button type="submit" id="project-btn" className="btn btn-primary auth-submit">{t('로그인')}</button>
+          <p className="auth-hint">{t('로그인할 프로젝트는 다음 단계에서 선택합니다.')}</p>
         </form>
       </div>
 
       <div className="auth-callout">
-        MetaMora가 처음이신가요? <Link to="/signup">회원가입</Link>
+        {t('MetaMora가 처음이신가요?')} <Link to="/signup">{t('회원가입')}</Link>
       </div>
     </div>
   );
@@ -156,14 +157,14 @@ function InitialPasswordForm({ username, password, onChanged }: { username: stri
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newPassword) return dialog.alert('새 비밀번호를 입력하세요.');
-    if (newPassword !== newPassword2) return dialog.alert('새 비밀번호가 일치하지 않습니다.');
-    if (newPassword === password || newPassword === username) return dialog.alert('새 비밀번호는 현재 비밀번호 및 아이디와 달라야 합니다.');
+    if (!newPassword) return dialog.alert(t('새 비밀번호를 입력하세요.'));
+    if (newPassword !== newPassword2) return dialog.alert(t('새 비밀번호가 일치하지 않습니다.'));
+    if (newPassword === password || newPassword === username) return dialog.alert(t('새 비밀번호는 현재 비밀번호 및 아이디와 달라야 합니다.'));
 
     try {
       await api('/api/login/password', { method: 'POST', body: { username, password, newPassword }, silent: true });
     } catch (err) {
-      dialog.alert(err instanceof ApiError ? err.message : '비밀번호를 변경하는 중 문제가 발생했습니다.');
+      dialog.alert(err instanceof ApiError ? err.message : t('비밀번호를 변경하는 중 문제가 발생했습니다.'));
       return;
     }
     onChanged(newPassword);
@@ -173,21 +174,21 @@ function InitialPasswordForm({ username, password, onChanged }: { username: stri
     <form id="initialPasswordForm" autoComplete="off" onSubmit={onSubmit}>
       <div className="gh-flash gh-flash-attention">
         <AlertIcon />
-        <span>초기 비밀번호를 사용 중입니다. 비밀번호를 변경해야 로그인할 수 있습니다.</span>
+        <span>{t('초기 비밀번호를 사용 중입니다. 비밀번호를 변경해야 로그인할 수 있습니다.')}</span>
       </div>
       <div className="form-group">
-        <label htmlFor="initialNewPassword">새 비밀번호</label>
+        <label htmlFor="initialNewPassword">{t('새 비밀번호')}</label>
         <input type="password" className="form-control" id="initialNewPassword" autoComplete="new-password" required autoFocus
           value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
       </div>
       <div className="form-group">
-        <label htmlFor="initialNewPassword2">새 비밀번호 확인</label>
+        <label htmlFor="initialNewPassword2">{t('새 비밀번호 확인')}</label>
         <input type="password" className="form-control" id="initialNewPassword2" autoComplete="new-password" required
           value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} />
-        <p className="auth-field-note">8자 이상, 대문자와 특수문자를 각각 하나 이상 포함해야 합니다.</p>
+        <p className="auth-field-note">{t('8자 이상, 대문자와 특수문자를 각각 하나 이상 포함해야 합니다.')}</p>
       </div>
       <div className="gh-dialog-actions">
-        <button type="submit" className="btn btn-primary">변경하고 로그인</button>
+        <button type="submit" className="btn btn-primary">{t('변경하고 로그인')}</button>
       </div>
     </form>
   );

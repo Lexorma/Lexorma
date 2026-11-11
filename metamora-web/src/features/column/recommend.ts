@@ -1,3 +1,4 @@
+import { t } from '../../lib/i18n';
 /**
  * 컬럼 속성 자동 추천 (컬럼 일괄 편집에서 표준용어로 새 컬럼을 추가할 때)
  *
@@ -45,7 +46,7 @@ export function applyRecommendation(term: TermLike, fields: Record<string, strin
     }
     notNull();
     if (!fields.defaultValue) fields.defaultValue = 'N';
-    reasons.push('여부 컬럼 : NOT NULL, 기본값 N');
+    reasons.push(t('여부 컬럼 : NOT NULL, 기본값 N'));
     return reasons;
   }
 
@@ -54,9 +55,9 @@ export function applyRecommendation(term: TermLike, fields: Record<string, strin
     notNull();
     if (DATE_TYPES.includes(String(fields.dataType ?? '').toUpperCase()) && !fields.defaultValue) {
       fields.defaultValue = 'CURRENT_TIMESTAMP';
-      reasons.push('등록 일시 : NOT NULL, 기본값 CURRENT_TIMESTAMP');
+      reasons.push(t('등록 일시 : NOT NULL, 기본값 CURRENT_TIMESTAMP'));
     } else {
-      reasons.push('등록 일시 : NOT NULL');
+      reasons.push(t('등록 일시 : NOT NULL'));
     }
     return reasons;
   }
@@ -64,7 +65,7 @@ export function applyRecommendation(term: TermLike, fields: Record<string, strin
   // 등록자·생성자
   if (CREATE_WORDS.some((w) => first === w || first === w + '자') && (USER_WORDS.includes(last) || last.endsWith('자'))) {
     notNull();
-    reasons.push('등록자 : NOT NULL');
+    reasons.push(t('등록자 : NOT NULL'));
     return reasons;
   }
 
@@ -74,7 +75,7 @@ export function applyRecommendation(term: TermLike, fields: Record<string, strin
     fields.isNullable = 'N';
     fields.isRequired = 'Y';
     fields.isUnique = 'Y';
-    reasons.push('테이블 첫 식별자 컬럼 : PK');
+    reasons.push(t('테이블 첫 식별자 컬럼 : PK'));
   }
 
   return reasons;

@@ -3,6 +3,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import type { Row } from '../../components/grid/Grid';
 import { api, enc } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
+import { t } from '../../lib/i18n';
 
 interface TableNameResult {
   valid: boolean;
@@ -14,8 +15,8 @@ interface TableNameResult {
 
 const WORD_STATUS = {
   APPROVED: { variant: 'success', text: '' },
-  NOT_APPROVED: { variant: 'attention', text: '미승인' },
-  NOT_FOUND: { variant: 'danger', text: '미등록' },
+  NOT_APPROVED: { variant: 'attention', text: t('미승인') },
+  NOT_FOUND: { variant: 'danger', text: t('미등록') },
 } as const;
 
 /** 한글명 비교용 정규화 : "사용_내역_관리" / " 사용 내역  관리 " → "사용 내역 관리" */
@@ -81,18 +82,17 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const msg = type === 'C' ? '저장' : '수정';
     const inputKorName = korName.trim();
     // 수정 시 저장된 한글명을 그대로 두면 서버에 보내지 않는다 (기존 테이블명/한글명 유지)
     const sendKorName = type === 'U' && isUnchanged(inputKorName) ? '' : inputKorName;
 
-    if (type === 'C' && !sendKorName) return dialog.alert('테이블 한글명은(는) 필수 입력 항목입니다.');
+    if (type === 'C' && !sendKorName) return dialog.alert(t('테이블 한글명은(는) 필수 입력 항목입니다.'));
     if (sendKorName) {
-      if (state.pending || state.korName !== sendKorName) return dialog.alert('표준 단어를 조회하고 있습니다. 잠시 후 다시 시도해주세요.');
-      if (!state.result?.valid) return dialog.alert('테이블 한글명에 승인된 표준 단어가 아닌 단어가 있습니다.');
+      if (state.pending || state.korName !== sendKorName) return dialog.alert(t('표준 단어를 조회하고 있습니다. 잠시 후 다시 시도해주세요.'));
+      if (!state.result?.valid) return dialog.alert(t('테이블 한글명에 승인된 표준 단어가 아닌 단어가 있습니다.'));
     }
     // 한글명 없이 수정하는 경우에는 설명을 직접 입력해야 한다. (한글명이 있으면 서버에서 채운다)
-    if (!sendKorName && !String(description).trim()) return dialog.alert('테이블 설명은(는) 필수 입력 항목입니다.');
+    if (!sendKorName && !String(description).trim()) return dialog.alert(t('테이블 설명은(는) 필수 입력 항목입니다.'));
 
     const body = {
       id: row.id ?? 0,
@@ -103,9 +103,9 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
       sortOrder: parseInt(String(sortOrder)) || 0,
     };
 
-    dialog.confirm(`${msg}하시겠습니까?`, async () => {
+    dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : t('수정하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
-      if (response.result) dialog.alert(`정상적으로 ${msg}되었습니다.`, onSaved);
+      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), onSaved);
     });
   };
 
@@ -113,18 +113,18 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
   return (
     <form id="editTableForm" className="edit-form" onSubmit={onSubmit}>
       <div className="form-group">
-        <label htmlFor="tableKorName">테이블 한글명</label>
-        <input type="text" className="form-control" id="tableKorName" placeholder="예) 사용_내역_관리" autoComplete="off" required={type === 'C'} autoFocus
+        <label htmlFor="tableKorName">{t('테이블 한글명')}</label>
+        <input type="text" className="form-control" id="tableKorName" placeholder={t('예) 사용_내역_관리')} autoComplete="off" required={type === 'C'} autoFocus
           value={korName} onChange={(e) => setKorName(e.target.value)} />
         <p className="table-name-help">
           {type === 'C'
-            ? '표준 단어를 _ 또는 공백으로 구분해 입력하면 프로젝트 접두어 + 단어의 영문약어로 테이블명을 만듭니다.'
-            : '한글명을 바꾸면 표준 단어 기준으로 테이블명을 다시 만듭니다. 그대로 두면 현재 테이블명을 유지합니다.'}
+            ? t('표준 단어를 _ 또는 공백으로 구분해 입력하면 프로젝트 접두어 + 단어의 영문약어로 테이블명을 만듭니다.')
+            : t('한글명을 바꾸면 표준 단어 기준으로 테이블명을 다시 만듭니다. 그대로 두면 현재 테이블명을 유지합니다.')}
         </p>
         <div id="tableNameWords" className="table-name-words" aria-live="polite">
           {result && result.tablePrefix && result.words.length > 0 && (
-            <span className="gh-label" title="프로젝트 설정의 테이블명 접두어">
-              <span>접두어</span>
+            <span className="gh-label" title={t('프로젝트 설정의 테이블명 접두어')}>
+              <span>{t('접두어')}</span>
               <span className="table-name-abbr">{result.tablePrefix}</span>
             </span>
           )}
@@ -138,32 +138,32 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
             );
           })}
           {result && !result.valid && result.words.length > 0 && (
-            <p className="table-name-error">미등록·미승인 단어는 데이터 사전에서 표준 단어로 등록·승인한 뒤 사용할 수 있습니다.</p>
+            <p className="table-name-error">{t('미등록·미승인 단어는 데이터 사전에서 표준 단어로 등록·승인한 뒤 사용할 수 있습니다.')}</p>
           )}
         </div>
       </div>
 
       <div className="form-group">
-        <label htmlFor="tableName">테이블명</label>
-        <input type="text" className="form-control gh-mono" id="tableName" placeholder="한글명을 입력하면 자동으로 생성됩니다." readOnly value={tableName} />
+        <label htmlFor="tableName">{t('테이블명')}</label>
+        <input type="text" className="form-control gh-mono" id="tableName" placeholder={t('한글명을 입력하면 자동으로 생성됩니다.')} readOnly value={tableName} />
       </div>
 
       <div className="form-group">
-        <label htmlFor="tableDescription">테이블 설명</label>
-        <input type="text" className="form-control" id="tableDescription" placeholder="비워두면 한글명으로 채웁니다." value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label htmlFor="tableDescription">{t('테이블 설명')}</label>
+        <input type="text" className="form-control" id="tableDescription" placeholder={t('비워두면 한글명으로 채웁니다.')} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
 
       <div className="form-check" style={{ margin: '10px 0' }}>
         <input type="checkbox" className="form-check-input" id="isMasterTable" checked={isMaster} onChange={(e) => setIsMaster(e.target.checked)} />
-        <label className="form-check-label" htmlFor="isMasterTable">마스터 테이블 여부</label>
+        <label className="form-check-label" htmlFor="isMasterTable">{t('마스터 테이블 여부')}</label>
       </div>
 
       <div className="form-group" style={{ marginBottom: 10 }}>
-        <label htmlFor="sortOrder">정렬 순서</label>
+        <label htmlFor="sortOrder">{t('정렬 순서')}</label>
         <input type="number" className="form-control" id="sortOrder" value={sortOrder} onKeyDown={blockNonNumericKeys} onChange={(e) => setSortOrder(e.target.value)} />
       </div>
 
-      <button type="submit" className="btn btn-primary" id="btn-save-table">저장</button>
+      <button type="submit" className="btn btn-primary" id="btn-save-table">{t('저장')}</button>
     </form>
   );
 }

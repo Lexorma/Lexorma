@@ -14,6 +14,7 @@ import com.koboolean.metamora.core.project.repository.ProjectMemberRepository;
 import com.koboolean.metamora.core.project.repository.ProjectRepository;
 import com.koboolean.metamora.core.user.service.UserService;
 import com.koboolean.metamora.core.util.AuthUtil;
+import com.koboolean.metamora.common.i18n.Messages;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -66,7 +67,7 @@ public class UserServiceImpl implements UserService {
         userRepository.save(account);
 
         Project project = projectRepository.findById(accountDto.getProjectId())
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
+                .orElseThrow(() -> new IllegalArgumentException(Messages.get("존재하지 않는 프로젝트입니다.")));
 
         ProjectMember projectMember = ProjectMember.builder()
                 .project(project)

@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDownIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { locale, t } from '../../lib/i18n';
 
 interface FaqCategory {
   category: string;
@@ -16,7 +17,8 @@ export function HelpPage() {
   const { data = [], isError } = useQuery({
     queryKey: ['faq'],
     queryFn: async () => {
-      const res = await fetch('/jsons/faq.json');
+      // 영어는 faq.en.json, 한국어는 faq.json
+      const res = await fetch(locale === 'en' ? '/jsons/faq.en.json' : '/jsons/faq.json');
       if (!res.ok) throw new Error('faq');
       const json = await res.json();
       return (Array.isArray(json) ? json : []) as FaqCategory[];
@@ -46,12 +48,12 @@ export function HelpPage() {
 
   return (
     <>
-      <PageHeader category="운영 관리" title="도움말" description="자주 묻는 질문을 분류별로 확인하거나 검색할 수 있습니다." />
+      <PageHeader category={t('운영 관리')} title={t('도움말')} description={t('자주 묻는 질문을 분류별로 확인하거나 검색할 수 있습니다.')} />
 
       <form id="faq-form" className="faq-search" role="search" onSubmit={onSearch}>
-        <label htmlFor="faq-search" className="visually-hidden">질문 검색</label>
-        <input id="faq-search" type="search" className="form-control" placeholder="질문 또는 답변 검색" autoComplete="off" value={input} onChange={(e) => setInput(e.target.value)} />
-        <button type="submit" className="btn" id="faq-search-btn">검색</button>
+        <label htmlFor="faq-search" className="visually-hidden">{t('질문 검색')}</label>
+        <input id="faq-search" type="search" className="form-control" placeholder={t('질문 또는 답변 검색')} autoComplete="off" value={input} onChange={(e) => setInput(e.target.value)} />
+        <button type="submit" className="btn" id="faq-search-btn">{t('검색')}</button>
       </form>
 
       <ul className="nav nav-tabs" id="faqTabMenu" role="tablist">
@@ -69,7 +71,7 @@ export function HelpPage() {
       <div id="faqTabContent" className="faq-content">
         {isError || !current ? (
           <div className="faq-blank">
-            <p>{isError ? '도움말을 불러오지 못했습니다.' : keyword ? `"${keyword}"에 대한 검색 결과가 없습니다.` : '등록된 도움말이 없습니다.'}</p>
+            <p>{isError ? t('도움말을 불러오지 못했습니다.') : keyword ? t('"{0}"에 대한 검색 결과가 없습니다.', keyword) : t('등록된 도움말이 없습니다.')}</p>
           </div>
         ) : (
           <div className="faq-list">

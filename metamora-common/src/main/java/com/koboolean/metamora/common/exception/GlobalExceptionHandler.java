@@ -1,6 +1,7 @@
 package com.koboolean.metamora.common.exception;
 
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.common.i18n.Messages;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -37,7 +38,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
-        return new ResponseEntity<>(new ErrorResponse(HttpStatus.NOT_FOUND.value(), "NOT_FOUND", "요청한 리소스를 찾을 수 없습니다."),
+        return new ResponseEntity<>(new ErrorResponse(HttpStatus.NOT_FOUND.value(), "NOT_FOUND", Messages.error("NOT_FOUND")),
                 HttpStatus.NOT_FOUND);
     }
 

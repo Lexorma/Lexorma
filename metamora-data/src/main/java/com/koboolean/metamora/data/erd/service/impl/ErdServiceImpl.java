@@ -42,10 +42,10 @@ public class ErdServiceImpl implements ErdService {
     public ErdDto.Graph selectGraph(AccountDto accountDto, ErdDto.Search search, int page, int size) {
         Long projectId = accountDto.getProjectId();
         if (page < 0 || size < 1 || size > MAX_TABLES) {
-            throw invalid("한 번에 1~" + MAX_TABLES + "개 테이블까지 조회할 수 있습니다.");
+            throw invalid("한 번에 1~{0}개 테이블까지 조회할 수 있습니다.", MAX_TABLES);
         }
         if (search.keyword() != null && search.keyword().length() > MAX_KEYWORD_LENGTH) {
-            throw invalid("검색어는 " + MAX_KEYWORD_LENGTH + "자까지 입력할 수 있습니다.");
+            throw invalid("검색어는 {0}자까지 입력할 수 있습니다.", MAX_KEYWORD_LENGTH);
         }
         if (search.schemaId() != null && schemaInfoRepository.findByIdAndProjectId(search.schemaId(), projectId).isEmpty()) {
             throw new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED);
@@ -62,7 +62,7 @@ public class ErdServiceImpl implements ErdService {
     public ErdDto.Graph selectNeighbors(AccountDto accountDto, Long tableId, int depth) {
         Long projectId = accountDto.getProjectId();
         if (depth < 1 || depth > MAX_DEPTH) {
-            throw invalid("이웃 탐색은 1~" + MAX_DEPTH + "단계까지 가능합니다.");
+            throw invalid("이웃 탐색은 1~{0}단계까지 가능합니다.", MAX_DEPTH);
         }
         if (tableId == null || tableInfoRepository.findByIdAndProjectId(tableId, projectId) == null) {
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
@@ -126,7 +126,7 @@ public class ErdServiceImpl implements ErdService {
         }
         nodes.keySet().retainAll(existing);
         if (nodes.size() > MAX_LAYOUT_NODES) {
-            throw invalid("배치는 테이블 " + MAX_LAYOUT_NODES + "개까지 저장할 수 있습니다.");
+            throw invalid("배치는 테이블 {0}개까지 저장할 수 있습니다.", MAX_LAYOUT_NODES);
         }
 
         layout.setNodePositions(OBJECT_MAPPER.writeValueAsString(nodes));
@@ -152,7 +152,7 @@ public class ErdServiceImpl implements ErdService {
             throw invalid("배치 정보가 없습니다.");
         }
         if (request.nodes().size() > MAX_LAYOUT_NODES) {
-            throw invalid("배치는 테이블 " + MAX_LAYOUT_NODES + "개까지 저장할 수 있습니다.");
+            throw invalid("배치는 테이블 {0}개까지 저장할 수 있습니다.", MAX_LAYOUT_NODES);
         }
         ErdDto.Viewport viewport = request.viewport();
         boolean valid = coordinate(viewport.x()) && coordinate(viewport.y())
@@ -181,7 +181,7 @@ public class ErdServiceImpl implements ErdService {
         return Long.valueOf(accountDto.getId());
     }
 
-    private static CustomException invalid(String reason) {
-        return new CustomException(ErrorCode.INVALID_ERD_REQUEST, reason);
+    private static CustomException invalid(String reason, Object... args) {
+        return new CustomException(ErrorCode.INVALID_ERD_REQUEST, reason, args);
     }
 }

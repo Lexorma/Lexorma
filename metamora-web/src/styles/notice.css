@@ -82,8 +82,167 @@
     min-height: 160px;
     padding: 16px;
     line-height: 1.6;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+/* ---------- 본문 Markdown (GitHub markdown-body 형태) ---------- */
+.notice-markdown {
+    color: var(--gh-fg);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.notice-markdown > :first-child {
+    margin-top: 0;
+}
+
+.notice-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.notice-markdown p,
+.notice-markdown ul,
+.notice-markdown ol,
+.notice-markdown blockquote,
+.notice-markdown pre,
+.notice-markdown table {
+    margin: 0 0 12px;
+}
+
+.notice-markdown h1,
+.notice-markdown h2,
+.notice-markdown h3,
+.notice-markdown h4,
+.notice-markdown h5,
+.notice-markdown h6 {
+    margin: 20px 0 12px;
+    color: var(--gh-fg);
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.notice-markdown h1 {
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--gh-border-muted);
+    font-size: 24px;
+}
+
+.notice-markdown h2 {
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--gh-border-muted);
+    font-size: 20px;
+}
+
+.notice-markdown h3 {
+    font-size: 16px;
+}
+
+.notice-markdown h4,
+.notice-markdown h5,
+.notice-markdown h6 {
+    font-size: 14px;
+}
+
+.notice-markdown ul,
+.notice-markdown ol {
+    padding-left: 24px;
+}
+
+.notice-markdown ul {
+    list-style: disc;
+}
+
+.notice-markdown ol {
+    list-style: decimal;
+}
+
+.notice-markdown li > ul,
+.notice-markdown li > ol {
+    margin-bottom: 0;
+}
+
+.notice-markdown li + li {
+    margin-top: 2px;
+}
+
+.notice-markdown .contains-task-list {
+    padding-left: 4px;
+    list-style: none;
+}
+
+.notice-markdown .task-list-item input {
+    margin: 0 6px 0 0;
+    vertical-align: middle;
+}
+
+.notice-markdown a {
+    color: var(--gh-accent);
+    text-decoration: none;
+}
+
+.notice-markdown a:hover {
+    text-decoration: underline;
+}
+
+.notice-markdown blockquote {
+    padding: 0 12px;
+    border-left: 4px solid var(--gh-border);
+    color: var(--gh-fg-muted);
+}
+
+.notice-markdown code {
+    padding: 2px 6px;
+    border-radius: 6px;
+    background-color: var(--gh-neutral-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 85%;
+}
+
+.notice-markdown pre {
+    padding: 12px 16px;
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+    line-height: 1.45;
+    overflow-x: auto;
+}
+
+.notice-markdown pre code {
+    padding: 0;
+    background-color: transparent;
+    font-size: 12px;
+    overflow-wrap: normal;
+    white-space: pre;
+}
+
+.notice-markdown table {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    border-collapse: collapse;
+    overflow-x: auto;
+}
+
+.notice-markdown th,
+.notice-markdown td {
+    padding: 6px 12px;
+    border: 1px solid var(--gh-border);
+}
+
+.notice-markdown th {
+    background-color: var(--gh-canvas-subtle);
+    font-weight: 600;
+}
+
+.notice-markdown hr {
+    height: 1px;
+    margin: 16px 0;
+    border: 0;
+    background-color: var(--gh-border);
+}
+
+.notice-markdown img {
+    max-width: 100%;
 }
 
 /* 조회자 사이드 */
@@ -184,6 +343,49 @@
     padding: 12px !important;
     line-height: 1.6 !important;
     resize: vertical;
+}
+
+/* 내용 편집기 : 작성 / 미리보기 탭 */
+.notice-editor-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--gh-border);
+}
+
+.notice-editor-tab {
+    margin-bottom: -1px;
+    padding: 6px 14px;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+    background: none;
+    color: var(--gh-fg-muted);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.notice-editor-tab:hover {
+    color: var(--gh-fg);
+}
+
+.notice-editor-tab.is-active {
+    border-color: var(--gh-border);
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+}
+
+.notice-editor-preview {
+    min-height: 320px;
+    padding: 12px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas);
+}
+
+.notice-editor-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
 }
 
 /* 대상 프로젝트 체크 목록 (Box) */

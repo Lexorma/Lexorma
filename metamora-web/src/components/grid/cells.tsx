@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatDateTimeSeconds, initial } from '../../lib/format';
+import { t } from '../../lib/i18n';
 
 /**
  * 그리드 셀 꾸미기 (GitHub Primer 스타일, 예전 js/common/grid_cells.js)
@@ -50,8 +51,8 @@ export function DateTime({ value }: { value: unknown }) {
 
 /** 승인 여부(Y/N) → "승인" / "승인 대기" */
 export function Approval({ value }: { value: unknown }) {
-  if (value === 'Y') return <Label variant="success" dot>승인</Label>;
-  if (value === 'N') return <Label variant="attention" dot>승인 대기</Label>;
+  if (value === 'Y') return <Label variant="success" dot>{t('승인')}</Label>;
+  if (value === 'N') return <Label variant="attention" dot>{t('승인 대기')}</Label>;
   return null;
 }
 

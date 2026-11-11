@@ -18,6 +18,7 @@ import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.common.utils.ExcelUtils;
+import com.koboolean.metamora.common.i18n.Messages;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -501,7 +502,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
         if (!Boolean.TRUE.equals(tableInfo.getIsApproval())) {
-            return ColumnBulkSaveDto.Result.fail(List.of(new ColumnBulkSaveDto.RowError(null, "승인된 테이블에만 컬럼을 등록할 수 있습니다.")));
+            return ColumnBulkSaveDto.Result.fail(List.of(new ColumnBulkSaveDto.RowError(null, Messages.get("승인된 테이블에만 컬럼을 등록할 수 있습니다."))));
         }
 
         Map<Long, ColumnInfo> existing = tableInfo.getColumns().stream()
@@ -513,9 +514,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         for (Long id : deletedIds) {
             ColumnInfo column = existing.get(id);
             if (column == null) {
-                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), "삭제할 컬럼이 이 테이블에 없습니다. (ID " + id + ")"));
+                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), Messages.get("삭제할 컬럼이 이 테이블에 없습니다. (ID {0})", id)));
             } else if (Boolean.TRUE.equals(column.getIsApproval())) {
-                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), column.getColumnName() + " : 승인된 컬럼은 삭제할 수 없습니다."));
+                errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), Messages.get("{0} : 승인된 컬럼은 삭제할 수 없습니다.", column.getColumnName())));
             }
         }
 
@@ -536,11 +537,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             if (row.getId() != null) {
                 ColumnInfo column = existing.get(row.getId());
                 if (column == null) {
-                    errors.add(new ColumnBulkSaveDto.RowError(key, "이 테이블에 없는 컬럼입니다. 화면을 새로 열어주세요."));
+                    errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("이 테이블에 없는 컬럼입니다. 화면을 새로 열어주세요.")));
                 } else if (deletedIds.contains(row.getId())) {
-                    errors.add(new ColumnBulkSaveDto.RowError(key, column.getColumnName() + " : 삭제와 수정을 함께 할 수 없습니다."));
+                    errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 삭제와 수정을 함께 할 수 없습니다.", column.getColumnName())));
                 } else if (!seenIds.add(row.getId())) {
-                    errors.add(new ColumnBulkSaveDto.RowError(key, column.getColumnName() + " : 같은 컬럼이 두 번 들어 있습니다."));
+                    errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 같은 컬럼이 두 번 들어 있습니다.", column.getColumnName())));
                 } else if (!Boolean.TRUE.equals(column.getIsApproval())) {
                     validateRowFields(row, column.getColumnName(), errors);
                 }
@@ -549,13 +550,13 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
             StandardTerm term = row.getTermId() == null ? null : standardTermRepository.findByIdAndProjectId(row.getTermId(), projectId);
             if (term == null) {
-                errors.add(new ColumnBulkSaveDto.RowError(key, "표준용어를 찾을 수 없습니다."));
+                errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("표준용어를 찾을 수 없습니다.")));
                 continue;
             }
 
             String columnName = term.getCommonStandardTermAbbreviation();
             if (!columnNames.add(columnName)) {
-                errors.add(new ColumnBulkSaveDto.RowError(key, columnName + " : 이 테이블에 이미 같은 컬럼명이 있습니다."));
+                errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 이 테이블에 이미 같은 컬럼명이 있습니다.", columnName)));
                 continue;
             }
             validateRowFields(row, columnName, errors);
@@ -630,16 +631,16 @@ public class ColumnManageServiceImpl implements ColumnManageService {
      */
     private static void validateRowFields(ColumnBulkSaveDto.Row row, String columnName, List<ColumnBulkSaveDto.RowError> errors) {
         List<String> problems = new ArrayList<>();
-        if (row.getColumnDesc() == null || row.getColumnDesc().isBlank()) problems.add("컬럼 설명");
-        if (row.getDataType() == null || row.getDataType().isBlank()) problems.add("데이터 타입");
+        if (row.getColumnDesc() == null || row.getColumnDesc().isBlank()) problems.add(Messages.get("컬럼 설명"));
+        if (row.getDataType() == null || row.getDataType().isBlank()) problems.add(Messages.get("데이터 타입"));
 
         if (!problems.isEmpty()) {
-            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), columnName + " : " + String.join(", ", problems) + "을(를) 입력해주세요."));
+            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), Messages.get("{0} : {1}을(를) 입력해주세요.", columnName, String.join(", ", problems))));
         }
         if ((row.getMaxLength() != null && row.getMaxLength() < 0)
                 || (row.getScale() != null && row.getScale() < 0)
                 || (row.getPrecision() != null && row.getPrecision().signum() < 0)) {
-            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), columnName + " : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다."));
+            errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), Messages.get("{0} : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다.", columnName)));
         }
     }
 

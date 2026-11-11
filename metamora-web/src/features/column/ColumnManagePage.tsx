@@ -9,31 +9,32 @@ import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
 import { columnColumns } from './columns';
+import { t } from '../../lib/i18n';
 
 /** 컬럼 상세 : 값 항목은 [라벨, 키, 코드글꼴 여부], 속성 항목(Y/N)은 라벨 목록 */
 const DETAIL_FIELDS: [string, string, boolean?][] = [
-  ['테이블명', 'tableName', true],
-  ['컬럼명', 'columnName', true],
-  ['컬럼 설명', 'columnDesc'],
-  ['데이터 타입', 'dataType', true],
-  ['최대 길이', 'maxLength'],
-  ['정밀도', 'precision'],
-  ['소수 자릿수', 'scale'],
-  ['기본값', 'defaultValue', true],
-  ['정렬 순서', 'sortOrder'],
-  ['참조 테이블명', 'refTableName', true],
-  ['데이터 예시', 'example'],
+  [t('테이블명'), 'tableName', true],
+  [t('컬럼명'), 'columnName', true],
+  [t('컬럼 설명'), 'columnDesc'],
+  [t('데이터 타입'), 'dataType', true],
+  [t('최대 길이'), 'maxLength'],
+  [t('정밀도'), 'precision'],
+  [t('소수 자릿수'), 'scale'],
+  [t('기본값'), 'defaultValue', true],
+  [t('정렬 순서'), 'sortOrder'],
+  [t('참조 테이블명'), 'refTableName', true],
+  [t('데이터 예시'), 'example'],
 ];
 
 const DETAIL_FLAGS: [string, string][] = [
   ['PK', 'isPk'],
-  ['NULL 허용', 'isNullable'],
-  ['필수 입력', 'isRequired'],
-  ['고유값', 'isUnique'],
-  ['인덱스', 'isIndex'],
-  ['마스터 데이터', 'isMasterData'],
-  ['민감정보', 'isSensitive'],
-  ['암호화', 'isEncrypted'],
+  [t('NULL 허용'), 'isNullable'],
+  [t('필수 입력'), 'isRequired'],
+  [t('고유값'), 'isUnique'],
+  [t('인덱스'), 'isIndex'],
+  [t('마스터 데이터'), 'isMasterData'],
+  [t('민감정보'), 'isSensitive'],
+  [t('암호화'), 'isEncrypted'],
 ];
 
 /** 컬럼 관리 : 테이블별 컬럼 정보를 표준 용어 기준으로 등록·승인 */
@@ -45,7 +46,7 @@ export function ColumnManagePage() {
 
   const add = () => {
     dialog.open({
-      title: '컬럼 등록',
+      title: t('컬럼 등록'),
       content: ({ close }: DialogControls) => <ColumnForm onSaved={() => { close(); reload(); }} />,
     });
   };
@@ -53,14 +54,13 @@ export function ColumnManagePage() {
   const updateActive = (isApproval: boolean) => {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
-    const msg = isApproval ? '승인' : '승인취소';
-    dialog.confirm(`체크된 테이블 정보를 ${msg}하시겠습니까?`, async () => {
+    dialog.confirm(isApproval ? t('체크된 테이블 정보를 승인하시겠습니까?') : t('체크된 테이블 정보를 승인취소하시겠습니까?'), async () => {
       if (!checked.some((e) => e.isApproval === (isApproval ? 'N' : 'Y'))) {
-        dialog.alert(`${msg} 필요한 정보가 선택되지 않았습니다.`);
+        dialog.alert(isApproval ? t('승인 필요한 정보가 선택되지 않았습니다.') : t('승인취소 필요한 정보가 선택되지 않았습니다.'));
         return;
       }
       const response = await api<{ result: boolean }>(`/api/saveColumn/approval/${isApproval}`, { method: 'PATCH', body: checked });
-      if (response.result) dialog.alert(`정상적으로 ${msg}처리 되었습니다.`, reload);
+      if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
     });
   };
 
@@ -68,12 +68,12 @@ export function ColumnManagePage() {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
     if (checked.some((e) => e.isApproval === 'Y')) {
-      dialog.alert('체크된 데이터에 승인된 정보도 포함되어있습니다. 승인이 완료된 경우, 삭제가 불가능합니다.');
+      dialog.alert(t('체크된 데이터에 승인된 정보도 포함되어있습니다. 승인이 완료된 경우, 삭제가 불가능합니다.'));
       return;
     }
-    dialog.confirm('체크된 데이터를 삭제하시겠습니까?', async () => {
+    dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteColumn', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert('정상적으로 삭제되었습니다.', reload);
+      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), reload);
     });
   };
 
@@ -83,13 +83,13 @@ export function ColumnManagePage() {
     const clear = () => {
       if (fileRef.current) fileRef.current.value = '';
     };
-    dialog.confirm('업로드 하시겠습니까?', async () => {
+    dialog.confirm(t('업로드 하시겠습니까?'), async () => {
       const formData = new FormData();
       formData.append('file', file);
       try {
         const response = await api<{ result: string }>('/api/uploadColumnExcelFile', { method: 'POST', body: formData });
         if (response.result === 'success') {
-          dialog.alert('업로드가 완료되었습니다.');
+          dialog.alert(t('업로드가 완료되었습니다.'));
           reload();
         }
       } finally {
@@ -103,12 +103,12 @@ export function ColumnManagePage() {
     const response = await api<{ result: boolean; columnInfos?: Row[] }>(`/api/selectColumn/detail/${enc(row.id)}`);
     if (!response.result) return;
     const columnInfos = response.columnInfos ?? [];
-    if (columnInfos.length === 0) return dialog.alert('승인된 컬럼이 존재하여 수정이 불가능합니다.');
+    if (columnInfos.length === 0) return dialog.alert(t('승인된 컬럼이 존재하여 수정이 불가능합니다.'));
     dialog.popup({
-      title: `컬럼 순서 · ${columnInfos[0].tableName ?? ''}`,
+      title: t('컬럼 순서 · {0}', columnInfos[0].tableName ?? ''),
       size: 'large',
       content: (controls: DialogControls) => (
-        <ColumnOrder columnInfos={columnInfos} controls={controls} onSuccess={() => dialog.alert('정상적으로 순서가 저장되었습니다.', reload)} />
+        <ColumnOrder columnInfos={columnInfos} controls={controls} onSuccess={() => dialog.alert(t('정상적으로 순서가 저장되었습니다.'), reload)} />
       ),
     });
   };
@@ -117,12 +117,12 @@ export function ColumnManagePage() {
   const openDetail = (row: Row) => {
     const approved = row.isApproval === 'Y';
     dialog.open({
-      title: `컬럼 상세 · ${row.tableName ?? ''}.${row.columnName ?? ''}`,
+      title: t('컬럼 상세 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
       content: ({ close }: DialogControls) => (
         <div>
           <div className="dict-detail-status">
-            <span className={`gh-label gh-label-dot ${approved ? 'gh-label-success' : 'gh-label-attention'}`}>{approved ? '승인' : '승인 대기'}</span>
-            <span className="gh-muted">{approved ? '승인된 컬럼은 수정할 수 없습니다.' : ''}</span>
+            <span className={`gh-label gh-label-dot ${approved ? 'gh-label-success' : 'gh-label-attention'}`}>{approved ? t('승인') : t('승인 대기')}</span>
+            <span className="gh-muted">{approved ? t('승인된 컬럼은 수정할 수 없습니다.') : ''}</span>
           </div>
           <dl className="dict-detail">
             {DETAIL_FIELDS.map(([label, key, mono]) => {
@@ -135,7 +135,7 @@ export function ColumnManagePage() {
                 </dd>,
               ];
             })}
-            <dt>속성</dt>
+            <dt>{t('속성')}</dt>
             <dd>
               <div className="dict-detail-flags">
                 {DETAIL_FLAGS.map(([label, key]) => {
@@ -149,7 +149,7 @@ export function ColumnManagePage() {
           </dl>
           {!approved && (
             <div className="gh-dialog-actions">
-              <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>컬럼 순서 변경</button>
+              <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>{t('컬럼 순서 변경')}</button>
             </div>
           )}
         </div>
@@ -159,7 +159,7 @@ export function ColumnManagePage() {
 
   return (
     <>
-      <PageHeader category="데이터 관리" title="컬럼 관리" description="테이블별 컬럼 정보를 표준 용어 기준으로 등록하고 승인합니다." />
+      <PageHeader category={t('데이터 관리')} title={t('컬럼 관리')} description={t('테이블별 컬럼 정보를 표준 용어 기준으로 등록하고 승인합니다.')} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
 
       <div id="gridContainer">
@@ -171,10 +171,10 @@ export function ColumnManagePage() {
           crudActions="anCD"
           extraActions={
             <>
-              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/columnTemplate', '컬럼 템플릿.xlsx')}>
-                <DownloadIcon />템플릿
+              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/columnTemplate', t('컬럼 템플릿.xlsx'))}>
+                <DownloadIcon />{t('템플릿')}
               </button>
-              <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />업로드</button>
+              <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />{t('업로드')}</button>
             </>
           }
           onAction={{ add, active: () => updateActive(true), unactive: () => updateActive(false), delete: remove }}

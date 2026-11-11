@@ -1,5 +1,6 @@
 package com.koboolean.metamora.home.service.impl;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.security.domain.entity.Account;
 import com.koboolean.metamora.core.security.repository.UserRepository;
@@ -34,6 +35,9 @@ public class DashboardServiceImpl implements DashboardService {
         List<BoardViewDto> notice = dashboardRepository.findNotice(projectId, 3, account);
 
         DashboardDto dashboardDto = dashboardRepository.findDataCount(projectId);
+
+        // shortcut: 본문을 읽지 않아 제목만으로 시스템 공지를 판단한다, 등록된 서버 문구와 제목이 같은 일반 공지가 문제 되면 본문까지 확인
+        notice.forEach(board -> board.setTitle(Messages.get(board.getTitle())));
 
         dashboardDto.setRecentChanges(recentChanges);
         dashboardDto.setNotices(notice);

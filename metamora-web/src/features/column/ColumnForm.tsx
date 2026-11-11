@@ -4,16 +4,17 @@ import { api, enc } from '../../lib/api';
 import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
 import { RefTableLookup } from './RefTableLookup';
 import { searchTerms, type Term, type TermSearchType } from './terms';
+import { t } from '../../lib/i18n';
 
 const DATA_TYPES = ['VARCHAR', 'CHAR', 'NUMBER', 'DATE', 'TIMESTAMP', 'BOOLEAN', 'CLOB', 'BLOB'];
 
 const EXTRA_FLAGS = [
-  { id: 'isMasterData', label: '마스터 데이터 여부' },
-  { id: 'isRequired', label: '필수 입력 여부' },
-  { id: 'isSensitive', label: '민감정보 여부' },
-  { id: 'isUnique', label: '고유값 여부' },
-  { id: 'isIndex', label: '인덱스 생성 여부' },
-  { id: 'isEncrypted', label: '암호화 필요 여부' },
+  { id: 'isMasterData', label: t('마스터 데이터 여부') },
+  { id: 'isRequired', label: t('필수 입력 여부') },
+  { id: 'isSensitive', label: t('민감정보 여부') },
+  { id: 'isUnique', label: t('고유값 여부') },
+  { id: 'isIndex', label: t('인덱스 생성 여부') },
+  { id: 'isEncrypted', label: t('암호화 필요 여부') },
 ] as const;
 
 interface TableInfo {
@@ -61,23 +62,23 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   const setField = (key: string, value: string) => setFields((f) => ({ ...f, [key]: value }));
 
   // 선택한 테이블에 같은 컬럼명이 있는지 확인한다. (테이블과 표준용어를 모두 골랐을 때)
-  const refreshDuplicate = async (t: TableInfo | null, columnName: string) => {
+  const refreshDuplicate = async (target: TableInfo | null, columnName: string) => {
     const seq = ++seqs.current.dup;
     pending.current.dup = false;
     setDuplicate({ duplicated: false, message: null });
     if (!columnName) return;
-    if (!t) {
-      setDuplicate({ duplicated: false, message: { cls: 'form-help', text: '테이블을 선택하면 컬럼명 중복을 확인합니다.' } });
+    if (!target) {
+      setDuplicate({ duplicated: false, message: { cls: 'form-help', text: t('테이블을 선택하면 컬럼명 중복을 확인합니다.') } });
       return;
     }
     pending.current.dup = true;
     try {
-      const response = await api<{ duplicated: boolean }>(`/api/selectColumn/duplicate?tableInfoId=${enc(t.id)}&columnName=${enc(columnName)}`);
+      const response = await api<{ duplicated: boolean }>(`/api/selectColumn/duplicate?tableInfoId=${enc(target.id)}&columnName=${enc(columnName)}`);
       if (seq !== seqs.current.dup) return;
       if (response.duplicated === true) {
-        setDuplicate({ duplicated: true, message: { cls: 'table-name-error', text: `${t.tableName} 테이블에 이미 같은 컬럼명(${columnName})이 등록되어 있습니다.` } });
+        setDuplicate({ duplicated: true, message: { cls: 'table-name-error', text: t('{0} 테이블에 이미 같은 컬럼명({1})이 등록되어 있습니다.', target.tableName, columnName) } });
       } else {
-        setDuplicate({ duplicated: false, message: null, ok: `${t.tableName} 에 등록 가능 · 중복 없음` });
+        setDuplicate({ duplicated: false, message: null, ok: t('{0} 에 등록 가능 · 중복 없음', target.tableName) });
       }
     } finally {
       if (seq === seqs.current.dup) pending.current.dup = false;
@@ -85,17 +86,17 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   };
 
   // 테이블 선택 : 테이블에 이미 등록된 컬럼을 함께 보여준다.
-  const selectTable = async (t: TableInfo | null) => {
-    tableRef.current = t;
-    setTable(t);
+  const selectTable = async (target: TableInfo | null) => {
+    tableRef.current = target;
+    setTable(target);
     setTableColumns(null);
     setTableMessage(null);
-    refreshDuplicate(t, termRef.current?.commonStandardTermAbbreviation ?? '');
-    if (!t) return;
-    const response = await api<{ columnInfos?: { columnName: string }[] }>(`/api/selectColumn/tableColumn/${enc(t.id)}`);
-    if (tableRef.current?.id !== t.id) return; // 그 사이 다른 테이블 선택
+    refreshDuplicate(target, termRef.current?.commonStandardTermAbbreviation ?? '');
+    if (!target) return;
+    const response = await api<{ columnInfos?: { columnName: string }[] }>(`/api/selectColumn/tableColumn/${enc(target.id)}`);
+    if (tableRef.current?.id !== target.id) return; // 그 사이 다른 테이블 선택
     const columns = response.columnInfos || [];
-    setTableColumns(columns.length === 0 ? '등록된 컬럼이 없습니다.' : `등록된 컬럼 ${columns.length}개 : ${columns.map((c) => c.columnName).join(', ')}`);
+    setTableColumns(columns.length === 0 ? t('등록된 컬럼이 없습니다.') : t('등록된 컬럼 {0}개 : {1}', columns.length, columns.map((c) => c.columnName).join(', ')));
   };
 
   const onTableKeyword = (value: string) => {
@@ -121,13 +122,13 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
         const list = response.tableInfos || [];
         setTables(list);
         if (list.length === 0) {
-          setTableMessage({ cls: 'table-name-error', text: '조건에 맞는 승인된 테이블이 없습니다.' });
+          setTableMessage({ cls: 'table-name-error', text: t('조건에 맞는 승인된 테이블이 없습니다.') });
           return;
         }
         // 입력과 정확히 같은 테이블이 있거나 결과가 하나뿐이면 바로 선택
-        const auto = list.find((t) => t.tableName === keyword.toUpperCase()) ?? (list.length === 1 ? list[0] : null);
+        const auto = list.find((target) => target.tableName === keyword.toUpperCase()) ?? (list.length === 1 ? list[0] : null);
         if (auto) selectTable(auto);
-        else setTableMessage({ cls: 'form-help', text: `승인된 테이블 ${list.length}건 · 목록에서 선택하세요.` });
+        else setTableMessage({ cls: 'form-help', text: t('승인된 테이블 {0}건 · 목록에서 선택하세요.', list.length) });
       } finally {
         if (seq === seqs.current.table) pending.current.table = false;
       }
@@ -135,24 +136,24 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   };
 
   // 표준용어 선택 : 컬럼명/설명/데이터 타입/최대 길이를 채우고 컬럼명 중복을 확인한다.
-  const selectTerm = (t: Term | null) => {
-    termRef.current = t;
-    setTerm(t);
+  const selectTerm = (selected: Term | null) => {
+    termRef.current = selected;
+    setTerm(selected);
     setTermMessage(null);
-    if (!t) {
+    if (!selected) {
       refreshDuplicate(tableRef.current, '');
       return;
     }
     // 데이터 타입은 "VARCHAR(100)" 형태 : 타입과 길이를 나눠 넣는다.
-    const match = String(t.dataType ?? '').match(/^\s*([^(]+?)\s*(?:\((\d+)\))?\s*$/);
+    const match = String(selected.dataType ?? '').match(/^\s*([^(]+?)\s*(?:\((\d+)\))?\s*$/);
     setFields((f) => ({
       ...f,
-      columnDesc: String(t.commonStandardTermName ?? '').replaceAll('_', ' '), // 설명은 읽기 쉽게 공백으로
-      dataType: match ? match[1] : (t.dataType ?? ''),
+      columnDesc: String(selected.commonStandardTermName ?? '').replaceAll('_', ' '), // 설명은 읽기 쉽게 공백으로
+      dataType: match ? match[1] : (selected.dataType ?? ''),
       maxLength: match?.[2] ? match[2] : f.maxLength,
     }));
-    if (t.isApprovalYn !== 'Y') setTermMessage({ cls: 'table-name-warning', text: '미승인 표준용어입니다. 등록은 가능하지만 용어 승인이 필요합니다.' });
-    refreshDuplicate(tableRef.current, t.commonStandardTermAbbreviation);
+    if (selected.isApprovalYn !== 'Y') setTermMessage({ cls: 'table-name-warning', text: t('미승인 표준용어입니다. 등록은 가능하지만 용어 승인이 필요합니다.') });
+    refreshDuplicate(tableRef.current, selected.commonStandardTermAbbreviation);
   };
 
   /**
@@ -166,7 +167,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       if (seq !== seqs.current.term) return;
       setTerms(list);
       if (list.length === 0) {
-        setTermMessage({ cls: 'table-name-error', text: '조건에 맞는 표준용어가 없습니다. [+ 새 표준용어 등록]으로 바로 등록할 수 있습니다.' });
+        setTermMessage({ cls: 'table-name-error', text: t('조건에 맞는 표준용어가 없습니다. [+ 새 표준용어 등록]으로 바로 등록할 수 있습니다.') });
         return;
       }
       const auto = prefer?.(list) ?? (list.length === 1 ? list[0] : null);
@@ -174,7 +175,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
         selectTerm(auto);
         onSelected?.(auto);
       } else {
-        setTermMessage({ cls: 'form-help', text: `표준용어 ${list.length}건 · 목록에서 선택하세요.` });
+        setTermMessage({ cls: 'form-help', text: t('표준용어 {0}건 · 목록에서 선택하세요.', list.length) });
       }
     } finally {
       if (seq === seqs.current.term) pending.current.term = false;
@@ -201,11 +202,11 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
     // 표준용어명으로 검색하던 값이 있으면 그대로 넘긴다.
     const keyword = termType === 'termName' ? termKeyword.trim() : '';
     dialog.popup({
-      title: '새 표준용어 등록',
+      title: t('새 표준용어 등록'),
       content: ({ close }: DialogControls) => (
         <div className="popup-container term-create-popup">
-          <p className="form-help">등록한 용어는 권한에 따라 바로 승인되거나 승인 대기 상태가 됩니다. 저장하면 컬럼명으로 바로 선택됩니다.</p>
-          <TermCreateForm initialTermName={keyword} submitText="등록 후 선택" onSaved={(saved) => { close(); findAndSelectTerm(saved); }} />
+          <p className="form-help">{t('등록한 용어는 권한에 따라 바로 승인되거나 승인 대기 상태가 됩니다. 저장하면 컬럼명으로 바로 선택됩니다.')}</p>
+          <TermCreateForm initialTermName={keyword} submitText={t('등록 후 선택')} onSaved={(saved) => { close(); findAndSelectTerm(saved); }} />
         </div>
       ),
     });
@@ -223,21 +224,21 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       abbreviation,
       (list) => list.find((t) => t.commonStandardTermAbbreviation === abbreviation && t.commonStandardTermName === saved.commonStandardTermName)
         ?? list.find((t) => t.commonStandardTermAbbreviation === abbreviation),
-      (t) => dialog.alert(t.isApprovalYn === 'Y'
-        ? `표준용어 ${abbreviation} 이(가) 승인 상태로 등록되어 컬럼명으로 선택되었습니다.`
-        : `표준용어 ${abbreviation} 이(가) 승인 대기 상태로 등록되어 컬럼명으로 선택되었습니다. 용어 승인이 필요합니다.`),
+      (selected) => dialog.alert(selected.isApprovalYn === 'Y'
+        ? t('표준용어 {0} 이(가) 승인 상태로 등록되어 컬럼명으로 선택되었습니다.', abbreviation)
+        : t('표준용어 {0} 이(가) 승인 대기 상태로 등록되어 컬럼명으로 선택되었습니다. 용어 승인이 필요합니다.', abbreviation)),
     );
   };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     // 조회가 끝나고 테이블/표준용어를 선택했으며 컬럼명이 중복되지 않아야 한다.
-    if (pending.current.table || pending.current.term || pending.current.dup) return dialog.alert('조회 중입니다. 잠시 후 다시 시도해주세요.');
-    if (!table) return dialog.alert('테이블을 선택해주세요.');
-    if (!term) return dialog.alert('컬럼명으로 사용할 표준용어를 선택해주세요.');
-    if (duplicate.duplicated) return dialog.alert('선택한 테이블에 이미 같은 컬럼명이 등록되어 있습니다.');
-    if (!fields.dataType.trim()) return dialog.alert('데이터 타입을 선택해주세요.');
-    if (!fields.columnDesc.trim()) return dialog.alert('컬럼 설명을 입력해주세요.');
+    if (pending.current.table || pending.current.term || pending.current.dup) return dialog.alert(t('조회 중입니다. 잠시 후 다시 시도해주세요.'));
+    if (!table) return dialog.alert(t('테이블을 선택해주세요.'));
+    if (!term) return dialog.alert(t('컬럼명으로 사용할 표준용어를 선택해주세요.'));
+    if (duplicate.duplicated) return dialog.alert(t('선택한 테이블에 이미 같은 컬럼명이 등록되어 있습니다.'));
+    if (!fields.dataType.trim()) return dialog.alert(t('데이터 타입을 선택해주세요.'));
+    if (!fields.columnDesc.trim()) return dialog.alert(t('컬럼 설명을 입력해주세요.'));
 
     const num = (v: string) => (v ? Number(v) : null);
     const yn = (key: string) => (flags[key] ? 'Y' : 'N');
@@ -266,9 +267,9 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       isEncrypted: yn('isEncrypted'),
     };
 
-    dialog.confirm('추가하시겠습니까?', async () => {
+    dialog.confirm(t('추가하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveColumn', { method: 'POST', body: data });
-      if (response.result) dialog.alert('정상적으로 추가되었습니다.', onSaved);
+      if (response.result) dialog.alert(t('정상적으로 추가되었습니다.'), onSaved);
     });
   };
 
@@ -285,10 +286,10 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
     <form id="editTableForm" className="edit-form" onSubmit={onSubmit}>
       {/* 필수 정보 : 테이블 (승인된 테이블만) */}
       <div className="form-group">
-        <label htmlFor="tableSearchInput">테이블</label>
-        <input type="text" className="form-control" id="tableSearchInput" autoComplete="off" autoFocus placeholder="테이블명 또는 일부를 입력하세요 (예: USE_HIST)"
+        <label htmlFor="tableSearchInput">{t('테이블')}</label>
+        <input type="text" className="form-control" id="tableSearchInput" autoComplete="off" autoFocus placeholder={t('테이블명 또는 일부를 입력하세요 (예: USE_HIST)')}
           value={tableKeyword} onChange={(e) => onTableKeyword(e.target.value)} />
-        <select className="form-control lookup-select" id="tableSelect" size={4} hidden={tables.length === 0 || !tableKeyword.trim()} aria-label="테이블 선택"
+        <select className="form-control lookup-select" id="tableSelect" size={4} hidden={tables.length === 0 || !tableKeyword.trim()} aria-label={t('테이블 선택')}
           value={table ? String(table.id) : ''} onChange={(e) => selectTable(tables.find((t) => String(t.id) === e.target.value) ?? null)}>
           {tables.map((t) => <option key={t.id} value={t.id}>{t.tableKorName ? `${t.tableName} · ${t.tableKorName}` : t.tableName}</option>)}
         </select>
@@ -297,7 +298,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
           {table && (
             <span className="gh-label gh-label-success">
               <span className="table-name-abbr">{table.tableName}</span>
-              <span>선택됨</span>
+              <span>{t('선택됨')}</span>
             </span>
           )}
           {table && tableColumns && <p className="form-help lookup-columns">{tableColumns}</p>}
@@ -307,27 +308,27 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       {/* 필수 정보 : 컬럼명 (표준용어에서 선택, 없으면 바로 등록) */}
       <div className="form-group">
         <div className="lookup-label-row">
-          <label htmlFor="termSearchInput">컬럼명 (표준용어)</label>
-          <button type="button" className="btn btn-sm" id="btn-create-term" onClick={openTermCreate}>+ 새 표준용어 등록</button>
+          <label htmlFor="termSearchInput">{t('컬럼명 (표준용어)')}</label>
+          <button type="button" className="btn btn-sm" id="btn-create-term" onClick={openTermCreate}>{t('+ 새 표준용어 등록')}</button>
         </div>
         <div className="lookup-search-row">
-          <select className="form-control" id="termSearchType" aria-label="표준용어 검색 기준" value={termType} onChange={(e) => onTermSearch(e.target.value as TermSearchType, termKeyword)}>
-            <option value="termName">표준용어명</option>
-            <option value="termAbbreviation">영문약어명</option>
+          <select className="form-control" id="termSearchType" aria-label={t('표준용어 검색 기준')} value={termType} onChange={(e) => onTermSearch(e.target.value as TermSearchType, termKeyword)}>
+            <option value="termName">{t('표준용어명')}</option>
+            <option value="termAbbreviation">{t('영문약어명')}</option>
           </select>
-          <input type="text" className="form-control" id="termSearchInput" autoComplete="off" placeholder="예: 사용자 이름 / USER_NM"
+          <input type="text" className="form-control" id="termSearchInput" autoComplete="off" placeholder={t('예: 사용자 이름 / USER_NM')}
             value={termKeyword} onChange={(e) => onTermSearch(termType, e.target.value)} />
         </div>
-        <select className="form-control lookup-select" id="termSelect" size={5} hidden={terms.length === 0 || !termKeyword.trim()} aria-label="표준용어 선택"
+        <select className="form-control lookup-select" id="termSelect" size={5} hidden={terms.length === 0 || !termKeyword.trim()} aria-label={t('표준용어 선택')}
           value={term ? String(term.id) : ''} onChange={(e) => selectTerm(terms.find((t) => String(t.id) === e.target.value) ?? null)}>
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>
-              {`${t.commonStandardTermAbbreviation} · ${t.commonStandardTermName} · ${t.dataType ?? '-'}${t.isApprovalYn === 'Y' ? '' : ' (미승인)'}`}
+          {terms.map((item) => (
+            <option key={item.id} value={item.id}>
+              {`${item.commonStandardTermAbbreviation} · ${item.commonStandardTermName} · ${item.dataType ?? '-'}${item.isApprovalYn === 'Y' ? '' : t(' (미승인)')}`}
             </option>
           ))}
         </select>
         <div id="termLookupResult" className="table-name-words" aria-live="polite">{message(termMessage)}</div>
-        <input type="text" className="form-control gh-mono" id="columnName" placeholder="표준용어를 선택하면 자동으로 입력됩니다." readOnly value={term?.commonStandardTermAbbreviation ?? ''} />
+        <input type="text" className="form-control gh-mono" id="columnName" placeholder={t('표준용어를 선택하면 자동으로 입력됩니다.')} readOnly value={term?.commonStandardTermAbbreviation ?? ''} />
         <div id="columnDuplicateResult" className="table-name-words" aria-live="polite">
           {message(duplicate.message)}
           {duplicate.ok && <span className="gh-label gh-label-success">{duplicate.ok}</span>}
@@ -335,7 +336,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div className="form-group">
-        <label htmlFor="dataType">데이터 타입</label>
+        <label htmlFor="dataType">{t('데이터 타입')}</label>
         <input type="text" className="form-control" id="dataType" list="dataTypeOptions" value={fields.dataType} onChange={(e) => setField('dataType', e.target.value)} />
       </div>
       <datalist id="dataTypeOptions">
@@ -343,25 +344,25 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       </datalist>
 
       <div className="form-group">
-        <label htmlFor="columnDesc">컬럼 설명</label>
+        <label htmlFor="columnDesc">{t('컬럼 설명')}</label>
         <input type="text" className="form-control" id="columnDesc" value={fields.columnDesc} onChange={(e) => setField('columnDesc', e.target.value)} />
       </div>
 
-      {check('isNullable', 'NULL 허용 여부')}
-      {check('isPk', 'PK 여부')}
+      {check('isNullable', t('NULL 허용 여부'))}
+      {check('isPk', t('PK 여부'))}
 
       <div className="form-group">
-        <label htmlFor="maxLength">최대 길이</label>
+        <label htmlFor="maxLength">{t('최대 길이')}</label>
         <input type="number" className="form-control" id="maxLength" value={fields.maxLength} onChange={(e) => setField('maxLength', e.target.value)} />
       </div>
 
       {/* 부가 정보 펼치기 */}
       <div className="form-group mt-3">
-        <button type="button" className="btn btn-sm" onClick={() => setShowExtra((v) => !v)}>부가 정보 보기 ▼</button>
+        <button type="button" className="btn btn-sm" onClick={() => setShowExtra((v) => !v)}>{t('부가 정보 보기 ▼')}</button>
       </div>
 
       <div id="extra-info-section" style={{ display: showExtra ? 'block' : 'none', marginTop: 12, borderTop: '1px solid #d1d9e0b3', paddingTop: 16 }}>
-        {([['precision', '정밀도', 'number'], ['scale', '소수 자릿수', 'number'], ['defaultValue', '기본값', 'text'], ['sortOrder', '정렬 순서', 'number']] as const).map(([key, label, type]) => (
+        {([['precision', t('정밀도'), 'number'], ['scale', t('소수 자릿수'), 'number'], ['defaultValue', t('기본값'), 'text'], ['sortOrder', t('정렬 순서'), 'number']] as const).map(([key, label, type]) => (
           <div className="form-group" key={key}>
             <label htmlFor={key}>{label}</label>
             <input type={type} className="form-control" id={key} value={fields[key]} onChange={(e) => setField(key, e.target.value)} />
@@ -369,20 +370,20 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
         ))}
 
         <div className="form-group">
-          <label htmlFor="refTableName">참조 테이블명</label>
+          <label htmlFor="refTableName">{t('참조 테이블명')}</label>
           <RefTableLookup id="refTableName" value={fields.refTableName} onChange={(v) => setField('refTableName', v)}
-            placeholder="테이블명 일부를 입력하면 승인된 테이블 목록이 나옵니다 (예: TB_USER)" />
+            placeholder={t('테이블명 일부를 입력하면 승인된 테이블 목록이 나옵니다 (예: TB_USER)')} />
         </div>
 
         <div className="form-group">
-          <label htmlFor="example">데이터 예시</label>
+          <label htmlFor="example">{t('데이터 예시')}</label>
           <input type="text" className="form-control" id="example" value={fields.example} onChange={(e) => setField('example', e.target.value)} />
         </div>
 
         {EXTRA_FLAGS.map((f) => check(f.id, f.label))}
       </div>
 
-      <button type="submit" className="btn btn-primary" id="btn-save-column">저장</button>
+      <button type="submit" className="btn btn-primary" id="btn-save-column">{t('저장')}</button>
     </form>
   );
 }

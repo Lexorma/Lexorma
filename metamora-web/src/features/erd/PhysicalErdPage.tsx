@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
-import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SearchIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { NoticeMarkdown } from '../notice/NoticeMarkdown';
+import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -15,6 +16,7 @@ import {
   columnsByTable, columnType, MAX_ROWS, NODE_WIDTH, nodeHeight,
   type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
 } from './model';
+import { t, tx } from '../../lib/i18n';
 
 const PAGE_SIZE = 100;
 const nodeTypes = { table: TableNode };
@@ -50,10 +52,10 @@ const SOURCE_COLOR: Record<ErdRelation['relationSource'], string> = {
   AI_APPROVED: 'var(--gh-done)',
 };
 const SOURCE_LABEL: Record<ErdRelation['relationSource'], string> = {
-  USER: '사용자 정의',
-  REF_COLUMN: '참조 테이블명',
-  IMPORTED: '가져옴',
-  AI_APPROVED: 'AI 추정 승인',
+  USER: t('사용자 정의'),
+  REF_COLUMN: t('참조 테이블명'),
+  IMPORTED: t('가져옴'),
+  AI_APPROVED: t('AI 추정 승인'),
 };
 
 const toLayoutNode = (n: TableNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.columns.length) });
@@ -63,8 +65,8 @@ export default function PhysicalErdPage() {
   const { user } = useAuth();
   return (
     <>
-      <PageHeader category="데이터 관리" title="물리 ERD"
-        description="스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회합니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다." />
+      <PageHeader category={t('데이터 관리')} title={t('물리 ERD')}
+        description={t('스키마·검색·선택 테이블의 이웃 단위로 물리 모델을 조회합니다. 테이블을 옮긴 배치는 [배치 저장] 을 눌러야 저장되며, 배치는 나에게만 보입니다.')} />
       <ReactFlowProvider key={user?.projectId}>
         <ErdWorkspace />
       </ReactFlowProvider>
@@ -92,6 +94,8 @@ function ErdWorkspace() {
   const savedVersion = useRef<number | null>(null);
   const positions = useRef(new Map<string, XY>());
   const pending = useRef(new Map<string, XY>());
+  // 저장된 위치가 없어 화면이 자동으로 놓은 테이블 : 저장할 때 함께 보내지만 사용자가 바꾼 것이 아니므로 세지 않는다
+  const autoPlaced = useRef(new Set<string>());
   const [pendingCount, setPendingCount] = useState(0);
   const appliedLayout = useRef<ErdLayout | null>(null);
   const shownGraph = useRef<string | null>(null);
@@ -101,6 +105,8 @@ function ErdWorkspace() {
     queryKey: ['erd-layout', user?.projectId],
     queryFn: () => api<ErdLayout>('/api/erd/layout', { silent: true }),
     staleTime: Infinity,
+    // [저장된 배치 불러오기] : 서버 값이 그대로여도 새 객체로 받아야 아래 effect 가 화면의 배치를 되돌린다
+    structuralSharing: false,
     gcTime: 0,
   });
   const graphKey = graphUrl(scope);
@@ -117,12 +123,16 @@ function ErdWorkspace() {
     return (graph.data?.relations ?? []).filter((r) => ids.has(r.sourceTableId) && ids.has(r.targetTableId));
   }, [graph.data]);
 
-  const markPending = (moved: { id: string; position: XY }[]) => {
+  const markPending = (moved: { id: string; position: XY }[], byUser = true) => {
     moved.forEach((n) => {
+      const current = positions.current.get(n.id);
+      if (current && current.x === n.position.x && current.y === n.position.y) return; // 제자리 (움직이지 않은 드래그·같은 결과의 자동 배치)
       positions.current.set(n.id, n.position);
       pending.current.set(n.id, n.position);
+      if (byUser) autoPlaced.current.delete(n.id);
+      else autoPlaced.current.add(n.id);
     });
-    setPendingCount(pending.current.size);
+    setPendingCount(pending.current.size - autoPlaced.current.size);
   };
 
   // 조회 결과 → 노드. 저장된 위치가 없는 테이블만 기존 배치 오른쪽에 자동 배치한다 (기존 위치는 덮어쓰지 않음)
@@ -134,6 +144,7 @@ function ErdWorkspace() {
       savedVersion.current = layout.data.version;
       positions.current = new Map(Object.entries(layout.data.nodes));
       pending.current.clear();
+      autoPlaced.current.clear();
       setPendingCount(0);
       shownGraph.current = null;
     }
@@ -163,7 +174,7 @@ function ErdWorkspace() {
           placed = await runLayout(missing.map(toLayoutNode), edges);
         } catch (e) {
           if (cancelled) return;
-          setMessage(`${(e as Error).message} - 격자로 배치했습니다.`);
+          setMessage(t('{0} - 격자로 배치했습니다.', (e as Error).message));
           placed = gridLayout(missing.map(toLayoutNode));
         } finally {
           if (!cancelled) setArranging(false);
@@ -174,7 +185,7 @@ function ErdWorkspace() {
         missing.forEach((n) => {
           n.position = { x: placed[n.id].x + right, y: placed[n.id].y };
         });
-        markPending(missing);
+        markPending(missing, false);
       }
       if (cancelled) return;
       setNodes(built);
@@ -269,10 +280,11 @@ function ErdWorkspace() {
       });
       savedVersion.current = result.version;
       pending.current.clear();
+      autoPlaced.current.clear();
       setPendingCount(0);
-      setMessage('배치를 저장했습니다.');
+      setMessage(t('배치를 저장했습니다.'));
     } catch {
-      setMessage('배치를 저장하지 못했습니다.');
+      setMessage(t('배치를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -283,7 +295,7 @@ function ErdWorkspace() {
       setMessage('');
       void layout.refetch();
     };
-    if (pendingCount) dialog.confirm('저장하지 않은 배치를 버리고 저장된 배치를 불러오시겠습니까?', reload);
+    if (pendingCount) dialog.confirm(t('저장하지 않은 배치를 버리고 저장된 배치를 불러오시겠습니까?'), reload);
     else reload();
   };
 
@@ -299,7 +311,7 @@ function ErdWorkspace() {
       const moved = nodes.map((n) => ({ ...n, position: { x: placed[n.id].x + left, y: placed[n.id].y + top } }));
       markPending(moved);
       setNodes(moved);
-      setMessage('자동 배치했습니다. [배치 저장] 을 눌러야 저장됩니다.');
+      setMessage(t('자동 배치했습니다. [배치 저장] 을 눌러야 저장됩니다.'));
       requestAnimationFrame(() => void flow.fitView({ padding: 0.15, maxZoom: 1 }));
     } catch (e) {
       setMessage((e as Error).message);
@@ -314,65 +326,68 @@ function ErdWorkspace() {
 
   return (
     <div className="erd-page">
-      <form className="erd-toolbar" onSubmit={search}>
-        <select className="form-control" aria-label="스키마" value={form.schemaId} onChange={(e) => setForm({ ...form, schemaId: e.target.value })}>
-          <option value="">전체 스키마</option>
-          {schemas.data?.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
-        </select>
-        <input className="form-control erd-keyword" aria-label="테이블 검색" maxLength={100} placeholder="테이블명 / 논리명 / 스키마명"
-          value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
-        <select className="form-control" aria-label="승인 상태" value={form.isApproval} onChange={(e) => setForm({ ...form, isApproval: e.target.value })}>
-          <option value="">승인 전체</option>
-          <option value="true">승인</option>
-          <option value="false">승인 대기</option>
-        </select>
-        <select className="form-control" aria-label="마스터 여부" value={form.isMasterTable} onChange={(e) => setForm({ ...form, isMasterTable: e.target.value })}>
-          <option value="">마스터 전체</option>
-          <option value="true">마스터</option>
-          <option value="false">일반</option>
-        </select>
-        <button type="submit" className="btn"><SearchIcon />조회</button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title="물리 모델 변경 내용을 다시 불러옵니다"><SyncIcon />새로고침</button>
-      </form>
+      {/* 다른 화면의 그리드 검색 줄과 같은 형태 : 왼쪽 조회 조건(입력 그룹) + 오른쪽 버튼 그룹 */}
+      <div className="grid-header">
+        <form className="search-container" onSubmit={search}>
+          <select className="search-column-select" aria-label={t('스키마')} value={form.schemaId} onChange={(e) => setForm({ ...form, schemaId: e.target.value })}>
+            <option value="">{t('전체 스키마')}</option>
+            {schemas.data?.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
+          </select>
+          <select className="search-column-select" aria-label={t('승인 상태')} value={form.isApproval} onChange={(e) => setForm({ ...form, isApproval: e.target.value })}>
+            <option value="">{t('승인 전체')}</option>
+            <option value="true">{t('승인')}</option>
+            <option value="false">{t('승인 대기')}</option>
+          </select>
+          <select className="search-column-select" aria-label={t('마스터 여부')} value={form.isMasterTable} onChange={(e) => setForm({ ...form, isMasterTable: e.target.value })}>
+            <option value="">{t('마스터 전체')}</option>
+            <option value="true">{t('마스터')}</option>
+            <option value="false">{t('일반')}</option>
+          </select>
+          <input type="text" className="search-input search-input-text" aria-label={t('테이블 검색')} maxLength={100} placeholder={t('테이블명 / 논리명 / 스키마명')}
+            value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
+          <button type="submit" className="grd-select">{t('조회')}</button>
+        </form>
 
-      <div className="erd-toolbar erd-layout-actions">
-        <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />자동 배치</button>
-        <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />전체 보기</button>
-        <button type="button" className="btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? '저장 중…' : '배치 저장'}</button>
-        <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />저장된 배치 불러오기</button>
-        <span className="erd-muted">{pendingCount ? `저장하지 않은 배치 ${pendingCount}개` : '저장된 배치와 같습니다'}</span>
+        <div className="button-container">
+          <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
+          <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
+          <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
+          <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
+          <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
+          <button type="button" className="grd-save btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
+        </div>
       </div>
 
       <div className="erd-status" role="status">
         {scope.kind === 'neighbors' ? (
           <>
-            <button type="button" className="btn btn-sm" onClick={() => setScope(scope.back)}><ArrowLeftIcon />범위 조회로</button>
-            <span><Mono>{scope.tableName}</Mono> 기준 {scope.depth}단계 이웃 · 테이블 {graph.data?.tables.length ?? 0}개</span>
+            <button type="button" className="btn btn-sm" onClick={() => setScope(scope.back)}><ArrowLeftIcon />{t('범위 조회로')}</button>
+            <span>{tx('{0} 기준 {1}단계 이웃 · 테이블 {2}개', <Mono>{scope.tableName}</Mono>, scope.depth, graph.data?.tables.length ?? 0)}</span>
           </>
         ) : (
           <span>
-            {scope.schemaId ? schemaName.get(Number(scope.schemaId)) : '전체 스키마'}
+            {scope.schemaId ? schemaName.get(Number(scope.schemaId)) : t('전체 스키마')}
             {scope.keyword && ` · "${scope.keyword}"`}
-            {graph.data && ` · 전체 ${graph.data.totalCount}개 중 ${graph.data.tables.length ? `${scope.page * PAGE_SIZE + 1}–${scope.page * PAGE_SIZE + graph.data.tables.length}` : 0}`}
+            {graph.data && t(' · 전체 {0}개 중 {1}', graph.data.totalCount, graph.data.tables.length ? `${scope.page * PAGE_SIZE + 1}–${scope.page * PAGE_SIZE + graph.data.tables.length}` : 0)}
           </span>
         )}
-        <span>· 관계 {shownRelations.length}개</span>
-        {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? '한도(300개)까지만 표시' : '일부만 표시 - 스키마·검색으로 범위를 줄이거나 다음 페이지로'}</Label>}
+        <span>{t('· 관계 {0}개', shownRelations.length)}</span>
+        {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? t('한도(300개)까지만 표시') : t('일부만 표시 - 스키마·검색으로 범위를 줄이거나 다음 페이지로')}</Label>}
         {scope.kind === 'search' && (
           <span className="erd-pager">
-            <button type="button" className="btn btn-sm" disabled={loading || scope.page === 0} onClick={() => setScope({ ...scope, page: scope.page - 1 })}>이전</button>
-            <button type="button" className="btn btn-sm" disabled={loading || !graph.data?.truncated} onClick={() => setScope({ ...scope, page: scope.page + 1 })}>다음 {PAGE_SIZE}개</button>
+            <button type="button" className="btn btn-sm" disabled={loading || scope.page === 0} onClick={() => setScope({ ...scope, page: scope.page - 1 })}>{t('이전')}</button>
+            <button type="button" className="btn btn-sm" disabled={loading || !graph.data?.truncated} onClick={() => setScope({ ...scope, page: scope.page + 1 })}>{t('다음 {0}개', PAGE_SIZE)}</button>
           </span>
         )}
-        {loading && <span className="erd-muted">불러오는 중…</span>}
+        {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
       </div>
 
       <div className="erd-workspace">
-        <div className="erd-canvas" aria-label="물리 ERD">
-          {error && <div className="erd-empty" role="alert">ERD 를 불러오지 못했습니다. {error.message}</div>}
+        <div className="erd-canvas" aria-label={t('물리 ERD')}>
+          {error && <div className="erd-empty" role="alert">{t('ERD 를 불러오지 못했습니다.')} {error.message}</div>}
           {!error && !loading && graph.data && !graph.data.tables.length && (
-            <div className="erd-empty">{scope.kind === 'search' && (scope.keyword || scope.isApproval || scope.isMasterTable) ? '검색 결과가 없습니다.' : '조회 범위에 등록된 테이블이 없습니다.'}</div>
+            <div className="erd-empty">{scope.kind === 'search' && (scope.keyword || scope.isApproval || scope.isMasterTable) ? t('검색 결과가 없습니다.') : t('조회 범위에 등록된 테이블이 없습니다.')}</div>
           )}
           <ReactFlow
             nodes={displayNodes}
@@ -396,8 +411,8 @@ function ErdWorkspace() {
         </div>
 
         <aside className="erd-detail">
-          <select className="form-control" aria-label="테이블로 이동" value={selectedId ?? ''} onChange={(e) => e.target.value && focus(e.target.value)}>
-            <option value="">테이블로 이동</option>
+          <select className="form-control" aria-label={t('테이블로 이동')} value={selectedId ?? ''} onChange={(e) => e.target.value && focus(e.target.value)}>
+            <option value="">{t('테이블로 이동')}</option>
             {graph.data?.tables.map((t) => <option key={t.id} value={t.id}>{t.tableName}{t.tableKorName ? ` (${t.tableKorName})` : ''}</option>)}
           </select>
           {selected ? (
@@ -416,20 +431,20 @@ function ErdWorkspace() {
               })}
             />
           ) : (
-            <p className="erd-muted">테이블을 누르면 컬럼과 관계를 볼 수 있습니다.</p>
+            <p className="erd-muted">{t('테이블을 누르면 컬럼과 관계를 볼 수 있습니다.')}</p>
           )}
           <div className="erd-legend">
             <span><i className="erd-line" />FK</span>
-            <span><i className="erd-line dashed" />논리 관계</span>
+            <span><i className="erd-line dashed" />{t('논리 관계')}</span>
             {Object.entries(SOURCE_LABEL).map(([source, label]) => (
               <span key={source}><i className="erd-swatch" style={{ background: SOURCE_COLOR[source as ErdRelation['relationSource']] }} />{label}</span>
             ))}
-            <p className="erd-muted">MetaMora 에 정의한 관계입니다. 원본 DB 의 실제 FK 와 다를 수 있고, 카디널리티는 표시하지 않습니다.</p>
+            <p className="erd-muted">{t('MetaMora 에 정의한 관계입니다. 원본 DB 의 실제 FK 와 다를 수 있고, 카디널리티는 표시하지 않습니다.')}</p>
             <button type="button" className="erd-license-link erd-muted" onClick={() => dialog.open({
-              title: '오픈소스 고지',
+              title: t('오픈소스 고지'),
               className: 'dialog-wide',
               content: <OpenSourceNotices />,
-            })}>오픈소스 고지</button>
+            })}>{t('오픈소스 고지')}</button>
           </div>
         </aside>
       </div>
@@ -442,18 +457,19 @@ function OpenSourceNotices() {
     queryKey: ['erd-open-source-notices'],
     queryFn: async () => {
       const [notice, license] = await Promise.all([
-        api<string>('/jsons/licenses/THIRD_PARTY_NOTICES.txt', { responseType: 'text' }),
+        api<string>('/jsons/licenses/THIRD_PARTY_NOTICES.md', { responseType: 'text' }),
         api<string>('/jsons/licenses/EPL-2.0.md', { responseType: 'text' }),
       ]);
-      return `${notice}\n\nEPL-2.0 라이선스 전문\n\n${license}`;
+      // 두 파일 모두 Markdown : 고지 뒤에 구분선을 두고 EPL-2.0 전문을 잇는다
+      return `${notice}\n\n---\n\n${license}`;
     },
     staleTime: Infinity,
     retry: false,
   });
 
-  if (notices.isPending) return <p role="status">고지 내용을 불러오는 중…</p>;
-  if (notices.isError) return <p role="alert">고지 내용을 불러오지 못했습니다. <button type="button" className="erd-license-link" onClick={() => void notices.refetch()}>다시 시도</button></p>;
-  return <pre className="erd-license-text">{notices.data}</pre>;
+  if (notices.isPending) return <p role="status">{t('고지 내용을 불러오는 중…')}</p>;
+  if (notices.isError) return <p role="alert">{t('고지 내용을 불러오지 못했습니다.')} <button type="button" className="erd-license-link" onClick={() => void notices.refetch()}>{t('다시 시도')}</button></p>;
+  return <div className="erd-license-text"><NoticeMarkdown content={notices.data} /></div>;
 }
 
 function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors }: {
@@ -476,23 +492,23 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   return (
     <>
       <h3><Mono>{table.tableName}</Mono></h3>
-      <p>{table.tableKorName || '논리명 없음'} · {schemaName}</p>
+      <p>{table.tableKorName || t('논리명 없음')} · {schemaName}</p>
       <p>
-        {table.isApproval ? <Label variant="success" dot>승인</Label> : <Label variant="attention" dot>승인 대기</Label>}
-        {table.isMasterTable && <> <Label variant="accent">마스터</Label></>}
+        {table.isApproval ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>}
+        {table.isMasterTable && <> <Label variant="accent">{t('마스터')}</Label></>}
       </p>
-      <p className="erd-muted">{table.tableDescription || '설명 없음'}</p>
+      <p className="erd-muted">{table.tableDescription || t('설명 없음')}</p>
 
       <div className="erd-toolbar">
-        <select className="form-control" aria-label="이웃 단계" value={depth} onChange={(e) => onDepth(Number(e.target.value))}>
-          {[1, 2, 3].map((n) => <option key={n} value={n}>{n}단계</option>)}
+        <select className="form-control" aria-label={t('이웃 단계')} value={depth} onChange={(e) => onDepth(Number(e.target.value))}>
+          {[1, 2, 3].map((n) => <option key={n} value={n}>{t('{0}단계', n)}</option>)}
         </select>
-        <button type="button" className="btn btn-sm" onClick={onNeighbors}><GitMergeIcon />이웃 탐색</button>
-        <button type="button" className="btn btn-sm" onClick={onFocus}>이동</button>
+        <button type="button" className="btn btn-sm" onClick={onNeighbors}><GitMergeIcon />{t('이웃 탐색')}</button>
+        <button type="button" className="btn btn-sm" onClick={onFocus}>{t('이동')}</button>
       </div>
-      <label className="erd-check"><input type="checkbox" checked={onlyRelated} onChange={(e) => onOnlyRelated(e.target.checked)} /> 연결된 테이블만 보기</label>
+      <label className="erd-check"><input type="checkbox" checked={onlyRelated} onChange={(e) => onOnlyRelated(e.target.checked)} /> {t('연결된 테이블만 보기')}</label>
 
-      <h4>컬럼 {columns.length}개</h4>
+      <h4>{t('컬럼 {0}개', columns.length)}</h4>
       <ul className="erd-list">
         {columns.map((c) => (
           <li key={c.id}>
@@ -502,7 +518,7 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
         ))}
       </ul>
 
-      <h4>관계 {relations.length}개</h4>
+      <h4>{t('관계 {0}개', relations.length)}</h4>
       {relations.length ? (
         <ul className="erd-list">
           {relations.map((r) => {
@@ -511,8 +527,8 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
               <li key={r.id}>
                 <strong><Mono>{r.sourceTableName}</Mono> → <Mono>{r.targetTableName}</Mono></strong>
                 <small>
-                  {r.relationName ?? ''} · {r.relationType === 'FK' ? 'FK' : '논리'} · {SOURCE_LABEL[r.relationSource]} · {r.isApproval ? '승인' : '승인 대기'}
-                  {!loaded.has(other) && ' · 조회 범위 밖'}
+                  {r.relationName ?? ''} · {r.relationType === 'FK' ? 'FK' : t('논리')} · {SOURCE_LABEL[r.relationSource]} · {r.isApproval ? t('승인') : t('승인 대기')}
+                  {!loaded.has(other) && t(' · 조회 범위 밖')}
                 </small>
                 {r.columns.map((p, i) => <small key={i}>{p.sourceColumnName} → {p.targetColumnName}</small>)}
               </li>
@@ -520,7 +536,7 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
           })}
         </ul>
       ) : (
-        <p className="erd-muted">관계가 없습니다.</p>
+        <p className="erd-muted">{t('관계가 없습니다.')}</p>
       )}
     </>
   );

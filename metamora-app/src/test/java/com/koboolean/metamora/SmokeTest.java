@@ -26,9 +26,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -165,6 +173,15 @@ class SmokeTest {
         // 401 응답 때문에 익명 세션(DB 행)을 만들지 않는다
         assertThat(api.headers().allValues("Set-Cookie")).noneMatch(c -> c.startsWith("SESSION="));
 
+        // 메시지는 Accept-Language 를 따른다 : 없으면 한국어, 한국어가 아니면 영어 (Security 필터 단계 / 컨트롤러 예외 모두)
+        assertThat(api.body()).contains("로그인이 필요합니다.");
+        HttpResponse<String> english = anonymous.send(HttpRequest.newBuilder(uri("/api/selectTable/data?page=0&size=10"))
+                .header("Accept-Language", "en").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(english.body()).contains("Login is required.");
+        HttpResponse<String> notFound = anonymous.send(HttpRequest.newBuilder(uri("/images/not-exists.png"))
+                .header("Accept-Language", "en-US,en;q=0.9").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(notFound.body()).contains("The requested resource could not be found.");
+
         HttpResponse<String> page = anonymous.send(HttpRequest.newBuilder(uri("/tableManage")).GET().build(), HttpResponse.BodyHandlers.ofString());
         assertThat(page.statusCode()).isEqualTo(200);
         assertThat(page.body()).contains("id=\"root\"");
@@ -256,6 +273,43 @@ class SmokeTest {
 
     @Test
     @Order(11)
+    @DisplayName("V0 기본 안내 공지의 목록·상세·작성자·조회 상태를 확인한다")
+    void welcomeNotice() throws Exception {
+        HttpResponse<String> list = get("/api/selectNotice/data?page=0&size=10&sort=id,asc", true);
+        assertThat(list.statusCode()).isEqualTo(200);
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var first = mapper.readTree(list.body()).path("data").get(0);
+        assertThat(first.path("id").asLong()).isEqualTo(1L);
+        assertThat(first.path("title").asString()).isEqualTo("[안내] Metamora에 오신 것을 환영합니다.");
+        assertThat(first.path("systemNotice").asBoolean()).isTrue();
+        assertThat(first.path("isHit").asString()).isEqualTo("확인");
+
+        HttpResponse<String> view = get("/api/selectNotice/view/1", true);
+        assertThat(view.statusCode()).isEqualTo(200);
+        var notice = mapper.readTree(view.body());
+        assertThat(notice.path("username").asString()).isEqualTo("admin");
+        assertThat(notice.path("content").asString()).contains("물리 ERD", "이용 안내", "문의 및 오류 신고",
+                "https://github.com/meta-mora/metamora/issues");
+        assertThat(notice.path("accounts").size()).isEqualTo(1);
+        assertThat(get("/api/selectNotice/view/1", true).statusCode()).isEqualTo(200);
+        assertThat(mapper.readTree(get("/api/selectNotice/view/1", true).body()).path("accounts").size()).isEqualTo(1);
+
+        // 영어 화면(Accept-Language)에는 영어판으로 나가고, 시스템이 등록한 공지는 수정할 수 없다.
+        var english = mapper.readTree(client.send(HttpRequest.newBuilder(uri("/api/selectNotice/view/1"))
+                .header("Accept-Language", "en").GET().build(), HttpResponse.BodyHandlers.ofString()).body());
+        assertThat(english.path("title").asString()).isEqualTo("[Notice] Welcome to Metamora");
+        assertThat(english.path("content").asString()).contains("Physical ERD", "Getting started", "Questions and bug reports");
+        HttpResponse<String> update = client.send(HttpRequest.newBuilder(uri("/api/saveNotice"))
+                .header("Content-Type", "application/json")
+                .header("X-XSRF-TOKEN", csrfToken())
+                .PUT(HttpRequest.BodyPublishers.ofString("{\"id\":1,\"title\":\"t\",\"content\":\"c\",\"projectIds\":[" + PROJECT_ID + "]}"))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(update.statusCode()).isEqualTo(400);
+        assertThat(update.body()).contains("SYSTEM_NOTICE_CANNOT_BE_UPDATE");
+    }
+
+    @Test
+    @Order(11)
     @DisplayName("공지사항 등록 → 상세(조회자 기록) / 대상 프로젝트 / 관리 권한 API")
     void noticeApis() throws Exception {
         String title = "smoke-notice-" + UUID.randomUUID();
@@ -333,6 +387,79 @@ class SmokeTest {
                 assertThat(response.body()).contains("\"recordsTotal\"");
             }
         }
+    }
+
+    /** 화면의 그리드 컬럼 정의(metamora-web 의 features 별 columns.ts) → 그리드 데이터 API */
+    private static final Map<String, String> GRID_DATA_URLS = Map.of(
+            "standardTermsColumns", "/api/getStandardTerms",
+            "standardWordsColumns", "/api/getStandardWords",
+            "standardDomainsColumns", "/api/getStandardDomains",
+            "tableColumns", "/api/selectTable",
+            "columnColumns", "/api/selectColumn",
+            "noticeColumns", "/api/selectNotice",
+            "userColumns", "/api/selectUser",
+            "projectColumns", "/api/getProject/" + PROJECT_ID,
+            "systemLogColumns", "/api/getSystemLog");
+
+    @Test
+    @Order(20)
+    @DisplayName("그리드 정렬·검색 : 화면에 정의한 정렬 컬럼(처음 정렬되는 첫 컬럼 포함) × 검색 컬럼이 모두 오류 없이 조회된다")
+    void gridSortAndSearch() throws Exception {
+        Pattern grid = Pattern.compile("export const (\\w+): GridColumn\\[] = \\[(.*?)\\n];", Pattern.DOTALL);
+        Pattern column = Pattern.compile("\\{[^}]*\\bcolumn: '(\\w+)'[^}]*}");
+        List<String> sources;
+        try (Stream<Path> files = Files.walk(Path.of("").toAbsolutePath().getParent().resolve("metamora-web/src/features"))) {
+            sources = files.filter(path -> path.getFileName().toString().equals("columns.ts")).map(path -> {
+                try {
+                    return Files.readString(path);
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            }).toList();
+        }
+
+        List<String> failed = new ArrayList<>();
+        int grids = 0;
+        for (String source : sources) {
+            Matcher gridMatcher = grid.matcher(source);
+            while (gridMatcher.find()) {
+                grids++;
+                String dataUrl = GRID_DATA_URLS.get(gridMatcher.group(1));
+                assertThat(dataUrl).as("GRID_DATA_URLS 에 없는 그리드 : " + gridMatcher.group(1)).isNotNull();
+
+                Set<String> sorts = new LinkedHashSet<>();
+                List<String> searches = new ArrayList<>(List.of(""));
+                Matcher columnMatcher = column.matcher(gridMatcher.group(2));
+                while (columnMatcher.find()) {
+                    String definition = columnMatcher.group();
+                    // Grid.tsx : 첫 컬럼은 처음 정렬 기준, 그 밖에는 isFilter 가 false 가 아니고 체크박스가 아닌 컬럼만 정렬할 수 있다.
+                    if (sorts.isEmpty() || !(definition.contains("isFilter: false") || definition.contains("rowType: 'CHECKBOX'"))) {
+                        sorts.add(columnMatcher.group(1));
+                    }
+                    if (definition.contains("isSearch: true")) {
+                        searches.add("&searchColumn=" + columnMatcher.group(1) + "&searchQuery=a");
+                    }
+                }
+                assertThat(sorts).as(dataUrl).isNotEmpty();
+                for (String sort : sorts) {
+                    for (String search : searches) {
+                        for (String direction : List.of("asc", "desc")) {
+                            String url = dataUrl + "/data?page=0&size=10&sort=" + sort + "," + direction + search;
+                            HttpResponse<String> response = get(url, true);
+                            if (response.statusCode() != 200 || !response.body().contains("\"recordsTotal\"")) {
+                                failed.add(url + " → " + response.statusCode());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assertThat(grids).isEqualTo(GRID_DATA_URLS.size());
+        assertThat(failed).isEmpty();
+
+        // 숫자 컬럼(응답 상태코드) 검색은 부분 일치로 찾는다.
+        assertThat(get("/api/getSystemLog/data?page=0&size=10&sort=id,desc&searchColumn=statusCode&searchQuery=20", true).body())
+                .contains("\"statusCode\":200");
     }
 
     @ParameterizedTest(name = "API {0}")

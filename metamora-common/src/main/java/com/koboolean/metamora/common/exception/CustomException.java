@@ -1,6 +1,7 @@
 package com.koboolean.metamora.common.exception;
 
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.common.i18n.Messages;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -16,10 +17,18 @@ public class CustomException extends RuntimeException {
         this.customMessage = null;
     }
 
-    public CustomException(ErrorCode errorCode, String customMessage) {
-        super(errorCode.getMessage() + " - " + customMessage);
+    /**
+     * @param customMessage 사유 (한국어 원문, 값이 들어갈 자리는 {0}, {1})
+     * @param args          {0}, {1} 에 들어갈 값
+     */
+    public CustomException(ErrorCode errorCode, String customMessage, Object... args) {
+        this(errorCode, Messages.get(customMessage, args), errorCode.getMessage());
+    }
+
+    private CustomException(ErrorCode errorCode, String reason, String message) {
+        super(message + " - " + reason);
         this.errorCode = errorCode;
-        this.customMessage = errorCode.getMessage() + " \n[" + customMessage + "]";
+        this.customMessage = message + " \n[" + reason + "]";
     }
 
     public String getCustomMessage() {

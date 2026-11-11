@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, enc } from '../../lib/api';
+import { t } from '../../lib/i18n';
 
 interface TableInfo {
   id: number;
@@ -57,10 +58,10 @@ export function RefTableLookup({ value, onChange, disabled, id, className = 'for
           {name && tables && (matched ? (
             <span className="gh-label gh-label-success">
               <span className="table-name-abbr">{matched.tableName}</span>
-              <span>{matched.tableKorName ? `${matched.tableKorName} · 선택됨` : '선택됨'}</span>
+              <span>{matched.tableKorName ? t('{0} · 선택됨', matched.tableKorName) : t('선택됨')}</span>
             </span>
           ) : (
-            <p className="form-help">{tables.length ? `후보 ${tables.length}건 · 목록에서 선택하세요.` : '승인된 테이블에 없습니다 · DDL 에서 FK 를 만들지 않습니다.'}</p>
+            <p className="form-help">{tables.length ? t('후보 {0}건 · 목록에서 선택하세요.', tables.length) : t('승인된 테이블에 없습니다 · DDL 에서 FK 를 만들지 않습니다.')}</p>
           ))}
         </div>
       )}

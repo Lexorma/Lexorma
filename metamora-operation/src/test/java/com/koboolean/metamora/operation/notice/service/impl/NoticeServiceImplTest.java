@@ -120,6 +120,21 @@ class NoticeServiceImplTest {
             assertThat(board.getProjectIds()).containsExactly(1L, 4L);
             assertThat(board.getUpdatedTime()).isNotNull();
         }
+
+        @Test
+        @DisplayName("시스템이 등록한 공지(영어판이 등록된 글)는 수정할 수 없다")
+        void updateSystemNotice() {
+            Board board = board(1L, List.of(1L));
+            board.setTitle("기본 스키마는 삭제할 수 없습니다.");
+            board.setContent("기본 프로젝트는 삭제가 불가능합니다.");
+            when(boardCategoryRepository.findById("NOTICE")).thenReturn(Optional.of(noticeCategory()));
+            when(boardRepository.findById(1L)).thenReturn(Optional.of(board));
+
+            assertThatThrownBy(() -> service.updateNotice(login, BoardDto.builder().id(1L).title("새 제목").content("새 내용").build()))
+                    .isInstanceOf(CustomException.class)
+                    .extracting("errorCode").isEqualTo(ErrorCode.SYSTEM_NOTICE_CANNOT_BE_UPDATE);
+            assertThat(board.getTitle()).isEqualTo("기본 스키마는 삭제할 수 없습니다.");
+        }
     }
 
     @Test

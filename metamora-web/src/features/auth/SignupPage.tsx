@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { api, ApiError } from '../../lib/api';
+import { t } from '../../lib/i18n';
 
 interface SignupProject {
   id: number;
@@ -36,10 +37,10 @@ export function SignupPage() {
     } catch (err) {
       // 오류 시 입력한 내역 유지 (패스워드 제외)
       setForm((f) => ({ ...f, password: '' }));
-      dialog.alert(err instanceof ApiError ? err.message : '회원가입 중 문제가 발생했습니다.');
+      dialog.alert(err instanceof ApiError ? err.message : t('회원가입 중 문제가 발생했습니다.'));
       return;
     }
-    dialog.alert('회원가입이 완료되었습니다. 로그인해주세요.', () => navigate('/login', { replace: true }));
+    dialog.alert(t('회원가입이 완료되었습니다. 로그인해주세요.'), () => navigate('/login', { replace: true }));
   };
 
   return (
@@ -47,38 +48,38 @@ export function SignupPage() {
       <div className="auth-logo">
         <img src="/images/favicon.svg" alt="" width="48" height="48" />
       </div>
-      <h1 className="auth-title">MetaMora 회원가입</h1>
+      <h1 className="auth-title">{t('MetaMora 회원가입')}</h1>
 
       <div className="auth-box">
         <form onSubmit={onSubmit}>
           <div className="auth-field">
-            <label htmlFor="username">아이디</label>
+            <label htmlFor="username">{t('아이디')}</label>
             <input type="text" className="form-control" id="username" autoComplete="username" autoCapitalize="off" autoFocus required
               value={form.username} onChange={set('username')} />
           </div>
           <div className="auth-field">
-            <label htmlFor="password">비밀번호</label>
+            <label htmlFor="password">{t('비밀번호')}</label>
             <input type="password" className="form-control" id="password" autoComplete="new-password" required value={form.password} onChange={set('password')} />
           </div>
           <div className="auth-field">
-            <label htmlFor="name">사용자명</label>
+            <label htmlFor="name">{t('사용자명')}</label>
             <input type="text" className="form-control" id="name" autoComplete="name" required value={form.name} onChange={set('name')} />
           </div>
           <div className="auth-field">
-            <label htmlFor="projectId">참여할 프로젝트</label>
+            <label htmlFor="projectId">{t('참여할 프로젝트')}</label>
             <select className="form-control" id="projectId" required value={form.projectId} onChange={set('projectId')}>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.projectName}</option>
               ))}
             </select>
-            <p className="auth-field-note">프로젝트 설정에 따라 관리자 승인 후 사용할 수 있습니다.</p>
+            <p className="auth-field-note">{t('프로젝트 설정에 따라 관리자 승인 후 사용할 수 있습니다.')}</p>
           </div>
-          <button type="submit" className="btn btn-primary auth-submit">회원가입</button>
+          <button type="submit" className="btn btn-primary auth-submit">{t('회원가입')}</button>
         </form>
       </div>
 
       <div className="auth-callout">
-        이미 계정이 있으신가요? <Link to="/login">로그인</Link>
+        {t('이미 계정이 있으신가요?')} <Link to="/login">{t('로그인')}</Link>
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ import { api } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
 import { useAuth } from '../../hooks/useAuth';
 import { useDialog } from '../dialog/DialogProvider';
+import { t, tc, tv } from '../../lib/i18n';
 
 /**
  * 화면 정의 컬럼 그리드 (TanStack Table v8 기반, 마크업 / CSS 는 예전 DataTables 와 같다)
@@ -42,13 +43,13 @@ export type GridAction = 'add' | 'save' | 'modified' | 'delete' | 'active' | 'un
 const ACTION_MAP: Record<string, GridAction> = { C: 'add', U: 'save', M: 'modified', D: 'delete', A: 'active', N: 'unactive', P: 'print' };
 
 const ACTION_BUTTONS: { action: GridAction; label: string; className: string }[] = [
-  { action: 'active', label: '승인', className: 'btn btn-primary' },
-  { action: 'unactive', label: '승인취소', className: 'btn btn-secondary' },
-  { action: 'add', label: '추가', className: 'btn btn-primary' },
-  { action: 'modified', label: '수정', className: 'btn btn-primary' },
-  { action: 'save', label: '저장', className: 'btn btn-primary' },
-  { action: 'delete', label: '삭제', className: 'btn btn-secondary' },
-  { action: 'print', label: '출력', className: 'btn btn-secondary' },
+  { action: 'active', label: tc('버튼', '승인'), className: 'btn btn-primary' },
+  { action: 'unactive', label: t('승인취소'), className: 'btn btn-secondary' },
+  { action: 'add', label: t('추가'), className: 'btn btn-primary' },
+  { action: 'modified', label: t('수정'), className: 'btn btn-primary' },
+  { action: 'save', label: t('저장'), className: 'btn btn-primary' },
+  { action: 'delete', label: t('삭제'), className: 'btn btn-secondary' },
+  { action: 'print', label: t('출력'), className: 'btn btn-secondary' },
 ];
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -224,7 +225,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
       getCheckedOrAlert: () => {
         const list = getChecked();
         if (list.length > 0) return list;
-        dialog.alert('체크된 데이터가 존재하지 않습니다.');
+        dialog.alert(t('체크된 데이터가 존재하지 않습니다.'));
         return null;
       },
       getEditedRows: editedRows,
@@ -276,7 +277,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
       case 'BUTTON':
         return (
           <button type="button" className="btn btn-sm btn-primary action-btn" onClick={() => onCellButton?.(col.column, row.original)}>
-            {data}
+            {typeof data === 'string' ? tv(data) : data}
           </button>
         );
       case 'SELECT':
@@ -316,7 +317,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
             <input
               type={isNumberSearch ? 'number' : 'text'}
               className={`search-input ${isNumberSearch ? 'search-input-number' : 'search-input-text'}`}
-              placeholder={isNumberSearch ? '숫자만 입력하세요' : '검색어 입력'}
+              placeholder={isNumberSearch ? t('숫자만 입력하세요') : t('검색어 입력')}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => {
@@ -325,7 +326,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
               }}
             />
             <button type="button" className="grd-select" onClick={doSearch}>
-              조회
+              {t('조회')}
             </button>
           </div>
         )}
@@ -347,7 +348,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
           <div className="dt-layout-cell dt-layout-start">
             <div className="dt-length">
               <label>
-                페이지당{' '}
+                {t('페이지당')}{' '}
                 <select className="dt-input" value={size} onChange={(e) => setPagination({ pageIndex: 0, pageSize: Number(e.target.value) })}>
                   {PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
@@ -355,7 +356,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                     </option>
                   ))}
                 </select>{' '}
-                행 표시
+                {t('행 표시')}
               </label>
             </div>
           </div>
@@ -403,10 +404,10 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                   <tr>
                     <td colSpan={Math.max(headers.length, 1)} className="dt-empty">
                       {dataQuery.isPending
-                        ? '조회 중입니다.'
+                        ? t('조회 중입니다.')
                         : search.query
-                          ? '검색된 데이터가 없습니다.'
-                          : '조회된 데이터가 없습니다.'}
+                          ? t('검색된 데이터가 없습니다.')
+                          : t('조회된 데이터가 없습니다.')}
                     </td>
                   </tr>
                 ) : (
@@ -483,8 +484,8 @@ function Paging({ page, pageCount, onChange }: { page: number; pageCount: number
   return (
     <div className="dt-paging">
       <nav aria-label="pagination">
-        {button('처음', 0, page === 0, false, 'first')}
-        {button('이전', page - 1, page === 0, false, 'prev')}
+        {button(t('처음'), 0, page === 0, false, 'first')}
+        {button(t('이전'), page - 1, page === 0, false, 'prev')}
         {numbers.map((n, i) =>
           n === 'gap' ? (
             <span key={`gap-${i}`} className="ellipsis">
@@ -494,8 +495,8 @@ function Paging({ page, pageCount, onChange }: { page: number; pageCount: number
             button(n + 1, n, false, n === page, `p-${n}`)
           ),
         )}
-        {button('다음', page + 1, page >= pageCount - 1, false, 'next')}
-        {button('마지막', pageCount - 1, page >= pageCount - 1, false, 'last')}
+        {button(t('다음'), page + 1, page >= pageCount - 1, false, 'next')}
+        {button(t('마지막'), pageCount - 1, page >= pageCount - 1, false, 'last')}
       </nav>
     </div>
   );

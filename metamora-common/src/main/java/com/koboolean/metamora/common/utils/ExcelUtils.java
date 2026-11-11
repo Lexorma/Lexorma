@@ -2,6 +2,7 @@ package com.koboolean.metamora.common.utils;
 
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.common.i18n.Messages;
 import org.apache.poi.UnsupportedFileFormatException;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
@@ -86,7 +87,7 @@ public class ExcelUtils {
 
         // 파일이 존재하는지 확인
         if (inputStream == null) {
-            throw new FileNotFoundException("파일을 찾을 수 없습니다: " + fileName);
+            throw new FileNotFoundException(Messages.get("파일을 찾을 수 없습니다: {0}", fileName));
         }
 
         return new InputStreamResource(inputStream);
@@ -121,11 +122,11 @@ public class ExcelUtils {
                     parser.parse(new InputSource(sheet));
                 }
             } catch (InvalidFormatException | UnsupportedFileFormatException e) {
-                throw new IOException("엑셀(.xlsx) 파일 형식이 아닙니다.", e);
+                throw new IOException(Messages.get("엑셀(.xlsx) 파일 형식이 아닙니다."), e);
             } catch (OpenXML4JException | SAXException | ParserConfigurationException e) {
                 // rowHandler 에서 던진 업무 예외(CustomException 등)는 그대로 전달한다.
                 if (e.getCause() instanceof RuntimeException runtime) throw runtime;
-                throw new IOException("엑셀 파일을 읽을 수 없습니다.", e);
+                throw new IOException(Messages.get("엑셀 파일을 읽을 수 없습니다."), e);
             }
         } finally {
             Files.deleteIfExists(tempFile);
@@ -163,7 +164,7 @@ public class ExcelUtils {
             sheet.close();
         }
 
-        throw new IllegalArgumentException("Excel 파일에 " + (sheetIndex + 1) + "번째 시트가 존재하지 않습니다.");
+        throw new IllegalArgumentException(Messages.get("Excel 파일에 {0}번째 시트가 존재하지 않습니다.", sheetIndex + 1));
     }
 
     private static void closeQuietly(SXSSFWorkbook workbook) {

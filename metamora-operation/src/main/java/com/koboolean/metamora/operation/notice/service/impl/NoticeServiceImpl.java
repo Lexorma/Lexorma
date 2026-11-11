@@ -132,7 +132,12 @@ public class NoticeServiceImpl implements NoticeService {
          * 객체에 값을 바꾸면 JPA 정책 상 데이터를 덮어써서 트랜잭션이 마무리되는 시점에 flush 한다.
          */
         Board board = boardRepository.findById(boardDto.getId()).orElse(null);
-        
+
+        // 시스템 공지를 수정하면 영어판과의 연결이 끊어진다. (삭제는 가능)
+        if(board.isSystemNotice()) {
+        	throw new CustomException(ErrorCode.SYSTEM_NOTICE_CANNOT_BE_UPDATE);
+        }
+
         board.setTitle      (boardDto.getTitle()      );
         board.setContent    (boardDto.getContent()    );
         board.setUpdatedTime(LocalDateTime.now()	  );

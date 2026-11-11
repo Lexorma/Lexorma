@@ -1,5 +1,6 @@
 package com.koboolean.metamora.core.security.handler;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -11,6 +12,7 @@ import java.util.Map;
 /**
  * Security 필터 단계(로그인/로그아웃/인증·권한 오류)의 JSON 응답.
  * React 화면은 리다이렉트 대신 상태코드와 code 값으로 처리한다. (GlobalExceptionHandler 의 ErrorResponse 와 같은 형태)
+ * message 는 code 를 키로 i18n/errors_{ko,en}.properties 에서 찾아 요청 언어에 맞춰 내려간다.
  */
 public final class JsonResponses {
 
@@ -25,11 +27,11 @@ public final class JsonResponses {
         OBJECT_MAPPER.writeValue(response.getWriter(), body);
     }
 
-    public static void error(HttpServletResponse response, int status, String code, String message) throws IOException {
+    public static void error(HttpServletResponse response, int status, String code) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", status);
         body.put("code", code);
-        body.put("message", message);
+        body.put("message", Messages.error(code));
         write(response, status, body);
     }
 }

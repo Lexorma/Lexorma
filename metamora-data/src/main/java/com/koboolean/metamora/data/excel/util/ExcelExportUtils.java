@@ -3,6 +3,7 @@ package com.koboolean.metamora.data.excel.util;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardDomainDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardTermDto;
 import com.koboolean.metamora.data.dictionary.domain.dto.StandardWordDto;
+import com.koboolean.metamora.common.i18n.Messages;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -157,7 +158,7 @@ public class ExcelExportUtils {
 
         try (InputStream template = ExcelExportUtils.class.getClassLoader().getResourceAsStream("static/excel/" + templateName + ".xlsx")) {
             if (template == null) {
-                throw new FileNotFoundException("파일을 찾을 수 없습니다: " + fileName);
+                throw new FileNotFoundException(Messages.get("파일을 찾을 수 없습니다: {0}", fileName));
             }
 
             SXSSFWorkbook workbook = new SXSSFWorkbook(new XSSFWorkbook(template), STREAMING_WINDOW_SIZE);

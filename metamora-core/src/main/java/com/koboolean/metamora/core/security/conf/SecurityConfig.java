@@ -85,13 +85,12 @@ public class SecurityConfig {
                 .authenticationProvider(authenticationProvider)
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
-                                JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다."))
+                                JsonResponses.error(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED"))
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             if (accessDeniedException instanceof CsrfException) {
-                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "CSRF_INVALID",
-                                        "보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.");
+                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "CSRF_INVALID");
                             } else {
-                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다.");
+                                JsonResponses.error(response, HttpServletResponse.SC_FORBIDDEN, "ACCESS_DENIED");
                             }
                         }))
                 .sessionManagement(session -> session
@@ -101,8 +100,7 @@ public class SecurityConfig {
                         .maxSessionsPreventsLogin(true)
                         // 동시 세션 제한도 세션 DB 기준 (재시작/여러 인스턴스에서도 같은 기준)
                         .sessionRegistry(sessionRegistry())
-                        .expiredSessionStrategy(event -> JsonResponses.error(event.getResponse(), HttpServletResponse.SC_UNAUTHORIZED,
-                                "SESSION_EXPIRED", "세션이 만료되었습니다. 다시 로그인해주세요.")))
+                        .expiredSessionStrategy(event -> JsonResponses.error(event.getResponse(), HttpServletResponse.SC_UNAUTHORIZED, "SESSION_EXPIRED")))
                 .addFilterBefore(customOncePerRequestFilter, UsernamePasswordAuthenticationFilter.class)
                 .logout(logout -> logout
                         // POST + CSRF 토큰. 세션을 무효화하면 Spring Session 이 세션 쿠키도 만료시킨다.

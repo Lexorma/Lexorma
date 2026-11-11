@@ -105,6 +105,8 @@ function ErdWorkspace() {
     queryKey: ['erd-layout', user?.projectId],
     queryFn: () => api<ErdLayout>('/api/erd/layout', { silent: true }),
     staleTime: Infinity,
+    // [저장된 배치 불러오기] : 서버 값이 그대로여도 새 객체로 받아야 아래 effect 가 화면의 배치를 되돌린다
+    structuralSharing: false,
     gcTime: 0,
   });
   const graphKey = graphUrl(scope);

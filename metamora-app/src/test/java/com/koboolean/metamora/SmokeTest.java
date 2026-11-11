@@ -502,6 +502,8 @@ class SmokeTest {
 
         var summary = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
         assertThat(summary.path("totalColumns").asLong()).as("V0 예제 물리 모델").isPositive();
+        // V0 예제는 용어의 도메인을 실제 컬럼 정의에 맞춰 두었다 (docs/db-naming-standard.md) : 진단 결과가 없어야 한다
+        assertThat(summary.path("issueColumns").asLong()).as(get("/api/standardizationQuality/data?page=0&size=20", true).body()).isZero();
         long byType = 0;
         for (var type : Map.of("TERM_NOT_LINKED", "termNotLinked", "COLUMN_NAME_MISMATCH", "columnNameMismatch",
                 "DOMAIN_DEFINITION_MISMATCH", "domainDefinitionMismatch").entrySet()) {

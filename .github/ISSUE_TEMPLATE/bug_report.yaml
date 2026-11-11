@@ -1,5 +1,5 @@
-name: 버그 리포트
-description: MetaMora 사용 중 발견한 버그를 신고합니다.
+name: Bug report
+description: Report a bug you found while using MetaMora.
 title: "[Bug] "
 labels: [bug]
 
@@ -7,47 +7,47 @@ body:
   - type: input
     id: version
     attributes:
-      label: 사용한 MetaMora 버전
-      placeholder: 예) v1.0.0
+      label: MetaMora version
+      placeholder: e.g. v1.0.0
     validations:
       required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: 발생한 문제
-      description: 어떤 문제가 발생했는지 구체적으로 작성해주세요.
+      label: What happened
+      description: Describe the problem in as much detail as you can.
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: 재현 방법
-      description: 문제를 재현할 수 있는 단계별 방법을 작성해주세요.
+      label: Steps to reproduce
+      description: List the steps needed to reproduce the problem.
     validations:
       required: false
 
   - type: textarea
     id: expected
     attributes:
-      label: 기대 동작
-      description: 정상적으로 작동했을 때 기대하는 결과를 작성해주세요.
+      label: Expected behavior
+      description: Describe what you expected to happen.
     validations:
       required: false
 
   - type: textarea
     id: environment
     attributes:
-      label: 사용 환경
-      description: 브라우저, 운영체제, 기타 환경 정보를 작성해주세요.
+      label: Environment
+      description: Browser, operating system, and anything else relevant.
     validations:
       required: false
 
   - type: textarea
     id: screenshot
     attributes:
-      label: 추가 자료
-      description: 스크린샷, 에러 로그 등을 첨부해주세요.
+      label: Additional context
+      description: Attach screenshots, error logs, and so on.
     validations:
       required: false

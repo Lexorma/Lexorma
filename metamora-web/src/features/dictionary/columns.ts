@@ -14,6 +14,8 @@ export const standardTermsColumns: GridColumn[] = [
   { columnName: t('행정표준코드명'), column: 'administrativeStandardCodeName', columnType: 'STRING', isSearch: false, isFilter: true, isVisible: false },
   { columnName: t('소관기관명'), column: 'responsibleOrganization', columnType: 'STRING', isSearch: false, isFilter: true, isVisible: false },
   { columnName: t('용어 이음동의어 목록'), column: 'synonyms', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', isVisible: false },
+  // 사용 건수 (조회 전용) : 누르면 사용 현황을 연다
+  { columnName: t('사용 컬럼'), column: 'usageCount', columnType: 'NUMBER', isSearch: false, isFilter: false, rowType: 'TEXT' },
   { columnName: t('승인여부'), column: 'isApprovalYn', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
 ];
 
@@ -29,6 +31,8 @@ export const standardWordsColumns: GridColumn[] = [
   { columnName: t('형식단어 여부'), column: 'isFormatWord', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
   { columnName: t('이음동의어 목록'), column: 'synonyms', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', isVisible: false },
   { columnName: t('금칙어 목록'), column: 'restrictedWords', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', isVisible: false },
+  // 사용 건수 (조회 전용) : 누르면 사용 현황을 연다
+  { columnName: t('사용 용어'), column: 'usageCount', columnType: 'NUMBER', isSearch: false, isFilter: false, rowType: 'TEXT' },
   { columnName: t('승인여부'), column: 'isApprovalYn', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
 ];
 
@@ -46,5 +50,29 @@ export const standardDomainsColumns: GridColumn[] = [
   { columnName: t('표현 형식'), column: 'displayFormat', columnType: 'STRING', isSearch: false, isFilter: true, isVisible: false },
   { columnName: t('단위'), column: 'unit', columnType: 'STRING', isSearch: false, isFilter: true, isVisible: false },
   { columnName: t('허용값'), column: 'allowedValues', columnType: 'STRING', isSearch: false, isFilter: true, isVisible: false },
+  // 사용 건수 (조회 전용) : 누르면 사용 현황을 연다
+  { columnName: t('사용 컬럼'), column: 'usageCount', columnType: 'NUMBER', isSearch: false, isFilter: false, rowType: 'TEXT' },
   { columnName: t('승인여부'), column: 'isApprovalYn', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
+];
+
+/** 사용 현황 : 표준 용어·도메인을 쓰는 컬럼 (GET /api/dictionaryUsage/{term|domain}/{id}/data) */
+export const usageColumnColumns: GridColumn[] = [
+  { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('테이블명'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('테이블 한글명'), column: 'tableKorName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('컬럼명'), column: 'columnName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('논리명'), column: 'termName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('데이터 타입'), column: 'dataType', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('표준도메인명'), column: 'domainName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('승인여부'), column: 'isApproval', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('이동'), column: 'links', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
+];
+
+/** 사용 현황 : 표준 단어로 만든 표준 용어 (GET /api/dictionaryUsage/word/{id}/data) */
+export const usageTermColumns: GridColumn[] = [
+  { columnName: t('표준용어명'), column: 'termName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('표준용어영문약어명'), column: 'termAbbreviation', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('표준도메인명'), column: 'domainName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('승인여부'), column: 'isApproval', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT' },
+  { columnName: t('사용 컬럼'), column: 'columnCount', columnType: 'NUMBER', isSearch: false, isFilter: false, rowType: 'TEXT' },
 ];

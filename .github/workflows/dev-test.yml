@@ -1,0 +1,43 @@
+name: Test (dev)
+
+# dev 브랜치에 커밋이 올라올 때만 실행한다
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: dev-test
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # React 빌드(npm ci → vite build)가 Gradle 빌드에 포함된다 (Node >= 20.19)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: metamora-web/package-lock.json
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # 프론트 타입 검사·빌드 + 모든 모듈 테스트 (H2 인메모리, 외부 DB 불필요)
+      - run: ./gradlew build
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          retention-days: 7

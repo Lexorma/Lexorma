@@ -6,6 +6,7 @@ import { BookIcon, DownloadIcon, RowsIcon, TagIcon, UploadIcon } from '@primer/o
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, download } from '../../lib/api';
 import { DictionaryDetail } from './DictionaryDetail';
+import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
 import { TermCreateForm } from './TermCreateForm';
 import { standardDomainsColumns, standardWordsColumns, standardTermsColumns } from './columns';
@@ -254,9 +255,19 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
     dialog.open({
       title: t('{0} 수정', tab.title),
       content: ({ close }: DialogControls) => (
-        <DictionaryForm tableId={tab.id} type="U" fields={fieldsFromRow(row, columns, ['isApprovalYn'])} config={FORM_CONFIG[tab.id].edit} submitText={t('저장')}
+        <DictionaryForm tableId={tab.id} type="U" fields={fieldsFromRow(row, columns, ['isApprovalYn', 'usageCount'])} config={FORM_CONFIG[tab.id].edit} submitText={t('저장')}
           onSaved={() => { close(); reload(); }} />
       ),
+    });
+  };
+
+  // 사용 현황 : 이 표준 항목을 실제로 참조하는 컬럼(용어·도메인) / 표준 용어(단어)
+  const openUsage = (row: Row) => {
+    const name = row.commonStandardTermName ?? row.commonStandardDomainName ?? row.commonStandardWordName ?? '';
+    dialog.open({
+      title: t('사용 현황 · {0}', name),
+      className: 'dialog-usage',
+      content: ({ close }: DialogControls) => <DictionaryUsage kind={tab.id} row={row} close={close} />,
     });
   };
 
@@ -265,13 +276,17 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
     dialog.open({
       title: t('{0} 상세', tab.title),
       content: ({ close }: DialogControls) => (
-        <DictionaryDetail row={row} columns={columns} onEdit={row.isApprovalYn === 'Y' ? undefined : () => { close(); openEdit(row, columns); }} />
+        <DictionaryDetail row={row} columns={columns} onEdit={row.isApprovalYn === 'Y' ? undefined : () => { close(); openEdit(row, columns); }}
+          onUsage={() => { close(); openUsage(row); }} />
       ),
     });
   };
 
   const renderCell = (field: string, row: Row): ReactNode | undefined => {
     if (field === 'isApprovalYn') return <Approval value={row.isApprovalYn} />;
+    if (field === 'usageCount') {
+      return <button type="button" className="btn btn-sm" title={t('사용 현황 보기')} onClick={() => openUsage(row)}>{row.usageCount ?? 0}</button>;
+    }
     if (tab.id === 'standardDomains' && field === 'dataType') return <Mono>{row.dataType}</Mono>;
     if (tab.id === 'standardWords') {
       if (field === 'commonStandardWordAbbreviation') return <Mono>{row.commonStandardWordAbbreviation}</Mono>;

@@ -91,6 +91,8 @@ export interface GridProps {
   searchFilters?: ReactNode;
   /** 처음 열 때의 검색 조건 (다른 화면에서 넘어온 경우) */
   initialSearch?: { column: string; query: string };
+  /** 조회 결과가 없을 때의 안내 (검색어 없이 비어 있을 때) */
+  emptyText?: string;
 }
 
 interface PageData {
@@ -99,7 +101,7 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch } = props;
+  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch, emptyText } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
@@ -420,7 +422,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                         ? t('조회 중입니다.')
                         : search.query
                           ? t('검색된 데이터가 없습니다.')
-                          : t('조회된 데이터가 없습니다.')}
+                          : (emptyText ?? t('조회된 데이터가 없습니다.'))}
                     </td>
                   </tr>
                 ) : (

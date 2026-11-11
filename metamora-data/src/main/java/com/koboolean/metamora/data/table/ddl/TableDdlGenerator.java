@@ -305,7 +305,7 @@ public final class TableDdlGenerator {
         }
     }
 
-    private static String baseType(String type) {
+    public static String baseType(String type) {
         int paren = type.indexOf('(');
         return (paren < 0 ? type : type.substring(0, paren)).trim();
     }
@@ -315,7 +315,7 @@ public final class TableDdlGenerator {
     /**
      * 공통 타입명을 DB 별 타입으로 바꾼다. 타입에 길이가 함께 적혀 있으면(VARCHAR(100)) 그 값을 먼저 쓴다.
      */
-    static String mapType(DbType db, ColumnInfo column, List<String> warnings) {
+    public static String mapType(DbType db, ColumnInfo column, List<String> warnings) {
         String raw = column.getDataType() == null ? "" : column.getDataType().trim();
         Matcher matcher = TYPE_PATTERN.matcher(raw);
 

@@ -25,6 +25,9 @@ public class StandardDomainDto {
     private String allowedValues; // 허용값
     private String isApprovalYn;
 
+    /** 사용 건수 (목록 조회 전용) : 이 도메인의 용어를 쓰는 물리 컬럼 수 */
+    private Long usageCount;
+
     public static StandardDomainDto fromEntity(StandardDomain entity) {
         return StandardDomainDto.builder()
                 .id(entity.getId())

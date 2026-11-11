@@ -38,7 +38,7 @@ class V0SeedMigrationTest {
             assertThat(jdbc.queryForObject("select DATA_LEN from " + domains + " where DMN_NM = '값V255'", Integer.class)).isEqualTo(255);
             assertThat(jdbc.queryForObject("select DATA_LEN from " + domains + " where DMN_NM = '비밀번호V255'", Integer.class)).isEqualTo(255);
             assertThat(jdbc.queryForObject("select DATA_TYPE_NM from " + domains + " where DMN_NM = '목록A'", String.class)).isEqualTo("BIGINT ARRAY");
-            assertThat(jdbc.queryForObject("select count(*) from " + domains, Integer.class)).isEqualTo(22);
+            assertThat(jdbc.queryForObject("select count(*) from " + domains, Integer.class)).isEqualTo(29);
             String posts = "\"" + schema + "\".TB_PST";
             String readers = "\"" + schema + "\".TB_PST_ACNT";
             String accounts = "\"" + schema + "\".TB_ACNT";

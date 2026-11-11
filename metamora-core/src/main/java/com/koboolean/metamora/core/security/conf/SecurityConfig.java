@@ -96,11 +96,13 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionFixation(SessionManagementConfigurer.SessionFixationConfigurer::changeSessionId)
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        // 계정당 세션 1개 : 새로 로그인하면 먼저 로그인한 세션을 만료시킨다 (나중 로그인 우선)
                         .maximumSessions(1)
-                        .maxSessionsPreventsLogin(true)
+                        .maxSessionsPreventsLogin(false)
                         // 동시 세션 제한도 세션 DB 기준 (재시작/여러 인스턴스에서도 같은 기준)
                         .sessionRegistry(sessionRegistry())
-                        .expiredSessionStrategy(event -> JsonResponses.error(event.getResponse(), HttpServletResponse.SC_UNAUTHORIZED, "SESSION_EXPIRED")))
+                        // 만료된 쪽은 다음 요청에서 안내를 받고 로그아웃된다
+                        .expiredSessionStrategy(event -> JsonResponses.error(event.getResponse(), HttpServletResponse.SC_UNAUTHORIZED, "DUPLICATE_LOGIN")))
                 .addFilterBefore(customOncePerRequestFilter, UsernamePasswordAuthenticationFilter.class)
                 .logout(logout -> logout
                         // POST + CSRF 토큰. 세션을 무효화하면 Spring Session 이 세션 쿠키도 만료시킨다.

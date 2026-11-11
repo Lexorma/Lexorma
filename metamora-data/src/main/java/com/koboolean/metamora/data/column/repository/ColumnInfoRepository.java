@@ -4,6 +4,7 @@ import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,7 +13,7 @@ import java.util.Collection;
 import java.util.List;
 
 @Repository
-public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long> {
+public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, JpaSpecificationExecutor<ColumnInfo> {
     Page<ColumnInfo> findAllByProjectId(Long projectId, Pageable pageable);
 
     Page<ColumnInfo> findByProjectId(Long projectId, Pageable pageable);

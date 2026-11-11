@@ -39,6 +39,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'schema-manage', label: t('스키마 관리'), path: '/schemaManage' },
       { id: 'table-manage', label: t('테이블 관리'), path: '/tableManage' },
       { id: 'column-manage', label: t('컬럼 관리'), path: '/columnManage' },
+      { id: 'standardization-quality', label: t('표준화 품질 진단'), path: '/standardizationQuality' },
     ],
   },
   {

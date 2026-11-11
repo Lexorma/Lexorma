@@ -194,7 +194,7 @@ class ColumnManageServiceImplTest {
         assertThatThrownBy(() -> service.deleteColumn(AccountDto.builder().projectId(1L).build(),
                 List.of(ColumnInfoDto.builder().id(1L).build())))
                 .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
-        verify(columnInfoRepository, never()).delete(any());
+        verify(columnInfoRepository, never()).delete(any(ColumnInfo.class));
     }
 
     @Test
@@ -577,7 +577,7 @@ class ColumnManageServiceImplTest {
                     .containsExactlyInAnyOrder("1", "n3", "n4");
             assertThat(result.errors()).anySatisfy(e -> assertThat(e.message()).contains("승인된 컬럼은 삭제할 수 없습니다"));
             verify(columnInfoRepository, never()).save(any());
-            verify(columnInfoRepository, never()).delete(any());
+            verify(columnInfoRepository, never()).delete(any(ColumnInfo.class));
         }
 
         @Test

@@ -20,9 +20,11 @@ import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.common.utils.ExcelUtils;
 import com.koboolean.metamora.common.i18n.Messages;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,28 +57,26 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
         Long projectId = accountDto.getProjectId();
 
-        if (searchQuery == null || searchQuery.trim().isEmpty()) {
-            // 검색어가 없을 경우 전체 조회
-            return columnInfoRepository.findByProjectId(projectId, pageable).map(ColumnInfoDto::fromEntity);
-        }
-
-        if(!searchQuery.isEmpty()) {
-            searchQuery = "%" + searchQuery + "%";
-        }
-
-        Page<ColumnInfo> columnInfos = switch (searchColumn) {
-            case "tableName" ->
-                    columnInfoRepository.findAllByProjectIdAndTableNameLike(projectId, searchQuery.toUpperCase(), pageable);
-            case "columnName" ->
-                    columnInfoRepository.findAllByProjectIdAndColumnNameLikeIgnoreCase(projectId, searchQuery, pageable);
-            case "columnDesc" ->
-                    columnInfoRepository.findAllByProjectIdAndColumnDescLike(projectId, searchQuery, pageable);
-            case "dataType" ->
-                    columnInfoRepository.findAllByProjectIdAndDataTypeLike(projectId, searchQuery, pageable);
-            default -> null;
+        Specification<ColumnInfo> where = (root, query, builder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(builder.equal(root.get("projectId"), projectId));
+            if (tableId != null) {
+                // 테이블 ID 로 정확히 한 테이블의 컬럼만 (테이블명 검색은 부분 일치라 이름이 겹치는 테이블이 섞인다)
+                predicates.add(builder.equal(root.get("tableInfo").get("id"), tableId));
+            }
+            if (searchQuery != null && !searchQuery.trim().isEmpty() && searchColumn != null) {
+                String keyword = "%" + searchQuery + "%";
+                switch (searchColumn) {
+                    case "tableName" -> predicates.add(builder.like(root.get("tableName"), keyword.toUpperCase()));
+                    case "columnName" -> predicates.add(builder.like(builder.upper(root.get("columnName")), keyword.toUpperCase()));
+                    case "columnDesc", "dataType" -> predicates.add(builder.like(root.get(searchColumn), keyword));
+                    default -> { } // 모르는 검색 컬럼은 무시
+                }
+            }
+            return builder.and(predicates.toArray(Predicate[]::new));
         };
 
-        return columnInfos.map(ColumnInfoDto::fromEntity);
+        return columnInfoRepository.findAll(where, pageable).map(ColumnInfoDto::fromEntity);
     }
 
     @Override

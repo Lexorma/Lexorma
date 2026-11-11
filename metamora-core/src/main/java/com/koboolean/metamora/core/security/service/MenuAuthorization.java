@@ -51,6 +51,7 @@ public class MenuAuthorization {
             Map.entry("table-manage", "VIEWER"),
             Map.entry("physical-erd", "VIEWER"),
             Map.entry("column-manage", "USER"),
+            Map.entry("standardization-quality", "VIEWER"),
 
             // 데이터 모델링 (독립 메뉴)
             Map.entry("data-modeling", "VIEWER")
@@ -68,7 +69,7 @@ public class MenuAuthorization {
             new String[]{"notice"},
 
             "data-management",
-            new String[]{"data-dictionary", "schema-manage", "table-manage", "column-manage"},
+            new String[]{"data-dictionary", "schema-manage", "table-manage", "column-manage", "standardization-quality"},
 
             "operation-modeling",
             new String[]{"physical-erd"}

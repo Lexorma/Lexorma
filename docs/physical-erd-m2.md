@@ -82,7 +82,7 @@ ERD 코드는 로그인·대시보드 초기 번들에 포함되지 않는다 (�
 
 - `elkjs` 0.12.0 : `EPL-2.0 OR GPL-3.0-or-later` 중 EPL-2.0 선택, 수정 없이 npm 배포본(`elk-api.js`, `elk-worker.min.js`)을 번들. 배포 워커 파일에는 저작권 헤더가 없어 고지를 따로 둔다.
 - `@xyflow/react` 12.12.0 / `@xyflow/system` 0.0.83 : MIT.
-- 조치 : `metamora-web/public/jsons/licenses/THIRD_PARTY_NOTICES.txt`(고지·저작권·소스 입수 주소·MIT 전문), `EPL-2.0.md`(전문). jar 와 Docker 이미지에 같이 들어가 `/jsons/licenses/` 로 제공되고, ERD 범례의 "오픈소스 고지" 로 연결된다.
+- 조치 : `metamora-web/public/jsons/licenses/THIRD_PARTY_NOTICES.md`(고지·저작권·소스 입수 주소·MIT 전문), `EPL-2.0.md`(전문). jar 와 Docker 이미지에 같이 들어가 `/jsons/licenses/` 로 제공되고, ERD 범례의 "오픈소스 고지" 로 연결된다.
 - 판단 보류 : 무수정 Object Code 배포에서 소스 입수 방법을 URL 안내로 충분히 갈음하는지, 다른 서드파티 전체 고지가 필요한지는 법률 검토 사항으로 남긴다 (검증 완료로 보지 않음).
 
 ## 6. M-1 선행 P1

@@ -137,6 +137,11 @@ public enum ErrorCode {
     APPROVED_DATA_CANNOT_BE_UPDATE(HttpStatus.BAD_REQUEST, "APPROVED_DATA_CANNOT_BE_UPDATE"),
 
     /**
+     * 시스템이 등록한 공지사항은 수정이 불가능합니다.
+     */
+    SYSTEM_NOTICE_CANNOT_BE_UPDATE(HttpStatus.BAD_REQUEST, "SYSTEM_NOTICE_CANNOT_BE_UPDATE"),
+
+    /**
      * 입력하신 표준도메인분류명을 찾을 수 없습니다.
      */
     DOMAIN_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "DOMAIN_IS_NOT_DEFINED"),

@@ -44,8 +44,8 @@ export function NoticeListPage() {
         crudActions={permission.isProjectManager ? 'cd' : ''}
         onAction={{ add: () => openNoticeSave({ type: 'add', onSuccess: saved }), delete: remove }}
         onRowClick={(row, _columns, isManager) => {
-          // 매니저일 경우 수정, 아니면 상세보기 (닫으면 읽음 표시를 갱신한다)
-          if (isManager) openNoticeSave({ type: 'modify', id: row.id, onSuccess: saved });
+          // 매니저일 경우 수정, 아니면 상세보기 (닫으면 읽음 표시를 갱신한다). 시스템이 등록한 공지는 수정할 수 없다.
+          if (isManager && !row.systemNotice) openNoticeSave({ type: 'modify', id: row.id, onSuccess: saved });
           else openNoticeDetail(row.id, { onClose: () => grid.current?.reload() });
         }}
         rowClassName={(row) => (row.isHit !== '확인' ? 'notice-unread' : undefined)}

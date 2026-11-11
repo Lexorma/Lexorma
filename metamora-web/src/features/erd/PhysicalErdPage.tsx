@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
-import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SearchIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { NoticeMarkdown } from '../notice/NoticeMarkdown';
+import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -93,6 +94,8 @@ function ErdWorkspace() {
   const savedVersion = useRef<number | null>(null);
   const positions = useRef(new Map<string, XY>());
   const pending = useRef(new Map<string, XY>());
+  // 저장된 위치가 없어 화면이 자동으로 놓은 테이블 : 저장할 때 함께 보내지만 사용자가 바꾼 것이 아니므로 세지 않는다
+  const autoPlaced = useRef(new Set<string>());
   const [pendingCount, setPendingCount] = useState(0);
   const appliedLayout = useRef<ErdLayout | null>(null);
   const shownGraph = useRef<string | null>(null);
@@ -118,12 +121,16 @@ function ErdWorkspace() {
     return (graph.data?.relations ?? []).filter((r) => ids.has(r.sourceTableId) && ids.has(r.targetTableId));
   }, [graph.data]);
 
-  const markPending = (moved: { id: string; position: XY }[]) => {
+  const markPending = (moved: { id: string; position: XY }[], byUser = true) => {
     moved.forEach((n) => {
+      const current = positions.current.get(n.id);
+      if (current && current.x === n.position.x && current.y === n.position.y) return; // 제자리 (움직이지 않은 드래그·같은 결과의 자동 배치)
       positions.current.set(n.id, n.position);
       pending.current.set(n.id, n.position);
+      if (byUser) autoPlaced.current.delete(n.id);
+      else autoPlaced.current.add(n.id);
     });
-    setPendingCount(pending.current.size);
+    setPendingCount(pending.current.size - autoPlaced.current.size);
   };
 
   // 조회 결과 → 노드. 저장된 위치가 없는 테이블만 기존 배치 오른쪽에 자동 배치한다 (기존 위치는 덮어쓰지 않음)
@@ -135,6 +142,7 @@ function ErdWorkspace() {
       savedVersion.current = layout.data.version;
       positions.current = new Map(Object.entries(layout.data.nodes));
       pending.current.clear();
+      autoPlaced.current.clear();
       setPendingCount(0);
       shownGraph.current = null;
     }
@@ -175,7 +183,7 @@ function ErdWorkspace() {
         missing.forEach((n) => {
           n.position = { x: placed[n.id].x + right, y: placed[n.id].y };
         });
-        markPending(missing);
+        markPending(missing, false);
       }
       if (cancelled) return;
       setNodes(built);
@@ -270,6 +278,7 @@ function ErdWorkspace() {
       });
       savedVersion.current = result.version;
       pending.current.clear();
+      autoPlaced.current.clear();
       setPendingCount(0);
       setMessage(t('배치를 저장했습니다.'));
     } catch {
@@ -315,33 +324,36 @@ function ErdWorkspace() {
 
   return (
     <div className="erd-page">
-      <form className="erd-toolbar" onSubmit={search}>
-        <select className="form-control" aria-label={t('스키마')} value={form.schemaId} onChange={(e) => setForm({ ...form, schemaId: e.target.value })}>
-          <option value="">{t('전체 스키마')}</option>
-          {schemas.data?.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
-        </select>
-        <input className="form-control erd-keyword" aria-label={t('테이블 검색')} maxLength={100} placeholder={t('테이블명 / 논리명 / 스키마명')}
-          value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
-        <select className="form-control" aria-label={t('승인 상태')} value={form.isApproval} onChange={(e) => setForm({ ...form, isApproval: e.target.value })}>
-          <option value="">{t('승인 전체')}</option>
-          <option value="true">{t('승인')}</option>
-          <option value="false">{t('승인 대기')}</option>
-        </select>
-        <select className="form-control" aria-label={t('마스터 여부')} value={form.isMasterTable} onChange={(e) => setForm({ ...form, isMasterTable: e.target.value })}>
-          <option value="">{t('마스터 전체')}</option>
-          <option value="true">{t('마스터')}</option>
-          <option value="false">{t('일반')}</option>
-        </select>
-        <button type="submit" className="btn"><SearchIcon />{t('조회')}</button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
-      </form>
+      {/* 다른 화면의 그리드 검색 줄과 같은 형태 : 왼쪽 조회 조건(입력 그룹) + 오른쪽 버튼 그룹 */}
+      <div className="grid-header">
+        <form className="search-container" onSubmit={search}>
+          <select className="search-column-select" aria-label={t('스키마')} value={form.schemaId} onChange={(e) => setForm({ ...form, schemaId: e.target.value })}>
+            <option value="">{t('전체 스키마')}</option>
+            {schemas.data?.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
+          </select>
+          <select className="search-column-select" aria-label={t('승인 상태')} value={form.isApproval} onChange={(e) => setForm({ ...form, isApproval: e.target.value })}>
+            <option value="">{t('승인 전체')}</option>
+            <option value="true">{t('승인')}</option>
+            <option value="false">{t('승인 대기')}</option>
+          </select>
+          <select className="search-column-select" aria-label={t('마스터 여부')} value={form.isMasterTable} onChange={(e) => setForm({ ...form, isMasterTable: e.target.value })}>
+            <option value="">{t('마스터 전체')}</option>
+            <option value="true">{t('마스터')}</option>
+            <option value="false">{t('일반')}</option>
+          </select>
+          <input type="text" className="search-input search-input-text" aria-label={t('테이블 검색')} maxLength={100} placeholder={t('테이블명 / 논리명 / 스키마명')}
+            value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
+          <button type="submit" className="grd-select">{t('조회')}</button>
+        </form>
 
-      <div className="erd-toolbar erd-layout-actions">
-        <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
-        <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
-        <button type="button" className="btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
-        <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
-        <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
+        <div className="button-container">
+          <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
+          <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
+          <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
+          <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
+          <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
+          <button type="button" className="grd-save btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
+        </div>
       </div>
 
       <div className="erd-status" role="status">
@@ -443,10 +455,11 @@ function OpenSourceNotices() {
     queryKey: ['erd-open-source-notices'],
     queryFn: async () => {
       const [notice, license] = await Promise.all([
-        api<string>('/jsons/licenses/THIRD_PARTY_NOTICES.txt', { responseType: 'text' }),
+        api<string>('/jsons/licenses/THIRD_PARTY_NOTICES.md', { responseType: 'text' }),
         api<string>('/jsons/licenses/EPL-2.0.md', { responseType: 'text' }),
       ]);
-      return t('{0}\n\nEPL-2.0 라이선스 전문\n\n{1}', notice, license);
+      // 두 파일 모두 Markdown : 고지 뒤에 구분선을 두고 EPL-2.0 전문을 잇는다
+      return `${notice}\n\n---\n\n${license}`;
     },
     staleTime: Infinity,
     retry: false,
@@ -454,7 +467,7 @@ function OpenSourceNotices() {
 
   if (notices.isPending) return <p role="status">{t('고지 내용을 불러오는 중…')}</p>;
   if (notices.isError) return <p role="alert">{t('고지 내용을 불러오지 못했습니다.')} <button type="button" className="erd-license-link" onClick={() => void notices.refetch()}>{t('다시 시도')}</button></p>;
-  return <pre className="erd-license-text">{notices.data}</pre>;
+  return <div className="erd-license-text"><NoticeMarkdown content={notices.data} /></div>;
 }
 
 function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors }: {

@@ -558,57 +558,57 @@ insert into TB_PST_CTGRY(CTGRY_CD, CTGRY_NM, SORT_ORD, USE_YN) values('NOTICE', 
 
 /* 기본 안내 공지: 초기 게시글은 1번, 이후 등록과 충돌하지 않도록 SQ_PST는 51부터 할당한다. */
 insert into TB_PST(PST_SN, PRJ_SN, CTGRY_CD, WRTR_ID, PST_TTL, PST_CN, DEL_YN, PST_MDFCN_DT, PRJ_SN_LIST, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)
-select 1, p.PRJ_SN, c.CTGRY_CD, a.USER_ID, '[Notice] Welcome to Metamora',
-       'Hello, and thank you for using **Metamora**.
+select 1, p.PRJ_SN, c.CTGRY_CD, a.USER_ID, '[안내] Metamora에 오신 것을 환영합니다.',
+       '안녕하세요. **Metamora**를 이용해 주셔서 감사합니다.
 
-Metamora is an open-source data management platform for database modeling, data standardization and metadata management. You can manage a data dictionary together with table and column information, and view the structure and relationships of your physical model visually.
+Metamora는 데이터베이스 모델링과 데이터 표준화, 메타데이터 관리를 지원하는 오픈소스 데이터 관리 플랫폼입니다. 데이터 사전과 테이블·컬럼 정보를 관리하고, 물리 모델의 구조와 관계를 시각적으로 확인할 수 있습니다.
 
-## Key features
+## 주요 기능
 
-### 1. Data dictionary
+### 1. 데이터 사전
 
-Register and approve standard words, domains and terms, and keep names consistent based on standard words and their abbreviations. You can import from an Excel template and export the data dictionary.
+표준 단어·도메인·용어를 등록하고 승인하며, 표준 단어와 약어를 기준으로 일관된 이름을 관리합니다. Excel 템플릿을 이용한 가져오기와 데이터 사전 내보내기를 지원합니다.
 
-### 2. Tables and columns
+### 2. 테이블 및 컬럼
 
-Manage the structure and attributes of tables and columns, along with schemas, relations, indexes and constraints. Columns can be registered from standard terms, edited in bulk and added from a common column set, and DDL is generated for the target DBMS of the project.
+테이블·컬럼의 구조와 속성, 스키마, 관계·인덱스·제약을 관리합니다. 표준 용어 기반 컬럼 등록, 일괄 편집과 공통 컬럼 세트를 지원하며, 프로젝트의 대상 DBMS에 맞는 DDL을 생성할 수 있습니다.
 
-### 3. Physical ERD
+### 3. 물리 ERD
 
-View registered tables, columns and the relations between tables visually. Narrow the view by schema or search, and use auto layout, fit to view and per-user layout saving.
+등록한 테이블과 컬럼, 테이블 간 관계를 시각적으로 조회합니다. 스키마·검색 조건으로 조회 범위를 좁히고 자동 배치·전체 보기·사용자별 배치 저장 기능을 이용할 수 있습니다.
 
-### 4. Projects
+### 4. 프로젝트
 
-Keep the data dictionary and design information separate for each project, and manage project members and managers, the table prefix and the target DBMS.
+프로젝트별로 데이터 사전과 설계 정보를 구분하고, 프로젝트 멤버·관리자, 테이블 접두사와 대상 DBMS를 관리합니다.
 
-### 5. Users and permissions
+### 5. 사용자 및 권한
 
-Available menus and features depend on your role and project access. New users need permission from an administrator.
+역할과 프로젝트 접근 권한에 따라 이용 가능한 메뉴와 기능을 구분합니다. 신규 가입자는 관리자의 권한 부여가 필요합니다.
 
-## Getting started
+## 이용 안내
 
-- On your first login, change the initial password and select a project you can access.
-- Take a look at the sample data dictionary, tables, columns and physical ERD in the default project `META-MORA`.
-- Some features are limited depending on your role and project permissions.
-- Check the operating policy of the project before changing data or metadata.
-- Features and screens may change with updates.
+- 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
+- 기본 프로젝트 `META-MORA`의 예제 데이터 사전과 테이블·컬럼, 물리 ERD를 확인해 보세요.
+- 일부 기능은 사용자 역할과 프로젝트 권한에 따라 이용이 제한됩니다.
+- 데이터와 메타데이터를 변경하기 전에 해당 프로젝트의 운영 정책을 확인해 주세요.
+- 기능과 화면 구성은 업데이트 과정에서 변경될 수 있습니다.
 
-## Questions and bug reports
+## 문의 및 오류 신고
 
-| Purpose | Link |
-|---------|------|
-| Project repository and documentation | https://github.com/meta-mora/metamora |
-| Bug reports, feature requests and questions (GitHub Issues) | https://github.com/meta-mora/metamora/issues |
+| 용도 | 링크 |
+|------|------|
+| 프로젝트 저장소 및 이용 문서 | https://github.com/meta-mora/metamora |
+| 오류 신고·기능 제안·프로젝트 관련 문의 (GitHub Issues) | https://github.com/meta-mora/metamora/issues |
 
-> When reporting a bug, please include your environment, the steps to reproduce it, and the expected and actual results. Do not include sensitive information such as passwords or personal data.
-> For questions about accounts, permissions or operating policies of your installation, contact the administrator of that environment.
+> 오류를 신고할 때에는 사용 환경과 재현 순서, 기대한 결과와 실제 결과를 함께 알려 주세요. 비밀번호와 개인정보 등 민감한 정보는 포함하지 마세요.
+> 설치 환경의 계정·권한·운영 정책에 관한 문의는 해당 환경의 관리자에게 확인해 주세요.
 
-## About
+## 안내 사항
 
-Metamora is released under the MIT License. See the documentation in the repository for the current features and future plans.
-Any problems or suggestions you share while using the service help the project grow.
+Metamora는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획은 저장소의 문서를 확인해 주세요.
+서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
 
-Thank you.
+감사합니다.
 **Metamora**',
        'N', current_timestamp, ARRAY[p.PRJ_SN], current_timestamp, current_timestamp, a.USER_ID, a.USER_ID
 from TB_PRJ p

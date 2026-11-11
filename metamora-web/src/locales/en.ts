@@ -611,7 +611,6 @@ export const en = {
   'MetaMora 에 정의한 관계입니다. 원본 DB 의 실제 FK 와 다를 수 있고, 카디널리티는 표시하지 않습니다.':
     'These relations are defined in MetaMora. They may differ from the actual FKs in the source DB, and cardinality is not shown.',
   '오픈소스 고지': 'Open source notices',
-  '{0}\n\nEPL-2.0 라이선스 전문\n\n{1}': '{0}\n\nEPL-2.0 license text\n\n{1}',
   '고지 내용을 불러오는 중…': 'Loading notices…',
   '고지 내용을 불러오지 못했습니다.': 'Failed to load the notices.',
   '논리명 없음': 'No logical name',

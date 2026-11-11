@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import com.koboolean.metamora.common.jpa.BaseEntity;
 
 import com.koboolean.metamora.core.security.domain.entity.Account;
@@ -91,4 +92,11 @@ public class Board extends BaseEntity implements Serializable {
 
     @Column(name = "PRJ_SN_LIST")
     private List<Long> projectIds;
+
+    /* 시스템이 등록한 공지(V0 기본 안내 공지) 여부.
+     * 제목·내용 모두 영어판이 등록된 글이며(EnglishMessages), 요청 언어에 맞춰 보여 주고 수정은 막는다.
+     */
+    public boolean isSystemNotice() {
+        return Messages.hasEnglish(title) && Messages.hasEnglish(content);
+    }
 }

@@ -1,5 +1,6 @@
 package com.koboolean.metamora;
 
+import com.koboolean.metamora.common.i18n.Messages;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -43,11 +44,13 @@ class V0SeedMigrationTest {
             String accounts = "\"" + schema + "\".TB_ACNT";
             assertThat(jdbc.queryForObject("select count(*) from " + posts, Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject("select PST_TTL from " + posts + " where PST_SN = 1", String.class))
-                    .isEqualTo("[Notice] Welcome to Metamora");
+                    .isEqualTo("[안내] Metamora에 오신 것을 환영합니다.").matches(Messages::hasEnglish);
             assertThat(jdbc.queryForObject("select PST_CN from " + posts + " where PST_SN = 1", String.class))
-                    .contains("Data dictionary", "Tables and columns", "Physical ERD", "Projects", "Users and permissions",
-                            "Getting started", "Questions and bug reports", "https://github.com/meta-mora/metamora/issues", "MIT License")
-                    .contains("## Key features", "### 1. Data dictionary", "| Purpose | Link |")
+                    .contains("데이터 사전", "테이블 및 컬럼", "물리 ERD", "프로젝트", "사용자 및 권한",
+                            "이용 안내", "문의 및 오류 신고", "https://github.com/meta-mora/metamora/issues", "MIT 라이선스")
+                    .contains("## 주요 기능", "### 1. 데이터 사전", "| 용도 | 링크 |")
+                    // 영어판(EnglishMessages)의 키와 한 글자도 다르지 않아야 영어 화면에 영어로 나온다.
+                    .matches(Messages::hasEnglish)
                     .doesNotContain("<a", "mailto:");
             assertThat(jdbc.queryForObject("select count(*) from " + posts
                     + " where PRJ_SN = 0 and CTGRY_CD = 'NOTICE' and DEL_YN = 'N' and cardinality(PRJ_SN_LIST) = 1"

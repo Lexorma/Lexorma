@@ -73,10 +73,10 @@ function RelationshipEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositi
     <>
       <BaseEdge id={id} path={path} style={style} />
       <EdgeLabelRenderer>
-        <span className="logical-edge-label" data-end="source" style={{ transform: `translate(0, -100%) translate(${sourceX + 6 + data.sourceSlot * SLOT_WIDTH}px, ${sourceY - 2}px)` }}>
+        <span className={`logical-edge-label${data.selected ? ' selected' : ''}`} data-end="source" style={{ transform: `translate(0, -100%) translate(${sourceX + 6 + data.sourceSlot * SLOT_WIDTH}px, ${sourceY - 2}px)` }}>
           {participation(r.sourceMin, r.sourceMax)}
         </span>
-        <span className="logical-edge-label" data-end="target"
+        <span className={`logical-edge-label${data.selected ? ' selected' : ''}`} data-end="target"
           style={{ transform: targetRight
             ? `translate(0, 0) translate(${targetX + 6 + data.targetSlot * SLOT_WIDTH}px, ${targetY + 2}px)`
             : `translate(-100%, -100%) translate(${targetX - 6 - data.targetSlot * SLOT_WIDTH}px, ${targetY - 2}px)` }}>
@@ -289,9 +289,11 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, modelSelect }: 
       sourceHandle,
       targetHandle,
       // 실선 = 식별, 점선 = 비식별
-      style: { stroke: picked ? 'var(--gh-accent)' : 'var(--gh-fg-muted)', strokeDasharray: relationship.isIdentifying ? undefined : '6 4', strokeWidth: highlighted ? 2.5 : 1.25 },
+      // 선택한 엔터티에 걸린 관계(또는 선택한 관계)는 굵기와 색으로 함께 강조한다
+      style: { stroke: highlighted ? 'var(--gh-accent)' : 'var(--gh-fg-muted)', strokeDasharray: relationship.isIdentifying ? undefined : '6 4', strokeWidth: highlighted ? 2.5 : 1.25 },
+      zIndex: highlighted ? 1 : 0, // 강조한 선이 다른 선 위에 그려지게
       data: {
-        relationship, selected: picked,
+        relationship, selected: highlighted,
         sourceSlot: slot(`${relationship.sourceEntityId}:${sourceHandle}`), targetSlot: slot(`${relationship.targetEntityId}:${targetHandle}`),
       },
     };

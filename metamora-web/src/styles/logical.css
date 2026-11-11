@@ -23,5 +23,6 @@
 .erd-table header strong.logical-entity-name, .erd-column span.logical-attribute-name { font-family: inherit; }
 .logical-edge-label { position: absolute; padding: 0 3px; border-radius: 3px; background: var(--gh-canvas-subtle); color: var(--gh-fg); font-family: var(--gh-mono); font-size: 11px; line-height: 16px; white-space: nowrap; pointer-events: none; }
 .logical-edge-name { background: var(--gh-canvas); border: 1px solid var(--gh-border); color: var(--gh-fg-muted); font-family: inherit; }
+.logical-edge-label.selected { color: var(--gh-accent); font-weight: 600; }
 .logical-edge-name.selected { border-color: var(--gh-accent); color: var(--gh-accent); }
 .erd-legend b { color: var(--gh-accent); font-size: 11px; }

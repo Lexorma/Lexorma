@@ -15,14 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class SchemaServiceImpl implements SchemaService {
-
-    // 따옴표 없는 식별자로 쓸 수 있는 이름 (PostgreSQL 63자 제한). 대소문자 정규화는 하지 않는다 (AI 로드맵 U-24 에서 결정)
-    private static final Pattern SCHEMA_NAME = Pattern.compile("^[A-Za-z_][A-Za-z0-9_$]{0,62}$");
 
     private final SchemaInfoRepository schemaInfoRepository;
     private final TableInfoRepository tableInfoRepository;
@@ -32,9 +28,7 @@ public class SchemaServiceImpl implements SchemaService {
     @Transactional
     public List<SchemaDto> selectSchemas(AccountDto accountDto) {
         resolveSchema(accountDto.getProjectId(), null); // 새 프로젝트도 기본 스키마가 보이도록
-        return schemaInfoRepository.findAllByProjectIdOrderByIsDefaultDescSchemaNameAsc(accountDto.getProjectId()).stream()
-                .map(SchemaDto::fromEntity)
-                .toList();
+        return schemaInfoRepository.findSchemaList(accountDto.getProjectId());
     }
 
     @Override
@@ -43,7 +37,7 @@ public class SchemaServiceImpl implements SchemaService {
         checkManageable();
         Long projectId = accountDto.getProjectId();
         String name = schemaDto.schemaName() == null ? "" : schemaDto.schemaName().trim();
-        if (!SCHEMA_NAME.matcher(name).matches()) {
+        if (!SchemaInfo.NAME_PATTERN.matcher(name).matches()) {
             throw new CustomException(ErrorCode.INVALID_SCHEMA_NAME);
         }
 
@@ -52,6 +46,10 @@ public class SchemaServiceImpl implements SchemaService {
                 : schemaInfoRepository.findByIdAndProjectId(schemaDto.id(), projectId)
                     .orElseThrow(() -> new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED));
 
+        // 기본 스키마는 이름을 고정한다 (설명만 수정). DDL 은 이름이 아니라 기본 여부로 접두어를 정하지만 M-3 정책으로 변경을 막는다
+        if (Boolean.TRUE.equals(schema.getIsDefault()) && !name.equals(schema.getSchemaName())) {
+            throw new CustomException(ErrorCode.INVALID_SCHEMA_NAME, "기본 스키마의 이름은 바꿀 수 없습니다.");
+        }
         if (!name.equalsIgnoreCase(schema.getSchemaName()) && schemaInfoRepository.existsByProjectIdAndSchemaNameIgnoreCase(projectId, name)) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);
         }
@@ -101,7 +99,7 @@ public class SchemaServiceImpl implements SchemaService {
     /** 스키마 구조 변경은 승인 권한(관리자·매니저·프로젝트 관리자)만 */
     private static void checkManageable() {
         if (!AuthUtil.isApprovalAvailable()) {
-            throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
+            throw new CustomException(ErrorCode.SCHEMA_PERMISSION_DENIED);
         }
     }
 }

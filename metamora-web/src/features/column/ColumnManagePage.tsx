@@ -1,9 +1,11 @@
 import { useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { useAuth } from '../../hooks/useAuth';
 import { api, download, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
@@ -13,6 +15,7 @@ import { t } from '../../lib/i18n';
 
 /** 컬럼 상세 : 값 항목은 [라벨, 키, 코드글꼴 여부], 속성 항목(Y/N)은 라벨 목록 */
 const DETAIL_FIELDS: [string, string, boolean?][] = [
+  [t('스키마'), 'schemaName', true],
   [t('테이블명'), 'tableName', true],
   [t('컬럼명'), 'columnName', true],
   [t('컬럼 설명'), 'columnDesc'],
@@ -42,6 +45,8 @@ export function ColumnManagePage() {
   const dialog = useDialog();
   const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const { canView } = useAuth();
   const reload = () => grid.current?.reload();
 
   const add = () => {
@@ -147,11 +152,14 @@ export function ColumnManagePage() {
               </div>
             </dd>
           </dl>
-          {!approved && (
-            <div className="gh-dialog-actions">
-              <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>{t('컬럼 순서 변경')}</button>
-            </div>
-          )}
+          <div className="gh-dialog-actions">
+            {canView('physical-erd') && row.tableInfoId != null && (
+              <button type="button" className="btn" onClick={() => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.tableInfoId)}`); }}>
+                {t('ERD 에서 보기')}
+              </button>
+            )}
+            {!approved && <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>{t('컬럼 순서 변경')}</button>}
+          </div>
         </div>
       ),
     });
@@ -180,7 +188,7 @@ export function ColumnManagePage() {
           onAction={{ add, active: () => updateActive(true), unactive: () => updateActive(false), delete: remove }}
           onRowClick={openDetail}
           renderCell={(field, row) => {
-            if (['tableName', 'columnName', 'dataType'].includes(field)) return <Mono>{row[field]}</Mono>;
+            if (['schemaName', 'tableName', 'columnName', 'dataType'].includes(field)) return <Mono>{row[field]}</Mono>;
             if (field === 'isPk') return <YN value={row.isPk} text="PK" />;
             if (field === 'isNullable') return <YN value={row.isNullable} />;
             if (field === 'isApproval') return <Approval value={row.isApproval} />;

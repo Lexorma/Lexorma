@@ -12,7 +12,11 @@ import java.io.IOException;
 import java.util.List;
 
 public interface TableDesignService {
-    Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);
+    /** schemaId : 스키마별 조회 (없으면 전체) */
+    Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long schemaId);
+
+    /** 테이블 1건 (다른 화면에서 테이블 ID 로 상세를 열 때) */
+    TableInfoDto selectTable(Long tableId, AccountDto accountDto);
 
     /**
      * 테이블 한글명(예: 사용_내역_관리)을 승인된 표준 단어의 영문약어로 변환한다.
@@ -32,5 +36,6 @@ public interface TableDesignService {
     /**
      * 테이블과 연결된 컬럼으로 프로젝트 대상 DB 기준 DDL 을 만든다.
      */
-    TableDdlDto generateTableDdl(Long tableId, AccountDto accountDto);
+    /** defaultSchemaName : 기본 스키마 테이블에 붙일 스키마명 (비우면 붙이지 않는다) */
+    TableDdlDto generateTableDdl(Long tableId, AccountDto accountDto, String defaultSchemaName);
 }

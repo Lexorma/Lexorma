@@ -51,6 +51,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private static final int FIRST_ROW = 1;
 
     @Override
+    @Transactional(readOnly = true) // DTO 가 소속 테이블·스키마(지연 로딩)를 읽는다
     public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
         Long projectId = accountDto.getProjectId();
 
@@ -156,6 +157,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     }
 
     @Override
+    @Transactional(readOnly = true) // DTO 가 소속 테이블·스키마(지연 로딩)를 읽는다
     public List<ColumnInfoDto> selectDuplicateColumns(AccountDto accountDto, Long tableInfoId, String columnName) {
         return columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(accountDto.getProjectId(), tableInfoId, columnName).stream()
                 .map(ColumnInfoDto::fromEntity)
@@ -165,9 +167,10 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     @Override
     @Transactional
     public void updateColumnApproval(AccountDto accountDto, List<ColumnInfoDto> columnInfoDtos, String type) {
-//        if(!AuthUtil.isApprovalAvailable()){
-//            throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
-//        }
+        // 승인·승인취소는 승인 권한(관리자·매니저·프로젝트 관리자)만 (화면은 버튼을 숨기지만 API 직접 호출도 막는다)
+        if(!AuthUtil.isApprovalAvailable()){
+            throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
+        }
 
         Long projectId = accountDto.getProjectId();
 

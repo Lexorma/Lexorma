@@ -12,9 +12,11 @@ import com.koboolean.metamora.data.physical.repository.TableConstraintRepository
 import com.koboolean.metamora.data.physical.repository.TableIndexRepository;
 import com.koboolean.metamora.data.physical.repository.TableRelationRepository;
 import com.koboolean.metamora.data.physical.service.PhysicalModelService;
+import com.koboolean.metamora.data.physical.sync.ReferenceSyncBoundary;
 import com.koboolean.metamora.data.table.ddl.TableDdlGenerator;
 import com.koboolean.metamora.data.table.domain.entity.TableInfo;
 import com.koboolean.metamora.data.table.repository.TableInfoRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +38,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private final TableRelationRepository relationRepository;
     private final TableIndexRepository indexRepository;
     private final TableConstraintRepository constraintRepository;
+    private final EntityManager entityManager;
 
     // ------------------------------------------------------------------ 조회
 
@@ -217,7 +220,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Override
     @Transactional
     public void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval) {
-        if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED);
+        if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
         Long projectId = accountDto.getProjectId();
         switch (kind) {
             case RELATION -> relationRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound).setIsApproval(isApproval);
@@ -252,6 +255,10 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     public void syncReferenceRelations(Long projectId, Collection<Long> tableIds) {
         if (tableIds.isEmpty()) return;
 
+        // 아직 반영되지 않은 변경을 먼저 내보내고(아래 조회가 DB 기준), 여기서 맞춘 테이블은 커밋 직전 대상에서 뺀다
+        entityManager.flush();
+        ReferenceSyncBoundary.synced(projectId, tableIds);
+
         Set<String> tableNames = tableInfoRepository.findAllById(tableIds).stream()
                 .filter(t -> projectId.equals(t.getProjectId()))
                 .map(t -> normalize(t.getTableName()))
@@ -264,6 +271,14 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .forEach(c -> candidates.put(c.getId(), c));
         if (!tableNames.isEmpty()) {
             columnInfoRepository.findAllReferencing(projectId, tableNames).forEach(c -> candidates.putIfAbsent(c.getId(), c));
+        }
+        // + 이 테이블들을 대상으로 만들어져 있는 관계의 컬럼 (테이블명이 바뀌어 더 이상 그 이름을 참조하지 않을 수 있다)
+        Set<Long> targetingColumnIds = relationRepository.findAllByProjectIdAndRelationSourceAndTargetTable_IdIn(projectId, TableRelation.Source.REF_COLUMN, tableIds).stream()
+                .map(TableRelation::getDerivedColumnId)
+                .filter(id -> id != null && !candidates.containsKey(id))
+                .collect(Collectors.toSet());
+        if (!targetingColumnIds.isEmpty()) {
+            columnInfoRepository.findAllById(targetingColumnIds).forEach(c -> candidates.putIfAbsent(c.getId(), c));
         }
         if (candidates.isEmpty()) return;
 
@@ -290,6 +305,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 if (relation != null) relationRepository.delete(relation);
                 continue;
             }
+            String relationName = "FK_" + column.getTableInfo().getTableName() + "_" + column.getColumnName();
             if (relation == null) {
                 relation = TableRelation.builder()
                         .projectId(projectId)
@@ -301,11 +317,12 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                         .build();
                 relation.getColumns().add(TableRelationColumn.builder().relation(relation).sourceColumn(column).columnOrder(1).build());
             } else if (relation.getTargetTable().getId().equals(targetPk.getTableInfo().getId())
-                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId())) {
+                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId())
+                    && relationName.equals(relation.getRelationName())) {
                 continue; // 그대로
             }
             relation.setTargetTable(targetPk.getTableInfo());
-            relation.setRelationName("FK_" + column.getTableInfo().getTableName() + "_" + column.getColumnName());
+            relation.setRelationName(relationName); // 원본 테이블명·컬럼명이 바뀌면 이름도 따라간다 (DDL 의 FK 이름과 같은 규칙)
             relation.getColumns().get(0).setTargetColumn(targetPk);
             relationRepository.save(relation);
         }

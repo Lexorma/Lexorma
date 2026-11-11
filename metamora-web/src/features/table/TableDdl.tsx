@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, type FormEvent } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { api, ApiError, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -15,11 +15,21 @@ interface TableDdl {
 export function TableDdlView({ tableId }: { tableId: number }) {
   const dialog = useDialog();
   const [copied, setCopied] = useState(false);
+  // 스키마명 포함 : 기본 스키마 테이블에 붙일 실제 스키마명. [적용] 을 눌러야 DDL 에 반영한다 (다른 스키마의 테이블은 항상 스키마명이 붙는다)
+  const [withSchema, setWithSchema] = useState(false);
+  const [schemaInput, setSchemaInput] = useState('');
+  const [schemaName, setSchemaName] = useState('');
   const { data, error } = useQuery({
-    queryKey: ['table-ddl', tableId],
-    queryFn: () => api<TableDdl>(`/api/selectTable/ddl/${enc(tableId)}`, { silent: true }),
+    queryKey: ['table-ddl', tableId, schemaName],
+    queryFn: () => api<TableDdl>(`/api/selectTable/ddl/${enc(tableId)}${schemaName ? `?defaultSchemaName=${enc(schemaName)}` : ''}`, { silent: true }),
     gcTime: 0,
+    placeholderData: keepPreviousData,
   });
+
+  const applySchema = (e: FormEvent) => {
+    e.preventDefault();
+    setSchemaName(withSchema ? schemaInput.trim() : '');
+  };
 
   const copy = async () => {
     const text = data?.ddl ?? '';
@@ -62,6 +72,19 @@ export function TableDdlView({ tableId }: { tableId: number }) {
         </div>
         <button type="button" className="btn btn-sm" disabled={!data} onClick={copy}>{copied ? t('복사됨') : t('복사')}</button>
       </div>
+      <form className="table-ddl-schema" onSubmit={applySchema}>
+        <label className="table-ddl-schema-check">
+          <input type="checkbox" checked={withSchema}
+            onChange={(e) => {
+              setWithSchema(e.target.checked);
+              if (!e.target.checked) setSchemaName('');
+            }} />
+          {t('스키마명 포함')}
+        </label>
+        <input type="text" className="form-control gh-mono" aria-label={t('기본 스키마에 붙일 스키마명')} placeholder={t('기본 스키마에 붙일 스키마명 (예: public)')}
+          maxLength={63} disabled={!withSchema} value={schemaInput} onChange={(e) => setSchemaInput(e.target.value)} />
+        <button type="submit" className="btn btn-sm" disabled={!withSchema || !schemaInput.trim()}>{t('적용')}</button>
+      </form>
       {warnings.length > 0 && (
         <ul className="table-ddl-warnings">
           {warnings.map((w, i) => <li key={i}>{w}</li>)}

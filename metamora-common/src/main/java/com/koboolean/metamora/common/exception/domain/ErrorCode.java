@@ -192,6 +192,16 @@ public enum ErrorCode {
     INVALID_SCHEMA_NAME(HttpStatus.BAD_REQUEST, "INVALID_SCHEMA_NAME"),
 
     /**
+     * 스키마 등록·수정·삭제는 승인 권한(관리자·매니저·프로젝트 관리자)만 할 수 있습니다.
+     */
+    SCHEMA_PERMISSION_DENIED(HttpStatus.BAD_REQUEST, "SCHEMA_PERMISSION_DENIED"),
+
+    /**
+     * 승인·승인취소는 승인 권한(관리자·매니저·프로젝트 관리자)만 할 수 있습니다.
+     */
+    APPROVAL_PERMISSION_DENIED(HttpStatus.BAD_REQUEST, "APPROVAL_PERMISSION_DENIED"),
+
+    /**
      * 관계·인덱스·제약조건 정의 오류 (사유는 customMessage)
      */
     INVALID_PHYSICAL_MODEL(HttpStatus.BAD_REQUEST, "INVALID_PHYSICAL_MODEL"),

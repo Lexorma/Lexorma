@@ -88,7 +88,7 @@ class ErdIntegrationTest {
         assertThat(graph.relations()).anyMatch(r -> r.sourceTableName().equals("TB_COL") && r.targetTableName().equals("TB_TBL")
                 && r.columns().get(0).sourceColumnName().equals("TBL_SN") && r.relationSource().equals("REF_COLUMN"));
 
-        assertThat(tableDesignService.generateTableDdl(id(graph, "TB_COL"), admin).ddl())
+        assertThat(tableDesignService.generateTableDdl(id(graph, "TB_COL"), admin, null).ddl())
                 .contains("CREATE TABLE TB_COL (")
                 .contains("FOREIGN KEY (TBL_SN) REFERENCES TB_TBL (TBL_SN)");
 

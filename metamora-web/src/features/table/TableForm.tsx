@@ -3,6 +3,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import type { Row } from '../../components/grid/Grid';
 import { api, enc } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
+import type { Schema } from '../schema/schemas';
 import { t } from '../../lib/i18n';
 
 interface TableNameResult {
@@ -28,7 +29,7 @@ function normalizeKorName(value: unknown) {
  * 테이블 등록(C) / 수정(U)
  * 한글명을 입력하면 표준 단어를 조회해 프로젝트 접두어 + 단어 영문약어로 테이블명을 만든다.
  */
-export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: Row; onSaved: () => void }) {
+export function TableForm({ type, row = {}, schemas, onSaved }: { type: 'C' | 'U'; row?: Row; schemas: Schema[]; onSaved: () => void }) {
   const dialog = useDialog();
   const originalKorName = normalizeKorName(row.tableKorName);
   const originalTableName = row.tableName ?? '';
@@ -38,6 +39,10 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
   const [description, setDescription] = useState(row.tableDescription ?? '');
   const [isMaster, setIsMaster] = useState(row.isMasterTable === 'Y');
   const [sortOrder, setSortOrder] = useState(row.sortOrder ?? '');
+  // 등록 : 스키마를 고른다 (고르지 않으면 기본 스키마). 수정 : 스키마를 보내지 않아 현재 스키마를 유지한다 (이동은 제공하지 않음)
+  // 목록은 화면에서 받는다 (대화상자는 AuthProvider 밖에 그려져 useSchemas 를 쓸 수 없다)
+  const [schemaId, setSchemaId] = useState('');
+  const selectedSchemaId = schemaId || String(schemas.find((s) => s.isDefault)?.id ?? '');
   const [state, setState] = useState<{ korName: string; result: TableNameResult | null; pending: boolean }>({ korName: '', result: null, pending: false });
   const seq = useRef(0);
   const autoDescription = useRef('');
@@ -101,6 +106,7 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
       tableDescription: description,
       isMasterTable: isMaster ? 'Y' : 'N',
       sortOrder: parseInt(String(sortOrder)) || 0,
+      ...(type === 'C' && selectedSchemaId ? { schemaId: Number(selectedSchemaId) } : {}),
     };
 
     dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : t('수정하시겠습니까?'), async () => {
@@ -112,6 +118,17 @@ export function TableForm({ type, row = {}, onSaved }: { type: 'C' | 'U'; row?: 
   const result = state.result;
   return (
     <form id="editTableForm" className="edit-form" onSubmit={onSubmit}>
+      <div className="form-group">
+        <label htmlFor="tableSchema">{t('스키마')}</label>
+        {type === 'C' ? (
+          <select className="form-control" id="tableSchema" value={selectedSchemaId} onChange={(e) => setSchemaId(e.target.value)}>
+            {schemas.map((s) => <option key={s.id} value={s.id}>{s.schemaName}{s.isDefault ? t(' (기본)') : ''}</option>)}
+          </select>
+        ) : (
+          <input type="text" className="form-control gh-mono" id="tableSchema" readOnly value={row.schemaName ?? ''} />
+        )}
+      </div>
+
       <div className="form-group">
         <label htmlFor="tableKorName">{t('테이블 한글명')}</label>
         <input type="text" className="form-control" id="tableKorName" placeholder={t('예) 사용_내역_관리')} autoComplete="off" required={type === 'C'} autoFocus

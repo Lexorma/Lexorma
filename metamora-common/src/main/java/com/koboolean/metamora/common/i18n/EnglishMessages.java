@@ -60,6 +60,7 @@ final class EnglishMessages {
 
         // ---------------------------------------------------------------- 스키마 / 프로젝트
         add("기본 스키마는 삭제할 수 없습니다.", "The default schema cannot be deleted.");
+        add("기본 스키마의 이름은 바꿀 수 없습니다.", "The name of the default schema cannot be changed.");
         add("{0} 에 테이블이 있습니다.", "{0} contains tables.");
         add("삭제를 할 수 없습니다.", "It cannot be deleted.");
         add("프로젝트 관리자 외의 멤버가 존재하여 삭제가 불가능합니다.", "The project cannot be deleted because it has members other than the project manager.");

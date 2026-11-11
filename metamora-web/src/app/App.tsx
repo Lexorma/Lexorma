@@ -17,6 +17,7 @@ import { UserManagePage } from '../features/system/UserManagePage';
 import { ProjectManagePage } from '../features/system/ProjectManagePage';
 import { SystemLogPage } from '../features/system/SystemLogPage';
 import { DataDictionaryPage } from '../features/dictionary/DataDictionaryPage';
+import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
 import { t } from '../lib/i18n';
@@ -86,6 +87,7 @@ export function App() {
                 <Route path="/projectManage" element={<RequireMenu menuId="project-manage"><ProjectManagePage /></RequireMenu>} />
                 <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
                 <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DataDictionaryPage /></RequireMenu>} />
+                <Route path="/schemaManage" element={<RequireMenu menuId="schema-manage"><SchemaManagePage /></RequireMenu>} />
                 <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
                 <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
                 <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />

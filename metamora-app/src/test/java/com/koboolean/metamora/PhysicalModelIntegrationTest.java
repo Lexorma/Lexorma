@@ -126,7 +126,7 @@ class PhysicalModelIntegrationTest {
                 List.of(ref(stat), ref(statGrp)), null)))
                 .as("같은 컬럼 구성의 UNIQUE 는 중복").isInstanceOf(CustomException.class);
 
-        TableDdlDto ddl = tableDesignService.generateTableDdl(order.getId(), admin);
+        TableDdlDto ddl = tableDesignService.generateTableDdl(order.getId(), admin, null);
         assertThat(ddl.ddl())
                 .contains("CREATE TABLE sales.TB_ORDER (")
                 .contains("CONSTRAINT UK_TB_ORDER_STAT_GRP_CD_STAT_CD UNIQUE (STAT_GRP_CD, STAT_CD)")

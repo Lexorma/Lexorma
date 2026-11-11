@@ -40,6 +40,7 @@ class MenuAuthorizationTest {
 
         assertThat(menuAuth.canView("data-dictionary")).isTrue();
         assertThat(menuAuth.canView("table-manage")).isTrue();
+        assertThat(menuAuth.canView("schema-manage")).isTrue();
         assertThat(menuAuth.canView("data-management")).isTrue();
         assertThat(menuAuth.canView("data-modeling")).isTrue();
 

@@ -24,6 +24,8 @@ export interface ErdColumn {
   isNullable: boolean | null;
   isPk: boolean | null;
   isApproval: boolean | null;
+  /** 표준 용어의 표준 도메인명 (용어가 없거나 삭제됐으면 null) */
+  domainName: string | null;
 }
 
 /** PhysicalModelDto.Relation : 컬럼 쌍은 복합 FK 순서대로. 상대 테이블은 조회 범위 밖일 수 있다 */

@@ -3,6 +3,7 @@ import { t } from '../../lib/i18n';
 
 export const columnColumns: GridColumn[] = [
   { columnName: '', column: 'sortOrder', columnType: 'NUMBER', isSearch: false, isFilter: true, rowType: 'CHECKBOX' },
+  { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT' },
   { columnName: t('테이블명'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
   { columnName: t('컬럼명'), column: 'columnName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT' },
   { columnName: t('컬럼 설명'), column: 'columnDesc', columnType: 'STRING', isSearch: true, isFilter: false, rowType: 'TEXT' },

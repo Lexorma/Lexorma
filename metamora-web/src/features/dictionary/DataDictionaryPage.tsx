@@ -88,9 +88,17 @@ const FORM_CONFIG: Record<DictionaryTable, { add?: FormConfig; edit: FormConfig 
 /** 데이터 사전 : 표준 도메인 / 단어 / 용어 관리, 엑셀 업로드·다운로드 */
 export function DataDictionaryPage() {
   const dialog = useDialog();
-  const [active, setActive] = useState<DictionaryTable>('standardDomains');
+  // 다른 화면(물리 ERD)에서 넘어온 경우 : ?tab=standardTerms&searchColumn=...&searchQuery=... 로 그 탭을 검색한 상태로 연다
+  const [linked] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = TABS.find((candidate) => candidate.id === params.get('tab'));
+    const column = params.get('searchColumn');
+    const query = params.get('searchQuery');
+    return tab ? { tab: tab.id, search: column && query ? { column, query } : undefined } : null;
+  });
+  const [active, setActive] = useState<DictionaryTable>(linked?.tab ?? 'standardDomains');
   // 탭은 처음 열 때 그리드를 만들고 이후에는 유지한다 (검색 조건/페이지 유지)
-  const [visited, setVisited] = useState<Set<DictionaryTable>>(new Set(['standardDomains']));
+  const [visited, setVisited] = useState<Set<DictionaryTable>>(new Set([linked?.tab ?? 'standardDomains']));
   const grids = {
     standardDomains: useRef<GridHandle>(null),
     standardWords: useRef<GridHandle>(null),
@@ -180,7 +188,8 @@ export function DataDictionaryPage() {
         {TABS.map((tab) => (
           <div key={tab.id} className={`tab-pane fade${active === tab.id ? ' show active' : ''}`} id={tab.target}>
             {visited.has(tab.id) && (
-              <DictionaryGrid tab={tab} gridRef={grids[tab.id]} dialog={dialog} extraActions={active === tab.id ? extraActions : undefined} />
+              <DictionaryGrid tab={tab} gridRef={grids[tab.id]} dialog={dialog} extraActions={active === tab.id ? extraActions : undefined}
+                initialSearch={linked?.tab === tab.id ? linked.search : undefined} />
             )}
           </div>
         ))}
@@ -189,7 +198,9 @@ export function DataDictionaryPage() {
   );
 }
 
-function DictionaryGrid({ tab, gridRef, dialog, extraActions }: { tab: TabDef; gridRef: RefObject<GridHandle | null>; dialog: DialogApi; extraActions?: ReactNode }) {
+function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
+  tab: TabDef; gridRef: RefObject<GridHandle | null>; dialog: DialogApi; extraActions?: ReactNode; initialSearch?: { column: string; query: string };
+}) {
   const reload = () => gridRef.current?.reload();
 
   const approve = (isApproval: boolean) => {
@@ -276,6 +287,7 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions }: { tab: TabDef; g
       id={tab.id}
       columns={tab.columns}
       dataUrl={tab.dataUrl}
+      initialSearch={initialSearch}
       crudActions="anCD"
       extraActions={extraActions}
       onAction={{ active: () => approve(true), unactive: () => approve(false), add, delete: remove }}

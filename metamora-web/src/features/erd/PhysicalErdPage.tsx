@@ -1,20 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import { NoticeMarkdown } from '../notice/NoticeMarkdown';
+import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
+import { TableDdlView } from '../table/TableDdl';
+import { useTableDetail } from '../table/tableDetail';
 import { ArrowLeftIcon, CheckIcon, GitMergeIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
-import { useDialog } from '../../components/dialog/DialogProvider';
+import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api } from '../../lib/api';
+import { api, enc } from '../../lib/api';
 import { cancelLayout, gridLayout, runLayout, type LayoutEdge, type LayoutNode } from './layout';
 import { columnHandle, TABLE_HANDLE, TableNode, useSimpleNodes } from './TableNode';
 import {
   columnsByTable, columnType, MAX_ROWS, NODE_WIDTH, nodeHeight,
-  type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
+  type ErdColumn, type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
 } from './model';
 import { t, tx } from '../../lib/i18n';
 
@@ -75,13 +79,29 @@ export default function PhysicalErdPage() {
 }
 
 function ErdWorkspace() {
-  const { user } = useAuth();
+  const { user, canView } = useAuth();
   const dialog = useDialog();
+  const navigate = useNavigate();
   const flow = useReactFlow<TableNodeType, RelationEdge>();
   const simple = useSimpleNodes();
+  // 테이블 상세·컬럼 편집은 화면을 옮기지 않고 이 화면에서 연다 (테이블 관리와 같은 대화상자)
+  const { openTableDetailById } = useTableDetail();
+  const openColumnBulkEditor = useColumnBulkEditor();
 
-  const [scope, setScope] = useState<Scope>(INITIAL_SCOPE);
-  const [form, setForm] = useState<SearchScope>(INITIAL_SCOPE);
+  // 테이블·컬럼 관리에서 넘어온 경우 (?schemaId=&tableId=) : 그 스키마를 조회하고 해당 테이블을 선택·가운데로 옮긴다
+  const [linked] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return { schemaId: /^\d+$/.test(params.get('schemaId') ?? '') ? params.get('schemaId')! : '', tableId: /^\d+$/.test(params.get('tableId') ?? '') ? params.get('tableId') : null };
+  });
+  const focusRequest = useRef<string | null>(linked.tableId);
+  const [, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    // 한 번 쓴 파라미터는 지운다 (새로 고침·범위 변경 뒤에 다시 그 테이블로 끌려가지 않게)
+    if (linked.schemaId || linked.tableId) setSearchParams({}, { replace: true });
+  }, []);
+
+  const [scope, setScope] = useState<Scope>({ ...INITIAL_SCOPE, schemaId: linked.schemaId });
+  const [form, setForm] = useState<SearchScope>({ ...INITIAL_SCOPE, schemaId: linked.schemaId });
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [onlyRelated, setOnlyRelated] = useState(false);
@@ -190,6 +210,23 @@ function ErdWorkspace() {
       if (cancelled) return;
       setNodes(built);
       setSelectedId((id) => (id && built.some((n) => n.id === id) ? id : scope.kind === 'neighbors' ? String(scope.tableId) : null));
+
+      const requested = focusRequest.current;
+      if (requested) {
+        focusRequest.current = null;
+        const target = built.find((n) => n.id === requested);
+        if (target) {
+          shownGraph.current = graphKey;
+          setSelectedId(requested);
+          requestAnimationFrame(() => void flow.setCenter(target.position.x + NODE_WIDTH / 2, target.position.y + nodeHeight(target.data.columns.length) / 2, { zoom: 1 }));
+          return;
+        }
+        if (scope.kind === 'search') {
+          // 이 페이지(100개)에 없는 테이블 : 그 테이블 기준 이웃 조회로 바꾼다
+          setScope({ kind: 'neighbors', tableId: Number(requested), tableName: `#${requested}`, depth: 1, back: scope });
+          return;
+        }
+      }
       if (!moveViewport) return;
       shownGraph.current = graphKey;
       requestAnimationFrame(() => {
@@ -320,6 +357,25 @@ function ErdWorkspace() {
     }
   }
 
+  // 다른 화면으로 이동 : 저장하지 않은 배치가 있으면 먼저 확인한다
+  const leave = (path: string) => {
+    if (pendingCount) dialog.confirm(t('저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?'), () => navigate(path));
+    else navigate(path);
+  };
+
+  const openColumn = (column: ErdColumn, tableName: string, isFk: boolean) => {
+    dialog.open({
+      title: t('컬럼 상세 · {0}.{1}', tableName, column.columnName),
+      content: ({ close }: DialogControls) => (
+        <ColumnDetail column={column} tableName={tableName} isFk={isFk}
+          onDictionary={canView('data-dictionary') ? (tab, searchColumn, value) => {
+            close();
+            leave(`/dataDictionary?tab=${tab}&searchColumn=${searchColumn}&searchQuery=${enc(value)}`);
+          } : undefined} />
+      ),
+    });
+  };
+
   const selected = graph.data?.tables.find((t) => String(t.id) === selectedId);
   const loading = layout.isFetching || graph.isFetching || arranging;
   const error = layout.error ?? graph.error;
@@ -425,6 +481,12 @@ function ErdWorkspace() {
               onlyRelated={onlyRelated}
               onOnlyRelated={setOnlyRelated}
               onFocus={() => focus(String(selected.id))}
+              onDdl={() => dialog.popup({ title: `DDL · ${selected.tableName}`, size: 'large', content: <TableDdlView tableId={selected.id} /> })}
+              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch() }) : undefined}
+              onEditColumns={canView('column-manage')
+                ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void graph.refetch() })
+                : undefined}
+              onColumn={openColumn}
               onNeighbors={() => setScope({
                 kind: 'neighbors', tableId: selected.id, tableName: selected.tableName, depth,
                 back: scope.kind === 'neighbors' ? scope.back : scope,
@@ -472,7 +534,51 @@ function OpenSourceNotices() {
   return <div className="erd-license-text"><NoticeMarkdown content={notices.data} /></div>;
 }
 
-function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors }: {
+/** 컬럼 상세 : 조회한 ERD 데이터로 보여 주고(VIEWER 도 가능), 표준 용어·도메인은 데이터 사전으로 이동할 수 있다 */
+function ColumnDetail({ column, tableName, isFk, onDictionary }: {
+  column: ErdColumn;
+  tableName: string;
+  isFk: boolean;
+  onDictionary?: (tab: 'standardTerms' | 'standardDomains', searchColumn: string, value: string) => void;
+}) {
+  const keys = [column.isPk ? 'PK' : '', isFk ? 'FK' : ''].filter(Boolean).join(' / ');
+  const link = (value: string | null, tab: 'standardTerms' | 'standardDomains', searchColumn: string) => (value ? (
+    <>
+      {value}
+      {onDictionary && <> <button type="button" className="erd-license-link" onClick={() => onDictionary(tab, searchColumn, value)}>{t('데이터 사전에서 보기')}</button></>}
+    </>
+  ) : null);
+  const items: [string, ReactNode, boolean?][] = [
+    [t('테이블명'), tableName, true],
+    [t('컬럼명'), column.columnName, true],
+    [t('논리명'), column.termName],
+    [t('데이터 타입'), columnType(column), true],
+    ['PK / FK', keys],
+    [t('NULL 허용'), column.isNullable === false || column.isPk ? 'N' : 'Y'],
+    [t('표준 용어'), link(column.termName, 'standardTerms', 'commonStandardTermName')],
+    [t('표준 도메인'), link(column.domainName, 'standardDomains', 'commonStandardDomainName')],
+    [t('설명'), column.columnDesc],
+  ];
+  return (
+    <div>
+      <div className="dict-detail-status">
+        {column.isApproval ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>}
+        {!column.termName && <span className="gh-muted">{t('연결된 표준 용어가 없습니다.')}</span>}
+      </div>
+      <dl className="dict-detail">
+        {items.map(([label, value, mono]) => {
+          const empty = value == null || value === '';
+          return [
+            <dt key={`t-${label}`}>{label}</dt>,
+            <dd key={`d-${label}`} className={empty ? 'gh-muted' : mono ? 'gh-mono' : undefined}>{empty ? '-' : value}</dd>,
+          ];
+        })}
+      </dl>
+    </div>
+  );
+}
+
+function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn }: {
   graph: ErdGraph;
   tableId: number;
   schemaName: string;
@@ -482,6 +588,11 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   onOnlyRelated: (value: boolean) => void;
   onFocus: () => void;
   onNeighbors: () => void;
+  onDdl: () => void;
+  /** 테이블 상세 / 컬럼 편집 대화상자 (메뉴 권한이 없으면 undefined) */
+  onTableDetail?: () => void;
+  onEditColumns?: () => void;
+  onColumn: (column: ErdColumn, tableName: string, isFk: boolean) => void;
 }) {
   const table = graph.tables.find((t) => t.id === tableId)!;
   const columns = graph.columns.filter((c) => c.tableId === tableId);
@@ -507,13 +618,25 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
         <button type="button" className="btn btn-sm" onClick={onFocus}>{t('이동')}</button>
       </div>
       <label className="erd-check"><input type="checkbox" checked={onlyRelated} onChange={(e) => onOnlyRelated(e.target.checked)} /> {t('연결된 테이블만 보기')}</label>
+      <div className="erd-toolbar erd-links">
+        <button type="button" className="btn btn-sm" onClick={onDdl}>{t('DDL 보기')}</button>
+        {onTableDetail && <button type="button" className="btn btn-sm" onClick={onTableDetail}>{t('테이블 상세')}</button>}
+        {onEditColumns && (
+          <button type="button" className="btn btn-sm" disabled={!table.isApproval} onClick={onEditColumns}
+            title={table.isApproval ? t('표준용어로 컬럼을 한 번에 추가/수정/삭제합니다.') : t('승인된 테이블에만 컬럼을 등록할 수 있습니다.')}>
+            {t('컬럼 편집')}
+          </button>
+        )}
+      </div>
 
       <h4>{t('컬럼 {0}개', columns.length)}</h4>
       <ul className="erd-list">
         {columns.map((c) => (
           <li key={c.id}>
-            <strong>{c.isPk ? 'PK ' : ''}{fkColumns.has(c.id) ? 'FK ' : ''}<Mono>{c.columnName}</Mono></strong>
-            <small>{[c.termName || c.columnDesc, columnType(c), c.isNullable === false || c.isPk ? 'NOT NULL' : 'NULL'].filter(Boolean).join(' · ')}</small>
+            <button type="button" className="erd-list-button" title={t('컬럼 상세 보기')} onClick={() => onColumn(c, table.tableName, fkColumns.has(c.id))}>
+              <strong>{c.isPk ? 'PK ' : ''}{fkColumns.has(c.id) ? 'FK ' : ''}<Mono>{c.columnName}</Mono></strong>
+              <small>{[c.termName || c.columnDesc, columnType(c), c.isNullable === false || c.isPk ? 'NOT NULL' : 'NULL'].filter(Boolean).join(' · ')}</small>
+            </button>
           </li>
         ))}
       </ul>

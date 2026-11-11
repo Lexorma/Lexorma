@@ -16,10 +16,10 @@ public final class ErdDto {
                         Boolean isApproval, Boolean isMasterTable) {
     }
 
-    /** termName : 표준 용어명 (컬럼 논리명). 컬럼 순서는 sortOrder → id */
+    /** termName : 표준 용어명 (컬럼 논리명), domainName : 그 용어의 표준 도메인명 (둘 다 없을 수 있다). 컬럼 순서는 sortOrder → id */
     public record Column(Long id, Long tableId, String columnName, String termName, String columnDesc, String dataType,
                          Integer maxLength, BigDecimal precision, Integer scale, Boolean isNullable, Boolean isPk,
-                         Boolean isApproval) {
+                         Boolean isApproval, String domainName) {
     }
 
     /**

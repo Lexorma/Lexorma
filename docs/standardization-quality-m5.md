@@ -37,7 +37,7 @@
 
 **구분되는 세 경우 :** 실제 불일치(진단 결과) / 비교할 정의가 없음(도메인 없음·항목 미정의 → 결과 없음) / 비교를 지원하지 않음(`mapType` 이 해석하지 못하는 타입 — 예: `ENUM('A','B')` — 은 괄호 앞 문자열만 비교하고 길이는 보지 않는다).
 
-## 3. 백엔드 (`metamora-data` `dictionary/`)
+## 3. 백엔드 (`lexorma-data` `dictionary/`)
 
 | 구성 | 내용 |
 |---|---|
@@ -68,12 +68,12 @@
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m5q_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m5q_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.StandardizationQualityIntegrationTest' --tests 'com.koboolean.metamora.DictionaryUsageIntegrationTest' \
-  --tests 'com.koboolean.metamora.SmokeTest' --tests 'com.koboolean.metamora.ReferenceSyncIntegrationTest' \
-  --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' \
-  --tests 'com.koboolean.metamora.ErdIntegrationTest' --tests 'com.koboolean.metamora.DataPortalTemplateTest' \
-  --tests 'com.koboolean.metamora.TermUploadNameGenerationTest'      # 90 tests, 실패 0
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.StandardizationQualityIntegrationTest' --tests 'com.lexorma.DictionaryUsageIntegrationTest' \
+  --tests 'com.lexorma.SmokeTest' --tests 'com.lexorma.ReferenceSyncIntegrationTest' \
+  --tests 'com.lexorma.SchemaManagementIntegrationTest' --tests 'com.lexorma.PhysicalModelIntegrationTest' \
+  --tests 'com.lexorma.ErdIntegrationTest' --tests 'com.lexorma.DataPortalTemplateTest' \
+  --tests 'com.lexorma.TermUploadNameGenerationTest'      # 90 tests, 실패 0
 ```
 
 ### 5.1 자동 테스트
@@ -89,7 +89,7 @@ SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 
 ### 5.2 브라우저 검증 (HTTP·빌드 결과와 별개)
 
-헤드리스 Chrome 을 DevTools 프로토콜로 직접 조작했다 (의존성 추가 없음). 대상은 빌드한 `metamora.jar` 를 `h2-local`(인메모리)·포트 19940 으로 따로 띄운 인스턴스다. **22개 확인 모두 통과, 콘솔 오류 0** (HTTP 4xx 는 의도한 2건 : 초기 비밀번호 차단 403, 승인 전 사용자의 API 403).
+헤드리스 Chrome 을 DevTools 프로토콜로 직접 조작했다 (의존성 추가 없음). 대상은 빌드한 `lexorma.jar` 를 `h2-local`(인메모리)·포트 19940 으로 따로 띄운 인스턴스다. **22개 확인 모두 통과, 콘솔 오류 0** (HTTP 4xx 는 의도한 2건 : 초기 비밀번호 차단 403, 승인 전 사용자의 API 403).
 
 | 구분 | 확인한 것 |
 |---|---|
@@ -110,7 +110,7 @@ SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 
 ## 6. 확인된 사실과 제약
 
-- **V0 예제 데이터 : 진단 결과 0건.** 처음에는 269개 컬럼 중 215개가 도메인 정의 불일치였다 (MetaMora 자체 테이블의 실제 타입이 공통표준 도메인과 달랐다 — `VARCHAR(255)` ↔ 명V256 67건, `BIGINT` ↔ 일련번호N22 66건, `BOOLEAN` ↔ 여부C1 29건 등). 실제 스키마는 그대로 두고, 용어 114개의 도메인을 실제 컬럼 정의와 같은 도메인(공통표준 명V200 + 자체 도메인 18개)으로 바꿨다. 쓰이지 않게 된 공통표준 도메인 12개는 예제에서 뺐다. 기준과 자체 표기는 [db-naming-standard.md](db-naming-standard.md) 예제 데이터 절. `SmokeTest.standardizationQuality` 가 0건을 지킨다.
+- **V0 예제 데이터 : 진단 결과 0건.** 처음에는 269개 컬럼 중 215개가 도메인 정의 불일치였다 (Lexorma 자체 테이블의 실제 타입이 공통표준 도메인과 달랐다 — `VARCHAR(255)` ↔ 명V256 67건, `BIGINT` ↔ 일련번호N22 66건, `BOOLEAN` ↔ 여부C1 29건 등). 실제 스키마는 그대로 두고, 용어 114개의 도메인을 실제 컬럼 정의와 같은 도메인(공통표준 명V200 + 자체 도메인 18개)으로 바꿨다. 쓰이지 않게 된 공통표준 도메인 12개는 예제에서 뺐다. 기준과 자체 표기는 [db-naming-standard.md](db-naming-standard.md) 예제 데이터 절. `SmokeTest.standardizationQuality` 가 0건을 지킨다.
 - 도메인에 정밀도 항목이 없어 숫자 타입의 길이를 정밀도로 본다.
 - 길이가 없는 도메인은 길이를 비교하지 않는다. "도메인 길이보다 큰 컬럼만 위반" 같은 방향성 규칙은 없다 — 다르면 불일치다.
 - **대량 데이터 :** 프로젝트 컬럼 전체를 매번 읽는다. 수천~수만 컬럼은 문제없을 크기지만 실행 시간·메모리를 재지 않았다. 수십만 건이면 진단 결과 저장(AI-6)이나 SQL 로 걸러낼 수 있는 유형(미연결·컬럼명)의 분리가 필요하다.

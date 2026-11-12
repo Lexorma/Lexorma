@@ -1,0 +1,187 @@
+/* 모델 변경 이력 (M-9) : 조회 조건, 변경 전후 비교, 변경 그룹 */
+
+.history-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.history-filters .search-input {
+    flex: 0 1 auto;
+}
+
+.history-filters .history-date {
+    width: 150px;
+}
+
+.history-filters .history-user {
+    width: 180px;
+}
+
+.history-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.history-chip-clear {
+    margin-left: 6px;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+dialog .history-detail h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+dialog .history-diff-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 16px 0 8px;
+}
+
+dialog .history-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--gh-fg-muted);
+    cursor: pointer;
+}
+
+dialog .history-detail .table-wrap {
+    max-height: 340px;
+    overflow: auto;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+}
+
+dialog .history-diff {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 13px;
+}
+
+dialog .history-diff th,
+dialog .history-diff td {
+    padding: 6px 12px;
+    border-top: 1px solid var(--gh-border-muted);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+dialog .history-diff thead th {
+    position: sticky;
+    top: 0;
+    border-top: 0;
+    background-color: var(--gh-canvas-subtle);
+    font-weight: 600;
+}
+
+dialog .history-diff thead th:first-child {
+    width: 24%;
+}
+
+dialog .history-diff tbody th {
+    background-color: var(--gh-canvas-subtle);
+    font-weight: 500;
+    color: var(--gh-fg-muted);
+}
+
+/* 달라진 값 : 색만으로 구분하지 않도록 변경 전에는 취소선을 함께 둔다 */
+dialog .history-diff td.history-before {
+    background-color: var(--gh-danger-subtle);
+    text-decoration: line-through;
+    text-decoration-color: var(--gh-danger);
+}
+
+dialog .history-diff td.history-after {
+    background-color: var(--gh-success-subtle);
+    font-weight: 600;
+}
+
+dialog .history-group {
+    margin-top: 16px;
+}
+
+dialog .history-group h4 {
+    margin-bottom: 8px;
+}
+
+dialog .history-group h4 .gh-muted {
+    margin-left: 6px;
+    font-weight: 400;
+}
+
+dialog .history-group-list {
+    max-height: 180px;
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    list-style: none;
+}
+
+dialog .history-group-list li + li {
+    border-top: 1px solid var(--gh-border-muted);
+}
+
+dialog .history-group-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 12px;
+    border: 0;
+    background: none;
+    color: var(--gh-fg);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+dialog .history-group-item:hover:not(:disabled) {
+    background-color: var(--gh-hover);
+}
+
+dialog .history-group-item[aria-current="true"] {
+    background-color: var(--gh-accent-subtle);
+    cursor: default;
+}
+
+dialog .history-group-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+    .history-filters .history-date,
+    .history-filters .history-user,
+    .history-filters .search-column-select {
+        flex: 1 1 140px;
+        width: auto;
+    }
+}
+
+dialog .history-group p {
+    margin: 0;
+    font-size: 13px;
+}

@@ -1,0 +1,237 @@
+import { useState, type FormEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { RECOVERY_PATH } from '../../routes/guards';
+import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { AlertIcon, ArrowRightIcon, RepoIcon } from '@primer/octicons-react';
+import { useAuth } from '../../hooks/useAuth';
+import { api, ApiError, resetCsrf } from '../../lib/api';
+import { t } from '../../lib/i18n';
+
+interface LoginProject {
+  id: number;
+  projectName: string;
+}
+
+/**
+ * 로그인 (2단계)
+ * 1. 아이디/비밀번호 확인 → 접근 가능한 프로젝트 조회 (POST /api/login/projects)
+ * 2. 프로젝트 선택 → 로그인 (POST /api/auth/login, Security 가 비밀번호와 프로젝트 접근 권한을 다시 확인)
+ * 초기 비밀번호 계정은 비밀번호를 먼저 바꿔야 한다 (POST /api/login/password)
+ *
+ * 활성 프로젝트가 하나도 없으면 고를 프로젝트가 없으므로 안내와 함께 복구 로그인(recovery=true, 프로젝트 없음)만 받는다.
+ * 누가 관리자인지는 화면에서 알 수 없다 : 서버가 비밀번호를 확인한 뒤 시스템 ADMIN 만 통과시킨다.
+ */
+export function LoginPage() {
+  const dialog = useDialog();
+  const { refresh } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const from = (location.state as { from?: string } | null)?.from;
+
+  // 활성 프로젝트 목록 (회원가입 화면과 같은 공개 API) : 비어 있으면 복구 로그인만 가능하다
+  const { data: activeProjects } = useQuery({
+    queryKey: ['signup-projects'],
+    queryFn: () => api<LoginProject[]>('/api/auth/signup/projects', { silent: true }),
+  });
+  const noActiveProject = activeProjects?.length === 0;
+
+  const recoveryLogin = async (user: string, pass: string) => {
+    try {
+      await api('/api/auth/login', {
+        method: 'POST',
+        body: new URLSearchParams({ username: user, password: pass, recovery: 'true' }),
+        silent: true,
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'PASSWORD_CHANGE_REQUIRED') {
+        openChangePasswordDialog(user, pass);
+        return;
+      }
+      dialog.alert(e instanceof ApiError ? e.message : t('로그인 중 문제가 발생했습니다.'));
+      return;
+    }
+    resetCsrf();
+    await refresh();
+    navigate(RECOVERY_PATH, { replace: true });
+  };
+
+  /** 로그인 시작 : 평소에는 프로젝트 선택, 활성 프로젝트가 없으면 복구 로그인 */
+  const start = (user: string, pass: string) => (noActiveProject ? recoveryLogin(user, pass) : openProjectDialog(user, pass));
+
+  const login = async (user: string, pass: string, project: LoginProject) => {
+    try {
+      await api('/api/auth/login', {
+        method: 'POST',
+        body: new URLSearchParams({ username: user, password: pass, project_id: String(project.id) }),
+        silent: true,
+      });
+    } catch (e) {
+      dialog.alert(e instanceof ApiError ? e.message : t('로그인 중 문제가 발생했습니다.'));
+      return;
+    }
+    // 로그인하면 세션 ID 와 CSRF 토큰이 바뀐다
+    resetCsrf();
+    await refresh();
+    navigate(from && from !== '/login' ? from : '/', { replace: true });
+  };
+
+  const openProjectDialog = async (user: string, pass: string) => {
+    if (!user) return dialog.alert(t('아이디를 입력하세요.'));
+    if (!pass) return dialog.alert(t('패스워드를 입력하세요.'));
+
+    let projects: LoginProject[];
+    try {
+      projects = await api<LoginProject[]>('/api/login/projects', { method: 'POST', body: { username: user, password: pass }, silent: true });
+    } catch (e) {
+      // 초기 비밀번호(admin/admin, 관리자 초기화) 사용 중 : 비밀번호를 바꾸기 전에는 로그인할 수 없다
+      if (e instanceof ApiError && e.code === 'PASSWORD_CHANGE_REQUIRED') {
+        openChangePasswordDialog(user, pass);
+        return;
+      }
+      dialog.alert(e instanceof ApiError ? e.message : t('로그인 정보를 확인하는 중 문제가 발생했습니다.'));
+      return;
+    }
+
+    // 선택할 프로젝트가 하나면 바로 로그인
+    if (projects.length === 1) {
+      dialog.confirm(t('{0} 프로젝트로 로그인됩니다.', projects[0].projectName), () => login(user, pass, projects[0]));
+      return;
+    }
+
+    dialog.open({
+      title: t('프로젝트 선택'),
+      content: ({ close }: DialogControls) => (
+        <div>
+          <p className="gh-dialog-text">{t('로그인할 프로젝트를 선택하세요.')}</p>
+          <ul className="auth-project-list" id="projectSelect">
+            {projects.map((project) => (
+              <li key={project.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    login(user, pass, project);
+                  }}
+                >
+                  <RepoIcon />
+                  <span>{project.projectName}</span>
+                  <ArrowRightIcon className="auth-project-go" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ),
+    });
+  };
+
+  const openChangePasswordDialog = (user: string, pass: string) => {
+    dialog.open({
+      title: t('비밀번호 변경'),
+      content: ({ close }: DialogControls) => (
+        <InitialPasswordForm
+          username={user}
+          password={pass}
+          onChanged={(newPassword) => {
+            close();
+            setPassword(newPassword);
+            // 새 비밀번호로 로그인 계속 진행 (프로젝트 선택 / 복구 로그인)
+            dialog.alert(noActiveProject ? t('비밀번호가 변경되었습니다. 복구 로그인을 진행합니다.') : t('비밀번호가 변경되었습니다. 로그인할 프로젝트를 선택합니다.'),
+              () => start(user, newPassword));
+          }}
+        />
+      ),
+    });
+  };
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    start(username.trim(), password);
+  };
+
+  return (
+    <div className="auth">
+      <div className="auth-logo">
+        <img src="/images/favicon.svg" alt="" width="48" height="48" />
+      </div>
+      <h1 className="auth-title">{t('Lexorma 로그인')}</h1>
+
+      <div className="auth-box">
+        <form id="loginForm" onSubmit={onSubmit}>
+          {noActiveProject && (
+            <div className="gh-flash gh-flash-attention" id="noActiveProject">
+              <AlertIcon />
+              <span>{t('현재 활성화된 프로젝트가 없습니다.')} {t('시스템 관리자는 복구 로그인으로 프로젝트를 다시 활성화할 수 있습니다.')}</span>
+            </div>
+          )}
+          <div className="auth-field">
+            <label htmlFor="username">{t('아이디')}</label>
+            <input type="text" className="form-control" id="username" name="username" autoComplete="username" autoCapitalize="off"
+              autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="password">{t('비밀번호')}</label>
+            <input type="password" className="form-control" id="password" name="password" autoComplete="current-password" required
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+
+          <button type="submit" id="project-btn" className="btn btn-primary auth-submit">{noActiveProject ? t('관리자 복구 로그인') : t('로그인')}</button>
+          {!noActiveProject && <p className="auth-hint">{t('로그인할 프로젝트는 다음 단계에서 선택합니다.')}</p>}
+        </form>
+      </div>
+
+      <div className="auth-callout">
+        {t('Lexorma가 처음이신가요?')} <Link to="/signup">{t('회원가입')}</Link>
+      </div>
+    </div>
+  );
+}
+
+/** 초기 비밀번호 변경 (로그인 전) */
+function InitialPasswordForm({ username, password, onChanged }: { username: string; password: string; onChanged: (newPassword: string) => void }) {
+  const dialog = useDialog();
+  const [newPassword, setNewPassword] = useState('');
+  const [newPassword2, setNewPassword2] = useState('');
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newPassword) return dialog.alert(t('새 비밀번호를 입력하세요.'));
+    if (newPassword !== newPassword2) return dialog.alert(t('새 비밀번호가 일치하지 않습니다.'));
+    if (newPassword === password || newPassword === username) return dialog.alert(t('새 비밀번호는 현재 비밀번호 및 아이디와 달라야 합니다.'));
+
+    try {
+      await api('/api/login/password', { method: 'POST', body: { username, password, newPassword }, silent: true });
+    } catch (err) {
+      dialog.alert(err instanceof ApiError ? err.message : t('비밀번호를 변경하는 중 문제가 발생했습니다.'));
+      return;
+    }
+    onChanged(newPassword);
+  };
+
+  return (
+    <form id="initialPasswordForm" autoComplete="off" onSubmit={onSubmit}>
+      <div className="gh-flash gh-flash-attention">
+        <AlertIcon />
+        <span>{t('초기 비밀번호를 사용 중입니다. 비밀번호를 변경해야 로그인할 수 있습니다.')}</span>
+      </div>
+      <div className="form-group">
+        <label htmlFor="initialNewPassword">{t('새 비밀번호')}</label>
+        <input type="password" className="form-control" id="initialNewPassword" autoComplete="new-password" required autoFocus
+          value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label htmlFor="initialNewPassword2">{t('새 비밀번호 확인')}</label>
+        <input type="password" className="form-control" id="initialNewPassword2" autoComplete="new-password" required
+          value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} />
+        <p className="auth-field-note">{t('8자 이상, 대문자와 특수문자를 각각 하나 이상 포함해야 합니다.')}</p>
+      </div>
+      <div className="gh-dialog-actions">
+        <button type="submit" className="btn btn-primary">{t('변경하고 로그인')}</button>
+      </div>
+    </form>
+  );
+}

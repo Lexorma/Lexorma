@@ -22,7 +22,7 @@ out/
 CLAUDE.md
 AGENTS.md
 
-### Frontend (metamora-web) ###
-metamora-web/node_modules/
-metamora-web/dist/
-metamora-web/*.tsbuildinfo
+### Frontend (lexorma-web) ###
+lexorma-web/node_modules/
+lexorma-web/dist/
+lexorma-web/*.tsbuildinfo

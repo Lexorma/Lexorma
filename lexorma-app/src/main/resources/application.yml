@@ -1,0 +1,78 @@
+# 공통 설정 : 프로필별 파일(application-{profile}.yml)에는 DB 연결 등 환경별로 다른 값만 둔다.
+spring:
+  profiles:
+    active: local
+    # 개발용 프로필에만 상세 로그(application-debug-log.yml)를 함께 적용한다. Docker(운영) 이미지는 INFO.
+    group:
+      local: debug-log
+      h2-local: debug-log
+      dev: debug-log
+  application:
+    name: lexorma
+  jpa:
+    hibernate:
+      # 스키마는 Flyway(db/migration/{vendor})가 관리하고, JPA는 엔티티와 스키마 일치 여부만 검증한다
+      ddl-auto: validate
+    mapping-resources: META-INF/orm.xml
+    properties:
+      hibernate:
+        # 지연 로딩 연관(엔티티/컬렉션)을 IN 절로 최대 100건씩 묶어 조회한다 (N+1 쿼리 완화)
+        default_batch_fetch_size: 100
+        # JDBC 배치 INSERT/UPDATE : 같은 SQL 을 묶어 한 번에 보낸다 (엑셀 업로드 청크 크기와 같게)
+        # PostgreSQL 은 접속 URL 의 reWriteBatchedInserts=true 로 여러 행 INSERT 문으로 바꿔 보낸다.
+        jdbc:
+          batch_size: 500
+        # 엔티티 종류별로 INSERT/UPDATE 를 모아야 서로 다른 테이블이 섞여도 배치가 끊기지 않는다
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/{vendor}
+  # 로그인 세션 : Spring Session JDBC (SPRING_SESSION 테이블은 Flyway V0__init.sql 이 만든다)
+  # 만료 시간은 server.servlet.session.timeout, 쿠키(SESSION) 설정은 server.servlet.session.cookie 를 따른다.
+  # 만료된 세션은 1분마다 지운다(cleanup-cron 기본값). h2-local(In-Memory) 은 재시작하면 세션도 사라진다.
+  session:
+    jdbc:
+      initialize-schema: never
+      table-name: SPRING_SESSION
+  # 정적 리소스는 StaticResourceConfig 에 등록한 React 빌드 경로(/assets, /images, /jsons)만 내려준다
+  web:
+    resources:
+      add-mappings: false
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+# 운영 기본 로그 레벨 : 필요 시 환경변수로 조정 (예: LOGGING_LEVEL_COM_LEXORMA=DEBUG)
+logging:
+  level:
+    root: INFO
+
+server:
+  port: 9940
+  # 리버스 프록시(nginx 등)의 X-Forwarded-Proto/For 헤더를 반영한다.
+  # HTTPS 요청이면 세션 쿠키에 Secure가 자동으로 붙으므로 HTTP/HTTPS 이미지를 나눌 필요가 없다.
+  forward-headers-strategy: native
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        # secure는 지정하지 않는다 : 요청이 HTTPS인 경우에만 세션 쿠키(Spring Session)에 Secure가 붙는다.
+        same-site: Lax
+      timeout: 30m
+
+# Swagger UI / API 문서는 로컬 프로필(local, h2-local)에서만 활성화
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: false
+  swagger-ui:
+    path: /swagger-ui
+    enabled: false
+    url: /v3/api-docs # API 문서 파일 경로 설정
+  info:
+    title: "Lexorma API 문서"
+    description: "Lexorma 프로젝트의 API 문서"
+    version: "1.0.0"

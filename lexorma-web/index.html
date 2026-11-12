@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Lexorma</title>
+    <meta name="description" content="Lexorma는 표준 단어·도메인·용어로 데이터 사전을 구축하고, 이를 기준으로 테이블과 컬럼을 설계해 DBMS별 DDL까지 생성하는 데이터 표준·메타데이터 관리 플랫폼입니다."/>
+    <meta name="application-name" content="Lexorma"/>
+    <meta name="apple-mobile-web-app-title" content="Lexorma"/>
+
+    <!-- 브라우저 UI 색 / 기본 컨트롤 색 (헤더 배경과 같은 색, 라이트·다크) -->
+    <meta name="color-scheme" content="light dark"/>
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f8fa"/>
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151b23"/>
+
+    <!-- Open Graph 메타태그 (카카오톡, 페북 등 미리보기용) -->
+    <meta property="og:type" content="website"/>
+    <meta property="og:site_name" content="Lexorma"/>
+    <meta property="og:locale" content="ko_KR"/>
+    <meta property="og:title" content="Lexorma - 데이터 표준·메타데이터 관리 플랫폼"/>
+    <meta property="og:description" content="표준 단어·도메인·용어 관리부터 표준 기반 테이블·컬럼 설계, DDL 생성까지 Lexorma에서 한 번에."/>
+    <meta property="og:image" content="https://raw.githubusercontent.com/Lexorma/Lexorma/main/lexorma-web/public/images/og-image.png"/>
+    <meta property="og:image:width" content="1200"/>
+    <meta property="og:image:height" content="630"/>
+    <meta property="og:image:alt" content="Lexorma 데이터 표준·메타데이터 관리 플랫폼"/>
+
+    <!-- X(Twitter) 카드 -->
+    <meta name="twitter:card" content="summary_large_image"/>
+    <meta name="twitter:title" content="Lexorma - 데이터 표준·메타데이터 관리 플랫폼"/>
+    <meta name="twitter:description" content="표준 단어·도메인·용어 관리부터 표준 기반 테이블·컬럼 설계, DDL 생성까지 Lexorma에서 한 번에."/>
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/Lexorma/Lexorma/main/lexorma-web/public/images/og-image.png"/>
+
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg"/>
+    <link rel="icon" type="image/png" href="/images/favicon.png"/>
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
+
+    <!-- 사이드바 접힘 / 테마(OS 다크 모드 설정)를 렌더링 전에 반영 (깜빡임 방지, 테마 규칙은 lib/theme.ts 와 같음) -->
+    <script>
+        (function () {
+            var root = document.documentElement;
+            try {
+                if (localStorage.getItem('sidebarCollapsed') === 'true') root.classList.add('sidebar-collapsed');
+            } catch (e) {}
+            var theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            root.setAttribute('data-theme', theme);
+            root.setAttribute('data-bs-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

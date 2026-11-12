@@ -84,7 +84,7 @@
 | 논리 필수 | 필수 속성(`ESNTL_YN`) **또는 주 식별자 속성** — 논리 ERD 의 필수 표시(`*`)와 같다 |
 | 물리 NOT NULL | PK **또는** 필수 입력(`ESNTL_YN`) **또는** NULL 허용 = N — `TableDdlGenerator` 가 `NOT NULL` 을 붙이는 기준과 같다. NULL 허용 값이 비어 있는 컬럼은 NOT NULL 이 아니다 |
 
-같으면 `MATCH`, 다르면 `MISMATCH` 이고 방향을 사유로 구분한다 (필수 속성인데 컬럼이 NULL 을 허용 / 선택 속성인데 컬럼이 NOT NULL). 이것은 MetaMora 에 등록한 물리 모델의 값이며, 원본 DB 가 실제로 강제하는 제약과 다를 수 있다 (원본 비교는 M-10).
+같으면 `MATCH`, 다르면 `MISMATCH` 이고 방향을 사유로 구분한다 (필수 속성인데 컬럼이 NULL 을 허용 / 선택 속성인데 컬럼이 NOT NULL). 이것은 Lexorma 에 등록한 물리 모델의 값이며, 원본 DB 가 실제로 강제하는 제약과 다를 수 있다 (원본 비교는 M-10).
 
 ### 2.6 식별자 (`IDENTIFIER`)
 
@@ -97,7 +97,7 @@
 - **주 식별자 = PK 를 강제하는 정책은 없다.** 대리 키(일련번호 PK + 업무 식별자)처럼 의도한 차이도 `MISMATCH` 로 나온다 — "구성이 다르다"는 사실만 알려 주는 진단이고, 고칠지는 사용자가 판단한다.
 - 속성 단위로만 본다. 주 식별자 속성이나 PK 컬럼이 매핑되지 않았으면 이 유형에는 나오지 않는다 (`MAPPING` 의 `UNMAPPED` 로 나온다). 보조 식별자 ↔ UNIQUE 는 비교하지 않는다.
 
-## 3. 백엔드 (`metamora-data` `mapping/`)
+## 3. 백엔드 (`lexorma-data` `mapping/`)
 
 | 구성 | 내용 |
 |---|---|
@@ -158,15 +158,15 @@
 ./gradlew clean build      # 354 tests, 실패 0, 건너뜀 2 (환경 변수가 필요한 테스트). npm ci + typecheck + vite build 포함
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m7q_test)를 만들어 실행 후 삭제
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.ModelMappingQualityIntegrationTest' --tests 'com.koboolean.metamora.ModelMappingIntegrationTest' \
-  --tests 'com.koboolean.metamora.LogicalModelIntegrationTest' --tests 'com.koboolean.metamora.StandardizationQualityIntegrationTest' \
-  --tests 'com.koboolean.metamora.DictionaryUsageIntegrationTest' --tests 'com.koboolean.metamora.SmokeTest' \
-  --tests 'com.koboolean.metamora.ReferenceSyncIntegrationTest' --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' \
-  --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' --tests 'com.koboolean.metamora.ErdIntegrationTest' \
-  --tests 'com.koboolean.metamora.DataPortalTemplateTest' --tests 'com.koboolean.metamora.TermUploadNameGenerationTest' \
-  --tests 'com.koboolean.metamora.V0SeedMigrationTest'      # 110 tests, 실패 0, 건너뜀 0. Flyway 이력 V0~V3
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.ModelMappingQualityIntegrationTest' --tests 'com.lexorma.ModelMappingIntegrationTest' \
+  --tests 'com.lexorma.LogicalModelIntegrationTest' --tests 'com.lexorma.StandardizationQualityIntegrationTest' \
+  --tests 'com.lexorma.DictionaryUsageIntegrationTest' --tests 'com.lexorma.SmokeTest' \
+  --tests 'com.lexorma.ReferenceSyncIntegrationTest' --tests 'com.lexorma.SchemaManagementIntegrationTest' \
+  --tests 'com.lexorma.PhysicalModelIntegrationTest' --tests 'com.lexorma.ErdIntegrationTest' \
+  --tests 'com.lexorma.DataPortalTemplateTest' --tests 'com.lexorma.TermUploadNameGenerationTest' \
+  --tests 'com.lexorma.V0SeedMigrationTest'      # 110 tests, 실패 0, 건너뜀 0. Flyway 이력 V0~V3
 ```
 
 ### 6.1 자동 테스트
@@ -182,7 +182,7 @@ METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
 
 ### 6.2 브라우저 검증
 
-헤드리스 Chrome(별도 프로필)을 DevTools 프로토콜로 조작했다 (의존성 추가 없음). 대상은 빌드한 `metamora.jar` 를 `h2-local`(인메모리)·포트 19941 로 따로 띄운 인스턴스다. **확인 79건 모두 통과, 콘솔 오류 0** (HTTP 4xx 10건은 서버 거절을 확인하려고 일부러 보낸 요청이다).
+헤드리스 Chrome(별도 프로필)을 DevTools 프로토콜로 조작했다 (의존성 추가 없음). 대상은 빌드한 `lexorma.jar` 를 `h2-local`(인메모리)·포트 19941 로 따로 띄운 인스턴스다. **확인 79건 모두 통과, 콘솔 오류 0** (HTTP 4xx 10건은 서버 거절을 확인하려고 일부러 보낸 요청이다).
 
 | 구분 | 확인한 것 |
 |---|---|

@@ -1,0 +1,12 @@
+// 인증/로그인, 프로젝트 테넌시, 요청 로그
+apply plugin: 'java-test-fixtures'
+
+dependencies {
+    api project(':lexorma-common')
+    api libs.modelmapper
+    // HTTP 세션을 DB(SPRING_SESSION)에 저장 : 재시작/컨테이너 재생성 후에도 로그인 유지 (테이블은 Flyway 가 생성)
+    api 'org.springframework.boot:spring-boot-starter-session-jdbc'
+
+    // 다른 모듈 테스트에서 공용으로 쓰는 픽스처 (src/testFixtures)
+    testFixturesApi 'org.mockito:mockito-core'
+}

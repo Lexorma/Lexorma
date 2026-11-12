@@ -1,0 +1,112 @@
+package com.lexorma.data.excel.util;
+
+import com.lexorma.data.dictionary.domain.dto.StandardDomainDto;
+import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
+import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.IntStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 템플릿 기반 엑셀 출력 (SXSSF 스트리밍 쓰기)
+ * 템플릿(static/excel)이 lexorma-app 리소스에 있어 app 모듈에서 검증한다.
+ * (검증용으로 결과 파일을 XSSFWorkbook 으로 여는 것은 테스트에서만 허용)
+ */
+class ExcelExportUtilsTest {
+
+    private final List<File> outputs = new ArrayList<>();
+
+    @AfterEach
+    void cleanUp() throws IOException {
+        for (File file : outputs) Files.deleteIfExists(file.toPath());
+    }
+
+    private Workbook open(File file) throws IOException {
+        outputs.add(file);
+        try (InputStream in = Files.newInputStream(file.toPath())) {
+            return new XSSFWorkbook(in);
+        }
+    }
+
+    @ParameterizedTest(name = "{0}.xlsx")
+    @ValueSource(strings = {"template"})
+    @DisplayName("출력용 템플릿은 헤더(1행)만 가진다 : SXSSF 는 템플릿에 이미 있는 행 위치에 쓸 수 없다")
+    void templatesHaveHeaderOnly(String templateName) throws IOException {
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream("static/excel/" + templateName + ".xlsx");
+             Workbook workbook = new XSSFWorkbook(in)) {
+            for (Sheet sheet : workbook) {
+                assertThat(sheet.getLastRowNum()).as(templateName + " / " + sheet.getSheetName()).isZero();
+                assertThat(sheet.getRow(0).getPhysicalNumberOfCells()).as("헤더 셀").isPositive();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("데이터사전 : 메모리 유지 행 수(100)를 넘는 데이터도 순서대로 쓰고, 공통표준용어 형식(헤더/열 너비/헤더 고정/열 서식)을 따른다")
+    void dictionaryExport() throws IOException {
+        List<StandardTermDto> terms = IntStream.rangeClosed(1, 250)
+                .mapToObj(i -> StandardTermDto.builder().id((long) i).revisionNumber(5).commonStandardTermName("용어" + i)
+                        .commonStandardTermAbbreviation("TERM_" + i).build())
+                .toList();
+        List<StandardWordDto> words = List.of(StandardWordDto.builder().id(1L).commonStandardWordName("사용자")
+                .commonStandardWordAbbreviation("USER").isFormatWord("N").build());
+        List<StandardDomainDto> domains = List.of(StandardDomainDto.builder().id(1L).commonStandardDomainName("명V100")
+                .dataType("VARCHAR").dataLength(100).build());
+
+        String headerBefore;
+        int widthBefore;
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream("static/excel/template.xlsx");
+             Workbook template = new XSSFWorkbook(in)) {
+            headerBefore = template.getSheetAt(0).getRow(0).getCell(0).getStringCellValue();
+            widthBefore = template.getSheetAt(0).getColumnWidth(2);
+        }
+
+        File file = ExcelExportUtils.loadAndCopyDictionaryExcelFile("dictionary", terms::forEach, words::forEach, domains::forEach);
+
+        try (Workbook workbook = open(file)) {
+            Sheet termSheet = workbook.getSheetAt(0);
+            assertThat(termSheet.getRow(0).getCell(0).getStringCellValue()).as("헤더 유지").isEqualTo(headerBefore);
+            assertThat(termSheet.getColumnWidth(2)).as("열 너비 유지").isEqualTo(widthBefore);
+            assertThat(termSheet.getLastRowNum()).isEqualTo(250);
+
+            assertThat(termSheet.getPaneInformation().isFreezePane()).as("헤더 행 고정").isTrue();
+
+            Row first = termSheet.getRow(1);
+            assertThat(first.getCell(0).getCellType()).as("번호는 숫자").isEqualTo(CellType.NUMERIC);
+            assertThat(first.getCell(0).getNumericCellValue()).isEqualTo(1d);
+            assertThat(first.getCell(1).getStringCellValue()).as("제정차수는 'N차'").isEqualTo("5차");
+            assertThat(first.getCell(2).getStringCellValue()).isEqualTo("용어1");
+            assertThat(first.getCell(3).getStringCellValue()).as("null 은 빈 문자열").isEmpty();
+            assertThat(termSheet.getRow(250).getCell(4).getStringCellValue()).isEqualTo("TERM_250");
+
+            // 데이터 셀 : 템플릿 열 서식(글꼴/정렬) + 얇은 테두리
+            var cellStyle = first.getCell(2).getCellStyle();
+            var columnStyle = termSheet.getColumnStyle(2);
+            assertThat(cellStyle.getAlignment()).isEqualTo(columnStyle.getAlignment());
+            assertThat(workbook.getFontAt(cellStyle.getFontIndex()).getFontName())
+                    .isEqualTo(workbook.getFontAt(columnStyle.getFontIndex()).getFontName());
+            assertThat(cellStyle.getBorderBottom()).isEqualTo(BorderStyle.THIN);
+
+            assertThat(workbook.getSheetAt(1).getRow(1).getCell(3).getStringCellValue()).isEqualTo("USER");
+            assertThat(workbook.getSheetAt(2).getRow(1).getCell(7).getNumericCellValue()).as("데이터길이는 숫자").isEqualTo(100d);
+        }
+    }
+}

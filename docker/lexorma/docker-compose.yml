@@ -1,0 +1,42 @@
+services:
+  lexorma-postgres:
+    image: postgres:18.6
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: metamora
+      POSTGRES_DB: metamora
+      POSTGRES_USER: metamora
+    ports:
+      - 15439:5432
+    volumes:
+      - ../volume/metamora:/var/lib/postgresql
+    container_name: lexorma-postgres
+    # 처음 기동(데이터 디렉토리 초기화)이 끝나기 전에 앱이 접속하다 종료되지 않도록 준비된 뒤에 앱을 띄운다
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U metamora -d metamora"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks:
+      - metamora-network
+
+  lexorma-app:
+    image: lexorma/lexorma
+    container_name: lexorma-app
+    depends_on:
+      lexorma-postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://lexorma-postgres:5432/metamora?charSet=UTF-8&reWriteBatchedInserts=true
+      SPRING_DATASOURCE_USERNAME: metamora
+      SPRING_DATASOURCE_PASSWORD: metamora
+    volumes:
+      - ../volume/h2:/data
+    ports:
+      - 9940:9940
+    networks:
+      - metamora-network
+
+networks:
+  metamora-network:
+    driver: bridge

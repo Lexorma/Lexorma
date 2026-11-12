@@ -18,7 +18,7 @@
 
 ### 2.1 현재 React 구조
 
-- `metamora-web` : React 19.1 + Vite 6.3 + TypeScript 5.8, 라우팅 `react-router-dom` 7.6(`src/app/App.tsx`), 서버 상태 TanStack Query 5, 표 TanStack Table 8(`components/grid/Grid.tsx`).
+- `lexorma-web` : React 19.1 + Vite 6.3 + TypeScript 5.8, 라우팅 `react-router-dom` 7.6(`src/app/App.tsx`), 서버 상태 TanStack Query 5, 표 TanStack Table 8(`components/grid/Grid.tsx`).
 - 화면은 `features/<영역>` 단위(auth, column, dashboard, dictionary, help, notice, system, table). 메뉴 노출은 서버 `MenuAuthorization` → `/api/auth/me` 의 `menus` → `RequireMenu` / `components/layout/menu.ts`.
 - 스타일: `styles/primer.css` 의 `--gh-*` 토큰(라이트/다크 둘 다 정의, `<html data-theme>` 로 전환, `lib/theme.ts` 가 OS 설정 추적), Pretendard 폰트, `.gh-btn` / `.gh-label` 컴포넌트 클래스. 아이콘 `@primer/octicons-react`.
 - 그래프·다이어그램 의존성은 없었다. 로드맵(3장) 설명과 실제 코드가 일치한다.
@@ -50,7 +50,7 @@
 
 ### 2.4 기존 시스템 영향 (이번 작업)
 
-- 운영 코드(`src/`, 서버, Flyway, 메뉴) 변경 없음. PoC 는 `metamora-web/poc/erd/` 별도 진입점(`vite.poc.config.ts`)으로 분리했고 결과물은 `build/erd-poc`(git·Docker 무시 대상)로 나간다.
+- 운영 코드(`src/`, 서버, Flyway, 메뉴) 변경 없음. PoC 는 `lexorma-web/poc/erd/` 별도 진입점(`vite.poc.config.ts`)으로 분리했고 결과물은 `build/erd-poc`(git·Docker 무시 대상)로 나간다.
 - 운영 번들은 변경 전후 **해시까지 동일**(`dist/assets/index-xPmy_GB9.js`, 487.93 kB / gzip 146.54 kB) — 신규 라이브러리는 운영 화면에서 import 되지 않는다.
 - 신규 의존성은 `devDependencies` 에 정확한 버전으로 고정(아래 6장). M-2 에서 운영 화면이 쓰게 되면 `dependencies` 로 옮긴다.
 
@@ -226,7 +226,7 @@
 - **선정 이유:** ① 대규모(1,000~3,000)에서 Dagre 보다 빠르고(3,000 에서 4.3배), ② 컬럼 포트·레이어 폭 제어·굴곡점 등 ERD 품질을 높일 수단이 엔진 안에 있으며, ③ 공식 워커로 UI 를 막지 않는다. React Flow 는 테이블·컬럼을 React 컴포넌트와 기존 Primer CSS 로 그대로 그릴 수 있는 유일한 후보였다.
 - **Dagre 대비 단점:** 번들(+462 KB gzip, 지연 로드), 300 이하에서는 Dagre 가 2배 빠름(0.13 vs 0.3초, 체감 차이는 작음), EPL-2.0.
 - **기본값 권고:** `elk`(노드 단위)로 시작하고, 컬럼 포트(`elk-ports`)는 선 교차가 적은 대신 1,000 에서 30% 느려 "정밀 정렬" 옵션으로 둔다.
-- **라이선스 검토:** React Flow·Dagre 는 MIT 로 MetaMora(MIT)와 충돌 없음. ELK.js 는 EPL-2.0(또는 GPL-3.0+) 중 EPL-2.0 을 택해 쓰는 것으로 보인다. EPL-2.0 은 파일 단위 약한 카피레프트라 **ELK 를 수정하지 않고 별도 파일로 배포하면 MetaMora 코드에는 영향이 없다**고 판단되나, jar·Docker 이미지 배포 시 ① EPL 사본 동봉 ② ELK 소스 입수 방법 고지 ③ 원 저작권 표시 유지가 필요하다(서드파티 고지 파일 추가, `elk-worker.min.js` 의 라이선스 주석이 빌드 후에도 남는지 확인). **법적 확인은 프로젝트 관리자 결정 사항**으로 남긴다.
+- **라이선스 검토:** React Flow·Dagre 는 MIT 로 Lexorma(MIT)와 충돌 없음. ELK.js 는 EPL-2.0(또는 GPL-3.0+) 중 EPL-2.0 을 택해 쓰는 것으로 보인다. EPL-2.0 은 파일 단위 약한 카피레프트라 **ELK 를 수정하지 않고 별도 파일로 배포하면 Lexorma 코드에는 영향이 없다**고 판단되나, jar·Docker 이미지 배포 시 ① EPL 사본 동봉 ② ELK 소스 입수 방법 고지 ③ 원 저작권 표시 유지가 필요하다(서드파티 고지 파일 추가, `elk-worker.min.js` 의 라이선스 주석이 빌드 후에도 남는지 확인). **법적 확인은 프로젝트 관리자 결정 사항**으로 남긴다.
 
 ### 6.2 대규모 ERD 전략 (D-02 권고)
 
@@ -281,7 +281,7 @@ features/erd/
 ## 부록. PoC 실행 방법
 
 ```bash
-cd metamora-web
+cd lexorma-web
 npm run poc:erd           # 개발 서버 http://localhost:5174 (API·로그인 불필요, Mock 데이터)
 npm run poc:erd:build     # build/erd-poc (jar·Docker 에 포함되지 않음)
 npm run poc:erd:preview   # 빌드 결과 서빙

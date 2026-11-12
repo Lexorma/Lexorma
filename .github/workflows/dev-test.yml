@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: metamora-web/package-lock.json
+          cache-dependency-path: lexorma-web/package-lock.json
 
       - uses: gradle/actions/setup-gradle@v4
 

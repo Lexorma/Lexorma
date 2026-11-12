@@ -123,7 +123,7 @@ class ErdIntegrationTest {
         table(projectId, "TB_ALONE", null);
 
         relation(admin, order, code, "FK", statGrp, grp, statCd, cd);   // 복합 FK
-        relation(admin, code, code, "FK", parentCd, cd);                // 자기 참조
+        relation(admin, code, code, "FK", grp, grp, parentCd, cd);      // 자기 참조 (복합 PK 전체를 참조해야 FK 로 등록된다)
         relation(admin, code, order, "LOGICAL", grp, orderNo);          // 순환 (논리 관계)
 
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();

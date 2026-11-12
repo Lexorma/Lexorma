@@ -77,6 +77,15 @@ final class EnglishMessages {
         // ---------------------------------------------------------------- 물리 모델 (관계 / 인덱스 / 제약조건)
         add("relation / index / constraint 중 하나입니다.", "It must be one of relation / index / constraint.");
         add("관계 컬럼 쌍을 1개 이상 지정해주세요.", "Specify at least one pair of relation columns.");
+        add("테이블 : {0}", "Table: {0}");
+        add("컬럼 : {0}", "Columns: {0}");
+        add("관계(FK) : {0}", "Relations (FK): {0}");
+        add("인덱스 : {0}", "Indexes: {0}");
+        add("제약조건 : {0}", "Constraints: {0}");
+        add("FK 대상 컬럼({1})이 {0} 의 PK 전체 또는 UNIQUE 키 전체와 같지 않습니다. 대상 테이블의 키를 구성하는 컬럼을 모두 지정해주세요.",
+                "The referenced columns ({1}) are not the whole primary key or a whole UNIQUE key of {0}. Specify every column of one key of the referenced table.");
+        add("{0} 과(와) {1} 의 데이터 타입이 {2} 에서 FK 로 연결할 수 있는 조합이 아닙니다. ({3} ↔ {4})",
+                "The data types of {0} and {1} cannot be linked by a foreign key in {2}. ({3} ↔ {4})");
         add("{0} 은(는) 참조 테이블({1})이 지정된 컬럼입니다. 컬럼 관리에서 참조 테이블을 비운 뒤 등록해주세요.",
                 "{0} has a reference table ({1}). Clear the reference table in Columns and then register the relation.");
         add("같은 컬럼 구성의 인덱스", "An index with the same columns");

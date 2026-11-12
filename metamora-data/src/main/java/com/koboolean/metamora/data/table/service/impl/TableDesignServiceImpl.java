@@ -18,6 +18,7 @@ import com.koboolean.metamora.data.table.repository.TableInfoRepository;
 import com.koboolean.metamora.data.table.service.TableDesignService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.common.exception.CustomException;
+import com.koboolean.metamora.common.i18n.Messages;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
 import com.koboolean.metamora.core.project.domain.dto.ProjectMemberDto;
 import com.koboolean.metamora.core.project.domain.entity.Project;
@@ -236,7 +237,15 @@ public class TableDesignServiceImpl implements TableDesignService {
 
         Long projectId = accountDto.getProjectId();
 
-        TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableInfoDto.getId(), projectId);
+        // 행을 잠가 승인 처리와 엇갈리지 않게 한다 (승인이 먼저 끝났으면 여기서 승인된 상태를 본다)
+        TableInfo tableInfo = tableInfoDto.getId() == null ? null : tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+        if (tableInfo == null) {
+            throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        }
+        // 승인된 테이블은 수정할 수 없다 (승인취소 후 수정). 화면은 수정 버튼을 숨기지만 API 직접 호출도 막는다
+        if (Boolean.TRUE.equals(tableInfo.getIsApproval())) {
+            throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        }
 
         // 한글명을 입력(변경)한 경우에만 표준 단어 기준으로 테이블명을 다시 만든다. 비어있으면 기존 테이블명/한글명을 유지한다.
         boolean isKorNameChanged = tableInfoDto.getTableKorName() != null && !tableInfoDto.getTableKorName().isBlank();
@@ -287,7 +296,12 @@ public class TableDesignServiceImpl implements TableDesignService {
         }
 
         tableInfoDtos.forEach(tableInfoDto -> {
-            TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(tableInfoDto.getId(), accountDto.getProjectId());
+            // 행을 잠가 테이블 수정과 엇갈리지 않게 한다 (수정이 먼저 끝난 뒤에 승인된다)
+            TableInfo tableInfo = tableInfoDto.getId() == null ? null
+                    : tableInfoRepository.findForUpdate(tableInfoDto.getId(), accountDto.getProjectId()).orElse(null);
+            if (tableInfo == null) {
+                throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+            }
 
             tableInfo.setIsApproval(isApproval);
         });
@@ -434,8 +448,31 @@ public class TableDesignServiceImpl implements TableDesignService {
                 .map(DbType::orDefault)
                 .orElse(DbType.DEFAULT);
 
+        TableDdlGenerator.Extras extras = physicalModelService.ddlExtras(tableInfo);
         TableDdlGenerator.Result result = TableDdlGenerator.generate(dbType, tableInfo, tableInfo.getColumns(),
-                referencedPkColumns(projectId, tableInfo.getColumns()), physicalModelService.ddlExtras(tableInfo), schemaName);
-        return new TableDdlDto(dbType.name(), dbType.getLabel(), tableInfo.getTableName(), result.ddl(), result.warnings());
+                referencedPkColumns(projectId, tableInfo.getColumns()), extras, schemaName);
+        return new TableDdlDto(dbType.name(), dbType.getLabel(), tableInfo.getTableName(), result.ddl(), result.warnings(),
+                pendingApprovals(tableInfo, extras));
+    }
+
+    /**
+     * DDL 에 들어 있는 승인 대기 항목. DDL 은 설계 중인 모델을 그대로 보여 주는 출력이라 승인 여부로 거르지 않는다
+     * (일부만 빼면 남은 제약의 의미가 달라진다). 대신 무엇이 승인 전인지 알려 준다.
+     */
+    private static List<String> pendingApprovals(TableInfo table, TableDdlGenerator.Extras extras) {
+        List<String> pending = new ArrayList<>();
+        if (!Boolean.TRUE.equals(table.getIsApproval())) pending.add(Messages.get("테이블 : {0}", table.getTableName()));
+        addPending(pending, "컬럼 : {0}", table.getColumns().stream()
+                .sorted(java.util.Comparator.comparing(ColumnInfo::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .filter(c -> !Boolean.TRUE.equals(c.getIsApproval())).map(ColumnInfo::getColumnName));
+        addPending(pending, "관계(FK) : {0}", extras.relations().stream().filter(r -> !Boolean.TRUE.equals(r.getIsApproval())).map(r -> r.getRelationName()));
+        addPending(pending, "인덱스 : {0}", extras.indexes().stream().filter(i -> !Boolean.TRUE.equals(i.getIsApproval())).map(i -> i.getIndexName()));
+        addPending(pending, "제약조건 : {0}", extras.constraints().stream().filter(c -> !Boolean.TRUE.equals(c.getIsApproval())).map(c -> c.getConstraintName()));
+        return pending;
+    }
+
+    private static void addPending(List<String> pending, String message, java.util.stream.Stream<String> names) {
+        String joined = names.collect(Collectors.joining(", "));
+        if (!joined.isEmpty()) pending.add(Messages.get(message, joined));
     }
 }

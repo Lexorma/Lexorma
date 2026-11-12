@@ -253,7 +253,7 @@
 
 ### 10.1 M-8 3차 선행 조건
 
-> 3차는 구현됐다. 기록은 [physical-erd-editing-m8.md](physical-erd-editing-m8.md).
+> 3차는 구현됐다. 기록은 [physical-erd-editing-m8.md](physical-erd-editing-m8.md). M-8 완료 정리와 그 뒤의 서버 검증 보강은 [model-integrity-hardening.md](model-integrity-hardening.md).
 
 - 편집 기반(모드 전환, 새 노드 위치, "연결 → 폼 → 저장 → 다시 조회")은 논리 ERD 에서 검증됐고 `features/erd/editing.tsx` 에 있다. 물리 쪽 API(테이블·컬럼·관계·인덱스·제약)와 대화상자(테이블 폼·컬럼 일괄 편집)도 이미 있다 → 선행 조건은 충족돼 있다.
 - 물리 관계는 **컬럼 쌍**을 가진다(`TB_TBL_REL_COL`). 연결만으로는 FK 컬럼을 정할 수 없으므로 논리 ERD 와 같이 "연결 → 폼에서 컬럼 쌍·방향 확인 → 저장" 이어야 한다. 컬럼의 참조 테이블명과 관계의 동기화(`syncReferenceRelations`)를 우회하면 안 된다.

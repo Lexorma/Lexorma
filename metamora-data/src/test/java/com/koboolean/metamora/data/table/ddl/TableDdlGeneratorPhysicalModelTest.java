@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -149,6 +150,83 @@ class TableDdlGeneratorPhysicalModelTest {
 
         assertThat(result.ddl()).doesNotContain("FOREIGN KEY");
         assertThat(result.warnings()).contains("FK_TB_ORDER_GRP : 대상 컬럼이 TB_CODE 의 PK(또는 고유값 컬럼)가 아니라 FK 를 만들지 않았습니다.");
+    }
+
+    @Test
+    @DisplayName("참조 키 판단 : PK 전체 / 고유값 컬럼 1개 / UNIQUE 키 1개의 컬럼 전체만 키다 (키의 일부, 서로 다른 키의 조합은 아니다)")
+    void referencesKey() {
+        ColumnInfo nm = code.getColumns().get(2);
+        ColumnInfo alt1 = col("ALT_1", "VARCHAR(10)", false, 4);
+        ColumnInfo alt2 = col("ALT_2", "VARCHAR(10)", false, 5);
+        ColumnInfo email = col("EMAIL", "VARCHAR(100)", false, 6);
+        email.setIsUnique(true);
+        TableInfo target = table("TB_T", MASTER, grpCd, cd, nm, alt1, alt2, email);
+        List<Set<String>> keys = List.of(Set.of("ALT_1", "ALT_2"));
+
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(grpCd, cd), List.of())).as("복합 PK").isTrue();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(cd, grpCd), List.of())).as("쌍 순서는 달라도 구성이 같으면 키").isTrue();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(grpCd), List.of())).as("복합 PK 의 일부").isFalse();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(email), List.of())).as("고유값 컬럼").isTrue();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(nm), keys)).as("일반 컬럼").isFalse();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(alt1, alt2), keys)).as("복합 UNIQUE").isTrue();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(alt1), keys)).as("복합 UNIQUE 의 일부").isFalse();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(alt1, email), keys)).as("서로 다른 키의 컬럼 조합").isFalse();
+        assertThat(TableDdlGenerator.referencesKey(target, List.of(grpCd, cd, alt1), keys)).as("키보다 많은 컬럼").isFalse();
+        assertThat(TableDdlGenerator.referencesKey(table("TB_NOPK", MASTER, nm), List.of(), List.of())).as("PK 없는 테이블").isFalse();
+    }
+
+    @Test
+    @DisplayName("대상 테이블의 복합 UNIQUE 키를 참조하는 FK 를 만든다")
+    void relationToCompositeUnique() {
+        ColumnInfo alt1 = col("ALT_1", "VARCHAR(10)", false, 4);
+        ColumnInfo alt2 = col("ALT_2", "VARCHAR(10)", false, 5);
+        TableInfo target = TableInfo.builder().id(7L).tableName("TB_ALT").schema(MASTER).columns(new ArrayList<>()).build();
+        for (ColumnInfo c : List.of(col("ID", "BIGINT", true, 1), alt1, alt2)) {
+            c.setTableInfo(target);
+            target.getColumns().add(c);
+        }
+        List<TableRelation> relations = List.of(relation("FK_TB_ORDER_ALT", order, target, new ColumnInfo[]{statGrp, statCd}, new ColumnInfo[]{alt1, alt2}));
+
+        TableDdlGenerator.Result keyed = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(), relations, Map.of(7L, List.of(Set.of("ALT_1", "ALT_2")))));
+        assertThat(keyed.ddl()).contains("FOREIGN KEY (STAT_GRP_CD, STAT_CD) REFERENCES mst.TB_ALT (ALT_1, ALT_2);");
+
+        TableDdlGenerator.Result notKeyed = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(), relations, Map.of(7L, List.of(Set.of("ALT_1")))));
+        assertThat(notKeyed.ddl()).doesNotContain("FOREIGN KEY");
+        assertThat(notKeyed.warnings()).anyMatch(w -> w.startsWith("FK_TB_ORDER_ALT : 대상 컬럼이 TB_ALT"));
+    }
+
+    @Test
+    @DisplayName("FK 타입 호환 : 확실한 조합만 인정한다 (DB 별)")
+    void referenceTypeCompatibility() {
+        record Case(String type, String refType, boolean postgresql, boolean oracle, boolean mysql) {}
+        List<Case> cases = List.of(
+                new Case("VARCHAR(10)", "VARCHAR(10)", true, true, true),
+                new Case("VARCHAR(20)", "VARCHAR(10)", true, true, true),      // 문자 길이 차이
+                new Case("VARCHAR2(20)", "VARCHAR(10)", true, true, true),     // 공통 타입명만 다르고 같은 DB 타입
+                new Case("CHAR(2)", "CHAR(4)", true, true, true),
+                new Case("CHAR(10)", "VARCHAR(10)", false, false, false),
+                new Case("BIGINT", "BIGINT", true, true, true),
+                new Case("INTEGER", "BIGINT", true, true, false),              // PostgreSQL 정수 계열, Oracle NUMBER(10)↔NUMBER(19), MySQL 은 크기가 같아야 함
+                new Case("NUMBER(10)", "NUMBER(12)", true, true, false),       // MySQL·MariaDB 는 DECIMAL 크기가 같아야 함
+                new Case("NUMBER(12,2)", "NUMBER(12,2)", true, true, true),
+                new Case("BIGINT", "NUMBER(19)", false, true, false),          // Oracle 만 둘 다 NUMBER(19)
+                new Case("BIGINT", "VARCHAR(20)", false, false, false),
+                new Case("DATE", "TIMESTAMP", false, false, false),
+                new Case("DATE", "DATE", true, true, true),
+                new Case("TEXT", "VARCHAR(10)", false, false, false),
+                new Case("GEOMETRY", "GEOMETRY", true, true, true),            // DB 고유 타입은 같을 때만
+                new Case("GEOMETRY", "POINT", false, false, false));
+        for (Case c : cases) {
+            ColumnInfo column = col("A", c.type(), false, 1);
+            ColumnInfo referenced = col("B", c.refType(), true, 1);
+            String name = c.type() + " ↔ " + c.refType();
+            assertThat(TableDdlGenerator.isReferenceTypeCompatible(DbType.POSTGRESQL, column, referenced)).as("PostgreSQL " + name).isEqualTo(c.postgresql());
+            assertThat(TableDdlGenerator.isReferenceTypeCompatible(DbType.ORACLE, column, referenced)).as("Oracle " + name).isEqualTo(c.oracle());
+            assertThat(TableDdlGenerator.isReferenceTypeCompatible(DbType.MYSQL, column, referenced)).as("MySQL " + name).isEqualTo(c.mysql());
+            assertThat(TableDdlGenerator.isReferenceTypeCompatible(DbType.MARIADB, column, referenced)).as("MariaDB " + name).isEqualTo(c.mysql());
+        }
     }
 
     @Test

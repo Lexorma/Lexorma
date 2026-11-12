@@ -290,6 +290,21 @@ dialog.popup-dialog .popup-dialog-body {
     font-size: 12px;
 }
 
+.table-ddl-pending {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.table-ddl-pending ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    color: var(--gh-fg-muted);
+}
+
 .table-ddl-code {
     max-height: 60vh;
     margin: 0;

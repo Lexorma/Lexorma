@@ -14,6 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -25,7 +27,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,15 +38,31 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * 관리자 API(멤버 승인취소 / 프로젝트 비활성화)로 권한을 바꾼 뒤, 로그인해 둔 사용자의 기존 세션 쿠키로
  * 보호된 API 를 호출해 ProjectAccessInterceptor 가 세션을 끊고 401(PROJECT_ACCESS_REVOKED)을 주는지 확인한다.
- * SmokeTest 가 admin 비밀번호를 바꾸므로 별도 H2 DB 를 쓴다. 테스트마다 사용자 / 프로젝트를 새로 만든다.
+ * SmokeTest 가 admin 비밀번호를 바꾸므로 다른 테스트와 데이터를 나눈다 : H2 는 별도 인메모리 DB,
+ * PostgreSQL(SPRING_DATASOURCE_URL 로 지정한 검증 DB)은 같은 DB 의 별도 스키마. 테스트마다 사용자 / 프로젝트를 새로 만든다.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spring.datasource.url=" + ProjectAccessRevokeTest.DB_URL)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ProjectAccessRevokeTest {
 
-    static final String DB_URL = "jdbc:h2:mem:metamora-revoke;DB_CLOSE_DELAY=-1";
+    /**
+     * 이 클래스 전용 DB 설정. 실행 환경이 정한 DB 종류를 따른다 (H2 주소를 고정하면 PostgreSQL 드라이버로 실행할 때 컨텍스트가 뜨지 않는다).
+     * PostgreSQL 은 실행마다 새 스키마를 만들고(Flyway 가 생성) 끝나면 지운다.
+     */
+    private static final String CONFIGURED_URL = System.getProperty("spring.datasource.url", System.getenv("SPRING_DATASOURCE_URL"));
+    private static final boolean POSTGRESQL = CONFIGURED_URL != null && CONFIGURED_URL.startsWith("jdbc:postgresql:");
+    private static final String SCHEMA = "revoke_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    private static final Map<String, String> DB_PROPERTIES = POSTGRESQL
+            ? Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
+                     "spring.flyway.default-schema", SCHEMA)
+            : Map.of("spring.datasource.url", "jdbc:h2:mem:metamora-revoke;DB_CLOSE_DELAY=-1");
+
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry registry) {
+        DB_PROPERTIES.forEach((key, value) -> registry.add(key, () -> value));
+    }
+
     private static final String PASSWORD = "Revoke!Pass1";
     /** 보호된 API (NOT_APPROVE 이상) : 가입 직후 사용자도 호출할 수 있다 */
     private static final String PROTECTED_API = "/api/dashboard";
@@ -88,6 +108,12 @@ class ProjectAccessRevokeTest {
     @AfterAll
     void restoreAuthUtil() throws Exception {
         if (PREVIOUS_AUTH_UTIL_REPOSITORY != null) AUTH_UTIL_REPOSITORY.set(null, PREVIOUS_AUTH_UTIL_REPOSITORY);
+    }
+
+    @AfterAll
+    void dropSchema() {
+        // 이 클래스가 만든 스키마만 지운다 (H2 인메모리 DB 는 JVM 과 함께 사라진다)
+        if (POSTGRESQL) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
     }
 
     @Test
@@ -207,7 +233,8 @@ class ProjectAccessRevokeTest {
         // 같은 DB 를 쓰는 다른 인스턴스에서 로그인한 뒤 그 인스턴스를 내린다
         try (ConfigurableApplicationContext other = new SpringApplicationBuilder(MetamoraApplication.class)
                 .profiles("test")
-                .run("--server.port=0", "--spring.datasource.url=" + DB_URL)) { // 명령행 인자 : application.yml 보다 우선
+                .run(Stream.concat(Stream.of("--server.port=0"), DB_PROPERTIES.entrySet().stream().map(e -> "--" + e.getKey() + "=" + e.getValue()))
+                        .toArray(String[]::new))) { // 명령행 인자 : application.yml·환경변수보다 우선
             Browser first = new Browser(other.getEnvironment().getRequiredProperty("local.server.port", Integer.class));
             assertThat(first.login(user, p1).statusCode()).isEqualTo(200);
             browser.setSessionCookie(first.sessionId());

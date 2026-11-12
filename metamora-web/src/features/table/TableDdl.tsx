@@ -9,6 +9,8 @@ interface TableDdl {
   dbTypeLabel?: string;
   ddl: string;
   warnings?: string[];
+  /** DDL 에 들어 있는 승인 대기 항목 (종류별 한 줄) */
+  pendingApprovals?: string[];
 }
 
 /** 테이블 DDL : 프로젝트 대상 DB(시스템 관리 > 프로젝트 관리) 기준으로 서버에서 생성한 DDL */
@@ -63,6 +65,7 @@ export function TableDdlView({ tableId }: { tableId: number }) {
   };
 
   const warnings = data?.warnings ?? [];
+  const pending = data?.pendingApprovals ?? [];
   return (
     <div className="popup-container table-ddl-popup">
       <div className="table-ddl-toolbar">
@@ -89,6 +92,14 @@ export function TableDdlView({ tableId }: { tableId: number }) {
         <ul className="table-ddl-warnings">
           {warnings.map((w, i) => <li key={i}>{w}</li>)}
         </ul>
+      )}
+      {pending.length > 0 && (
+        <div className="table-ddl-pending" role="note">
+          <strong>{t('이 DDL 은 현재 설계 모델 기준이며 승인 대기 항목도 포함합니다.')}</strong>
+          <ul>
+            {pending.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        </div>
       )}
       <pre className="table-ddl-code">
         <code>{error ? (error instanceof ApiError ? error.message : t('DDL 을 생성하지 못했습니다.')) : data ? data.ddl : t('DDL 을 생성하고 있습니다.')}</code>

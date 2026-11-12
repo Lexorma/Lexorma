@@ -109,13 +109,17 @@ export function RelationForm({ tables, columns, schemaName, initial, onSaved }: 
   const find = (list: ErdColumn[], id: string) => list.find((c) => String(c.id) === id);
   const chosen = pairs.filter((p) => p.source && p.target).map((p) => ({ source: find(sourceColumns, p.source), target: find(targetColumns, p.target) }));
   const notes: string[] = [];
-  if (chosen.some((p) => p.target && !p.target.isPk)) notes.push(t('참조되는 컬럼에 PK 가 아닌 컬럼이 있습니다. 고유한 컬럼인지 확인해주세요.'));
-  const targetPk = targetColumns.filter((c) => c.isPk);
-  if (targetPk.length > 1 && chosen.length > 0 && chosen.every((p) => p.target?.isPk) && chosen.length < targetPk.length) {
-    notes.push(t('참조되는 테이블은 복합 PK({0}) 입니다. PK 컬럼을 모두 지정했는지 확인해주세요.', targetPk.map((c) => c.columnName).join(', ')));
+  // 저장할 때 서버가 검사한다 (FK : 참조되는 컬럼이 PK 전체 또는 UNIQUE 키 전체, 컬럼 쌍의 타입이 대상 DB 에서 FK 로 묶일 수 있는 조합).
+  // 화면은 UNIQUE 제약·고유 인덱스와 DB 별 타입 규칙을 모두 알지 못하므로 미리 알려만 주고 막지 않는다. 논리 관계는 검사하지 않는다.
+  if (type === 'FK') {
+    if (chosen.some((p) => p.target && !p.target.isPk)) notes.push(t('참조되는 컬럼에 PK 가 아닌 컬럼이 있습니다. UNIQUE 키 전체가 아니면 FK 로 저장되지 않습니다.'));
+    const targetPk = targetColumns.filter((c) => c.isPk);
+    if (targetPk.length > 1 && chosen.length > 0 && chosen.every((p) => p.target?.isPk) && chosen.length < targetPk.length) {
+      notes.push(t('참조되는 테이블은 복합 PK({0}) 입니다. PK 컬럼을 모두 지정해야 FK 로 저장됩니다.', targetPk.map((c) => c.columnName).join(', ')));
+    }
+    chosen.filter((p) => p.source && p.target && columnType(p.source).toUpperCase() !== columnType(p.target).toUpperCase())
+      .forEach((p) => notes.push(t('{0} 과(와) {1} 의 데이터 타입이 다릅니다. 대상 DB 에서 FK 로 연결할 수 없는 조합이면 저장되지 않습니다. ({2} / {3})', p.source!.columnName, p.target!.columnName, columnType(p.source!) || '-', columnType(p.target!) || '-')));
   }
-  chosen.filter((p) => p.source && p.target && columnType(p.source).toUpperCase() !== columnType(p.target).toUpperCase())
-    .forEach((p) => notes.push(t('{0} 과(와) {1} 의 데이터 타입이 다릅니다. ({2} / {3})', p.source!.columnName, p.target!.columnName, columnType(p.source!) || '-', columnType(p.target!) || '-')));
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();

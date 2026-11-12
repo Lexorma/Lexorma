@@ -3,6 +3,9 @@ package com.koboolean.metamora.data.physical.service.impl;
 import com.koboolean.metamora.data.mapping.repository.AttributeColumnMappingRepository;
 import com.koboolean.metamora.common.exception.CustomException;
 import com.koboolean.metamora.common.exception.domain.ErrorCode;
+import com.koboolean.metamora.core.project.domain.entity.Project;
+import com.koboolean.metamora.core.project.domain.enums.DbType;
+import com.koboolean.metamora.core.project.repository.ProjectRepository;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.data.column.domain.entity.ColumnInfo;
@@ -41,6 +44,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private final TableConstraintRepository constraintRepository;
     private final EntityManager entityManager;
     private final AttributeColumnMappingRepository attributeMappingRepository;
+    private final ProjectRepository projectRepository;
 
     // ------------------------------------------------------------------ 조회
 
@@ -95,12 +99,16 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                         && r.getColumns().stream().map(c -> c.getSourceColumn().getId()).toList().equals(sourceIds));
         if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, source.getTableName() + " → " + target.getTableName());
 
+        TableRelation.Type type = parse(TableRelation.Type.class, request.relationType(), TableRelation.Type.FK);
+        // FK 는 DDL 로 나가므로 실제 DB 에서 만들 수 있는 정의만 받는다. 논리 관계(LOGICAL)는 제약이 아니라서 검사하지 않는다
+        if (type == TableRelation.Type.FK) validateForeignKey(projectId, source, target, sourceColumns, targetColumns);
+
         TableRelation relation = TableRelation.builder()
                 .projectId(projectId)
                 .sourceTable(source)
                 .targetTable(target)
                 .relationName(objectName(request.relationName(), "FK_" + source.getTableName() + "_" + sourceColumns.get(0).getColumnName()))
-                .relationType(parse(TableRelation.Type.class, request.relationType(), TableRelation.Type.FK))
+                .relationType(type)
                 .relationSource(TableRelation.Source.USER)
                 .isApproval(AuthUtil.isApprovalAvailable())
                 .build();
@@ -109,6 +117,39 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                     .sourceColumn(sourceColumns.get(i)).targetColumn(targetColumns.get(i)).columnOrder(i + 1).build());
         }
         return PhysicalModelDto.Relation.fromEntity(relationRepository.save(relation));
+    }
+
+    /**
+     * FK 참조 무결성 : ① 대상 컬럼 구성이 대상 테이블의 키(PK 전체 / 고유값 컬럼 / UNIQUE 제약·고유 인덱스 1개의 컬럼 전체)이고
+     * ② 컬럼 쌍마다 타입이 프로젝트 대상 DB 에서 FK 로 묶일 수 있어야 한다. 기준은 DDL 생성기와 같다 (승인 여부는 보지 않는다 : DDL 도 보지 않는다).
+     */
+    private void validateForeignKey(Long projectId, TableInfo source, TableInfo target, List<ColumnInfo> sourceColumns, List<ColumnInfo> targetColumns) {
+        if (!TableDdlGenerator.referencesKey(target, targetColumns, uniqueKeys(projectId, target.getId()))) {
+            throw invalid("FK 대상 컬럼({1})이 {0} 의 PK 전체 또는 UNIQUE 키 전체와 같지 않습니다. 대상 테이블의 키를 구성하는 컬럼을 모두 지정해주세요.",
+                    target.getTableName(), joinNames(targetColumns, ", "));
+        }
+        DbType dbType = projectRepository.findById(projectId).map(Project::getDbType).map(DbType::orDefault).orElse(DbType.DEFAULT);
+        for (int i = 0; i < sourceColumns.size(); i++) {
+            ColumnInfo column = sourceColumns.get(i);
+            ColumnInfo referenced = targetColumns.get(i);
+            if (!TableDdlGenerator.isReferenceTypeCompatible(dbType, column, referenced)) {
+                throw invalid("{0} 과(와) {1} 의 데이터 타입이 {2} 에서 FK 로 연결할 수 있는 조합이 아닙니다. ({3} ↔ {4})",
+                        source.getTableName() + "." + column.getColumnName(), target.getTableName() + "." + referenced.getColumnName(), dbType.getLabel(),
+                        TableDdlGenerator.mappedType(dbType, column), TableDdlGenerator.mappedType(dbType, referenced));
+            }
+        }
+    }
+
+    /** 테이블의 UNIQUE 제약·고유 인덱스 컬럼명 구성 (PK·고유값 컬럼은 컬럼에서 본다) */
+    private List<Set<String>> uniqueKeys(Long projectId, Long tableId) {
+        List<Set<String>> keys = new ArrayList<>();
+        constraintRepository.findAllByProjectIdAndTableInfo_Id(projectId, tableId).stream()
+                .filter(c -> c.getConstraintType() == TableConstraint.Type.UNIQUE)
+                .forEach(c -> keys.add(c.getColumns().stream().map(TableConstraintColumn::getColumn).map(ColumnInfo::getColumnName).collect(Collectors.toSet())));
+        indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, tableId).stream()
+                .filter(i -> Boolean.TRUE.equals(i.getIsUnique()))
+                .forEach(i -> keys.add(i.getColumns().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).collect(Collectors.toSet())));
+        return keys;
     }
 
     @Override
@@ -354,12 +395,15 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Transactional(readOnly = true)
     public TableDdlGenerator.Extras ddlExtras(TableInfo table) {
         Long projectId = table.getProjectId();
+        List<TableRelation> relations = relationRepository.findAllByProjectIdAndSourceTable_Id(projectId, table.getId()).stream()
+                .filter(r -> r.getRelationSource() != TableRelation.Source.REF_COLUMN && r.getRelationType() == TableRelation.Type.FK)
+                .toList();
+        Map<Long, List<Set<String>>> targetUniqueKeys = new HashMap<>();
+        relations.forEach(r -> targetUniqueKeys.computeIfAbsent(r.getTargetTable().getId(), id -> uniqueKeys(projectId, id)));
         return new TableDdlGenerator.Extras(
                 constraintRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()),
                 indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()),
-                relationRepository.findAllByProjectIdAndSourceTable_Id(projectId, table.getId()).stream()
-                        .filter(r -> r.getRelationSource() != TableRelation.Source.REF_COLUMN && r.getRelationType() == TableRelation.Type.FK)
-                        .toList());
+                relations, targetUniqueKeys);
     }
 
     // ------------------------------------------------------------------ 보조
@@ -420,7 +464,11 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     }
 
     private static String joinNames(List<ColumnInfo> columns) {
-        return columns.stream().map(ColumnInfo::getColumnName).collect(Collectors.joining("_"));
+        return joinNames(columns, "_");
+    }
+
+    private static String joinNames(List<ColumnInfo> columns, String delimiter) {
+        return columns.stream().map(ColumnInfo::getColumnName).collect(Collectors.joining(delimiter));
     }
 
     private static String normalize(String tableName) {

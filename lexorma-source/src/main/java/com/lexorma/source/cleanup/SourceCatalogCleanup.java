@@ -13,7 +13,8 @@ import java.util.List;
 
 /**
  * 원본 카탈로그 삭제 (연결 하나 / 프로젝트 전체). 행이 많을 수 있어 엔티티를 읽지 않고 SQL 로 지운다.
- * 순서는 FK 를 따른다 : 관계 → 인덱스 → 제약조건 → 컬럼 → 테이블 → 스키마 (→ 연결).
+ * 순서는 FK 를 따른다 : 변경 이력 → 테이블·스키마 버전 → 수집 대상 → 수집 실행 (AI-1c) → 관계 → 인덱스 → 제약조건 → 컬럼 → 테이블 → 스키마 (→ 연결).
+ * 수집 이력·스냅샷도 연결과 함께 지운다 (U-25 : 보존 기간 없음).
  * <p>
  * <b>프로젝트 영구 삭제</b>는 기존 방식 그대로 이벤트로 받는다 : 삭제 서비스(lexorma-system)가 프로젝트 행을 지우기 전에 발행하는
  * {@link ProjectDeletedEvent} 를 같은 스레드·같은 트랜잭션에서 처리한다 ({@link EventListener} 는 동기 실행).
@@ -30,6 +31,11 @@ public class SourceCatalogCleanup {
 
     /** 연결 하나의 카탈로그 (연결 행은 남긴다) */
     private static final List<String> BY_CONNECTION = List.of(
+            "delete from TB_SRC_CHG_HSTRY where SRC_CNTN_SN = :id",
+            "delete from TB_SRC_TBL_VER where SRC_CNTN_SN = :id",
+            "delete from TB_SRC_SCHM_VER where SRC_CNTN_SN = :id",
+            "delete from TB_SRC_CLCT_TRGT where SRC_CLCT_EXCN_SN in (select SRC_CLCT_EXCN_SN from TB_SRC_CLCT_EXCN where SRC_CNTN_SN = :id)",
+            "delete from TB_SRC_CLCT_EXCN where SRC_CNTN_SN = :id",
             "delete from TB_SRC_REL_COL where SRC_REL_SN in (select SRC_REL_SN from TB_SRC_REL where SRC_CNTN_SN = :id)",
             "delete from TB_SRC_REL where SRC_CNTN_SN = :id",
             "delete from TB_SRC_IDX_COL where SRC_IDX_SN in (select SRC_IDX_SN from TB_SRC_IDX where SRC_TBL_SN in " + TABLES_OF_CONNECTION + ")",
@@ -42,6 +48,11 @@ public class SourceCatalogCleanup {
 
     /** 프로젝트의 카탈로그와 연결 전부 */
     private static final List<String> BY_PROJECT = List.of(
+            "delete from TB_SRC_CHG_HSTRY where PRJ_SN = :projectId",
+            "delete from TB_SRC_TBL_VER where PRJ_SN = :projectId",
+            "delete from TB_SRC_SCHM_VER where PRJ_SN = :projectId",
+            "delete from TB_SRC_CLCT_TRGT where PRJ_SN = :projectId",
+            "delete from TB_SRC_CLCT_EXCN where PRJ_SN = :projectId",
             "delete from TB_SRC_REL_COL where SRC_REL_SN in (select SRC_REL_SN from TB_SRC_REL where PRJ_SN = :projectId)",
             "delete from TB_SRC_REL where PRJ_SN = :projectId",
             "delete from TB_SRC_IDX_COL where SRC_IDX_SN in (select SRC_IDX_SN from TB_SRC_IDX where PRJ_SN = :projectId)",

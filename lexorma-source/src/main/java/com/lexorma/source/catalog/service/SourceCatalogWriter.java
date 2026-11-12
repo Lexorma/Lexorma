@@ -24,12 +24,20 @@ import com.lexorma.source.catalog.repository.SourceRelationRepository;
 import com.lexorma.source.catalog.repository.SourceSchemaRepository;
 import com.lexorma.source.catalog.repository.SourceTableRepository;
 import com.lexorma.source.catalog.service.SourceIdentifiers.Kind;
+import com.lexorma.core.project.guard.ProjectWriteGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.lexorma.source.catalog.service.SourceCatalogRules.compare;
+import static com.lexorma.source.catalog.service.SourceCatalogRules.invalid;
+import static com.lexorma.source.catalog.service.SourceCatalogRules.limited;
+import static com.lexorma.source.catalog.service.SourceCatalogRules.optional;
+import static com.lexorma.source.catalog.service.SourceCatalogRules.required;
+import static com.lexorma.source.catalog.service.SourceCatalogRules.rule;
 
 /**
  * 원본 카탈로그에 쓰는 단 하나의 경로 (AI-1b). 사용자가 부르는 API 가 없다 : 원본 카탈로그는 수집한 사실이라 화면에서 고치지 않는다.
@@ -40,15 +48,16 @@ import java.util.List;
  *   <li>관계·제약조건·인덱스는 같은 테이블의 컬럼, 같은 연결의 테이블만 가리킨다 (다른 연결·프로젝트의 객체와 이어지지 않는다)</li>
  *   <li>JPA 로 저장한다 : projectId 를 가진 엔티티라 프로젝트 삭제와 겹치면 {@code ProjectWriteGuard} 가 커밋을 막는다.
  *       대량 적재를 JDBC 배치로 바꾸면 {@code ProjectWriteGuard.guard(projectId)} 를 직접 불러야 한다</li>
- *   <li>연결 행을 잠그고 쓴다 : 연결 삭제와 겹치지 않는다</li>
+ *   <li>프로젝트 행(공유) → 연결 행(배타) 순서로 잠그고 쓴다 : 연결 삭제와 겹치지 않고, 프로젝트 삭제(프로젝트 → 연결 순서로 잠근다)와 서로를 기다리지 않는다</li>
+ *   <li><b>버전·변경 이력을 남기지 않는다.</b> 운영 코드는 이것을 부르지 않는다 : 수집 결과는 {@code SourceCollectionService}(AI-1c)로 적재한다 —
+ *       이것은 AI-1b 의 한 건 단위 경로로, 테스트가 카탈로그를 준비할 때 쓴다 (ModuleBoundaryTest.catalogWritePaths 가 운영 코드의 호출을 막는다).
+ *       고친 테이블은 내용 해시를 지워 다음 수집이 현재 행을 다시 비교·복구하게 한다. 원본 변경 판정은 마지막 확정 버전으로 하므로 여기서 고친 값은 버전·이력에 들어가지 않는다</li>
  * </ul>
  * 물리·논리 모델, 표준 용어, 업무 설명은 읽지도 쓰지도 않는다.
  */
 @Service
 @RequiredArgsConstructor
 public class SourceCatalogWriter {
-
-    private static final int NAME_MAX = 255;
 
     private final SourceConnectionRepository connectionRepository;
     private final SourceSchemaRepository schemaRepository;
@@ -57,6 +66,7 @@ public class SourceCatalogWriter {
     private final SourceConstraintRepository constraintRepository;
     private final SourceIndexRepository indexRepository;
     private final SourceRelationRepository relationRepository;
+    private final ProjectWriteGuard projectWriteGuard;
 
     /** 이름 공간(카탈로그·스키마). 둘 중 하나는 있어야 한다 */
     @Transactional
@@ -95,6 +105,7 @@ public class SourceCatalogWriter {
         found.setType(type);
         found.setComment(spec.comment());
         found.setPresent(true);
+        found.setContentHash(null);
         return found;
     }
 
@@ -120,6 +131,8 @@ public class SourceCatalogWriter {
         column.setDefaultValue(spec.defaultValue());
         column.setComment(spec.comment());
         column.setPresent(true);
+        column.setContentHash(null);
+        table.setContentHash(null);
         return columnRepository.saveAndFlush(column);
     }
 
@@ -128,6 +141,7 @@ public class SourceCatalogWriter {
     public List<SourceConstraint> replaceConstraints(Long projectId, Long tableId, List<SourceCatalogSpec.Constraint> specs) {
         SourceTable table = table(projectId, tableId);
         SourceConnection connection = lock(projectId, table.getConnectionId());
+        table.setContentHash(null);
         constraintRepository.deleteAll(constraintRepository.findAllBySourceTable_IdOrderByIdAsc(tableId));
         constraintRepository.flush();
         List<SourceConstraint> saved = new ArrayList<>();
@@ -150,6 +164,7 @@ public class SourceCatalogWriter {
     public List<SourceIndex> replaceIndexes(Long projectId, Long tableId, List<SourceCatalogSpec.Index> specs) {
         SourceTable table = table(projectId, tableId);
         SourceConnection connection = lock(projectId, table.getConnectionId());
+        table.setContentHash(null);
         indexRepository.deleteAll(indexRepository.findAllBySourceTable_IdOrderByIdAsc(tableId));
         indexRepository.flush();
         List<SourceIndex> saved = new ArrayList<>();
@@ -175,6 +190,7 @@ public class SourceCatalogWriter {
     public List<SourceRelation> replaceRelations(Long projectId, Long tableId, List<SourceCatalogSpec.Relation> specs) {
         SourceTable table = table(projectId, tableId);
         SourceConnection connection = lock(projectId, table.getConnectionId());
+        table.setContentHash(null);
         relationRepository.deleteAll(relationRepository.findAllBySourceTable_IdOrderByIdAsc(tableId));
         relationRepository.flush();
         List<SourceRelation> saved = new ArrayList<>();
@@ -186,6 +202,7 @@ public class SourceCatalogWriter {
                     : tableRepository.findBySchema_IdAndCompareName(referencedSchema.getId(), compare(connection, Kind.TABLE, spec.referencedTable())).orElse(null);
             SourceRelation relation = SourceRelation.builder().projectId(projectId).connectionId(connection.getId()).sourceTable(table).referencedTable(referencedTable)
                     .referencedSchemaName(spec.referencedSchema() == null && spec.referencedCatalog() == null ? table.getSchema().getSchemaName() : optional(spec.referencedSchema()))
+                    .referencedCatalogName(spec.referencedCatalog() == null ? table.getSchema().getCatalogName() : optional(spec.referencedCatalog()))
                     .referencedTableName(referencedTableName).name(limited(spec.name())).deleteRule(rule(spec.deleteRule())).updateRule(rule(spec.updateRule())).build();
             for (int i = 0; i < spec.columns().size(); i++) {
                 SourceCatalogSpec.ColumnPair pair = spec.columns().get(i);
@@ -209,7 +226,9 @@ public class SourceCatalogWriter {
         return schemaRepository.findByConnection_IdAndPathKey(connection.getId(), pathKey).orElse(null);
     }
 
+    /** 잠금 순서 : 프로젝트(공유) → 연결(배타). 프로젝트 영구 삭제와 같은 순서다 */
     private SourceConnection lock(Long projectId, Long connectionId) {
+        projectWriteGuard.lock(projectId);
         return connectionRepository.findForUpdate(connectionId, projectId).orElseThrow(() -> new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND));
     }
 
@@ -224,41 +243,8 @@ public class SourceCatalogWriter {
                 .orElseThrow(() -> invalid("구성 컬럼을 찾을 수 없습니다 : {0}", name.value()));
     }
 
-    private static String compare(SourceConnection connection, Kind kind, Name name) {
-        String value = optional(name);
-        return value == null ? null : SourceIdentifiers.compareName(connection.getDbType(), connection.getIdentifierComparison(), kind, value, name.quoted());
-    }
-
-    /** 이름 : 앞뒤 공백도 원본의 일부일 수 있어 다듬지 않는다. 비었거나 255자를 넘으면 받지 않는다 (잘라서 저장하지 않는다) */
-    private static String optional(Name name) {
-        if (name == null || name.value() == null) return null;
-        if (name.value().isEmpty() || name.value().length() > NAME_MAX) throw invalid("이름이 없거나 너무 깁니다.");
-        return name.value();
-    }
-
-    private static String required(Name name) {
-        String value = optional(name);
-        if (value == null) throw invalid("이름이 없거나 너무 깁니다.");
-        return value;
-    }
-
-    private static String limited(String value) {
-        if (value == null || value.isEmpty()) return null;
-        if (value.length() > NAME_MAX) throw invalid("이름이 없거나 너무 깁니다.");
-        return value;
-    }
-
-    private static String rule(String value) {
-        if (value == null || value.isBlank()) return null;
-        if (value.length() > 20) throw invalid("삭제·수정 규칙이 올바르지 않습니다.");
-        return value;
-    }
-
     private static CustomException notFound() {
         return new CustomException(ErrorCode.SOURCE_OBJECT_NOT_FOUND);
     }
 
-    private static CustomException invalid(String message, Object... args) {
-        return new CustomException(ErrorCode.INVALID_SOURCE_CATALOG, message, args);
-    }
 }

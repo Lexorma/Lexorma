@@ -1268,6 +1268,7 @@ create table TB_SRC_SCHM (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    CRT_CYCL integer not null,
     constraint PK_SRC_SCHM primary key (SRC_SCHM_SN)
 );
 
@@ -1288,6 +1289,7 @@ create table TB_SRC_TBL (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    CRT_CYCL integer not null,
     constraint PK_SRC_TBL primary key (SRC_TBL_SN)
 );
 
@@ -1368,6 +1370,7 @@ create table TB_SRC_REL (
     REL_NM varchar(255),
     DEL_RULE_CD varchar(20),
     MDFCN_RULE_CD varchar(20),
+    RFRNC_CTLG_NM varchar(255),
     constraint PK_SRC_REL primary key (SRC_REL_SN)
 );
 
@@ -1454,6 +1457,7 @@ comment on column TB_SRC_SCHM.REG_DT is '등록 일시';
 comment on column TB_SRC_SCHM.MDFCN_DT is '수정 일시';
 comment on column TB_SRC_SCHM.RGTR_ID is '등록자 아이디';
 comment on column TB_SRC_SCHM.MDFR_ID is '수정자 아이디';
+comment on column TB_SRC_SCHM.CRT_CYCL is '생성 차수';
 comment on table TB_SRC_TBL is '출처 테이블';
 comment on column TB_SRC_TBL.SRC_TBL_SN is '출처 테이블 일련번호';
 comment on column TB_SRC_TBL.PRJ_SN is '프로젝트 일련번호';
@@ -1470,6 +1474,7 @@ comment on column TB_SRC_TBL.REG_DT is '등록 일시';
 comment on column TB_SRC_TBL.MDFCN_DT is '수정 일시';
 comment on column TB_SRC_TBL.RGTR_ID is '등록자 아이디';
 comment on column TB_SRC_TBL.MDFR_ID is '수정자 아이디';
+comment on column TB_SRC_TBL.CRT_CYCL is '생성 차수';
 comment on table TB_SRC_COL is '출처 컬럼';
 comment on column TB_SRC_COL.SRC_COL_SN is '출처 컬럼 일련번호';
 comment on column TB_SRC_COL.PRJ_SN is '프로젝트 일련번호';
@@ -1526,6 +1531,7 @@ comment on column TB_SRC_REL.RFRNC_TBL_NM is '참조 테이블 명';
 comment on column TB_SRC_REL.REL_NM is '관계 명';
 comment on column TB_SRC_REL.DEL_RULE_CD is '삭제 규칙 코드';
 comment on column TB_SRC_REL.MDFCN_RULE_CD is '수정 규칙 코드';
+comment on column TB_SRC_REL.RFRNC_CTLG_NM is '참조 카탈로그 명';
 comment on table TB_SRC_REL_COL is '출처 관계 컬럼';
 comment on column TB_SRC_REL_COL.SRC_REL_COL_SN is '출처 관계 컬럼 일련번호';
 comment on column TB_SRC_REL_COL.SRC_REL_SN is '출처 관계 일련번호';
@@ -1533,3 +1539,227 @@ comment on column TB_SRC_REL_COL.SRC_COL_SN is '출처 컬럼 일련번호';
 comment on column TB_SRC_REL_COL.RFRNC_SRC_COL_SN is '참조 출처 컬럼 일련번호';
 comment on column TB_SRC_REL_COL.RFRNC_COL_NM is '참조 컬럼 명';
 comment on column TB_SRC_REL_COL.COL_ORD is '컬럼 순서';
+
+-- =====================================================================
+-- 원본 카탈로그 수집 실행·스냅샷·변경 이력 (AI-1c, lexorma-source)
+-- 현재 상태 = 위의 원본 카탈로그 9개 테이블. 과거 상태 = 바뀐 스키마·테이블만 새 버전을 쌓는 버전 테이블 (테이블 단위 Copy-on-Write).
+-- 시점의 순서는 접속별 반영 순서(RFLT_ORD)다 : 일련번호(시퀀스가 50개씩 나눠 줘 인스턴스가 여럿이면 시간 순서가 아니다)나 등록 일시가 아니다.
+-- 버전은 비교 경로·비교 명과 정규화한 JSON 을 함께 저장해 현재 행 없이도 과거를 재구성한다. 만든 뒤 고치지 않는다.
+-- =====================================================================
+
+create sequence SQ_SRC_CLCT_EXCN start with 1 increment by 50;
+create sequence SQ_SRC_CLCT_TRGT start with 1 increment by 50;
+create sequence SQ_SRC_SCHM_VER start with 1 increment by 50;
+create sequence SQ_SRC_TBL_VER start with 1 increment by 50;
+create sequence SQ_SRC_CHG_HSTRY start with 1 increment by 50;
+
+-- 출처 수집 실행 : 수집 한 번. 진행 중(CREATED·RUNNING)인 동안만 진행 접속 일련번호에 접속 일련번호가 들어가 같은 접속의 수집이 둘이 될 수 없다 (UNIQUE, NULL 은 여럿)
+create table TB_SRC_CLCT_EXCN (
+    SRC_CLCT_EXCN_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    JOB_ID varchar(255) not null,
+    EXCN_TYPE_CD varchar(20) not null,
+    ACNT_SN bigint,
+    CLCT_TYPE_CD varchar(20) not null,
+    EXCN_STTS_CD varchar(20) not null,
+    RFLT_ORD integer,
+    PRGRS_CNTN_SN bigint,
+    EXCN_SRVR_ID varchar(255) not null,
+    BGNG_DT timestamp(6) not null,
+    LAST_IDNTY_DT timestamp(6) not null,
+    END_DT timestamp(6),
+    RFLT_DT timestamp(6),
+    TBL_CNT integer,
+    COL_CNT integer,
+    VER_CNT integer,
+    CHG_CNT integer,
+    ERR_CD varchar(100),
+    ERR_CN TEXT,
+    constraint PK_SRC_CLCT_EXCN primary key (SRC_CLCT_EXCN_SN)
+);
+
+-- 출처 수집 대상 : 실행이 대상으로 한 이름 공간과 그 결과. 삭제 판정은 결과가 COMPLETED 인 대상 안에서만 한다
+create table TB_SRC_CLCT_TRGT (
+    SRC_CLCT_TRGT_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CLCT_EXCN_SN bigint not null,
+    PATH_CN varchar(1000) not null,
+    CTLG_NM varchar(255),
+    SCHM_NM varchar(255),
+    SRC_SCHM_SN bigint,
+    CLCT_RSLT_CD varchar(20) not null,
+    TBL_CNT integer,
+    COL_CNT integer,
+    ERR_CD varchar(100),
+    constraint PK_SRC_CLCT_TRGT primary key (SRC_CLCT_TRGT_SN)
+);
+
+-- 출처 스키마 버전 : 스키마가 처음 수집되거나(BASE) 생기거나 바뀌거나 사라질(REMOVED, 삭제 표시) 때만 1행
+create table TB_SRC_SCHM_VER (
+    SRC_SCHM_VER_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_SCHM_SN bigint not null,
+    SRC_CLCT_EXCN_SN bigint not null,
+    RFLT_ORD integer not null,
+    PATH_CN varchar(1000) not null,
+    CRT_CYCL integer not null,
+    CHG_TYPE_CD varchar(20) not null,
+    HASH_VL varchar(255) not null,
+    FRMT_VER_NO integer not null,
+    SCHM_CN TEXT not null,
+    constraint PK_SRC_SCHM_VER primary key (SRC_SCHM_VER_SN)
+);
+
+-- 출처 테이블 버전 : 테이블(컬럼·제약조건·인덱스·관계 포함)이 처음 수집되거나 생기거나 바뀌거나 사라질 때만 1행
+create table TB_SRC_TBL_VER (
+    SRC_TBL_VER_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_SCHM_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    SRC_CLCT_EXCN_SN bigint not null,
+    RFLT_ORD integer not null,
+    PATH_CN varchar(1000) not null,
+    CMPR_NM varchar(255) not null,
+    CRT_CYCL integer not null,
+    CHG_TYPE_CD varchar(20) not null,
+    HASH_VL varchar(255) not null,
+    FRMT_VER_NO integer not null,
+    TBL_CN TEXT not null,
+    constraint PK_SRC_TBL_VER primary key (SRC_TBL_VER_SN)
+);
+
+-- 출처 변경 이력 : 객체별 추가·수정·삭제와 바뀐 항목, 변경 전후 JSON. 최초 수집(BASE)은 남기지 않는다
+create table TB_SRC_CHG_HSTRY (
+    SRC_CHG_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_CLCT_EXCN_SN bigint not null,
+    RFLT_ORD integer not null,
+    SRC_SCHM_SN bigint,
+    SRC_TBL_SN bigint,
+    TRGT_TYPE_CD varchar(20) not null,
+    TRGT_IDNTFR_CN varchar(2000) not null,
+    TRGT_NM varchar(255),
+    CRT_CYCL integer not null,
+    CHG_TYPE_CD varchar(20) not null,
+    CHG_ARTCL_CN TEXT,
+    CHG_BFR_CN TEXT,
+    CHG_AFTR_CN TEXT,
+    constraint PK_SRC_CHG_HSTRY primary key (SRC_CHG_HSTRY_SN)
+);
+
+create unique index UX_SRC_CLCT_EXCN_01 on TB_SRC_CLCT_EXCN (JOB_ID);
+create unique index UX_SRC_CLCT_EXCN_02 on TB_SRC_CLCT_EXCN (SRC_CNTN_SN, RFLT_ORD);
+create unique index UX_SRC_CLCT_EXCN_03 on TB_SRC_CLCT_EXCN (PRGRS_CNTN_SN);
+create index IX_SRC_CLCT_EXCN_01 on TB_SRC_CLCT_EXCN (PRJ_SN);
+create index IX_SRC_CLCT_EXCN_02 on TB_SRC_CLCT_EXCN (SRC_CNTN_SN, BGNG_DT);
+create unique index UX_SRC_CLCT_TRGT_01 on TB_SRC_CLCT_TRGT (SRC_CLCT_EXCN_SN, PATH_CN);
+create index IX_SRC_CLCT_TRGT_01 on TB_SRC_CLCT_TRGT (PRJ_SN);
+create index IX_SRC_CLCT_TRGT_02 on TB_SRC_CLCT_TRGT (SRC_SCHM_SN);
+create unique index UX_SRC_SCHM_VER_01 on TB_SRC_SCHM_VER (SRC_SCHM_SN, RFLT_ORD);
+create index IX_SRC_SCHM_VER_01 on TB_SRC_SCHM_VER (SRC_CNTN_SN, RFLT_ORD);
+create index IX_SRC_SCHM_VER_02 on TB_SRC_SCHM_VER (PRJ_SN);
+create index IX_SRC_SCHM_VER_03 on TB_SRC_SCHM_VER (SRC_CLCT_EXCN_SN);
+create unique index UX_SRC_TBL_VER_01 on TB_SRC_TBL_VER (SRC_TBL_SN, RFLT_ORD);
+create index IX_SRC_TBL_VER_01 on TB_SRC_TBL_VER (SRC_CNTN_SN, RFLT_ORD);
+create index IX_SRC_TBL_VER_02 on TB_SRC_TBL_VER (SRC_SCHM_SN, RFLT_ORD);
+create index IX_SRC_TBL_VER_03 on TB_SRC_TBL_VER (PRJ_SN);
+create index IX_SRC_TBL_VER_04 on TB_SRC_TBL_VER (SRC_CLCT_EXCN_SN);
+create index IX_SRC_CHG_HSTRY_01 on TB_SRC_CHG_HSTRY (SRC_CLCT_EXCN_SN);
+create index IX_SRC_CHG_HSTRY_02 on TB_SRC_CHG_HSTRY (SRC_TBL_SN, RFLT_ORD);
+create index IX_SRC_CHG_HSTRY_03 on TB_SRC_CHG_HSTRY (SRC_CNTN_SN, RFLT_ORD);
+create index IX_SRC_CHG_HSTRY_04 on TB_SRC_CHG_HSTRY (PRJ_SN);
+
+-- 실행·버전·이력은 같은 접속의 것끼리만 이어진다 (접속 일련번호를 함께 묶은 FK)
+alter table TB_SRC_CLCT_EXCN add constraint UX_SRC_CLCT_EXCN_04 unique (SRC_CLCT_EXCN_SN, SRC_CNTN_SN);
+alter table TB_SRC_CLCT_EXCN add constraint FK_SRC_CLCT_EXCN_01 foreign key (SRC_CNTN_SN) references TB_SRC_CNTN;
+alter table TB_SRC_CLCT_TRGT add constraint FK_SRC_CLCT_TRGT_01 foreign key (SRC_CLCT_EXCN_SN) references TB_SRC_CLCT_EXCN;
+alter table TB_SRC_CLCT_TRGT add constraint FK_SRC_CLCT_TRGT_02 foreign key (SRC_SCHM_SN) references TB_SRC_SCHM;
+alter table TB_SRC_SCHM_VER add constraint FK_SRC_SCHM_VER_01 foreign key (SRC_SCHM_SN, SRC_CNTN_SN) references TB_SRC_SCHM (SRC_SCHM_SN, SRC_CNTN_SN);
+alter table TB_SRC_SCHM_VER add constraint FK_SRC_SCHM_VER_02 foreign key (SRC_CLCT_EXCN_SN, SRC_CNTN_SN) references TB_SRC_CLCT_EXCN (SRC_CLCT_EXCN_SN, SRC_CNTN_SN);
+alter table TB_SRC_TBL_VER add constraint FK_SRC_TBL_VER_01 foreign key (SRC_TBL_SN, SRC_CNTN_SN) references TB_SRC_TBL (SRC_TBL_SN, SRC_CNTN_SN);
+alter table TB_SRC_TBL_VER add constraint FK_SRC_TBL_VER_02 foreign key (SRC_CLCT_EXCN_SN, SRC_CNTN_SN) references TB_SRC_CLCT_EXCN (SRC_CLCT_EXCN_SN, SRC_CNTN_SN);
+alter table TB_SRC_TBL_VER add constraint FK_SRC_TBL_VER_03 foreign key (SRC_SCHM_SN, SRC_CNTN_SN) references TB_SRC_SCHM (SRC_SCHM_SN, SRC_CNTN_SN);
+alter table TB_SRC_CHG_HSTRY add constraint FK_SRC_CHG_HSTRY_01 foreign key (SRC_CLCT_EXCN_SN, SRC_CNTN_SN) references TB_SRC_CLCT_EXCN (SRC_CLCT_EXCN_SN, SRC_CNTN_SN);
+
+comment on table TB_SRC_CLCT_EXCN is '출처 수집 실행';
+comment on column TB_SRC_CLCT_EXCN.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_CLCT_EXCN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_CLCT_EXCN.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_CLCT_EXCN.JOB_ID is '작업 아이디';
+comment on column TB_SRC_CLCT_EXCN.EXCN_TYPE_CD is '실행 유형 코드';
+comment on column TB_SRC_CLCT_EXCN.ACNT_SN is '계정 일련번호';
+comment on column TB_SRC_CLCT_EXCN.CLCT_TYPE_CD is '수집 유형 코드';
+comment on column TB_SRC_CLCT_EXCN.EXCN_STTS_CD is '실행 상태 코드';
+comment on column TB_SRC_CLCT_EXCN.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_CLCT_EXCN.PRGRS_CNTN_SN is '진행 접속 일련번호';
+comment on column TB_SRC_CLCT_EXCN.EXCN_SRVR_ID is '실행 서버 아이디';
+comment on column TB_SRC_CLCT_EXCN.BGNG_DT is '시작 일시';
+comment on column TB_SRC_CLCT_EXCN.LAST_IDNTY_DT is '최종 확인 일시';
+comment on column TB_SRC_CLCT_EXCN.END_DT is '종료 일시';
+comment on column TB_SRC_CLCT_EXCN.RFLT_DT is '반영 일시';
+comment on column TB_SRC_CLCT_EXCN.TBL_CNT is '테이블 수';
+comment on column TB_SRC_CLCT_EXCN.COL_CNT is '컬럼 수';
+comment on column TB_SRC_CLCT_EXCN.VER_CNT is '버전 수';
+comment on column TB_SRC_CLCT_EXCN.CHG_CNT is '변경 수';
+comment on column TB_SRC_CLCT_EXCN.ERR_CD is '오류 코드';
+comment on column TB_SRC_CLCT_EXCN.ERR_CN is '오류 내용';
+comment on table TB_SRC_CLCT_TRGT is '출처 수집 대상';
+comment on column TB_SRC_CLCT_TRGT.SRC_CLCT_TRGT_SN is '출처 수집 대상 일련번호';
+comment on column TB_SRC_CLCT_TRGT.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_CLCT_TRGT.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_CLCT_TRGT.PATH_CN is '경로 내용';
+comment on column TB_SRC_CLCT_TRGT.CTLG_NM is '카탈로그 명';
+comment on column TB_SRC_CLCT_TRGT.SCHM_NM is '스키마 명';
+comment on column TB_SRC_CLCT_TRGT.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_CLCT_TRGT.CLCT_RSLT_CD is '수집 결과 코드';
+comment on column TB_SRC_CLCT_TRGT.TBL_CNT is '테이블 수';
+comment on column TB_SRC_CLCT_TRGT.COL_CNT is '컬럼 수';
+comment on column TB_SRC_CLCT_TRGT.ERR_CD is '오류 코드';
+comment on table TB_SRC_SCHM_VER is '출처 스키마 버전';
+comment on column TB_SRC_SCHM_VER.SRC_SCHM_VER_SN is '출처 스키마 버전 일련번호';
+comment on column TB_SRC_SCHM_VER.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_SCHM_VER.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_SCHM_VER.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_SCHM_VER.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_SCHM_VER.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_SCHM_VER.PATH_CN is '경로 내용';
+comment on column TB_SRC_SCHM_VER.CRT_CYCL is '생성 차수';
+comment on column TB_SRC_SCHM_VER.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_SRC_SCHM_VER.HASH_VL is '해시 값';
+comment on column TB_SRC_SCHM_VER.FRMT_VER_NO is '형식 버전 번호';
+comment on column TB_SRC_SCHM_VER.SCHM_CN is '스키마 내용';
+comment on table TB_SRC_TBL_VER is '출처 테이블 버전';
+comment on column TB_SRC_TBL_VER.SRC_TBL_VER_SN is '출처 테이블 버전 일련번호';
+comment on column TB_SRC_TBL_VER.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_TBL_VER.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_TBL_VER.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_TBL_VER.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_TBL_VER.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_TBL_VER.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_TBL_VER.PATH_CN is '경로 내용';
+comment on column TB_SRC_TBL_VER.CMPR_NM is '비교 명';
+comment on column TB_SRC_TBL_VER.CRT_CYCL is '생성 차수';
+comment on column TB_SRC_TBL_VER.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_SRC_TBL_VER.HASH_VL is '해시 값';
+comment on column TB_SRC_TBL_VER.FRMT_VER_NO is '형식 버전 번호';
+comment on column TB_SRC_TBL_VER.TBL_CN is '테이블 내용';
+comment on table TB_SRC_CHG_HSTRY is '출처 변경 이력';
+comment on column TB_SRC_CHG_HSTRY.SRC_CHG_HSTRY_SN is '출처 변경 이력 일련번호';
+comment on column TB_SRC_CHG_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_CHG_HSTRY.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_CHG_HSTRY.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_CHG_HSTRY.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_CHG_HSTRY.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_CHG_HSTRY.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_CHG_HSTRY.TRGT_TYPE_CD is '대상 유형 코드';
+comment on column TB_SRC_CHG_HSTRY.TRGT_IDNTFR_CN is '대상 식별자 내용';
+comment on column TB_SRC_CHG_HSTRY.TRGT_NM is '대상 명';
+comment on column TB_SRC_CHG_HSTRY.CRT_CYCL is '생성 차수';
+comment on column TB_SRC_CHG_HSTRY.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_SRC_CHG_HSTRY.CHG_ARTCL_CN is '변경 항목 내용';
+comment on column TB_SRC_CHG_HSTRY.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_SRC_CHG_HSTRY.CHG_AFTR_CN is '변경 이후 내용';

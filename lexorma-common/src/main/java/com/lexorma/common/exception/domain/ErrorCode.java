@@ -314,7 +314,32 @@ public enum ErrorCode {
     /**
      * 원본 DB 도구를 실행할 수 없다 : 그런 도구가 없거나, 이 DBMS 를 지원하지 않거나, 연결이 사용 중지 상태이거나, 입력이 도구와 맞지 않는다.
      */
-    SOURCE_TOOL_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_TOOL_NOT_AVAILABLE");
+    SOURCE_TOOL_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_TOOL_NOT_AVAILABLE"),
+
+    /**
+     * 원본 카탈로그 수집 실행을 찾을 수 없다 (없는 작업, 다른 프로젝트·다른 연결의 작업).
+     */
+    SOURCE_COLLECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_COLLECTION_NOT_FOUND"),
+
+    /**
+     * 같은 연결의 수집이 이미 진행 중이다.
+     */
+    SOURCE_COLLECTION_IN_PROGRESS(HttpStatus.CONFLICT, "SOURCE_COLLECTION_IN_PROGRESS"),
+
+    /**
+     * 진행 중인 수집이 아니다 (이미 끝났거나 실패·취소된 작업).
+     */
+    SOURCE_COLLECTION_NOT_RUNNING(HttpStatus.CONFLICT, "SOURCE_COLLECTION_NOT_RUNNING"),
+
+    /**
+     * 수집 결과가 완전하지 않아 반영하지 않았다 (일부 스키마 실패, 요청한 스키마 없음, 범위가 맞지 않음).
+     */
+    SOURCE_COLLECTION_INCOMPLETE(HttpStatus.BAD_REQUEST, "SOURCE_COLLECTION_INCOMPLETE"),
+
+    /**
+     * 실행하던 서버가 멈춰 끝나지 않은 수집을 실패로 정리했다 (실행 상태의 오류 코드로만 쓴다).
+     */
+    SOURCE_COLLECTION_ABANDONED(HttpStatus.CONFLICT, "SOURCE_COLLECTION_ABANDONED");
 
     private final HttpStatus httpStatus;
     private final String code;

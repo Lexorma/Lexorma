@@ -83,6 +83,18 @@ public class ProjectWriteGuard implements TransactionExecutionListener, PostInse
         if (projectId != null) pending.projectIds.add(projectId);
     }
 
+    /**
+     * 프로젝트 행을 <b>지금</b> 공유 잠금으로 잡는다 (없으면 PROJECT_NOT_FOUND). 커밋 직전 확인 대상에도 넣는다.
+     * 다른 행(원본 DB 연결 등)을 잠그고 쓰는 경로는 그 행보다 먼저 이것을 부른다 : 프로젝트 영구 삭제는 프로젝트 행을 배타 잠금으로 잡은 뒤 하위 행을 지우므로,
+     * 하위 행을 먼저 잠그고 커밋 때 프로젝트를 잠그면 서로를 기다리게 된다 (잠금 순서 : 프로젝트 → 하위 행).
+     */
+    public void lock(Long projectId) {
+        Pending pending = current();
+        if (pending == null) throw new IllegalStateException("쓰기 트랜잭션 안에서 불러야 합니다.");
+        if (projectId == null || !exists(projectId)) throw new CustomException(ErrorCode.PROJECT_NOT_FOUND);
+        pending.projectIds.add(projectId);
+    }
+
     @Override
     public boolean requiresPostCommitHandling(EntityPersister persister) {
         return false;

@@ -57,10 +57,15 @@ public class SourceTable extends BaseEntity {
     @Column(name = "ANTN_CN", columnDefinition = "TEXT")
     private String comment;
 
-    /** 원본 메타데이터 내용의 해시 (AI-1c 의 변경 판정이 쓸 자리. 지금은 채우지 않는다) */
+    /** 테이블과 하위 객체(컬럼·제약조건·인덱스·관계) 전체를 정규화한 내용의 해시 ({@code v1:} + SHA-256). 수집 적재가 채운다 (AI-1c) */
     @Column(name = "HASH_VL")
     private String contentHash;
 
     @Column(name = "EXST_YN", nullable = false)
     private Boolean present;
+
+    /** 생성 차수 : 원본에서 사라졌다가(EXST_YN = false) 같은 이름으로 다시 생길 때마다 1 씩 는다 (AI-1c). 이전 생명주기의 버전·이력과 구분한다 */
+    @Builder.Default
+    @Column(name = "CRT_CYCL", nullable = false)
+    private Integer creationCycle = 1;
 }

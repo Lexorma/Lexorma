@@ -94,6 +94,7 @@
 
 - `용어` 는 공통표준 `TERM`(기한)과 겹쳐 `TRM`, `허용` 은 `PRMSN`(허가)과 겹쳐 `ALWNC` 로 정했다.
 - `노드` 는 공통표준 단어 `교점`(NODE) 의 약어를 그대로 쓴다.
+- 원본 카탈로그 수집 실행·스냅샷(AI-1c)에서 쓴 단어는 모두 공통표준단어다 (기관 표준단어가 아니다) : `수집`(CLCT), `실행`(EXCN), `작업`(JOB), `진행`(PRGRS), `반영`(RFLT), `서버`(SRVR), `시작`(BGNG), `최종`(LAST), `확인`(IDNTY), `종료`(END), `결과`(RSLT), `생성`(CRT), `항목`(ARTCL). 데이터 사전 예제에 단어로 넣었다. `범위` 는 공통표준에 없어 수집 대상 테이블을 `대상`(TRGT)으로 이름 지었다.
 - 원본 카탈로그(AI-1b)에서 더한 단어 : `호스트`(HOST), `포트`(PORT), `옵션`(OPTN), `카탈로그`(CTLG), `비교`(CMPR), `존재`(EXST), `해시`(HASH), `규칙`(RULE), `조건`(CND), `따옴표`(QUOT). `주석` 은 공통표준 `댓글`(CMNT)과 겹쳐 `ANTN` 으로 정했다.
 
 ## 3. 테이블·컬럼 목록
@@ -659,6 +660,7 @@
 | `MDFCN_DT` | 수정_일시 |
 | `RGTR_ID` | 등록자_아이디 |
 | `MDFR_ID` | 수정자_아이디 |
+| `CRT_CYCL` | 생성_차수 |
 
 ### TB_SRC_TBL (출처 테이블)
 
@@ -681,6 +683,7 @@
 | `MDFCN_DT` | 수정_일시 |
 | `RGTR_ID` | 등록자_아이디 |
 | `MDFR_ID` | 수정자_아이디 |
+| `CRT_CYCL` | 생성_차수 |
 
 ### TB_SRC_COL (출처 컬럼)
 
@@ -773,6 +776,7 @@
 | `REL_NM` | 관계_명 |
 | `DEL_RULE_CD` | 삭제_규칙_코드 |
 | `MDFCN_RULE_CD` | 수정_규칙_코드 |
+| `RFRNC_CTLG_NM` | 참조_카탈로그_명 |
 
 ### TB_SRC_REL_COL (출처 관계 컬럼)
 
@@ -786,3 +790,116 @@
 | `RFRNC_SRC_COL_SN` | 참조_출처_컬럼_일련번호 |
 | `RFRNC_COL_NM` | 참조_컬럼_명 |
 | `COL_ORD` | 컬럼_순서 |
+
+## 5. 원본 카탈로그 수집 실행 · 스냅샷 · 변경 이력 (AI-1c)
+
+수집 한 번(실행)과 그 대상, 바뀐 스키마·테이블만 쌓는 버전, 객체별 변경 이력 (`lexorma-source` 의 `collection/`). 설명은 [source-catalog-versioning.md](source-catalog-versioning.md).
+버전·이력은 만든 뒤 고치지 않으므로 `BaseEntity` 감사 컬럼 대신 실행의 일시를 쓴다. 실행·버전·이력은 접속 일련번호를 함께 묶은 FK 로 같은 접속의 것끼리만 이어진다.
+
+### TB_SRC_CLCT_EXCN (출처 수집 실행)
+
+시퀀스 : `SQ_SRC_CLCT_EXCN`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CLCT_EXCN_SN` | 출처_수집_실행_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `JOB_ID` | 작업_아이디 |
+| `EXCN_TYPE_CD` | 실행_유형_코드 |
+| `ACNT_SN` | 계정_일련번호 |
+| `CLCT_TYPE_CD` | 수집_유형_코드 |
+| `EXCN_STTS_CD` | 실행_상태_코드 |
+| `RFLT_ORD` | 반영_순서 |
+| `PRGRS_CNTN_SN` | 진행_접속_일련번호 |
+| `EXCN_SRVR_ID` | 실행_서버_아이디 |
+| `BGNG_DT` | 시작_일시 |
+| `LAST_IDNTY_DT` | 최종_확인_일시 |
+| `END_DT` | 종료_일시 |
+| `RFLT_DT` | 반영_일시 |
+| `TBL_CNT` | 테이블_수 |
+| `COL_CNT` | 컬럼_수 |
+| `VER_CNT` | 버전_수 |
+| `CHG_CNT` | 변경_수 |
+| `ERR_CD` | 오류_코드 |
+| `ERR_CN` | 오류_내용 |
+
+### TB_SRC_CLCT_TRGT (출처 수집 대상)
+
+시퀀스 : `SQ_SRC_CLCT_TRGT`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CLCT_TRGT_SN` | 출처_수집_대상_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CLCT_EXCN_SN` | 출처_수집_실행_일련번호 |
+| `PATH_CN` | 경로_내용 |
+| `CTLG_NM` | 카탈로그_명 |
+| `SCHM_NM` | 스키마_명 |
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `CLCT_RSLT_CD` | 수집_결과_코드 |
+| `TBL_CNT` | 테이블_수 |
+| `COL_CNT` | 컬럼_수 |
+| `ERR_CD` | 오류_코드 |
+
+### TB_SRC_SCHM_VER (출처 스키마 버전)
+
+시퀀스 : `SQ_SRC_SCHM_VER`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_SCHM_VER_SN` | 출처_스키마_버전_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `SRC_CLCT_EXCN_SN` | 출처_수집_실행_일련번호 |
+| `RFLT_ORD` | 반영_순서 |
+| `PATH_CN` | 경로_내용 |
+| `CRT_CYCL` | 생성_차수 |
+| `CHG_TYPE_CD` | 변경_유형_코드 |
+| `HASH_VL` | 해시_값 |
+| `FRMT_VER_NO` | 형식_버전_번호 |
+| `SCHM_CN` | 스키마_내용 |
+
+### TB_SRC_TBL_VER (출처 테이블 버전)
+
+시퀀스 : `SQ_SRC_TBL_VER`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_TBL_VER_SN` | 출처_테이블_버전_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `SRC_CLCT_EXCN_SN` | 출처_수집_실행_일련번호 |
+| `RFLT_ORD` | 반영_순서 |
+| `PATH_CN` | 경로_내용 |
+| `CMPR_NM` | 비교_명 |
+| `CRT_CYCL` | 생성_차수 |
+| `CHG_TYPE_CD` | 변경_유형_코드 |
+| `HASH_VL` | 해시_값 |
+| `FRMT_VER_NO` | 형식_버전_번호 |
+| `TBL_CN` | 테이블_내용 |
+
+### TB_SRC_CHG_HSTRY (출처 변경 이력)
+
+시퀀스 : `SQ_SRC_CHG_HSTRY`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CHG_HSTRY_SN` | 출처_변경_이력_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `SRC_CLCT_EXCN_SN` | 출처_수집_실행_일련번호 |
+| `RFLT_ORD` | 반영_순서 |
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `TRGT_TYPE_CD` | 대상_유형_코드 |
+| `TRGT_IDNTFR_CN` | 대상_식별자_내용 |
+| `TRGT_NM` | 대상_명 |
+| `CRT_CYCL` | 생성_차수 |
+| `CHG_TYPE_CD` | 변경_유형_코드 |
+| `CHG_ARTCL_CN` | 변경_항목_내용 |
+| `CHG_BFR_CN` | 변경_이전_내용 |
+| `CHG_AFTR_CN` | 변경_이후_내용 |

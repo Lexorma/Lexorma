@@ -8,6 +8,7 @@ import com.lexorma.core.crypto.SecretScope;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.execution.ExecutionContextVerifier;
 import com.lexorma.core.project.domain.enums.DbType;
+import com.lexorma.core.project.guard.ProjectWriteGuard;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.source.catalog.repository.SourceSchemaRepository;
 import com.lexorma.source.cleanup.SourceCatalogCleanup;
@@ -62,6 +63,7 @@ public class SourceConnectionService {
     private final ExecutionContextVerifier verifier;
     private final SecretCipher secretCipher;
     private final SourceHostPolicy hostPolicy;
+    private final ProjectWriteGuard projectWriteGuard;
 
     @Transactional(readOnly = true)
     public List<SourceConnectionDto.Response> list(AccountDto accountDto) {
@@ -95,7 +97,9 @@ public class SourceConnectionService {
     @Transactional
     public SourceConnectionDto.Response update(AccountDto accountDto, Long id, SourceConnectionDto.Request request) {
         Long projectId = manage(accountDto);
-        SourceConnection connection = connection(projectId, id);
+        // 프로젝트 → 연결 순서로 잠근다 : 진행 중인 수집 반영(연결 행 잠금)이 끝난 뒤에 카탈로그 유무를 본다 (반영과 규칙 변경이 엇갈리지 않는다)
+        projectWriteGuard.lock(projectId);
+        SourceConnection connection = repository.findForUpdate(id, projectId).orElseThrow(SourceConnectionService::notFound);
         Validated validated = validate(request, connection);
         if (repository.existsByProjectIdAndNameIgnoreCaseAndIdNot(projectId, validated.name(), id)) throw invalid("같은 이름의 연결이 이미 있습니다.");
         // 카탈로그의 비교용 이름은 DB 유형과 비교 규칙으로 만든 것이다 : 카탈로그가 있는 채로 바꾸면 같은 객체를 다르게 보게 된다
@@ -124,11 +128,13 @@ public class SourceConnectionService {
         return response(connection);
     }
 
-    /** 연결과 그 연결의 원본 카탈로그를 한 트랜잭션에서 지운다. 지운 카탈로그 행 수를 돌려준다 */
+    /** 연결과 그 연결의 원본 카탈로그(수집 실행·버전·변경 이력 포함)를 한 트랜잭션에서 지운다. 지운 행 수를 돌려준다 */
     @Transactional
     public int delete(AccountDto accountDto, Long id) {
         Long projectId = manage(accountDto);
-        // 연결 행을 잠근다 : 같은 연결로 적재하는 트랜잭션(SourceCatalogWriter)과 순서가 정해진다
+        // 프로젝트(공유) → 연결(배타) 순서로 잠근다 : 같은 연결로 적재하는 트랜잭션(수집 반영·SourceCatalogWriter)과 같은 순서라 서로를 기다리지 않고,
+        // 진행 중인 반영이 끝난 뒤에 지운다 (반영이 먼저 끝나면 그 결과까지 지우고, 지운 뒤의 반영은 연결이 없어 실패한다)
+        projectWriteGuard.lock(projectId);
         repository.findForUpdate(id, projectId).orElseThrow(SourceConnectionService::notFound);
         int rows = cleanup.deleteCatalog(id);
         repository.delete(repository.findByIdAndProjectId(id, projectId).orElseThrow(SourceConnectionService::notFound));

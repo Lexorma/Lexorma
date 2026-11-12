@@ -301,6 +301,26 @@ final class EnglishMessages {
         add("구성 컬럼이 없습니다.", "No columns are specified.");
         add("이름이 없거나 너무 깁니다.", "The name is missing or too long.");
         add("구성 컬럼을 찾을 수 없습니다 : {0}", "Column not found: {0}");
+        // 원본 카탈로그 수집 실행 (AI-1c)
+        add("값이 너무 깁니다.", "The value is too long.");
+        add("정밀도가 올바르지 않습니다.", "The precision is invalid.");
+        add("같은 스키마가 두 번 있습니다 : {0}", "The same schema appears twice: {0}");
+        add("같은 이름의 컬럼이 두 번 있습니다 : {0}", "A column with the same name appears twice: {0}");
+        add("같은 이름의 테이블이 두 번 있습니다 : {0}", "A table with the same name appears twice: {0}");
+        add("컬럼 순서가 겹칩니다 : {0}", "Column positions overlap: {0}");
+        add("부분 수집할 스키마가 없습니다.", "No schemas are specified for the partial collection.");
+        add("전체 수집에는 스키마를 지정하지 않습니다.", "Schemas are not specified for a full collection.");
+        add("수집 범위가 없습니다.", "The collection scope is not specified.");
+        add("수집 결과가 없습니다.", "There is no collection result.");
+        add("수집 결과가 올바르지 않습니다.", "The collection result is invalid.");
+        add("스키마의 수집 결과가 없습니다 : {0}", "The schema has no collection result: {0}");
+        add("요청하지 않은 스키마가 결과에 있습니다 : {0}", "The result contains a schema that was not requested: {0}");
+        add("요청한 스키마가 원본에 없습니다.", "A requested schema does not exist in the source database.");
+        add("전체 수집 결과에 스키마가 없습니다.", "The full collection result has no schemas.");
+        add("완전하게 수집하지 못한 스키마가 있습니다.", "Some schemas were not collected completely.");
+        add("수집을 시작한 뒤 연결의 DB 유형이나 식별자 비교 규칙이 바뀌었습니다.", "The database type or identifier comparison rule of the connection changed after the collection started.");
+        add("한 번에 반영할 수 있는 테이블 수({0})를 넘었습니다.", "The number of tables exceeds the limit for one collection ({0}).");
+        add("한 번에 반영할 수 있는 컬럼 수({0})를 넘었습니다.", "The number of columns exceeds the limit for one collection ({0}).");
         add("삭제·수정 규칙이 올바르지 않습니다.", "The delete or update rule is not valid.");
         add("논리 모델", "logical model");
         add("엔터티", "entity");

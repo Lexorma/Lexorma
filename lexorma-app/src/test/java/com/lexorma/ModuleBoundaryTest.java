@@ -60,6 +60,30 @@ class ModuleBoundaryTest {
     /** 세션 없는 실행 컨텍스트를 만드는 코드. 정기 배치(SCHEDULED)는 프로젝트 상태만 확인하므로 요청을 받는 쪽에서 만들면 권한 확인을 건너뛰게 된다 */
     private static final Pattern NON_USER_CONTEXT = Pattern.compile("ExecutionContext\\s*\\.\\s*(?:scheduled|async)\\s*\\(|new\\s+ExecutionContext\\s*\\(|ExecutionType\\s*\\.\\s*(?:SCHEDULED|ASYNC)");
 
+    /** 원본 카탈로그 행을 저장소로 직접 쓰는 호출 (조회는 허용) */
+    private static final Pattern CATALOG_REPOSITORY_WRITE = Pattern.compile("\\b(?:schema|table|column|constraint|index|relation)Repository\\s*\\.\\s*(?:save\\w*|delete\\w*)\\s*\\(");
+    private static final Pattern COMMENT = Pattern.compile("(?s)/\\*.*?\\*/|//[^\\n]*");
+
+    @Test
+    @DisplayName("원본 카탈로그 쓰기 경로 : 운영 코드는 수집 반영(AI-1c)으로만 쓴다. AI-1b 의 한 건 단위 SourceCatalogWriter 는 테스트에서만 부르고, 카탈로그 저장소의 저장·삭제도 Writer 안에만 있다")
+    void catalogWritePaths() throws IOException {
+        TreeSet<String> violations = new TreeSet<>();
+        // 다른 모듈은 lexorma-source 를 참조할 수 없다 (imports 검사) : lexorma-source 안만 본다
+        {
+            Path main = root().resolve("lexorma-source").resolve("src/main/java");
+            try (Stream<Path> files = Files.walk(main)) {
+                for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                    String relative = root().relativize(file).toString().replace('\\', '/');
+                    if (relative.endsWith("/SourceCatalogWriter.java")) continue;
+                    String code = COMMENT.matcher(Files.readString(file)).replaceAll("");
+                    if (code.contains("SourceCatalogWriter")) violations.add("SourceCatalogWriter 호출 : " + relative);
+                    if (CATALOG_REPOSITORY_WRITE.matcher(code).find()) violations.add("카탈로그 저장소 쓰기 : " + relative);
+                }
+            }
+        }
+        assertThat(violations).isEmpty();
+    }
+
     @Test
     @DisplayName("실행 경로 : 요청을 받는 컨트롤러는 사용자 실행 컨텍스트만 만들고(배치·비동기 컨텍스트를 만들지 않는다), AI 코드는 원본 DB 도구를 참조하지 않는다")
     void executionPaths() throws IOException {

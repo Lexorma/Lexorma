@@ -23,6 +23,9 @@ import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.support.SecurityTestSupport;
+import com.lexorma.core.execution.ExecutionContext;
+import com.lexorma.source.collection.domain.dto.SourceCollectionSpec;
+import com.lexorma.source.collection.service.SourceCollectionService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
@@ -92,7 +95,8 @@ class ProjectDeletionIntegrationTest {
      */
     private static final Set<String> PROJECT_TABLES = Set.of("TB_PRJ", "TB_PRJ_MBR", "TB_LOG", "TB_PST", "TB_STD_DMN", "TB_STD_WORD", "TB_STD_TRM", "TB_SCHM", "TB_TBL", "TB_COL",
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
-            "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL");
+            "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
+            "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -108,6 +112,7 @@ class ProjectDeletionIntegrationTest {
     @Autowired ModelVersionService versionService;
     @Autowired SourceConnectionRepository sourceConnectionRepository;
     @Autowired SourceCatalogWriter catalogWriter;
+    @Autowired SourceCollectionService collections;
     @Autowired LogsService logsService;
     @Autowired ProjectManageService projectManageService;
     @Autowired TransactionTemplate tx;
@@ -349,6 +354,20 @@ class ProjectDeletionIntegrationTest {
         catalogWriter.replaceIndexes(projectId, orders.getId(), List.of(new SourceCatalogSpec.Index("ix_orders_user", "btree", false, List.of(Name.of("user_id")))));
         catalogWriter.replaceRelations(projectId, orders.getId(), List.of(new SourceCatalogSpec.Relation("fk_orders_user", null, null, Name.of("users"), "CASCADE", null,
                 List.of(new SourceCatalogSpec.ColumnPair(Name.of("user_id"), Name.of("id"))))));
+        // 수집 실행·대상·스키마/테이블 버전·변경 이력 (AI-1c) : 처음 수집(기준 버전)과 COMMENT 를 바꾼 수집(변경 이력). 위와 같은 구성을 수집한다
+        ExecutionContext context = ExecutionContext.user(admin);
+        for (String comment : List.of("사용자", "바뀐 사용자")) {
+            String jobId = collections.start(context, connection.getId(), SourceCollectionSpec.Request.full()).jobId();
+            collections.apply(context, jobId, new SourceCollectionSpec.Result(List.of(SourceCollectionSpec.Schema.completed(Name.of("app"), Name.of("public"), List.of(
+                    new SourceCollectionSpec.Table(new SourceCatalogSpec.Table(Name.of("users"), SourceTableType.TABLE, comment),
+                            List.of(new SourceCatalogSpec.Column(Name.of("id"), 1, "bigint", null, null, null, false, null, null)),
+                            List.of(new SourceCatalogSpec.Constraint("users_pkey", SourceConstraintType.PRIMARY_KEY, null, List.of(Name.of("id")))), List.of(), List.of()),
+                    new SourceCollectionSpec.Table(new SourceCatalogSpec.Table(Name.of("orders"), SourceTableType.TABLE, null),
+                            List.of(new SourceCatalogSpec.Column(Name.of("user_id"), 1, "bigint", null, null, null, false, null, null)), List.of(),
+                            List.of(new SourceCatalogSpec.Index("ix_orders_user", "btree", false, List.of(Name.of("user_id")))),
+                            List.of(new SourceCatalogSpec.Relation("fk_orders_user", null, null, Name.of("users"), "CASCADE", null,
+                                    List.of(new SourceCatalogSpec.ColumnPair(Name.of("user_id"), Name.of("id")))))))))));
+        }
         return new Filled(order);
     }
 

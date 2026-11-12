@@ -61,10 +61,12 @@ lexorma-app           조립·실행 (bootJar, Flyway, 화면 리소스)
                         4. 도구 : 이름·DBMS 로 찾고 입력 타입 확인 (미지원 DBMS 는 거절)
                         5. SourceToolContext 생성 (JDBC URL = 검증한 항목으로 서버가 조립)
                       → SourceMetadataTool.execute(context, input)
-                      → (AI-2) 원본 DB 메타데이터 → SourceCatalogSpec → (AI-1c) 적재
+                      → (AI-2) 원본 DB 메타데이터 → SourceCollectionSpec(스키마별 완결 여부 + SourceCatalogSpec)
+                      → (AI-1c) SourceCollectionService.apply : 한 트랜잭션에서 현재 카탈로그·버전·변경 이력 반영 (source-catalog-versioning.md)
 ```
 
 - LLM 이 끼지 않는다. 최신화는 AI 사용 여부와 상관없이 된다.
+- 원본 카탈로그를 바꾸는 운영 경로는 수집 반영(`SourceCollectionService.apply`) 하나다. 원본 변경(버전·이력)은 마지막 확정 버전과 비교하고, 현재 카탈로그는 수집 결과로 맞춘다 ([source-catalog-versioning.md](source-catalog-versioning.md) 1.1·4.3).
 - 도구는 프로젝트·연결을 스스로 고르지 않는다. 컨텍스트가 가리키는 연결에만 접속한다.
 - 비밀번호는 도구가 `password()` 를 부를 때 복호화된다. 컨텍스트의 `toString()` 에 계정·비밀번호가 나오지 않는다.
 - **실행 방식은 요청이 고르지 않는다.** 컨텍스트는 서버 코드가 만든다 : HTTP 요청은 로그인 세션으로 `user(...)` 만 만들고, `async(...)` 는 그 요청에서 저장한 요청자·프로젝트로(실행할 때 요청자의 지금 권한을 다시 본다), `scheduled(...)` 는 배치 스케줄러만 만든다.

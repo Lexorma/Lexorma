@@ -51,6 +51,10 @@ public class SourceRelation {
     @Column(name = "RFRNC_TBL_NM", nullable = false)
     private String referencedTableName;
 
+    /** 참조되는 테이블의 카탈로그 (원본이 준 그대로, 지정하지 않았으면 null). MySQL·MariaDB 의 다른 데이터베이스 참조 (AI-1c) */
+    @Column(name = "RFRNC_CTLG_NM")
+    private String referencedCatalogName;
+
     @Column(name = "REL_NM")
     private String name;
 

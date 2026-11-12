@@ -590,6 +590,7 @@ dialog .dict-usage div.dt-container .dt-paging .dt-paging-button {
 /* 사용 현황 : 행의 이동 버튼 */
 .dict-usage-links {
     display: inline-flex;
+    flex-wrap: wrap;
     gap: 4px;
 }
 
@@ -905,6 +906,15 @@ table.dataTable > tbody > tr.selected > *:first-child {
 }
 
 /* render 함수가 감싸는 <p> 여백/폰트 제거 */
+/* 컬럼 폭을 정한 그리드 (GridColumn.width) : 조회 결과에 따라 폭이 바뀌지 않는다. 긴 값은 셀 안에서 줄바꿈한다 */
+table.dataTable.grid-fixed {
+    width: 100%;
+    table-layout: fixed;
+}
+table.dataTable.grid-fixed > tbody > tr > td {
+    overflow-wrap: anywhere;
+}
+
 table.dataTable td p {
     margin: 0;
     font-family: inherit;

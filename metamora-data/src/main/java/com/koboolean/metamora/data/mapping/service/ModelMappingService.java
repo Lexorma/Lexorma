@@ -68,6 +68,18 @@ public class ModelMappingService {
         return new ModelMappingDto.Detail(row, queryRepository.findAttributeRows(row.entityId()), queryRepository.findUnmappedColumns(row.tableId()));
     }
 
+    /**
+     * 엔터티 또는 테이블 하나의 매핑 (논리 모델·테이블 관리·ERD 의 매핑 표시용). 둘 중 하나만 준다.
+     * 엔터티는 매핑이 없어도 1행(mappingId null), 테이블은 매핑된 경우만 나온다. 없거나 다른 프로젝트 것이면 null
+     */
+    @Transactional(readOnly = true)
+    public ModelMappingDto.EntityRow selectEntityRow(AccountDto accountDto, Long entityId, Long tableId) {
+        if ((entityId == null) == (tableId == null)) {
+            throw invalid("엔터티와 테이블 중 하나만 지정해주세요.");
+        }
+        return queryRepository.findEntityRow(accountDto.getProjectId(), entityId, tableId);
+    }
+
     @Transactional(readOnly = true)
     public Page<ModelMappingDto.TableCandidate> selectUnmappedTables(AccountDto accountDto, Long schemaId, String searchQuery, Pageable pageable) {
         return queryRepository.findUnmappedTables(accountDto.getProjectId(), schemaId, searchQuery, pageable);

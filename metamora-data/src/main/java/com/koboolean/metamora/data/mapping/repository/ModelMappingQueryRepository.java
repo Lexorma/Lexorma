@@ -1,11 +1,15 @@
 package com.koboolean.metamora.data.mapping.repository;
 
 import com.koboolean.metamora.data.column.domain.entity.QColumnInfo;
+import com.koboolean.metamora.data.dictionary.domain.entity.QStandardDomain;
 import com.koboolean.metamora.data.dictionary.domain.entity.QStandardTerm;
 import com.koboolean.metamora.data.logical.domain.entity.QLogicalAttribute;
 import com.koboolean.metamora.data.logical.domain.entity.QLogicalEntity;
+import com.koboolean.metamora.data.logical.domain.entity.QLogicalIdentifier;
+import com.koboolean.metamora.data.logical.domain.entity.QLogicalIdentifierAttribute;
 import com.koboolean.metamora.data.logical.domain.entity.QLogicalModel;
 import com.koboolean.metamora.data.mapping.domain.dto.ModelMappingDto;
+import com.koboolean.metamora.data.mapping.domain.dto.ModelMappingQualityDto;
 import com.koboolean.metamora.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.koboolean.metamora.data.mapping.domain.entity.QEntityTableMapping;
 import com.koboolean.metamora.data.schema.domain.entity.QSchemaInfo;
@@ -25,8 +29,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 논리·물리 매핑 조회 (M-7). 목록·현황 집계·후보를 DB 에서 걸러 페이징한다.
@@ -46,6 +53,9 @@ public class ModelMappingQueryRepository {
     private static final QColumnInfo column = QColumnInfo.columnInfo;
     private static final QStandardTerm attributeTerm = new QStandardTerm("attributeTerm");
     private static final QStandardTerm columnTerm = new QStandardTerm("columnTerm");
+    private static final QStandardDomain attributeDomain = new QStandardDomain("attributeDomain");
+    private static final QLogicalIdentifier identifier = QLogicalIdentifier.logicalIdentifier;
+    private static final QLogicalIdentifierAttribute identifierAttribute = QLogicalIdentifierAttribute.logicalIdentifierAttribute;
 
     /** 그리드 정렬 필드 → 조회 컬럼 (목록에 없는 필드는 무시한다. 정렬을 보내지 않으면 이름순) */
     private static final Map<String, ComparableExpressionBase<?>> ENTITY_SORTS = Map.of(
@@ -65,6 +75,7 @@ public class ModelMappingQueryRepository {
     public Page<ModelMappingDto.EntityRow> findEntityRows(Long projectId, ModelMappingDto.EntitySearch search, Pageable pageable) {
         BooleanBuilder where = new BooleanBuilder(entity.projectId.eq(projectId));
         if (search.modelId() != null) where.and(model.id.eq(search.modelId()));
+        if (search.entityId() != null) where.and(entity.id.eq(search.entityId()));
         if (search.schemaId() != null) where.and(schema.id.eq(search.schemaId()));
         if (search.mapped() != null) where.and(search.mapped() ? mapping.id.isNotNull() : mapping.id.isNull());
         if (search.searchQuery() != null && !search.searchQuery().isBlank()) {
@@ -82,6 +93,14 @@ public class ModelMappingQueryRepository {
 
     public ModelMappingDto.EntityRow findEntityRow(Long projectId, Long mappingId) {
         return entityRows(new BooleanBuilder(entity.projectId.eq(projectId)).and(mapping.id.eq(mappingId))).fetchFirst();
+    }
+
+    /** 엔터티 또는 테이블로 찾은 1행 (다른 화면의 매핑 표시용). 엔터티는 매핑이 없어도 나오고, 테이블은 매핑된 것만 나온다 */
+    public ModelMappingDto.EntityRow findEntityRow(Long projectId, Long entityId, Long tableId) {
+        BooleanBuilder where = new BooleanBuilder(entity.projectId.eq(projectId));
+        if (entityId != null) where.and(entity.id.eq(entityId));
+        if (tableId != null) where.and(table.id.eq(tableId));
+        return entityRows(where).fetchFirst();
     }
 
     private JPAQuery<ModelMappingDto.EntityRow> entityRows(BooleanBuilder where) {
@@ -162,6 +181,62 @@ public class ModelMappingQueryRepository {
                 .where(where)
                 .orderBy(model.modelName.asc(), model.id.asc())
                 .fetch();
+    }
+
+    // ------------------------------------------------------------------ 정합성 비교 (M-7 2차)
+
+    /**
+     * 정합성 진단 원본 : 모델의 엔터티 × 속성 (엔터티명 → 속성 순서). 매핑·컬럼·양쪽 표준 용어·논리 속성의 도메인을 한 번에 읽는다.
+     * 모델·엔터티·이름 조건은 DB 에서 거른다 (진단 유형·상태는 타입 매핑이 자바 코드라 서비스에서 거른다).
+     */
+    public List<ModelMappingQualityDto.Source> findQualitySources(Long projectId, ModelMappingQualityDto.Search search) {
+        BooleanBuilder where = new BooleanBuilder(entity.projectId.eq(projectId)).and(model.id.eq(search.modelId()));
+        if (search.entityId() != null) where.and(entity.id.eq(search.entityId()));
+        if (search.searchQuery() != null && !search.searchQuery().isBlank()) {
+            String keyword = search.searchQuery().trim();
+            where.and(switch (search.searchColumn() == null ? "" : search.searchColumn()) {
+                case "attributeName" -> attribute.attributeName.containsIgnoreCase(keyword);
+                case "columnName" -> column.columnName.containsIgnoreCase(keyword);
+                default -> entity.entityName.containsIgnoreCase(keyword);
+            });
+        }
+        return query.select(Projections.constructor(ModelMappingQualityDto.Source.class,
+                        model.id, model.modelName, entity.id, entity.entityName, mapping.id,
+                        schema.id, schema.schemaName, table.id, table.tableName,
+                        attribute.id, attribute.attributeName, attribute.isRequired,
+                        attributeTerm.id, attributeTerm.commonStandardTermName, attributeTerm.commonStandardTermAbbreviation,
+                        attributeDomain.id, attributeDomain.commonStandardDomainName, attributeDomain.dataType, attributeDomain.dataLength, attributeDomain.dataDecimalLength,
+                        attributeMapping.id, column.id, column.columnName,
+                        column.dataType, column.maxLength, column.precision, column.scale,
+                        column.isNullable, column.isRequired, column.isPk,
+                        columnTerm.id, columnTerm.commonStandardTermName))
+                .from(entity)
+                .join(entity.model, model)
+                .leftJoin(mapping).on(mapping.entity.eq(entity))
+                .leftJoin(mapping.table, table)
+                .leftJoin(table.schema, schema)
+                .leftJoin(attribute).on(attribute.entity.eq(entity))
+                .leftJoin(attribute.standardTerm, attributeTerm)
+                .leftJoin(attributeTerm.standardDomain, attributeDomain)
+                .leftJoin(attributeMapping).on(attributeMapping.attribute.eq(attribute))
+                .leftJoin(attributeMapping.column, column)
+                .leftJoin(column.standardTerms, columnTerm)
+                .where(where)
+                .orderBy(entity.entityName.asc(), entity.id.asc(), attribute.sortOrder.asc().nullsLast(), attribute.id.asc())
+                .fetch();
+    }
+
+    /** 모델의 주 식별자 : 엔터티 ID → 주 식별자를 이루는 속성 ID. 주 식별자가 없는 엔터티는 키가 없다 */
+    public Map<Long, Set<Long>> findPrimaryIdentifierAttributes(Long projectId, Long modelId) {
+        Map<Long, Set<Long>> result = new HashMap<>();
+        query.select(entity.id, identifierAttribute.attribute.id)
+                .from(identifierAttribute)
+                .join(identifierAttribute.identifier, identifier)
+                .join(identifier.entity, entity)
+                .where(entity.projectId.eq(projectId), entity.model.id.eq(modelId), identifier.isPrimary.isTrue())
+                .fetch()
+                .forEach(row -> result.computeIfAbsent(row.get(entity.id), key -> new HashSet<>()).add(row.get(identifierAttribute.attribute.id)));
+        return result;
     }
 
     private static OrderSpecifier<?>[] orders(Sort sort, Map<String, ComparableExpressionBase<?>> allowed, OrderSpecifier<?>... defaults) {

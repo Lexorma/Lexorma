@@ -29,7 +29,13 @@ function normalizeKorName(value: unknown) {
  * 테이블 등록(C) / 수정(U)
  * 한글명을 입력하면 표준 단어를 조회해 프로젝트 접두어 + 단어 영문약어로 테이블명을 만든다.
  */
-export function TableForm({ type, row = {}, schemas, onSaved }: { type: 'C' | 'U'; row?: Row; schemas: Schema[]; onSaved: () => void }) {
+export function TableForm({ type, row = {}, schemas, onSaved }: {
+  type: 'C' | 'U';
+  row?: Row;
+  schemas: Schema[];
+  /** 저장한 테이블명 (등록은 표준 단어로 만든 이름 — 물리 ERD 가 새 테이블을 찾는 데 쓴다) */
+  onSaved: (saved: { tableName: string }) => void;
+}) {
   const dialog = useDialog();
   const originalKorName = normalizeKorName(row.tableKorName);
   const originalTableName = row.tableName ?? '';
@@ -111,7 +117,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: { type: 'C' | 'U
 
     dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : t('수정하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
-      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), onSaved);
+      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName }));
     });
   };
 

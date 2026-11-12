@@ -143,6 +143,8 @@ class ReferenceSyncIntegrationTest {
         TableInfo child = table(projectId, "TB_CHILD");
         ColumnInfo ref = column(projectId, child, "PARENT_ID", false, "TB_PARENT");
         Long relationId = derived(ref).getId();
+        // 승인된 테이블은 수정할 수 없으므로 승인취소 후에 이름을 바꾼다
+        tableDesignService.updateTableIsApproval(false, admin, List.of(TableInfoDto.builder().id(parent.getId()).build(), TableInfoDto.builder().id(child.getId()).build()));
 
         tableDesignService.updateTable(TableInfoDto.builder().id(parent.getId()).tableName("TB_PARENT_V2").tableDescription("부모").isMasterTable("N").build(), admin);
         assertThat(columnInfoRepository.findById(ref.getId()).orElseThrow().getRefTableName()).isEqualTo("TB_PARENT_V2");

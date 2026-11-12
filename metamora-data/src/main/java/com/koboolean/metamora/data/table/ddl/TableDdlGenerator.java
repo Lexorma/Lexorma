@@ -47,9 +47,15 @@ public final class TableDdlGenerator {
     /**
      * 컬럼 설정 밖의 물리 모델 (M-1)
      * @param relations 이 테이블이 원본인 사용자 정의 FK 관계 (참조 테이블명에서 만든 REF_COLUMN 관계는 컬럼의 참조 테이블명으로 이미 만든다)
+     * @param targetUniqueKeys 관계 대상 테이블 ID → 그 테이블의 UNIQUE 제약·고유 인덱스 컬럼명 구성 (FK 가 참조할 수 있는 키인지 판단)
      */
-    public record Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations) {
+    public record Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations,
+                         Map<Long, List<Set<String>>> targetUniqueKeys) {
         public static final Extras NONE = new Extras(List.of(), List.of(), List.of());
+
+        public Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations) {
+            this(constraints, indexes, relations, Map.of());
+        }
     }
 
     private static final Pattern TYPE_PATTERN = Pattern.compile("^\\s*([A-Za-z][A-Za-z0-9_ ]*?)\\s*(?:\\(\\s*([0-9]+)\\s*(?:,\\s*([0-9]+)\\s*)?\\))?\\s*$");
@@ -187,7 +193,7 @@ public final class TableDdlGenerator {
 
         // 외래키 : 참조 테이블의 단일 PK 를 참조한다. 테이블 생성 순서와 관계없이 실행할 수 있도록 ALTER TABLE 로 따로 만든다.
         List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, warnings, defaultSchemaName);
-        foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), warnings, defaultSchemaName));
+        foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), extras.targetUniqueKeys(), warnings, defaultSchemaName));
         if (!foreignKeys.isEmpty()) {
             sql.append("\n").append(String.join("\n", foreignKeys)).append("\n");
         }
@@ -247,20 +253,20 @@ public final class TableDdlGenerator {
     }
 
     /**
-     * 사용자 정의 관계(복합 FK 포함). 대상 컬럼이 대상 테이블의 PK 전체(또는 고유값 컬럼 1개)일 때만 만들고, 아니면 경고한다.
+     * 사용자 정의 관계(복합 FK 포함). 대상 컬럼 구성이 대상 테이블의 키({@link #referencesKey})일 때만 만들고, 아니면 경고한다.
+     * 등록할 때 서버가 같은 기준으로 거절하지만, 등록 뒤에 대상의 PK·UNIQUE 가 바뀐 관계는 남아 있을 수 있다 (자동으로 지우지 않는다).
      * 컬럼 쌍 순서는 관계에 저장한 순서를 그대로 쓴다.
      */
-    static List<String> relationForeignKeys(DbType db, String qualifiedName, List<TableRelation> relations, List<String> warnings, String defaultSchemaName) {
+    static List<String> relationForeignKeys(DbType db, String qualifiedName, List<TableRelation> relations,
+                                            Map<Long, List<Set<String>>> targetUniqueKeys, List<String> warnings, String defaultSchemaName) {
         List<String> statements = new ArrayList<>();
         for (TableRelation relation : relations) {
             TableInfo target = relation.getTargetTable();
             List<ColumnInfo> sources = relation.getColumns().stream().map(c -> c.getSourceColumn()).toList();
             List<ColumnInfo> targets = relation.getColumns().stream().map(c -> c.getTargetColumn()).toList();
-            Set<String> pk = new HashSet<>(target.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList());
-            Set<String> referenced = new HashSet<>(targets.stream().map(ColumnInfo::getColumnName).toList());
-            boolean singleUnique = targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique());
+            List<Set<String>> uniqueKeys = target.getId() == null ? List.of() : targetUniqueKeys.getOrDefault(target.getId(), List.of());
 
-            if (!referenced.equals(pk) && !singleUnique) {
+            if (!referencesKey(target, targets, uniqueKeys)) {
                 warnings.add(Messages.get("{0} : 대상 컬럼이 {1} 의 PK(또는 고유값 컬럼)가 아니라 FK 를 만들지 않았습니다.", relation.getRelationName(), target.getTableName()));
                 continue;
             }
@@ -273,6 +279,21 @@ public final class TableDdlGenerator {
             }
         }
         return statements;
+    }
+
+    /**
+     * FK 가 참조할 수 있는 키인가 : 대상 컬럼 구성이 ① 대상 테이블 PK 전체 ② 고유값 컬럼 1개 ③ UNIQUE 제약·고유 인덱스 1개의 컬럼 전체와 같을 때.
+     * 컬럼 각각이 어떤 키에 들어 있는 것만으로는 인정하지 않는다 (복합 키의 일부, 서로 다른 키의 컬럼 조합은 키가 아니다).
+     * FK 등록 검증(물리 모델 서비스)과 DDL 생성이 같은 기준을 쓴다.
+     *
+     * @param uniqueKeys 대상 테이블의 UNIQUE 제약·고유 인덱스 컬럼명 구성
+     */
+    public static boolean referencesKey(TableInfo target, List<ColumnInfo> targets, List<Set<String>> uniqueKeys) {
+        Set<String> referenced = new HashSet<>(targets.stream().map(ColumnInfo::getColumnName).toList());
+        Set<String> pk = new HashSet<>(target.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList());
+        if (!pk.isEmpty() && referenced.equals(pk)) return true;
+        if (targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique())) return true;
+        return uniqueKeys.stream().anyMatch(referenced::equals);
     }
 
     /**
@@ -304,6 +325,40 @@ public final class TableDdlGenerator {
             warnings.add(Messages.get("{0} : 참조 PK 와 길이/정밀도가 다릅니다. 값이 들어가지 않거나 잘리지 않도록 맞추는 것을 권장합니다.", column.getColumnName()) + pair);
         }
     }
+
+    /**
+     * FK 컬럼과 참조 컬럼의 타입이 대상 DB 에서 FK 로 묶일 수 있다고 확실히 말할 수 있는가 (대상 DB 타입으로 바꾼 값 기준).
+     * 확실한 조합만 true 이고, 판단할 수 없는 조합(DB 고유 타입, 서로 다른 타입 계열)은 false 다.
+     * <ul>
+     *   <li>바꾼 타입이 완전히 같다 (길이·정밀도 포함) : 모든 DB</li>
+     *   <li>문자 타입끼리 길이만 다르다 (VARCHAR·VARCHAR2 / CHAR) : 모든 DB</li>
+     *   <li>NUMERIC·NUMBER 끼리 정밀도만 다르다 : PostgreSQL·Oracle. MySQL·MariaDB 는 고정 소수 타입의 크기가 같아야 한다</li>
+     *   <li>SMALLINT·INTEGER·BIGINT 끼리 : PostgreSQL. (Oracle 은 모두 NUMBER 라 위 규칙, MySQL·MariaDB 는 정수 크기가 같아야 한다)</li>
+     * </ul>
+     */
+    public static boolean isReferenceTypeCompatible(DbType dbType, ColumnInfo column, ColumnInfo referenced) {
+        DbType db = DbType.orDefault(dbType);
+        List<String> ignored = new ArrayList<>();
+        String type = mapType(db, column, ignored);
+        String refType = mapType(db, referenced, ignored);
+        if (type.equals(refType)) return true;
+
+        String base = baseType(type);
+        String refBase = baseType(refType);
+        if (base.equals(refBase)) {
+            if (STRING_TYPES.contains(base)) return true;
+            return (base.equals("NUMERIC") || base.equals("NUMBER")) && !isMySqlFamily(db);
+        }
+        return db == DbType.POSTGRESQL && INTEGER_TYPES.contains(base) && INTEGER_TYPES.contains(refBase);
+    }
+
+    /** 대상 DB 타입으로 바꾼 값 (FK 타입 검증의 오류 문구용) */
+    public static String mappedType(DbType dbType, ColumnInfo column) {
+        return mapType(DbType.orDefault(dbType), column, new ArrayList<>());
+    }
+
+    private static final Set<String> STRING_TYPES = Set.of("VARCHAR", "VARCHAR2", "CHAR");
+    private static final Set<String> INTEGER_TYPES = Set.of("SMALLINT", "INTEGER", "BIGINT");
 
     public static String baseType(String type) {
         int paren = type.indexOf('(');

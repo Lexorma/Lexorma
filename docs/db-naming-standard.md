@@ -14,6 +14,8 @@
 - 이름은 따옴표 없이 쓴다. PostgreSQL 은 소문자, H2 는 대문자로 저장되지만 같은 이름으로 동작한다.
 - 제외 : `SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES` (spring-session-jdbc 고정 스키마), `flyway_schema_history`.
 
+> 화면의 **물리명 추천**(논리·물리 매핑 > 물리명 추천)도 같은 사전을 근거로 한다 : 컬럼명 = 표준 용어의 영문약어, 테이블명 = 접두어 + 승인된 표준 단어의 영문약어. 정책은 [physical-name-recommendation-m7.md](physical-name-recommendation-m7.md).
+
 ## 예제 데이터
 
 `V0__init.sql` 끝에서 기본 프로젝트 `META-MORA`(PRJ_SN 0, 테이블 접두어 `TB_`)에 예제를 넣는다. 모두 승인 상태.

@@ -52,6 +52,7 @@ export const MENU: MenuEntry[] = [
     items: [
       { id: 'logical-model', label: t('논리 모델 관리'), path: '/logicalModel' },
       { id: 'logical-erd', label: t('논리 ERD'), path: '/logicalErd' },
+      { id: 'model-mapping', label: t('논리·물리 매핑'), path: '/modelMapping' },
     ],
   },
   {

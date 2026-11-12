@@ -25,8 +25,14 @@ public final class ModelMappingDto {
                             Long attributeCount, Long mappedAttributeCount) {
     }
 
-    /** 엔터티 목록 조건. mapped : true 매핑된 엔터티만 / false 매핑 안 된 엔터티만(매핑 후보) / null 전체. 검색 : entityName / tableName */
-    public record EntitySearch(Long modelId, Long schemaId, Boolean mapped, String searchColumn, String searchQuery) {
+    /**
+     * 엔터티 목록 조건. mapped : true 매핑된 엔터티만 / false 매핑 안 된 엔터티만(매핑 후보) / null 전체. 검색 : entityName / tableName.
+     * entityId : 그 엔터티 1건만 (다른 화면에서 넘어온 엔터티 — 이름 검색으로 대신하지 않는다)
+     */
+    public record EntitySearch(Long modelId, Long schemaId, Boolean mapped, String searchColumn, String searchQuery, Long entityId) {
+        public EntitySearch(Long modelId, Long schemaId, Boolean mapped, String searchColumn, String searchQuery) {
+            this(modelId, schemaId, mapped, searchColumn, searchQuery, null);
+        }
     }
 
     /** 매핑된 엔터티의 속성 1행. 매핑하지 않은 속성은 mappingId·column 이 null 이다. 표준 용어는 비교용 조회 값이다 */

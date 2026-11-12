@@ -246,7 +246,7 @@ class TableDesignServiceImplTest {
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("TB_USER").tableKorName("사용_내역_관리")
                 .tableDescription("사용 내역").isMasterTable("N").sortOrder(1).build();
         stubApprovedWords();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("USE_HIST_MGMT", 1L)).thenReturn(List.of());
 
         service.updateTable(dto, login);
@@ -263,7 +263,7 @@ class TableDesignServiceImplTest {
         table.setTableKorName("사용 내역 관리");
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("USE_HIST_MGMT").tableKorName("")
                 .tableDescription("설명 변경").isMasterTable("N").sortOrder(1).build();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("USE_HIST_MGMT", 1L)).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
@@ -278,7 +278,7 @@ class TableDesignServiceImplTest {
         AccountDto login = AccountDto.builder().projectId(1L).build();
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("TB_USER").tableDescription("사용자").isMasterTable("N").sortOrder(2).build();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("TB_USER", 1L)).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
@@ -296,7 +296,7 @@ class TableDesignServiceImplTest {
         table.getColumns().add(own);
         ColumnInfo referencing = ColumnInfo.builder().id(20L).tableName("TB_ORDER").refTableName("TB_USER").build();
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("tb_member").tableDescription("회원").isMasterTable("N").sortOrder(1).build();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("TB_MEMBER", 1L)).thenReturn(List.of());
         when(columnInfoRepository.findAllByProjectIdAndRefTableName(1L, "TB_USER")).thenReturn(List.of(referencing));
 
@@ -313,7 +313,7 @@ class TableDesignServiceImplTest {
         AccountDto login = AccountDto.builder().projectId(1L).build();
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("TB_USER").tableDescription("사용자").isMasterTable("N").sortOrder(1).build();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("TB_USER", 1L)).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
@@ -327,7 +327,7 @@ class TableDesignServiceImplTest {
         AccountDto login = AccountDto.builder().projectId(1L).build();
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("tb_member").tableDescription("회원").isMasterTable("Y").sortOrder(3).build();
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
         when(tableInfoRepository.findAllByTableNameAndProjectId("TB_MEMBER", 1L)).thenReturn(List.of());
 
         service.updateTable(dto, login);
@@ -378,10 +378,32 @@ class TableDesignServiceImplTest {
     }
 
     @Test
+    @DisplayName("승인된 테이블은 수정할 수 없다 (승인취소 후 수정)")
+    void updateApprovedRejected() {
+        TableInfo table = table(1L, "TB_USER", true);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
+
+        assertThatThrownBy(() -> service.updateTable(TableInfoDto.builder().id(1L).tableName("TB_MEMBER").tableDescription("회원").isMasterTable("N").build(),
+                AccountDto.builder().projectId(1L).build()))
+                .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        assertThat(table.getTableName()).isEqualTo("TB_USER");
+    }
+
+    @Test
+    @DisplayName("로그인 프로젝트에 없는 테이블은 수정할 수 없다")
+    void updateUnknownRejected() {
+        when(tableInfoRepository.findForUpdate(9L, 1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateTable(TableInfoDto.builder().id(9L).tableName("TB_MEMBER").isMasterTable("N").build(),
+                AccountDto.builder().projectId(1L).build()))
+                .extracting("errorCode").isEqualTo(ErrorCode.TABLE_IS_NOT_DEFINED);
+    }
+
+    @Test
     @DisplayName("승인 상태 일괄 변경")
     void approval() {
         TableInfo table = table(1L, "TB_USER", false);
-        when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
 
         service.updateTableIsApproval(true, SecurityTestSupport.loginAsAdmin(1L), List.of(TableInfoDto.builder().id(1L).build()));
 
@@ -393,6 +415,6 @@ class TableDesignServiceImplTest {
     void approvalDenied() {
         assertThatThrownBy(() -> service.updateTableIsApproval(true, SecurityTestSupport.loginAsUser(1L), List.of(TableInfoDto.builder().id(1L).build())))
                 .extracting("errorCode").isEqualTo(ErrorCode.APPROVAL_PERMISSION_DENIED);
-        verify(tableInfoRepository, never()).findByIdAndProjectId(any(), any());
+        verify(tableInfoRepository, never()).findForUpdate(any(), any());
     }
 }

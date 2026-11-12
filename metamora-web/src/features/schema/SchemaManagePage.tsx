@@ -48,7 +48,11 @@ export function SchemaManagePage() {
       <div className="dt-container">
         <div className="dt-layout-row dt-layout-table">
           <div className="dt-layout-cell dt-layout-full">
-            <table id="schemaManageGrid" className="table table-striped table-bordered dataTable">
+            <table id="schemaManageGrid" className="table table-striped table-bordered dataTable grid-fixed">
+              {/* 컬럼 폭 고정 (공통 Grid 의 width 와 같은 방식) */}
+              <colgroup>
+                {(approvalAvailable ? ['16%', '24%', '8%', '13%', '13%', '8%', '8%', '10%'] : ['18%', '28%', '8%', '14%', '14%', '9%', '9%']).map((width, index) => <col key={index} style={{ width }} />)}
+              </colgroup>
               <thead>
                 <tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr>
               </thead>

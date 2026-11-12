@@ -36,6 +36,8 @@ export interface GridColumn {
   isSearch?: boolean;
   isFilter?: boolean;
   isVisible?: boolean;
+  /** 컬럼 폭 (예: '20%', 120). 하나라도 주면 표를 고정 배치로 그려 데이터에 따라 폭이 바뀌지 않는다 */
+  width?: string | number;
 }
 
 export type GridAction = 'add' | 'save' | 'modified' | 'delete' | 'active' | 'unactive' | 'print';
@@ -314,6 +316,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   };
 
   const headers = table.getHeaderGroups()[0]?.headers ?? [];
+  // 폭을 정한 그리드 : 조회 결과·페이지가 바뀌어도 컬럼 폭이 그대로다
+  const fixed = columns.some((c) => c.width != null);
   const tableRows = table.getRowModel().rows;
 
   return (
@@ -379,7 +383,12 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
 
         <div className="dt-layout-row dt-layout-table">
           <div className="dt-layout-cell dt-layout-full">
-            <table id={id} className="table table-striped table-bordered dataTable">
+            <table id={id} className={`table table-striped table-bordered dataTable${fixed ? ' grid-fixed' : ''}`}>
+              {fixed && (
+                <colgroup>
+                  {headers.map((header) => <col key={header.id} style={{ width: (header.column.columnDef.meta as GridColumn).width }} />)}
+                </colgroup>
+              )}
               <thead>
                 <tr>
                   {headers.map((header) => {

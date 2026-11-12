@@ -22,6 +22,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -136,22 +137,40 @@ public class StandardizationQualityService {
     }
 
     /**
+     * 컬럼 정의와 도메인 정의의 비교 결과 (프로젝트 DB 타입 문자열). attributes 가 비어 있으면 다른 항목이 없다.
+     * 타입이 다르면 actual·expected 는 괄호 앞의 기본 타입이다.
+     */
+    public record DomainComparison(String actual, String expected, List<Attribute> attributes) {
+    }
+
+    private static void domainMismatch(DbType db, ColumnRow row, List<Issue> issues) {
+        DomainComparison comparison = compareDomain(db, row.dataType(), row.maxLength(), row.precision(), row.scale(),
+                row.domainDataType(), row.domainLength(), row.domainDecimalLength());
+        if (!comparison.attributes().isEmpty()) {
+            issues.add(issue(row, IssueType.DOMAIN_DEFINITION_MISMATCH, comparison.actual(), comparison.expected(), comparison.attributes(),
+                    Messages.get("표준 도메인 정의와 다릅니다 : {0}", String.join(", ", comparison.attributes().stream().map(StandardizationQualityService::label).toList()))));
+        }
+    }
+
+    /**
      * 컬럼과 도메인을 같은 규칙으로 프로젝트 DB 타입으로 바꿔 비교한다 (예: Oracle 에서 VARCHAR ↔ VARCHAR2, INT ↔ NUMBER(10) 은 같다).
      * 도메인에 없는 항목은 보지 않는다 : 타입이 없으면 길이·소수 자릿수만, 길이가 없으면(0 포함) 타입만.
      * 타입이 다르면 길이는 비교하지 않는다 (서로 다른 타입의 길이는 뜻이 다르다).
+     * 논리·물리 정합성 비교(M-7 2차)도 이 규칙을 쓴다.
      */
-    private static void domainMismatch(DbType db, ColumnRow row, List<Issue> issues) {
-        boolean domainHasType = row.domainDataType() != null && !row.domainDataType().isBlank();
+    public static DomainComparison compareDomain(DbType db, String dataType, Integer maxLength, BigDecimal precision, Integer scale,
+                                                 String domainDataType, Integer domainDataLength, Integer domainDecimalLength) {
+        boolean domainHasType = domainDataType != null && !domainDataType.isBlank();
         // 길이 0 은 미정의다 (표준 용어 화면도 0 이면 길이를 붙이지 않는다)
-        Integer domainLength = row.domainLength() == null || row.domainLength() == 0 ? null : row.domainLength();
+        Integer domainLength = domainDataLength == null || domainDataLength == 0 ? null : domainDataLength;
         List<String> ignored = new ArrayList<>(); // 길이 미지정 등 DDL 경고는 여기서 쓰지 않는다
 
-        String actual = TableDdlGenerator.mapType(db, ColumnInfo.builder().dataType(row.dataType()).maxLength(row.maxLength())
-                .precision(row.precision()).scale(row.scale()).build(), ignored);
-        String expected = TableDdlGenerator.mapType(db, ColumnInfo.builder().dataType(domainHasType ? row.domainDataType() : row.dataType())
-                .maxLength(domainLength).scale(row.domainDecimalLength()).build(), ignored);
+        String actual = TableDdlGenerator.mapType(db, ColumnInfo.builder().dataType(dataType).maxLength(maxLength)
+                .precision(precision).scale(scale).build(), ignored);
+        String expected = TableDdlGenerator.mapType(db, ColumnInfo.builder().dataType(domainHasType ? domainDataType : dataType)
+                .maxLength(domainLength).scale(domainDecimalLength).build(), ignored);
         if (actual.equalsIgnoreCase(expected)) {
-            return;
+            return new DomainComparison(actual, expected, List.of());
         }
 
         String base = TableDdlGenerator.baseType(actual).toUpperCase(Locale.ROOT);
@@ -166,14 +185,11 @@ public class StandardizationQualityService {
             if (domainLength != null && !Objects.equals(actualArgs[0], expectedArgs[0])) {
                 attributes.add(NUMERIC_TYPES.contains(base) ? Attribute.PRECISION : Attribute.LENGTH);
             }
-            if (row.domainDecimalLength() != null && !Objects.equals(actualArgs[1], expectedArgs[1])) {
+            if (domainDecimalLength != null && !Objects.equals(actualArgs[1], expectedArgs[1])) {
                 attributes.add(Attribute.SCALE);
             }
         }
-        if (!attributes.isEmpty()) {
-            issues.add(issue(row, IssueType.DOMAIN_DEFINITION_MISMATCH, actual, expected, attributes,
-                    Messages.get("표준 도메인 정의와 다릅니다 : {0}", String.join(", ", attributes.stream().map(StandardizationQualityService::label).toList()))));
-        }
+        return new DomainComparison(actual, expected, attributes);
     }
 
     /** "NUMERIC(15,2)" → [15, 2], "VARCHAR(100)" → [100, 0], "DATE" → [null, 0] */

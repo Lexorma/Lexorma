@@ -10,6 +10,7 @@ import java.util.List;
  * @param tableName   테이블명
  * @param ddl         CREATE TABLE / INDEX / COMMENT 스크립트
  * @param warnings    확인이 필요한 항목 (길이 미지정, PK 없음 등)
+ * @param pendingApprovals DDL 에 들어 있는 승인 대기 항목 (종류별 한 줄). DDL 은 현재 설계 모델을 그대로 출력하며 승인 여부로 거르지 않는다
  */
-public record TableDdlDto(String dbType, String dbTypeLabel, String tableName, String ddl, List<String> warnings) {
+public record TableDdlDto(String dbType, String dbTypeLabel, String tableName, String ddl, List<String> warnings, List<String> pendingApprovals) {
 }

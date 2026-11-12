@@ -398,7 +398,7 @@ class ModelMappingIntegrationTest {
         EntityMapping mapping = service.saveEntityMapping(admin, new EntityMapping(null, entity.id(), table.getId()));
 
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, projectId, "900", "ROLE_VIEWER");
-        assertThat(controller.selectEntityRows(viewer, 0, 10, null, null, null, model.id(), null, null).getBody()).containsEntry("recordsTotal", 1L);
+        assertThat(controller.selectEntityRows(viewer, 0, 10, null, null, null, model.id(), null, null, null).getBody()).containsEntry("recordsTotal", 1L);
         assertThat(controller.selectEntityMapping(viewer, mapping.id()).getBody().attributes()).hasSize(1);
         assertThat(controller.selectUnmappedTables(viewer, 0, 10, null, null, null).getBody()).containsEntry("recordsTotal", 0L);
         assertThat(controller.selectStatus(viewer, model.id()).getBody()).hasSize(1);
@@ -416,7 +416,7 @@ class ModelMappingIntegrationTest {
         assertThat(logicalService.selectEntity(user, entity.id()).isApproval()).isTrue();
 
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "902", "ROLE_NOT_APPROVE");
-        assertThatThrownBy(() -> controller.selectEntityRows(notApproved, 0, 10, null, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.selectEntityRows(notApproved, 0, 10, null, null, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.selectStatus(notApproved, null)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.selectUnmappedTables(notApproved, 0, 10, null, null, null)).isInstanceOf(AccessDeniedException.class);
     }

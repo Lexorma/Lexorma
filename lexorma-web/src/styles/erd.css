@@ -99,3 +99,16 @@ dialog .erd-key-form .form-control { flex: 0 1 200px; width: 200px; min-width: 1
 dialog .erd-key-form .form-control.erd-key-wide { flex: 1 1 260px; }
 dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
 .erd-key-columns { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 260px; }
+
+/* 버전 비교 ERD (M-10 ③) : 노드·행의 변경 표시. 색만으로 구분하지 않도록 기호·글자(+ 추가 / − 삭제 / ~ 수정)와 선 모양(삭제 = 점선·취소선)을 함께 쓴다 */
+.erd-diff-added { --erd-diff: var(--gh-success); --erd-diff-subtle: var(--gh-success-subtle); }
+.erd-diff-removed { --erd-diff: var(--gh-danger); --erd-diff-subtle: var(--gh-danger-subtle); }
+.erd-diff-modified { --erd-diff: var(--gh-accent); --erd-diff-subtle: var(--gh-accent-subtle); }
+.erd-table[class*="erd-diff-"] { border-color: var(--erd-diff); box-shadow: 0 0 0 2px var(--erd-diff); }
+.erd-table.erd-diff-removed { border-style: dashed; }
+.erd-table[class*="erd-diff-"] > header { padding-right: 62px; background: var(--erd-diff-subtle); }
+.erd-table.erd-diff-removed > header strong { text-decoration: line-through; }
+.erd-diff-badge { position: absolute; top: 5px; right: 6px; padding: 0 6px; border: 1px solid var(--erd-diff); border-radius: 2em; background: var(--gh-canvas); color: var(--erd-diff); font-size: 10px; font-style: normal; font-weight: 600; line-height: 16px; white-space: nowrap; }
+.erd-column[class*="erd-diff-"] { background: var(--erd-diff-subtle); }
+.erd-column[class*="erd-diff-"] span i { margin-right: 4px; color: var(--erd-diff); font-style: normal; font-weight: 700; }
+.erd-column.erd-diff-removed span { text-decoration: line-through; text-decoration-color: var(--gh-danger); }

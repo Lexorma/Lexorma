@@ -56,6 +56,20 @@ public class ModelVersionRestController {
         return ResponseEntity.ok(versionService.compare(accountDto, baseId, targetId));
     }
 
+    @Operation(summary = "버전 비교 ERD", description = "버전 비교 결과를 ERD 로 그릴 범위. kind = PHYSICAL(테이블·컬럼·관계) 또는 LOGICAL(엔터티·속성·관계). "
+            + "판정은 버전 비교와 같고, 모델 전체가 아니라 달라진 노드와 관계로 이어진 이웃만 limit(기본 100, 최대 300)개까지 준다. "
+            + "focusType·focusId 로 객체를 지정하면 그 객체가 속한 노드와 이웃부터 채운다. 조회만 하며 버전도 현재 모델도 바꾸지 않는다.")
+    @GetMapping("/compare/erd")
+    public ResponseEntity<ModelVersionDto.ErdComparison> compareErd(@AuthenticationPrincipal AccountDto accountDto,
+                                                                    @RequestParam(value = "baseId") Long baseId,
+                                                                    @RequestParam(value = "targetId", required = false) Long targetId,
+                                                                    @RequestParam(value = "kind") String kind,
+                                                                    @RequestParam(value = "focusType", required = false) String focusType,
+                                                                    @RequestParam(value = "focusId", required = false) Long focusId,
+                                                                    @RequestParam(value = "limit", required = false) Integer limit) {
+        return ResponseEntity.ok(versionService.compareErd(accountDto, baseId, targetId, kind, focusType, focusId, limit));
+    }
+
     @Operation(summary = "버전 상세", description = "버전명·설명·생성자·생성 일시·대상 종류별 객체 수.")
     @GetMapping("/{id}")
     public ResponseEntity<ModelVersionDto.Summary> detail(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {

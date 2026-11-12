@@ -29,9 +29,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 
 /**
- * 모델 버전 (M-9 3차) : 만들기·조회·비교. 수정·삭제는 없다.
+ * 모델 버전 (M-9 3차) : 만들기·조회·비교. 수정·삭제는 없다. 비교 결과를 ERD 로 그릴 범위(M-10 ③)도 여기서 같은 판정으로 만든다.
  * 모델 내용은 변경 이력과 같은 필드 목록({@link ModelChangeRecorder#currentState})으로 읽은 프로젝트 전체 상태를 JSON 으로 저장한 것이다.
  * 모든 조회는 로그인한 프로젝트의 버전만 본다.
  */
@@ -44,7 +46,8 @@ public class ModelVersionService {
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final List<String> RESULTS = List.of("ADDED", "REMOVED", "MODIFIED", "UNCHANGED");
+    private static final String UNCHANGED = "UNCHANGED";
+    private static final List<String> RESULTS = List.of("ADDED", "REMOVED", "MODIFIED", UNCHANGED);
 
     private final ModelVersionRepository repository;
     private final ProjectRepository projectRepository;
@@ -104,45 +107,173 @@ public class ModelVersionService {
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ModelVersionDto.Comparison compare(AccountDto accountDto, Long baseId, Long targetId) {
+        Models models = models(accountDto, baseId, targetId);
+
+        Map<String, Integer> totals = zero();
+        Map<String, Map<String, Integer>> byType = new LinkedHashMap<>();
+        List<ModelVersionDto.Change> changes = new ArrayList<>();
+        Set<String> types = new LinkedHashSet<>(models.before().propertyNames());
+        types.addAll(models.after().propertyNames());
+        for (String type : types) {
+            Map<String, Integer> count = zero();
+            diff(models, type).values().forEach(change -> {
+                count.merge(change.change(), 1, Integer::sum);
+                totals.merge(change.change(), 1, Integer::sum);
+                if (!change.change().equals(UNCHANGED)) changes.add(change);
+            });
+            byType.put(type, count);
+        }
+        return new ModelVersionDto.Comparison(models.base(), models.target(), totals, byType, changes);
+    }
+
+    /** ERD 로 그리는 모델 종류 : 노드(테이블·엔터티), 노드 안의 행(컬럼·속성), 관계선, 그리고 노드에 딸린 그 밖의 객체 */
+    private record ErdKind(String node, String item, String edge, String edgeSource, String edgeTarget, List<String> extras, boolean changedExtrasOnly, String parent) {}
+
+    private static final Map<String, ErdKind> ERD_KINDS = Map.of(
+            // 인덱스·제약조건은 ERD 에 그리지 않으므로 달라진 것만 준다 (테이블에 "변경 있음" 을 표시하고 상세에서 본다)
+            "PHYSICAL", new ErdKind("PHYSICAL_TABLE", "PHYSICAL_COLUMN", "PHYSICAL_RELATION", "sourceTableId", "targetTableId",
+                    List.of("PHYSICAL_INDEX", "PHYSICAL_CONSTRAINT"), true, "tableInfoId"),
+            // 식별자는 속성의 식별자 표시(PI·AI)에 필요해 모두 준다
+            "LOGICAL", new ErdKind("LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_RELATIONSHIP", "sourceEntityId", "targetEntityId",
+                    List.of("LOGICAL_IDENTIFIER"), false, "entityId"));
+    private static final int ERD_LIMIT = 100;
+    private static final int ERD_LIMIT_MAX = 300;
+
+    /**
+     * 비교 결과를 ERD 로 그릴 범위 (M-10 ③). 판정은 {@link #compare} 와 같은 것을 쓰고, 그리는 데 필요한 달라지지 않은 객체(UNCHANGED)를 더한다.
+     * 모델 전체가 아니라 변경 영역만 준다 : 달라진 노드(자신 또는 행·관계·인덱스·제약조건·식별자가 달라진 것)와 관계로 이어진 이웃을
+     * 우선순위(지정한 객체 → 그 이웃 → 달라진 노드 → 달라진 관계의 양 끝 → 달라진 노드의 이웃) 순으로 limit 개까지.
+     * 범위를 넘는 객체는 focusType·focusId 로 지정하면 그 객체가 속한 노드부터 다시 채운다.
+     */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ModelVersionDto.ErdComparison compareErd(AccountDto accountDto, Long baseId, Long targetId, String kindCode, String focusType, Long focusId, Integer limit) {
+        ErdKind kind = kindCode == null ? null : ERD_KINDS.get(kindCode);
+        if (kind == null) throw invalid("ERD 로 비교할 모델 종류가 올바르지 않습니다.");
+        int max = Math.min(Math.max(limit == null ? ERD_LIMIT : limit, 1), ERD_LIMIT_MAX);
+        Models models = models(accountDto, baseId, targetId);
+
+        Map<Long, ModelVersionDto.Change> nodes = diff(models, kind.node());
+        Map<Long, ModelVersionDto.Change> items = diff(models, kind.item());
+        Map<Long, ModelVersionDto.Change> edges = diff(models, kind.edge());
+        List<ModelVersionDto.Change> extras = new ArrayList<>();
+        kind.extras().forEach(type -> diff(models, type).values().stream()
+                .filter(change -> !kind.changedExtrasOnly() || !change.change().equals(UNCHANGED)).forEach(extras::add));
+
+        // 달라진 노드 : 자신이 달라졌거나, 딸린 행·그 밖의 객체가 달라진 것 (ID 순)
+        Set<Long> affected = new TreeSet<>();
+        nodes.forEach((id, change) -> { if (!change.change().equals(UNCHANGED)) affected.add(id); });
+        Stream.concat(items.values().stream(), extras.stream()).filter(change -> !change.change().equals(UNCHANGED))
+                .forEach(change -> affected.addAll(references(change, kind.parent())));
+        Set<Long> changedEnds = new TreeSet<>();
+        Map<Long, Set<Long>> neighbors = new LinkedHashMap<>();
+        edges.values().forEach(edge -> {
+            for (JsonNode state : new JsonNode[]{edge.before(), edge.after()}) {
+                Long source = reference(state, kind.edgeSource());
+                Long target = reference(state, kind.edgeTarget());
+                if (source == null || target == null) continue;
+                neighbors.computeIfAbsent(source, key -> new TreeSet<>()).add(target);
+                neighbors.computeIfAbsent(target, key -> new TreeSet<>()).add(source);
+            }
+            if (!edge.change().equals(UNCHANGED)) changedEnds.addAll(ends(edge, kind));
+        });
+
+        Set<Long> focus = new LinkedHashSet<>();
+        if (focusType != null && focusId != null) {
+            if (focusType.equals(kind.node())) focus.add(focusId);
+            else if (focusType.equals(kind.edge()) && edges.containsKey(focusId)) focus.addAll(ends(edges.get(focusId), kind));
+            else if (focusType.equals(kind.item()) && items.containsKey(focusId)) focus.addAll(references(items.get(focusId), kind.parent()));
+            else extras.stream().filter(change -> change.targetType().equals(focusType) && change.targetId().equals(focusId)).forEach(change -> focus.addAll(references(change, kind.parent())));
+        }
+
+        Set<Long> chosen = new LinkedHashSet<>();
+        List<Set<Long>> priority = new ArrayList<>(List.of(focus, around(focus, neighbors), affected, changedEnds, around(affected, neighbors)));
+        for (Set<Long> ids : priority) {
+            for (Long id : ids) {
+                if (chosen.size() >= max) break;
+                if (nodes.containsKey(id)) chosen.add(id);
+            }
+        }
+        Set<Long> changedNodes = new TreeSet<>(affected);
+        changedNodes.addAll(changedEnds);
+        changedNodes.retainAll(nodes.keySet());
+
+        Map<Long, List<ModelVersionDto.Change>> itemsByNode = byNode(items.values(), kind.parent(), chosen);
+        Map<Long, List<ModelVersionDto.Change>> extrasByNode = byNode(extras, kind.parent(), chosen);
+        List<ModelVersionDto.ErdNode> shownNodes = chosen.stream()
+                .map(id -> new ModelVersionDto.ErdNode(nodes.get(id), itemsByNode.getOrDefault(id, List.of()), extrasByNode.getOrDefault(id, List.of()))).toList();
+        // 관계 : 범위 안의 노드에 한쪽 끝이라도 걸린 것 (상대가 범위 밖인 관계는 선으로 그리지 못해도 FK 표시와 상세에 쓴다)
+        List<ModelVersionDto.Change> shownEdges = edges.values().stream().filter(edge -> ends(edge, kind).stream().anyMatch(chosen::contains)).toList();
+        return new ModelVersionDto.ErdComparison(models.base(), models.target(), kindCode, changedNodes.size(), !chosen.containsAll(changedNodes), shownNodes, shownEdges);
+    }
+
+    private static Set<Long> around(Set<Long> ids, Map<Long, Set<Long>> neighbors) {
+        Set<Long> result = new LinkedHashSet<>();
+        ids.forEach(id -> result.addAll(neighbors.getOrDefault(id, Set.of())));
+        return result;
+    }
+
+    private static Set<Long> ends(ModelVersionDto.Change edge, ErdKind kind) {
+        Set<Long> result = references(edge, kind.edgeSource());
+        result.addAll(references(edge, kind.edgeTarget()));
+        return result;
+    }
+
+    /** 변경 전후 상태가 가리키는 대상 ID (노드를 옮긴 행이면 양쪽 노드 모두) */
+    private static Set<Long> references(ModelVersionDto.Change change, String field) {
+        Set<Long> result = new LinkedHashSet<>();
+        for (JsonNode state : new JsonNode[]{change.before(), change.after()}) {
+            Long id = reference(state, field);
+            if (id != null) result.add(id);
+        }
+        return result;
+    }
+
+    private static Long reference(JsonNode state, String field) {
+        JsonNode value = state == null ? null : state.get(field);
+        return value == null || value.isNull() ? null : (Long) value.asLong();
+    }
+
+    private static Map<Long, List<ModelVersionDto.Change>> byNode(java.util.Collection<ModelVersionDto.Change> changes, String parent, Set<Long> chosen) {
+        Map<Long, List<ModelVersionDto.Change>> result = new LinkedHashMap<>();
+        changes.forEach(change -> references(change, parent).stream().filter(chosen::contains).forEach(id -> result.computeIfAbsent(id, key -> new ArrayList<>()).add(change)));
+        return result;
+    }
+
+    /** 비교할 두 모델 : 기준 버전의 저장된 내용과 대상(다른 버전의 저장된 내용 또는 현재 모델). 로그인한 프로젝트의 버전만 읽는다 */
+    private record Models(ModelVersionDto.Side base, ModelVersionDto.Side target, JsonNode before, JsonNode after) {}
+
+    private Models models(AccountDto accountDto, Long baseId, Long targetId) {
         if (baseId == null || baseId.equals(targetId)) throw invalid("비교할 버전을 서로 다르게 선택해주세요.");
         ModelVersion base = version(accountDto, baseId);
         ModelVersion target = targetId == null ? null : version(accountDto, targetId);
         JsonNode before = JSON.readTree(base.getSnapshot());
         // 현재 모델도 저장할 때와 같은 JSON 을 거쳐 비교한다 (숫자·날짜 표현이 저장본과 같아진다)
         JsonNode after = JSON.readTree(target == null ? JSON.writeValueAsString(recorder.currentState(accountDto.getProjectId())) : target.getSnapshot());
+        return new Models(side(base), target == null ? new ModelVersionDto.Side(null, null, null) : side(target), before, after);
+    }
 
-        Map<String, Integer> totals = zero();
-        Map<String, Map<String, Integer>> byType = new LinkedHashMap<>();
-        List<ModelVersionDto.Change> changes = new ArrayList<>();
-        Set<String> types = new LinkedHashSet<>(before.propertyNames());
-        types.addAll(after.propertyNames());
-        for (String type : types) {
-            Map<Long, JsonNode> olds = byId(before.get(type));
-            Map<Long, JsonNode> news = byId(after.get(type));
-            Map<String, Integer> count = zero();
-            Set<Long> ids = new LinkedHashSet<>(olds.keySet());
-            ids.addAll(news.keySet());
-            for (Long id : ids) {
-                JsonNode o = olds.get(id);
-                JsonNode n = news.get(id);
-                String result;
-                List<String> changed = List.of();
-                if (o == null) result = "ADDED";
-                else if (n == null) result = "REMOVED";
-                else {
-                    changed = changedFields(type, o.get("state"), n.get("state"));
-                    result = changed.isEmpty() ? "UNCHANGED" : "MODIFIED";
-                }
-                count.merge(result, 1, Integer::sum);
-                totals.merge(result, 1, Integer::sum);
-                if (result.equals("UNCHANGED")) continue;
-                JsonNode shown = n != null ? n : o;
-                changes.add(new ModelVersionDto.Change(type, id, shown.path("name").asString(null), result, changed,
-                        o == null ? null : o.get("state"), n == null ? null : n.get("state")));
+    /** 대상 종류 하나의 객체를 내부 ID 로 짝지은 판정 (UNCHANGED 포함, 기준 쪽 순서 다음에 새로 생긴 것) */
+    private static Map<Long, ModelVersionDto.Change> diff(Models models, String type) {
+        Map<Long, JsonNode> olds = byId(models.before().get(type));
+        Map<Long, JsonNode> news = byId(models.after().get(type));
+        Set<Long> ids = new LinkedHashSet<>(olds.keySet());
+        ids.addAll(news.keySet());
+        Map<Long, ModelVersionDto.Change> result = new LinkedHashMap<>();
+        for (Long id : ids) {
+            JsonNode o = olds.get(id);
+            JsonNode n = news.get(id);
+            String change;
+            List<String> changed = List.of();
+            if (o == null) change = "ADDED";
+            else if (n == null) change = "REMOVED";
+            else {
+                changed = changedFields(type, o.get("state"), n.get("state"));
+                change = changed.isEmpty() ? UNCHANGED : "MODIFIED";
             }
-            byType.put(type, count);
+            JsonNode shown = n != null ? n : o;
+            result.put(id, new ModelVersionDto.Change(type, id, shown.path("name").asString(null), change, changed, o == null ? null : o.get("state"), n == null ? null : n.get("state")));
         }
-        return new ModelVersionDto.Comparison(side(base), target == null ? new ModelVersionDto.Side(null, null, null) : side(target), totals, byType, changes);
+        return result;
     }
 
     /** 값이 실제로 다른 필드. 필드 순서는 보지 않고, 연관 대상의 이름 스냅샷("<필드>Name")은 대상 자신의 변경으로만 본다 */

@@ -34,6 +34,8 @@ import com.lexorma.data.version.domain.dto.ModelVersionDto;
 import com.lexorma.data.version.domain.dto.ModelVersionDto.Change;
 import com.lexorma.data.version.domain.dto.ModelVersionDto.Comparison;
 import com.lexorma.data.version.domain.dto.ModelVersionDto.Create;
+import com.lexorma.data.version.domain.dto.ModelVersionDto.ErdComparison;
+import com.lexorma.data.version.domain.dto.ModelVersionDto.ErdNode;
 import com.lexorma.data.version.domain.dto.ModelVersionDto.Summary;
 import com.lexorma.data.version.repository.ModelVersionRepository;
 import com.lexorma.data.version.service.ModelVersionService;
@@ -247,6 +249,142 @@ class ModelVersionIntegrationTest {
     }
 
     @Test
+    @DisplayName("ERD 비교 범위 (M-10 ③) : 달라진 테이블·엔터티와 이웃만, 컬럼·관계(복합 FK 일부 변경 포함)의 추가·삭제·수정이 변경 전후 상태와 함께 담기고 저장된 버전은 그대로다")
+    void compareErd() {
+        AccountDto admin = loginAsAdmin("m10-erd");
+        long projectId = admin.getProjectId();
+        Fixture f = fixture(admin);
+        TableInfo old = table(projectId, "TB_OLD");
+        ColumnInfo oldId = column(projectId, old, "OLD_ID", true);
+        TableInfo quiet = table(projectId, "TB_QUIET");
+        column(projectId, quiet, "QUIET_ID", true);
+        Summary v1 = versions.create(admin, new Create("v1", null)).getBody();
+        String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, v1.id());
+
+        // 변경 없음 : 그릴 것이 없다
+        ErdComparison same = versions.compareErd(admin, v1.id(), null, "PHYSICAL", null, null, null).getBody();
+        assertThat(same.nodes()).isEmpty();
+        assertThat(same.edges()).isEmpty();
+        assertThat(same).extracting(ErdComparison::changedNodeCount, ErdComparison::truncated).containsExactly(0, false);
+
+        // 테이블 : 이름 변경 · 삭제 · 추가 / 컬럼 : 타입 길이·PK 변경 · 추가 · (테이블과 함께) 삭제 / 관계 : 추가 · 복합 FK 의 컬럼 쌍 하나만 변경
+        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").build(), admin);
+        tx.executeWithoutResult(s -> {
+            ColumnInfo stat = columnInfoRepository.findById(f.stat.getId()).orElseThrow();
+            stat.setMaxLength(20);
+            stat.setIsPk(true);
+        });
+        ColumnInfo memo = column(projectId, f.order, "MEMO", false);
+        tx.executeWithoutResult(s -> tableInfoRepository.deleteById(old.getId()));
+        TableInfo added = table(projectId, "TB_NEW");
+        ColumnInfo newGrp = column(projectId, added, "NEW_GRP_CD", false);
+        ColumnInfo newCd = column(projectId, added, "NEW_CD", false);
+        Relation newFk = physical.saveRelation(admin, new Relation(null, null, "FK", null, added.getId(), null, f.code.getId(), null,
+                List.of(new ColumnPair(newGrp.getId(), null, f.grp.getId(), null), new ColumnPair(newCd.getId(), null, f.cd.getId(), null)), null)).getBody();
+        // 관계는 수정 API 가 없으므로(삭제 후 재등록) 같은 관계의 컬럼 쌍만 직접 바꾼다
+        jdbc.update("update TB_TBL_REL_COL set ORGNL_COL_SN = ? where REL_SN = ? and COL_ORD = 2", f.orderNo.getId(), f.fk.id());
+
+        ErdComparison erd = versions.compareErd(admin, v1.id(), null, "PHYSICAL", null, null, null).getBody();
+        assertThat(erd.kind()).isEqualTo("PHYSICAL");
+        assertThat(erd.target().id()).isNull();
+        // 달라진 테이블 + 달라진 관계의 양 끝(TB_CODE). 달라진 것과 이어지지 않은 TB_QUIET 는 없다
+        assertThat(erd.nodes()).extracting(node -> node.node().targetId()).containsExactlyInAnyOrder(f.order.getId(), old.getId(), added.getId(), f.code.getId());
+        assertThat(erd).extracting(ErdComparison::changedNodeCount, ErdComparison::truncated).containsExactly(4, false);
+
+        ErdNode order = erdNode(erd, f.order.getId());
+        assertThat(order.node().change()).isEqualTo("MODIFIED");
+        assertThat(order.node().before().get("tableName").asString()).isEqualTo("TB_ORD");
+        assertThat(order.node().after().get("tableName").asString()).isEqualTo("TB_ORDER");
+        assertThat(item(order, memo.getId())).extracting(Change::change, change -> change.before() == null).containsExactly("ADDED", true);
+        assertThat(item(order, f.stat.getId()).change()).isEqualTo("MODIFIED");
+        assertThat(item(order, f.stat.getId()).changedFields()).contains("maxLength", "isPk");
+        assertThat(item(order, f.stat.getId()).before().get("maxLength").asInt()).isEqualTo(10);
+        assertThat(item(order, f.stat.getId()).after().get("isPk").asBoolean()).isTrue();
+        // 테이블 이름을 바꾸면 컬럼이 들고 있는 테이블명도 따라 바뀐다 (M-9 비교와 같은 판정. 화면은 이것을 컬럼 변경으로 강조하지 않는다)
+        assertThat(item(order, f.orderNo.getId()).changedFields()).containsExactly("tableName");
+        // 달라지지 않은 컬럼도 그리는 데 필요하므로 담긴다 (변경 전후가 같은 값)
+        Change grp = item(erdNode(erd, f.code.getId()), f.grp.getId());
+        assertThat(grp.change()).isEqualTo("UNCHANGED");
+        assertThat(grp.before()).isEqualTo(grp.after());
+        assertThat(order.items()).hasSize(4);
+        assertThat(order.extras()).isEmpty();
+
+        ErdNode removed = erdNode(erd, old.getId());
+        assertThat(removed.node()).extracting(Change::change, change -> change.after() == null).containsExactly("REMOVED", true);
+        assertThat(item(removed, oldId.getId()).change()).isEqualTo("REMOVED");
+        assertThat(erdNode(erd, added.getId()).node().change()).isEqualTo("ADDED");
+        assertThat(erdNode(erd, added.getId()).items()).extracting(Change::change).containsOnly("ADDED");
+        // 자신은 그대로이고 달라진 관계만 걸린 테이블
+        assertThat(erdNode(erd, f.code.getId()).node().change()).isEqualTo("UNCHANGED");
+
+        assertThat(edge(erd, newFk.id()).change()).isEqualTo("ADDED");
+        Change fk = edge(erd, f.fk.id());
+        assertThat(fk.change()).isEqualTo("MODIFIED");
+        assertThat(fk.changedFields()).containsExactly("columns");
+        assertThat(fk.before().get("columns").get(1).get("sourceColumnId").asLong()).isEqualTo(f.stat.getId());
+        assertThat(fk.after().get("columns").get(1).get("sourceColumnId").asLong()).isEqualTo(f.orderNo.getId());
+        assertThat(fk.after().get("columns").get(0)).isEqualTo(fk.before().get("columns").get(0));
+
+        // 범위 제한 : limit 를 넘으면 truncated, 지정한 객체(삭제된 컬럼 → 그 테이블, 관계 → 양 끝)부터 채운다
+        ErdComparison one = versions.compareErd(admin, v1.id(), null, "PHYSICAL", null, null, 1).getBody();
+        assertThat(one.nodes()).hasSize(1);
+        assertThat(one).extracting(ErdComparison::changedNodeCount, ErdComparison::truncated).containsExactly(4, true);
+        assertThat(versions.compareErd(admin, v1.id(), null, "PHYSICAL", "PHYSICAL_COLUMN", oldId.getId(), 1).getBody().nodes())
+                .extracting(node -> node.node().targetId()).containsExactly(old.getId());
+        ErdComparison focused = versions.compareErd(admin, v1.id(), null, "PHYSICAL", "PHYSICAL_RELATION", newFk.id(), 2).getBody();
+        assertThat(focused.nodes()).extracting(node -> node.node().targetId()).containsExactlyInAnyOrder(added.getId(), f.code.getId());
+        // 범위 안의 테이블에 걸린 관계 : 양 끝이 모두 있는 새 FK, 한쪽(TB_ORDER)이 범위 밖인 기존 FK
+        assertThat(focused.edges()).extracting(Change::targetId).containsExactlyInAnyOrder(newFk.id(), f.fk.id());
+        // 없는 객체를 지정하면 조용히 무시한다
+        assertThat(versions.compareErd(admin, v1.id(), null, "PHYSICAL", "PHYSICAL_TABLE", 999_999_999L, null).getBody().nodes()).hasSize(4);
+
+        // 논리 : 속성 추가(엔터티 자신은 그대로), 엔터티 이름 변경, 엔터티·관계 추가
+        Attribute date = logical.saveAttribute(admin, new Attribute(null, f.orderEntity.id(), "주문 일자", null, null, false, null, null, null, null, null));
+        logical.updateEntityApproval(admin, f.itemEntity.id(), false);
+        logical.saveEntity(admin, new Entity(f.itemEntity.id(), f.model.id(), "주문 품목", null, null, null, null));
+        Entity delivery = logical.saveEntity(admin, new Entity(null, f.model.id(), "배송", null, null, null, null));
+        Relationship shipped = logical.saveRelationship(admin, new Relationship(null, f.model.id(), null, null, f.orderEntity.id(), null, delivery.id(), null, false, 1, 1, 0, null, null, null));
+        ErdComparison logicalErd = versions.compareErd(admin, v1.id(), null, "LOGICAL", null, null, null).getBody();
+        assertThat(logicalErd.nodes()).extracting(node -> node.node().targetId()).containsExactlyInAnyOrder(f.orderEntity.id(), f.itemEntity.id(), delivery.id());
+        ErdNode orderEntity = erdNode(logicalErd, f.orderEntity.id());
+        assertThat(orderEntity.node().change()).isEqualTo("UNCHANGED");
+        assertThat(item(orderEntity, date.id()).change()).isEqualTo("ADDED");
+        // 식별자는 달라지지 않아도 담긴다 (속성의 식별자 표시)
+        assertThat(orderEntity.extras()).extracting(Change::targetId, Change::change).containsExactly(tuple(f.identifier.id(), "UNCHANGED"));
+        assertThat(erdNode(logicalErd, f.itemEntity.id()).node().changedFields()).contains("entityName");
+        assertThat(erdNode(logicalErd, delivery.id()).node().change()).isEqualTo("ADDED");
+        assertThat(edge(logicalErd, shipped.id()).change()).isEqualTo("ADDED");
+        assertThat(edge(logicalErd, f.relationship.id()).change()).isEqualTo("UNCHANGED");
+
+        // 버전 ↔ 버전 : 현재 모델과 비교한 것과 같고, 방향을 뒤집으면 추가와 삭제가 바뀐다
+        Summary v2 = versions.create(admin, new Create("v2", null)).getBody();
+        ErdComparison forward = versions.compareErd(admin, v1.id(), v2.id(), "PHYSICAL", null, null, null).getBody();
+        assertThat(forward.target().versionName()).isEqualTo("v2");
+        assertThat(forward.nodes()).extracting(node -> node.node().targetId(), node -> node.node().change())
+                .containsExactlyElementsOf(erd.nodes().stream().map(node -> tuple(node.node().targetId(), node.node().change())).toList());
+        ErdComparison backward = versions.compareErd(admin, v2.id(), v1.id(), "PHYSICAL", null, null, null).getBody();
+        assertThat(erdNode(backward, old.getId()).node().change()).isEqualTo("ADDED");
+        assertThat(erdNode(backward, added.getId()).node().change()).isEqualTo("REMOVED");
+        assertThat(versions.compareErd(admin, v2.id(), null, "PHYSICAL", null, null, null).getBody().nodes()).isEmpty();
+
+        // 조회만 한다 : 저장된 버전은 그대로다
+        assertThat(jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, v1.id())).isEqualTo(stored);
+
+        // 검증·권한·격리 : 버전 비교와 같다
+        assertThatThrownBy(() -> versions.compareErd(admin, v1.id(), null, "MAPPING", null, null, null)).isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_MODEL_VERSION));
+        assertThatThrownBy(() -> versions.compareErd(admin, v1.id(), v1.id(), "PHYSICAL", null, null, null)).isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_MODEL_VERSION));
+        assertThatThrownBy(() -> versions.compareErd(admin, 999_999_999L, null, "PHYSICAL", null, null, null)).isInstanceOfSatisfying(CustomException.class, ModelVersionIntegrationTest::versionNotFound);
+        AccountDto viewer = login(projectId, "911", "ROLE_VIEWER");
+        assertThat(versions.compareErd(viewer, v1.id(), v2.id(), "PHYSICAL", null, null, null).getBody().nodes()).hasSize(4);
+        login(projectId, "912", "ROLE_NOT_APPROVE");
+        assertThatThrownBy(() -> versions.compareErd(viewer, v1.id(), v2.id(), "PHYSICAL", null, null, null)).isInstanceOf(AccessDeniedException.class);
+        AccountDto other = loginAsAdmin("m10-erd-other");
+        assertThatThrownBy(() -> versions.compareErd(other, v1.id(), null, "PHYSICAL", null, null, null)).isInstanceOfSatisfying(CustomException.class, ModelVersionIntegrationTest::versionNotFound);
+        Summary otherV1 = versions.create(other, new Create("v1", null)).getBody();
+        assertThatThrownBy(() -> versions.compareErd(other, otherV1.id(), v1.id(), "PHYSICAL", null, null, null)).isInstanceOfSatisfying(CustomException.class, ModelVersionIntegrationTest::versionNotFound);
+    }
+
+    @Test
     @DisplayName("이력과 버전의 정합성 : 객체마다 마지막 변경 이력의 '변경 후' 와 버전에 담긴 상태가 같고, 버전을 만든 뒤 값을 바꿔도 담긴 값(타입·길이·NULL·기본값·PK)은 그대로다")
     void historyAndVersionAgree() {
         AccountDto admin = loginAsAdmin("m9v-history");
@@ -455,6 +593,18 @@ class ModelVersionIntegrationTest {
     private static Change change(Comparison comparison, String type, Long id) {
         return comparison.changes().stream().filter(change -> change.targetType().equals(type) && change.targetId().equals(id)).findFirst()
                 .orElseThrow(() -> new AssertionError(type + " #" + id + " 의 변경이 없습니다."));
+    }
+
+    private static ErdNode erdNode(ErdComparison erd, Long id) {
+        return erd.nodes().stream().filter(node -> node.node().targetId().equals(id)).findFirst().orElseThrow(() -> new AssertionError("#" + id + " 노드가 ERD 비교 범위에 없습니다."));
+    }
+
+    private static Change item(ErdNode node, Long id) {
+        return node.items().stream().filter(item -> item.targetId().equals(id)).findFirst().orElseThrow(() -> new AssertionError("#" + id + " 행이 노드에 없습니다."));
+    }
+
+    private static Change edge(ErdComparison erd, Long id) {
+        return erd.edges().stream().filter(edge -> edge.targetId().equals(id)).findFirst().orElseThrow(() -> new AssertionError("#" + id + " 관계가 ERD 비교 범위에 없습니다."));
     }
 
     private int versionCount(long projectId) {

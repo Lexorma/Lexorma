@@ -6,8 +6,11 @@ import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import '../../styles/history.css';
 import { DiffTable } from '../history/historyDialogs';
-import { changedLabels, diffRows } from '../history/model';
-import { CHANGES, scaleText, VERSION_TYPES, versionTypeLabel, type VersionChange, type VersionComparison, type VersionSnapshot, type VersionSummary } from './model';
+import { diffRows } from '../history/model';
+import { ChangeItem, changeKey } from './changeItem';
+import { erdKindOf } from './erdDiff';
+import { CHANGES, scaleText, VERSION_TYPES, type VersionComparison, type VersionSnapshot, type VersionSummary } from './model';
+import { VersionErd, type ErdFocus } from './VersionErd';
 
 /** 한 번에 그리는 줄 수 : 큰 모델도 목록이 멈추지 않게 나눠 보여 준다 (조건으로 좁히거나 [더 보기]) */
 const PAGE = 100;
@@ -19,7 +22,7 @@ export function useVersionDialogs() {
   const openCompare = (baseId?: number) => {
     dialog.open({
       title: t('버전 비교'),
-      className: 'dialog-xl',
+      className: 'dialog-xl version-compare-dialog',
       content: () => <CompareView initialBaseId={baseId} />,
     });
   };
@@ -145,7 +148,10 @@ function SnapshotView({ id, onCompare }: { id: number; onCompare: () => void }) 
 
 const CURRENT = 'current';
 
-/** 비교 : 기준 버전 ↔ 대상(다른 버전 또는 현재 모델). 달라진 객체만 목록으로 보여 주고, 누르면 변경 전후를 편다 */
+/**
+ * 비교 : 기준 버전 ↔ 대상(다른 버전 또는 현재 모델). 달라진 객체만 목록으로 보여 주고, 누르면 변경 전후를 편다.
+ * [ERD 비교] (M-10 ③) 는 같은 비교를 변경 전후 ERD 로 보여 준다 : 목록의 객체에서 [ERD 에서 보기] 로 그 객체의 자리로 간다
+ */
 function CompareView({ initialBaseId }: { initialBaseId?: number }) {
   const versions = useQuery({
     queryKey: ['model-versions'],
@@ -159,6 +165,8 @@ function CompareView({ initialBaseId }: { initialBaseId?: number }) {
   const [keyword, setKeyword] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'erd'>('list');
+  const [focus, setFocus] = useState<ErdFocus | null>(null);
 
   const ready = !!baseId && baseId !== targetId;
   const comparison = useQuery({
@@ -174,7 +182,6 @@ function CompareView({ initialBaseId }: { initialBaseId?: number }) {
     return changes.filter((change) => (!type || change.targetType === type) && (!kind || change.change === kind) && (!word || (change.name ?? '').toLowerCase().includes(word)));
   }, [changes, type, kind, keyword]);
   const reset = () => { setLimit(PAGE); setOpenKey(null); };
-  const key = (change: VersionChange) => `${change.targetType}:${change.targetId}`;
 
   if (!versions.data) return <p className="gh-muted">{versions.isError ? t('버전을 불러오지 못했습니다.') : t('불러오는 중입니다.')}</p>;
   if (versions.data.length === 0) return <p className="gh-muted">{t('아직 저장한 버전이 없습니다. [버전 생성] 으로 현재 모델을 저장하면 여기에 남습니다.')}</p>;
@@ -182,12 +189,12 @@ function CompareView({ initialBaseId }: { initialBaseId?: number }) {
   return (
     <div className="history-detail">
       <div className="history-filters">
-        <select className="search-column-select" aria-label={t('기준 버전')} value={baseId} onChange={(e) => { setBaseId(e.target.value); reset(); }}>
+        <select className="search-column-select" aria-label={t('기준 버전')} value={baseId} onChange={(e) => { setBaseId(e.target.value); reset(); setFocus(null); }}>
           <option value="">{t('기준 버전 선택')}</option>
           {versions.data.map((version) => <option key={version.id} value={version.id}>{version.versionName}</option>)}
         </select>
         <span className="gh-muted">→</span>
-        <select className="search-column-select" aria-label={t('비교 대상')} value={targetId} onChange={(e) => { setTargetId(e.target.value); reset(); }}>
+        <select className="search-column-select" aria-label={t('비교 대상')} value={targetId} onChange={(e) => { setTargetId(e.target.value); reset(); setFocus(null); }}>
           <option value={CURRENT}>{t('현재 모델')}</option>
           {versions.data.map((version) => <option key={version.id} value={version.id} disabled={String(version.id) === baseId}>{version.versionName}</option>)}
         </select>
@@ -202,10 +209,18 @@ function CompareView({ initialBaseId }: { initialBaseId?: number }) {
           <div className="history-chips">
             {CHANGES.map(([value, label, variant]) => <Label key={value} variant={variant}>{label} {comparison.data.totals[value] ?? 0}</Label>)}
             <Label>{t('변경 없음')} {comparison.data.totals.UNCHANGED ?? 0}</Label>
+            {changes.length > 0 && (
+              <div className="erd-mode version-view" role="group" aria-label={t('보기 방식')}>
+                <button type="button" className={`btn btn-sm${view === 'list' ? ' btn-primary' : ''}`} aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('변경 목록')}</button>
+                <button type="button" className={`btn btn-sm${view === 'erd' ? ' btn-primary' : ''}`} aria-pressed={view === 'erd'} onClick={() => setView('erd')}>{t('ERD 비교')}</button>
+              </div>
+            )}
           </div>
 
           {changes.length === 0 ? (
             <p className="gh-muted">{t('두 모델 사이에 달라진 객체가 없습니다.')}</p>
+          ) : view === 'erd' ? (
+            <VersionErd baseId={baseId} targetId={targetId === CURRENT ? null : targetId} byType={comparison.data.byType} focus={focus} />
           ) : (
             <>
               <div className="history-filters">
@@ -224,23 +239,15 @@ function CompareView({ initialBaseId }: { initialBaseId?: number }) {
               </div>
               {found.length === 0 && <p className="gh-muted">{t('조건에 맞는 객체가 없습니다.')}</p>}
               <ol className="history-group-list version-list">
-                {found.slice(0, limit).map((change) => {
-                  const [, label, variant] = CHANGES.find(([value]) => value === change.change) ?? CHANGES[2];
-                  const rows = diffRows({ summary: { targetType: change.targetType }, before: change.before, after: change.after });
-                  return (
-                    <li key={key(change)}>
-                      <button type="button" className="history-group-item" aria-expanded={openKey === key(change)} onClick={() => setOpenKey(openKey === key(change) ? null : key(change))}>
-                        <Label variant={variant}>{label}</Label>
-                        <span>{versionTypeLabel(change.targetType)}</span>
-                        <span className="history-group-name">{change.name ?? `#${change.targetId}`}</span>
-                        {change.change === 'MODIFIED' && <Muted>{changedLabels(change.changedFields).join(', ')}</Muted>}
-                      </button>
-                      {openKey === key(change) && (
-                        <DiffTable rows={change.change === 'MODIFIED' ? rows.filter((row) => row.changed) : rows} hasBefore={!!change.before} hasAfter={!!change.after} />
-                      )}
-                    </li>
-                  );
-                })}
+                {found.slice(0, limit).map((change) => (
+                  <ChangeItem key={changeKey(change)} change={change} open={openKey === changeKey(change)} onToggle={() => setOpenKey(openKey === changeKey(change) ? null : changeKey(change))}>
+                    {erdKindOf(change.targetType) && (
+                      <div className="version-erd-link">
+                        <button type="button" className="btn btn-sm" onClick={() => { setFocus({ targetType: change.targetType, targetId: change.targetId, seq: (focus?.seq ?? 0) + 1 }); setView('erd'); }}>{t('ERD 에서 보기')}</button>
+                      </div>
+                    )}
+                  </ChangeItem>
+                ))}
               </ol>
               {found.length > limit && <button type="button" className="btn btn-sm" onClick={() => setLimit(limit + PAGE)}>{t('더 보기 ({0}건 남음)', found.length - limit)}</button>}
             </>

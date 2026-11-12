@@ -271,6 +271,7 @@ final class EnglishMessages {
         add("설명", "description");
         add("버전명", "version name");
         add("비교할 버전을 서로 다르게 선택해주세요.", "Select two different versions to compare.");
+        add("ERD 로 비교할 모델 종류가 올바르지 않습니다.", "The model kind for the ERD comparison is not valid.");
         add("논리 모델", "logical model");
         add("엔터티", "entity");
         add("속성", "attribute");

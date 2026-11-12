@@ -183,7 +183,8 @@ export function ProjectManagePage() {
           id="projectMemberGrid"
           columns={projectColumns}
           dataUrl={`/api/getProject/${selected.id}`}
-          crudActions={selected.isAutoActive ? 'cd' : 'ancd'}
+          // 대문자 : 이 화면에는 자신이 관리하는 프로젝트만 나오고 서버도 그 기준으로 막는다 (로그인한 프로젝트의 승인 권한과는 무관)
+          crudActions={selected.isAutoActive ? 'CD' : 'ANCD'}
           onAction={{ add: addMember, active: () => saveIsActive(true), unactive: () => saveIsActive(false), delete: deleteMembers }}
           renderCell={(field, row) => {
             if (field === 'username') return <Mono>{row.username}</Mono>;

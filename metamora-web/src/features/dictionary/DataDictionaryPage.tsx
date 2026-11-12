@@ -5,6 +5,7 @@ import { Grid, type GridColumn, type GridHandle, type Row } from '../../componen
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { Navigate } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { useAuth } from '../../hooks/useAuth';
 import { api, download } from '../../lib/api';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryUsage } from './DictionaryUsage';
@@ -92,6 +93,8 @@ const FORM_CONFIG: Record<DictionaryTable, { add?: FormConfig; edit: FormConfig 
  */
 export function DictionaryPage({ table }: { table: DictionaryTable }) {
   const dialog = useDialog();
+  // 등록·수정·삭제·엑셀(템플릿·다운로드·업로드)은 USER 이상의 API : 조회 권한(VIEWER)에게는 버튼을 보이지 않는다
+  const canEdit = useAuth().canView('dictionary-edit');
   const tab = TABS.find((candidate) => candidate.id === table)!;
   const [initialSearch] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -150,7 +153,7 @@ export function DictionaryPage({ table }: { table: DictionaryTable }) {
     );
   };
 
-  const extraActions = (
+  const extraActions = canEdit && (
     <>
       <button type="button" className="btn" onClick={openTemplateDialog}><DownloadIcon />{t('템플릿')}</button>
       <button type="button" id="download-dictionary" className="btn" onClick={() => download('/api/downloadTemplate/dictionary', t('데이터 사전.xlsx'))}>
@@ -164,7 +167,7 @@ export function DictionaryPage({ table }: { table: DictionaryTable }) {
     <>
       <PageHeader category={t('데이터 사전')} title={tab.label} description={tab.description} />
       <input type="file" ref={fileRef} style={{ display: 'none' }} accept=".xlsx, .xls" onChange={onFile} />
-      <DictionaryGrid tab={tab} gridRef={grid} dialog={dialog} extraActions={extraActions} initialSearch={initialSearch} />
+      <DictionaryGrid tab={tab} gridRef={grid} dialog={dialog} canEdit={canEdit} extraActions={extraActions} initialSearch={initialSearch} />
     </>
   );
 }
@@ -178,9 +181,11 @@ export function DictionaryRedirect() {
   return <Navigate to={`${DICTIONARY_PATHS[tab.id]}${search ? `?${search}` : ''}`} replace />;
 }
 
-function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
-  tab: TabDef; gridRef: RefObject<GridHandle | null>; dialog: DialogApi; extraActions?: ReactNode; initialSearch?: { column: string; query: string };
+function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSearch }: {
+  tab: TabDef; gridRef: RefObject<GridHandle | null>; dialog: DialogApi; canEdit: boolean; extraActions?: ReactNode; initialSearch?: { column: string; query: string };
 }) {
+  // 승인·승인취소 : 승인 API 의 역할(DBA 이상)이면서 승인 권한(그리드의 소문자 버튼)이 있을 때만
+  const canApprove = useAuth().canView('dictionary-approve');
   const reload = () => gridRef.current?.reload();
 
   const approve = (isApproval: boolean) => {
@@ -255,7 +260,7 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
     dialog.open({
       title: t('{0} 상세', tab.title),
       content: ({ close }: DialogControls) => (
-        <DictionaryDetail row={row} columns={columns} onEdit={row.isApprovalYn === 'Y' ? undefined : () => { close(); openEdit(row, columns); }}
+        <DictionaryDetail row={row} columns={columns} onEdit={row.isApprovalYn === 'Y' || !canEdit ? undefined : () => { close(); openEdit(row, columns); }}
           onUsage={() => { close(); openUsage(row); }} />
       ),
     });
@@ -282,7 +287,7 @@ function DictionaryGrid({ tab, gridRef, dialog, extraActions, initialSearch }: {
       columns={tab.columns}
       dataUrl={tab.dataUrl}
       initialSearch={initialSearch}
-      crudActions="anCD"
+      crudActions={`${canApprove ? 'an' : ''}${canEdit ? 'CD' : ''}`}
       extraActions={extraActions}
       onAction={{ active: () => approve(true), unactive: () => approve(false), add, delete: remove }}
       onRowClick={onRowClick}

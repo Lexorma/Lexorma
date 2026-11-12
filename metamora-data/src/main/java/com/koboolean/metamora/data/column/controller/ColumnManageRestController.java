@@ -38,6 +38,7 @@ public class ColumnManageRestController {
     private final ColumnManageService columnManageService;
 
     @Operation(summary = "테이블 내 데이터 조회", description = "테이블 내 데이터를 조회합니다.")
+    @PreAuthorize("hasRole('VIEWER')") // 조회 전용 : 물리 ERD(VIEWER)가 보여주는 것과 같은 컬럼 정보
     @GetMapping("/selectColumn/data")
     public ResponseEntity<Map<String,Object>> selectTableColumnData(
             @Parameter(description = "사용자 인증 정보", hidden = true)
@@ -71,6 +72,7 @@ public class ColumnManageRestController {
     }
 
     @Operation(summary = "테이블 내 컬럼 조회", description = "테이블 조회 팝업 내 테이블 내 컬럼 목록을 조회합니다.")
+    @PreAuthorize("hasRole('VIEWER')") // 조회 전용 : 물리 ERD(VIEWER)가 보여주는 것과 같은 컬럼 정보
     @GetMapping("/selectColumn/tableColumn/{tableId}")
     public ResponseEntity<Map<String, Object>> selectTableColumn(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(value = "tableId") Long tableId) {
 

@@ -81,8 +81,9 @@ public class AuthRestController {
         body.put("authenticated", true);
         body.put("user", user);
         body.put("menus", menus);
-        // 그리드의 소문자 버튼(승인 등) / 관리자 전용 동작 노출 여부
-        body.put("approvalAvailable", AuthUtil.isApprovalAvailable());
+        // 그리드의 소문자 버튼(승인 등) / 관리자 전용 동작 노출 여부.
+        // 승인·관리 API 는 모두 USER 이상이라, 역할이 VIEWER 이하인 프로젝트 관리자에게는 버튼을 보이지 않는다 (눌러도 403)
+        body.put("approvalAvailable", menuAuthorization.hasRole("USER") && AuthUtil.isApprovalAvailable());
         return ResponseEntity.ok(body);
     }
 

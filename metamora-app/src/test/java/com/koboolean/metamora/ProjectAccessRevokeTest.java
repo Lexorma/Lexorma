@@ -267,7 +267,52 @@ class ProjectAccessRevokeTest {
         assertThat(sessionCount(user)).isZero();
     }
 
+    @Test
+    @DisplayName("역할 변경 : 로그인 중인 사용자의 세션을 끊어 예전 역할로 요청하지 못하게 하고, 다시 로그인하면 새 역할이 적용된다")
+    void roleChangeEndsSession() throws Exception {
+        long p1 = createProject();
+        String user = signup(p1);
+        Browser browser = new Browser(port);
+        assertThat(browser.login(user, p1).statusCode()).isEqualTo(200);
+        assertThat(browser.get("/api/auth/me").body()).contains("\"table-manage\":false");
+
+        // 같은 역할로 저장하면 (화면의 [저장] 은 바뀐 행만 보내지만) 세션은 그대로다
+        setRole(user, "ROLE_NOT_APPROVE");
+        assertThat(sessionCount(user)).isEqualTo(1);
+        assertThat(browser.get(PROTECTED_API).statusCode()).isEqualTo(200);
+
+        setRole(user, "ROLE_USER");
+        assertThat(sessionCount(user)).isZero();
+        HttpResponse<String> stale = browser.get(PROTECTED_API);
+        assertThat(stale.statusCode()).isEqualTo(401);
+        assertThat(code(stale)).isEqualTo("UNAUTHORIZED");
+
+        assertThat(browser.login(user, p1).statusCode()).isEqualTo(200);
+        assertThat(browser.get("/api/auth/me").body()).contains("\"physical-model-edit\":true");
+
+        // 강등 : USER 로 로그인해 둔 세션으로는 더 이상 변경 API 를 부를 수 없다
+        setRole(user, "ROLE_VIEWER");
+        assertThat(browser.postJson("/api/schema", "{\"schemaName\":\"stale\"}").statusCode()).isEqualTo(401);
+        assertThat(browser.login(user, p1).statusCode()).isEqualTo(200);
+        assertThat(browser.get("/api/auth/me").body()).contains("\"physical-model-edit\":false");
+        assertThat(browser.postJson("/api/schema", "{\"schemaName\":\"viewer\"}").statusCode()).isEqualTo(403);
+    }
+
     // ===== 관리자 API로 데이터 준비 / 권한 변경 =====
+
+    /** 사용자 관리 화면의 권한 변경 */
+    private void setRole(String username, String role) throws Exception {
+        String accountId = null;
+        for (JsonNode account : JSON.readTree(admin.get("/api/selectUser/data?page=0&size=1000").body()).path("data")) {
+            if (username.equals(account.path("username").asString())) accountId = account.path("id").asString();
+        }
+        assertThat(accountId).isNotNull();
+        HttpResponse<String> response = admin.send(HttpRequest.newBuilder(admin.uri("/api/saveUser/update"))
+                .header("Content-Type", "application/json")
+                .header("X-XSRF-TOKEN", admin.csrf)
+                .PUT(HttpRequest.BodyPublishers.ofString("[{\"id\":\"" + accountId + "\",\"role\":\"" + role + "\"}]", StandardCharsets.UTF_8)));
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    }
 
     private long createProject() throws Exception {
         String name = "REVOKE_" + UUID.randomUUID().toString().substring(0, 8);

@@ -98,6 +98,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     @Override
     public List<ColumnInfoDto> selectTableColumn(AccountDto accountDto, Long tableId) {
         TableInfo tableInfo = tableInfoRepository.findALlByProjectIdAndId(accountDto.getProjectId(), tableId);
+        // 다른 프로젝트·없는 테이블 (예전에는 NullPointerException 으로 500 이었다)
+        if (tableInfo == null) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         return tableInfo.getColumns().stream().map(ColumnInfoDto::fromEntity).collect(Collectors.toList());
     }
 
@@ -416,6 +418,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Long projectId = accountDto.getProjectId();
 
         ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, id);
+        // 다른 프로젝트·없는 컬럼 (예전에는 NullPointerException 으로 500 이었다)
+        if (columnInfo == null) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
 
         TableInfo tableInfo = columnInfo.getTableInfo();
 

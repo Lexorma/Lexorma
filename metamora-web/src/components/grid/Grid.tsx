@@ -200,9 +200,21 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     [columns],
   );
 
+  // 버튼 표시 : 대문자는 항상, 소문자는 승인 권한이 있을 때만
+  const hasLowercase = crudActions.split('').some((a) => a === a.toLowerCase());
+  const isManager = hasLowercase ? approvalAvailable : false;
+  const visibleActions = new Set<GridAction>();
+  crudActions.split('').forEach((a) => {
+    const action = ACTION_MAP[a.toUpperCase()];
+    if (!action) return;
+    if (a !== a.toLowerCase() || approvalAvailable) visibleActions.add(action);
+  });
+  const hasActions = visibleActions.size > 0;
+
+  // 쓸 수 있는 버튼이 하나도 없으면(조회 전용) 고를 일이 없으므로 체크박스 열도 숨긴다
   const columnVisibility = useMemo<VisibilityState>(
-    () => Object.fromEntries(columns.map((col, i) => [columnId(col, i), col.isVisible !== false])),
-    [columns],
+    () => Object.fromEntries(columns.map((col, i) => [columnId(col, i), col.isVisible !== false && (hasActions || col.rowType !== 'CHECKBOX')])),
+    [columns, hasActions],
   );
 
   // 서버 페이징 / 정렬 : 조회는 위 dataQuery 가 하고, 테이블은 상태(페이지 / 정렬 / 체크 / 컬럼 표시)만 관리한다
@@ -249,16 +261,6 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
     }),
     [reload, resetSearch, getChecked, editedRows, columns, dialog],
   );
-
-  // 버튼 표시 : 대문자는 항상, 소문자는 승인 권한이 있을 때만
-  const hasLowercase = crudActions.split('').some((a) => a === a.toLowerCase());
-  const isManager = hasLowercase ? approvalAvailable : false;
-  const visibleActions = new Set<GridAction>();
-  crudActions.split('').forEach((a) => {
-    const action = ACTION_MAP[a.toUpperCase()];
-    if (!action) return;
-    if (a !== a.toLowerCase() || approvalAvailable) visibleActions.add(action);
-  });
 
   const selectedSearch = searchColumns.find((c) => c.column === searchColumn);
   const isNumberSearch = selectedSearch?.columnType === 'NUMBER';

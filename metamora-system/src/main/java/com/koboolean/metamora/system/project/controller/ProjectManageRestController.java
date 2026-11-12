@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
@@ -59,8 +60,11 @@ public class ProjectManageRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn,
             @Parameter(description = "프로젝트 ID", example = "0")
-            @PathVariable(value = "projectId") Long projectId
+            @PathVariable(value = "projectId") Long projectId,
+            @Parameter(description = "현재 로그인된 사용자 정보", hidden = true)
+            @AuthenticationPrincipal AccountDto accountDto
     ) {
+        requireManager(projectManageService.selectLoginProject(projectId, accountDto.getId()));
         Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
         Page<ProjectMemberDto> standardTermDataPage = projectManageService.getProjectData(pageable, searchColumn, searchQuery, projectId);
         return PageableUtil.getGridPageableMap(standardTermDataPage);
@@ -75,6 +79,7 @@ public class ProjectManageRestController {
             @Parameter(description = "현재 로그인된 사용자 정보", hidden = true)
             @AuthenticationPrincipal AccountDto accountDto
     ) {
+        requireManager(projectManageService.selectLoginProject(projectId, accountDto.getId()));
         ProjectDto projectDto = projectManageService.getEditProjectData(projectId, accountDto);
 
         return ResponseEntity.ok(Map.of("project", projectDto, "result", true));
@@ -91,7 +96,8 @@ public class ProjectManageRestController {
     @Operation(summary = "프로젝트 수정", description = "프로젝트를 수정합니다.")
     @PreAuthorize("hasRole('DBA')")
     @PutMapping("/saveProject/project")
-    public ResponseEntity<Map<String,Boolean>> updateProject(@RequestBody ProjectDto projectDto) {
+    public ResponseEntity<Map<String,Boolean>> updateProject(@RequestBody ProjectDto projectDto, @AuthenticationPrincipal AccountDto accountDto) {
+        requireManager(projectManageService.selectLoginProject(projectDto.getId(), accountDto.getId()));
         projectManageService.updateProject(projectDto);
         return ResponseEntity.ok(Map.of("result", true));
     }
@@ -107,7 +113,8 @@ public class ProjectManageRestController {
     @Operation(summary = "프로젝트 멤버 승인/승인취소", description = "프로젝트 멤버의 승인여부(승인/승인취소)로 변경합니다.")
     @PreAuthorize("hasRole('DBA')")
     @PostMapping("/saveProject/active/{isActive}")
-    public ResponseEntity<Map<String, Boolean>> saveActiveProject(@PathVariable(value = "isActive") Boolean isActive, @RequestBody List<ProjectMemberDto> projectMemberDtos) {
+    public ResponseEntity<Map<String, Boolean>> saveActiveProject(@PathVariable(value = "isActive") Boolean isActive, @RequestBody List<ProjectMemberDto> projectMemberDtos, @AuthenticationPrincipal AccountDto accountDto) {
+        requireManager(projectManageService.isManagerOfMembers(projectMemberDtos, accountDto.getId()));
         projectManageService.saveActiveProject(projectMemberDtos, isActive);
         return ResponseEntity.ok(Map.of("result", true));
     }
@@ -116,6 +123,7 @@ public class ProjectManageRestController {
     @PreAuthorize("hasRole('DBA')")
     @DeleteMapping("/deleteProject/projectMember")
     public ResponseEntity<Map<String, Boolean>> deleteProjectMember(@RequestBody List<ProjectMemberDto> projectMemberDtos, @AuthenticationPrincipal AccountDto accountDto) {
+        requireManager(projectManageService.isManagerOfMembers(projectMemberDtos, accountDto.getId()));
         projectManageService.deleteProjectMember(projectMemberDtos, accountDto);
         return ResponseEntity.ok(Map.of("result", true));
     }
@@ -124,6 +132,7 @@ public class ProjectManageRestController {
     @PreAuthorize("hasRole('DBA')")
     @GetMapping("/getProject/projectMember/{selectedId}")
     public ResponseEntity<Map<String, Object>> selectProjectMember(@PathVariable(value = "selectedId") Long selectedId, @AuthenticationPrincipal AccountDto accountDto) {
+        requireManager(projectManageService.selectLoginProject(selectedId, accountDto.getId()));
         List<AccountDto> addProjectMember = projectManageService.selectProjectMember(selectedId, accountDto);
         return ResponseEntity.ok(Map.of("result", true,"projectMember", addProjectMember));
     }
@@ -131,8 +140,17 @@ public class ProjectManageRestController {
     @PreAuthorize("hasRole('DBA')")
     @PostMapping("/saveProject/projectMember/{projectId}")
 
-    public ResponseEntity<Map<String,Boolean>> saveProjectMember(@RequestBody Map<String, String> accountIds, @PathVariable(value = "projectId") Long projectId) {
+    public ResponseEntity<Map<String,Boolean>> saveProjectMember(@RequestBody Map<String, String> accountIds, @PathVariable(value = "projectId") Long projectId, @AuthenticationPrincipal AccountDto accountDto) {
+        requireManager(projectManageService.selectLoginProject(projectId, accountDto.getId()));
         projectManageService.saveProjectMember(accountIds, projectId);
         return ResponseEntity.ok(Map.of("result", true));
+    }
+
+    /**
+     * 프로젝트 관리 화면은 자신이 관리자인 프로젝트만 보여준다 (/api/getProject/managed).
+     * 프로젝트·멤버 ID 를 직접 넣어 다른 프로젝트를 조회·변경하지 못하게 API 도 같은 기준으로 막는다 → 403 ACCESS_DENIED
+     */
+    private static void requireManager(boolean manager) {
+        if (!manager) throw new AccessDeniedException("프로젝트 관리자만 사용할 수 있습니다.");
     }
 }

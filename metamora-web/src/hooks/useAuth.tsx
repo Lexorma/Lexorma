@@ -8,10 +8,16 @@ export type MenuId =
   | 'project-manage'
   | 'system-log'
   | 'notice'
+  /** 화면이 아니라 공지 등록·수정·삭제 버튼 노출 여부 (현재 프로젝트의 관리자인지는 /api/selectNotice/permission) */
+  | 'notice-edit'
   | 'data-dictionary'
   | 'standard-domain'
   | 'standard-word'
   | 'standard-term'
+  /** 화면이 아니라 데이터 사전 등록·수정·삭제·엑셀 버튼 노출 여부 */
+  | 'dictionary-edit'
+  /** 화면이 아니라 데이터 사전 승인·승인취소 버튼 노출 여부 (approvalAvailable 과 함께 본다) */
+  | 'dictionary-approve'
   | 'data-quality'
   | 'logical-model'
   | 'logical-erd'
@@ -20,7 +26,7 @@ export type MenuId =
   | 'model-mapping'
   /** 화면이 아니라 매핑 등록·변경·해제 버튼 노출 여부 */
   | 'model-mapping-edit'
-  /** 화면이 아니라 물리 모델 변경 버튼(물리 ERD 편집 모드) 노출 여부 */
+  /** 화면이 아니라 물리 모델 변경 버튼(스키마·테이블 관리의 등록·수정·삭제·엑셀, 물리 ERD 편집 모드) 노출 여부 */
   | 'physical-model-edit'
   | 'schema-manage'
   | 'table-manage'
@@ -56,7 +62,12 @@ interface AuthContextValue {
   user: AuthUser | undefined;
   /** 화면에 보이는 이름 (이름이 없으면 아이디) */
   displayName: string;
+  /**
+   * 화면(메뉴) 또는 액션(…-edit, …-approve)을 쓸 수 있는지. 서버 MenuAuthorization 이 역할 계층으로 계산해 내려준 값이다
+   * (화면에서 역할 이름을 직접 비교하지 않는다). 화면에 들어올 수 있다고 그 화면의 변경 버튼까지 보이는 것은 아니다.
+   */
   canView: (menuId: MenuId) => boolean;
+  /** 승인 권한(ADMIN·MANAGER·프로젝트 관리자)이면서 변경 API 를 쓸 수 있는 역할(USER 이상)인지 */
   approvalAvailable: boolean;
   /** 로그인 상태를 서버에서 다시 받는다 (로그인 직후, 이름 변경 후) */
   refresh: () => Promise<void>;

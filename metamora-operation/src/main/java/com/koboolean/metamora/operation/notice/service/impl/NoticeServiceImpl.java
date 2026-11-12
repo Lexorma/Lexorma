@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -131,7 +132,9 @@ public class NoticeServiceImpl implements NoticeService {
         /* update의 경우 save로 저장하지 않고 객체에 값을 바꾼다.
          * 객체에 값을 바꾸면 JPA 정책 상 데이터를 덮어써서 트랜잭션이 마무리되는 시점에 flush 한다.
          */
-        Board board = boardRepository.findById(boardDto.getId()).orElse(null);
+        // 로그인한 프로젝트의 공지만 (ID 를 알아도 다른 프로젝트의 공지는 바꿀 수 없다)
+        Board board = boardRepository.findByIdAndProjectId(boardDto.getId(), accountDto.getProjectId())
+                .orElseThrow(() -> new AccessDeniedException("다른 프로젝트의 공지사항입니다."));
 
         // 시스템 공지를 수정하면 영어판과의 연결이 끊어진다. (삭제는 가능)
         if(board.isSystemNotice()) {
@@ -149,11 +152,9 @@ public class NoticeServiceImpl implements NoticeService {
 	@Transactional
 	public BoardDto noticePopupMain(Long id, AccountDto accountDto) {
 
-		Board board = boardRepository.findById(id).orElse(null);
-
-		if(board == null) {
-			board = new Board();
-		}
+		// 로그인한 프로젝트의 공지만 (ID 를 알아도 다른 프로젝트의 공지는 읽을 수 없다). 없는 공지는 예전에는 NullPointerException(500)이었다
+		Board board = boardRepository.findByIdAndProjectId(id, accountDto.getProjectId())
+				.orElseThrow(() -> new AccessDeniedException("다른 프로젝트의 공지사항입니다."));
 
 		Account account = accountRepository.findById(Long.valueOf(accountDto.getId())).orElse(null);
 

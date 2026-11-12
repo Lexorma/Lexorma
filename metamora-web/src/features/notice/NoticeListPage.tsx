@@ -4,6 +4,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, User } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
 import { useNoticeDialogs } from './noticeDialogs';
 import { noticeColumns } from './columns';
@@ -15,7 +16,8 @@ export function NoticeListPage() {
   const grid = useRef<GridHandle>(null);
   const { openNoticeDetail, openNoticeSave } = useNoticeDialogs();
 
-  // 현재 프로젝트의 프로젝트 관리자만 공지사항 추가/삭제 가능
+  const { canView } = useAuth();
+  // 현재 프로젝트의 프로젝트 관리자이면서 공지 변경 API 의 역할(MANAGER 이상)일 때만 공지사항 추가/수정/삭제 가능
   const { data: permission } = useQuery({
     queryKey: ['notice-permission'],
     queryFn: () => api<{ isProjectManager: boolean }>('/api/selectNotice/permission'),
@@ -41,7 +43,7 @@ export function NoticeListPage() {
         id="noticeList"
         columns={noticeColumns}
         dataUrl="/api/selectNotice"
-        crudActions={permission.isProjectManager ? 'cd' : ''}
+        crudActions={permission.isProjectManager && canView('notice-edit') ? 'cd' : ''}
         onAction={{ add: () => openNoticeSave({ type: 'add', onSuccess: saved }), delete: remove }}
         onRowClick={(row, _columns, isManager) => {
           // 매니저일 경우 수정, 아니면 상세보기 (닫으면 읽음 표시를 갱신한다). 시스템이 등록한 공지는 수정할 수 없다.

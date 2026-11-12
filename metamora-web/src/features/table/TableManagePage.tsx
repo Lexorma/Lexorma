@@ -21,6 +21,8 @@ export function TableManagePage() {
   const { openTableDetail } = useTableDetail();
   const navigate = useNavigate();
   const { canView } = useAuth();
+  // 등록·삭제·승인·엑셀은 물리 모델 변경 API(USER 이상)를 쓴다 : 조회 권한(VIEWER)에게는 버튼을 보이지 않는다
+  const canEdit = canView('physical-model-edit');
   const { schemas, refresh: refreshSchemas } = useSchemas();
   // 스키마별 조회 : '' = 전체 스키마
   const [schemaId, setSchemaId] = useState('');
@@ -108,15 +110,15 @@ export function TableManagePage() {
               {schemas.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
             </select>
           }
-          crudActions="anCD"
-          extraActions={
+          crudActions={canEdit ? 'anCD' : ''}
+          extraActions={canEdit && (
             <>
               <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/tableTemplate', t('테이블 템플릿.xlsx'))}>
                 <DownloadIcon />{t('템플릿')}
               </button>
               <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />{t('업로드')}</button>
             </>
-          }
+          )}
           onAction={{ add: () => openForm('C'), delete: remove, active: () => updateActive(true), unactive: () => updateActive(false) }}
           onRowClick={openDetail}
           renderCell={(field, row) => {

@@ -63,8 +63,12 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("logical-model-edit")).isFalse();
         // 매핑 등록·변경·해제 버튼도 USER 부터
         assertThat(menuAuth.canView("model-mapping-edit")).isFalse();
-        // 물리 ERD 편집 모드도 USER 부터
+        // 물리 모델 변경 버튼(스키마·테이블 관리, 물리 ERD 편집 모드)도 USER 부터
         assertThat(menuAuth.canView("physical-model-edit")).isFalse();
+        // 데이터 사전 변경 버튼은 USER, 승인 버튼은 DBA, 공지 변경 버튼은 MANAGER 부터
+        assertThat(menuAuth.canView("dictionary-edit")).isFalse();
+        assertThat(menuAuth.canView("dictionary-approve")).isFalse();
+        assertThat(menuAuth.canView("notice-edit")).isFalse();
         assertThat(menuAuth.canView("column-manage")).isFalse();
         assertThat(menuAuth.canView("system-log")).isFalse();
 

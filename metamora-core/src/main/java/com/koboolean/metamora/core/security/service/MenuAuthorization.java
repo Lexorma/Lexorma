@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * 최소 권한은 "화면 진입 권한"과
  * "화면이 호출하는 그리드 API 권한" 중 높은 쪽이다.
- * (예: 컬럼 관리 화면은 VIEWER 이지만 컬럼 API 가 USER 이므로 USER)
+ * (예: 컬럼 관리는 등록·수정 화면이라 USER — 컬럼 조회 API(목록·상세)는 테이블 상세가 쓰므로 VIEWER 지만, 화면의 등록 폼·변경 API 가 USER 다)
  *
  * <p>
  * 권한 계층(RoleHierarchyConfig)을 적용하므로
@@ -44,11 +44,17 @@ public class MenuAuthorization {
 
             // 운영 관리
             Map.entry("notice", "NOT_APPROVE"),
+            // 화면 메뉴가 아니라 공지 등록·수정·삭제 버튼 노출용 : 공지 변경 API 의 권한과 같다 (현재 프로젝트의 관리자여야 하는 조건은 /api/selectNotice/permission)
+            Map.entry("notice-edit", "MANAGER"),
 
             // 데이터 사전
             Map.entry("standard-domain", "VIEWER"),
             Map.entry("standard-word", "VIEWER"),
             Map.entry("standard-term", "VIEWER"),
+            // 화면 메뉴가 아니라 표준 도메인·단어·용어의 등록·수정·삭제·엑셀 버튼 노출용 : 데이터 사전 변경 API·엑셀 API 의 권한과 같다
+            Map.entry("dictionary-edit", "USER"),
+            // 승인·승인취소 버튼 : 데이터 사전 승인 API 의 역할. 서버는 여기에 승인 권한(AuthUtil.isApprovalAvailable)도 요구하고, 화면도 approvalAvailable 을 함께 본다
+            Map.entry("dictionary-approve", "DBA"),
 
             // 논리 모델 관리
             Map.entry("logical-model", "VIEWER"),
@@ -64,7 +70,7 @@ public class MenuAuthorization {
             Map.entry("table-manage", "VIEWER"),
             Map.entry("column-manage", "USER"),
             Map.entry("physical-erd", "VIEWER"),
-            // 화면 메뉴가 아니라 물리 ERD 편집 모드(테이블·컬럼·관계·인덱스·제약 변경) 노출용 : 물리 모델 변경 API 의 권한과 같다
+            // 화면 메뉴가 아니라 물리 모델 변경 버튼(스키마·테이블 관리의 등록·수정·삭제·엑셀, 물리 ERD 편집 모드) 노출용 : 물리 모델 변경 API 의 권한과 같다
             Map.entry("physical-model-edit", "USER"),
 
             // 데이터 품질 관리

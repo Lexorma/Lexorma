@@ -111,7 +111,7 @@ class NoticeServiceImplTest {
         void update() {
             Board board = board(10L, List.of(1L));
             when(boardCategoryRepository.findById("NOTICE")).thenReturn(Optional.of(noticeCategory()));
-            when(boardRepository.findById(10L)).thenReturn(Optional.of(board));
+            when(boardRepository.findByIdAndProjectId(10L, 1L)).thenReturn(Optional.of(board));
 
             service.updateNotice(login, BoardDto.builder().id(10L).title("새 제목").content("새 내용").projectIds(List.of(1L, 4L)).build());
 
@@ -128,7 +128,7 @@ class NoticeServiceImplTest {
             board.setTitle("기본 스키마는 삭제할 수 없습니다.");
             board.setContent("기본 프로젝트는 삭제가 불가능합니다.");
             when(boardCategoryRepository.findById("NOTICE")).thenReturn(Optional.of(noticeCategory()));
-            when(boardRepository.findById(1L)).thenReturn(Optional.of(board));
+            when(boardRepository.findByIdAndProjectId(1L, 1L)).thenReturn(Optional.of(board));
 
             assertThatThrownBy(() -> service.updateNotice(login, BoardDto.builder().id(1L).title("새 제목").content("새 내용").build()))
                     .isInstanceOf(CustomException.class)
@@ -183,7 +183,7 @@ class NoticeServiceImplTest {
     void popupMarksRead() {
         Board board = board(10L, List.of(1L));
         Account reader = CoreFixtures.account(1L, "manager", CoreFixtures.role(1L, "ROLE_USER"));
-        when(boardRepository.findById(10L)).thenReturn(Optional.of(board));
+        when(boardRepository.findByIdAndProjectId(10L, 1L)).thenReturn(Optional.of(board));
         when(accountRepository.findById(1L)).thenReturn(Optional.of(reader));
 
         service.noticePopupMain(10L, login);

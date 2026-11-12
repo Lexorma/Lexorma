@@ -34,6 +34,8 @@ export function useTableDetail() {
   const navigate = useNavigate();
   const openColumnBulkEditor = useColumnBulkEditor();
   const mappingVisible = canView('model-mapping');
+  // 컬럼 편집·수정은 물리 모델 변경 API(USER 이상) : 어느 화면에서 열든 조회 권한에게는 변경 버튼을 보이지 않는다
+  const canEdit = canView('physical-model-edit');
 
   /** 테이블 ID 로 최신 정보를 받아 상세를 연다 (ERD 에서 열 때, 변경 후 다시 열 때) */
   const openTableDetailById = async (tableId: number, options: TableDetailOptions = {}) => {
@@ -65,13 +67,13 @@ export function useTableDetail() {
         <TableDetail
           row={row}
           columnId={options.columnId}
-          onEditColumns={options.readOnly ? undefined : () => {
+          onEditColumns={options.readOnly || !canEdit ? undefined : () => {
             close();
             void openColumnBulkEditor(row, { onSaved: changed });
           }}
           onDdl={() => dialog.popup({ title: `DDL · ${row.tableName ?? ''}`, size: 'large', content: <TableDdlView tableId={row.id} /> })}
           onApproval={approvalAvailable ? () => toggleApproval(close) : undefined}
-          onEdit={approved || options.readOnly ? undefined : () => {
+          onEdit={approved || options.readOnly || !canEdit ? undefined : () => {
             close();
             dialog.open({
               title: t('테이블 수정'),

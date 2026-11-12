@@ -14,6 +14,8 @@ import com.koboolean.metamora.data.dictionary.service.StandardDomainService;
 import com.koboolean.metamora.data.dictionary.service.StandardTermService;
 import com.koboolean.metamora.data.dictionary.service.StandardWordService;
 import com.koboolean.metamora.core.security.domain.dto.AccountDto;
+import com.koboolean.metamora.common.exception.CustomException;
+import com.koboolean.metamora.common.exception.domain.ErrorCode;
 import com.koboolean.metamora.core.util.AuthUtil;
 import com.koboolean.metamora.common.utils.ExcelUtils;
 import lombok.RequiredArgsConstructor;
@@ -70,17 +72,20 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
     @Override
     @Transactional
     public void approvalStandardDomains(List<StandardDomainDto> standardDomains, AccountDto accountDto, boolean isApprovalAvailable) {
+        requireApprover();
         standardDomainService.approvalStandardDomains(standardDomains, accountDto, isApprovalAvailable);
     }
 
     @Override
     @Transactional
     public void approvalStandardTerms(List<StandardTermDto> standardTerms, AccountDto accountDto, boolean isApprovalAvailable) {
+        requireApprover();
         standardTermService.approvalStandardTerms(standardTerms, accountDto, isApprovalAvailable);
     }
 
     @Override
     public void approvalStandardWords(List<StandardWordDto> standardWords, AccountDto accountDto, boolean isApprovalAvailable) {
+        requireApprover();
         standardWordService.approvalStandardWords(standardWords, accountDto, isApprovalAvailable);
     }
 
@@ -205,5 +210,13 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
         StandardWord standardWord = StandardWord.fromEntity(standardWordDto);
 
         standardWordService.insertStandardWords(standardWord);
+    }
+
+    /**
+     * 승인·승인취소는 승인 권한(관리자·매니저·프로젝트 관리자)만 : 테이블·컬럼·논리 모델의 승인과 같은 기준.
+     * 역할(DBA 이상, 컨트롤러의 @PreAuthorize)만으로는 승인할 수 없다 (화면은 버튼을 숨기지만 API 직접 호출도 막는다)
+     */
+    private static void requireApprover() {
+        if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
     }
 }

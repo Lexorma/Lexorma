@@ -136,6 +136,14 @@ public class ProjectManageServiceImpl implements ProjectManageService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public boolean isManagerOfMembers(List<ProjectMemberDto> projectMemberDtos, String id) {
+        return projectMemberDtos.stream().allMatch(dto -> dto.getId() != null && projectMemberRepository.findById(dto.getId())
+                .map(member -> member.getProject().getAccount().getId().equals(Long.parseLong(id)))
+                .orElse(false));
+    }
+
+    @Override
     @Transactional
     public void saveActiveProject(List<ProjectMemberDto> projectMemberDtos, Boolean isActive) {
 //        if(!AuthUtil.isApprovalAvailable()){

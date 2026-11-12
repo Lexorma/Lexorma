@@ -1,7 +1,10 @@
 package com.koboolean.metamora.operation.notice.controller;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +23,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
@@ -105,6 +109,7 @@ public class NoticeRestController {
     public ResponseEntity<Map<String, Boolean>> insertNotice(@AuthenticationPrincipal AccountDto accountDto
     		                                               , @RequestBody BoardDto boardDto) {
 
+    	requireProjectManager(accountDto, boardDto.getProjectIds());
     	noticeService.insertNotice(accountDto, boardDto);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -125,6 +130,7 @@ public class NoticeRestController {
     public ResponseEntity<Map<String, Boolean>> updateNotice(@AuthenticationPrincipal AccountDto accountDto
     		                                               , @RequestBody BoardDto boardDto) {
 
+    	requireProjectManager(accountDto, boardDto.getProjectIds());
     	noticeService.updateNotice(accountDto, boardDto);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -153,8 +159,20 @@ public class NoticeRestController {
     @DeleteMapping("/deleteNotice")
     public ResponseEntity<Map<String, Object>> deleteNotice(@RequestBody List<BoardDto> boardDtos, @AuthenticationPrincipal AccountDto accountDto) {
 
+        requireProjectManager(accountDto, List.of());
         noticeService.deleteNotice(accountDto, boardDtos);
 
         return ResponseEntity.ok(Map.of("result", true));
+    }
+
+    /**
+     * 공지 등록·수정·삭제는 현재 프로젝트의 관리자만 (화면의 /selectNotice/permission 과 같은 기준), 대상 프로젝트도 자신이 관리하는 프로젝트만.
+     * MANAGER 역할만으로 다른 프로젝트에 공지를 쓰거나 바꾸지 못하게 한다 → 403 ACCESS_DENIED
+     */
+    private void requireProjectManager(AccountDto accountDto, Collection<Long> targetProjectIds) {
+        Set<Long> managed = userService.selectAllProjectsByUsernameProjectManager(accountDto).stream().map(ProjectDto::getId).collect(Collectors.toSet());
+        if (targetProjectIds == null || !managed.contains(accountDto.getProjectId()) || !managed.containsAll(targetProjectIds)) {
+            throw new AccessDeniedException("프로젝트 관리자만 공지사항을 등록·수정·삭제할 수 있습니다.");
+        }
     }
 }

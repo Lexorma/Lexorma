@@ -20,6 +20,9 @@ public interface ProjectManageService {
 
     boolean selectLoginProject(Long projectId, String id);
 
+    /** 멤버(ID)가 모두 이 사용자가 관리하는 프로젝트의 멤버인지 */
+    boolean isManagerOfMembers(List<ProjectMemberDto> projectMemberDtos, String id);
+
     void saveActiveProject(List<ProjectMemberDto> projectMemberDtos, Boolean isActive);
 
     void deleteProjectMember(List<ProjectMemberDto> projectMemberDtos, AccountDto accountDto);

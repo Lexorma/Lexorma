@@ -9,9 +9,12 @@ import com.koboolean.metamora.core.security.repository.RoleRepository;
 import com.koboolean.metamora.core.security.repository.UserRepository;
 import com.koboolean.metamora.system.user.service.UserManageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,7 @@ public class UserManageServiceImpl implements UserManageService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ObjectProvider<FindByIndexNameSessionRepository<? extends Session>> sessionRepository;
 
     @Override
     public List<String> getUserRoles() {
@@ -63,6 +67,7 @@ public class UserManageServiceImpl implements UserManageService {
 
                     Role byRoleName = roleRepository.findByRoleName(accountDto.getRole());
                     account.setUserRoles(Set.of(byRoleName));
+                    expireSessions(account.getUsername());
                 }
             }
         });
@@ -96,6 +101,7 @@ public class UserManageServiceImpl implements UserManageService {
                 }
 
                 account.setIsActive(false); // soft delete
+                expireSessions(account.getUsername());
             }
         });
     }
@@ -113,5 +119,13 @@ public class UserManageServiceImpl implements UserManageService {
             account.setPassword(passwordEncoder.encode(accountDto.getUsername()));
             account.setPasswdCheck(false);
         }
+    }
+
+    /**
+     * 역할은 로그인할 때 세션에 담기므로, 역할이 바뀌거나 삭제된 사용자의 세션을 끊어 예전 역할로 계속 요청하지 못하게 한다.
+     * 그 사용자의 다음 요청은 401 → 다시 로그인하면 새 역할이 적용된다.
+     */
+    private void expireSessions(String username) {
+        sessionRepository.ifAvailable(repository -> repository.findByPrincipalName(username).keySet().forEach(repository::deleteById));
     }
 }

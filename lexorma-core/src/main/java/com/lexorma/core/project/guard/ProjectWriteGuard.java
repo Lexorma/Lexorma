@@ -33,7 +33,7 @@ import java.util.Set;
  *   <li>삭제가 진행 중이면(프로젝트 행 배타 잠금) 끝날 때까지 기다렸다가, 프로젝트가 없어졌으면 예외로 롤백한다</li>
  *   <li>먼저 커밋하면 삭제 쪽이 이 잠금이 풀린 뒤에 시작하므로 방금 넣은 행까지 지운다</li>
  * </ul>
- * 잠금은 커밋 직전에만 잡아 쓰기끼리 서로 기다리지 않는다. JPA 로 저장하는 경로만 해당한다 (네이티브·JDBC 저장은 여기를 지나지 않는다).
+ * 잠금은 커밋 직전에만 잡아 쓰기끼리 서로 기다리지 않는다. JPA 로 저장하는 경로는 자동이고, 네이티브·JDBC 저장은 {@link #guard} 를 직접 불러야 한다.
  */
 @Component
 public class ProjectWriteGuard implements TransactionExecutionListener, PostInsertEventListener {
@@ -73,6 +73,16 @@ public class ProjectWriteGuard implements TransactionExecutionListener, PostInse
         }
     }
 
+    /**
+     * JPA 를 거치지 않는 저장(JDBC 배치·네이티브 SQL)에서 직접 부른다 : 이 트랜잭션이 그 프로젝트에 데이터를 넣었다고 알려,
+     * 커밋 직전에 같은 확인(프로젝트 행 공유 잠금, 없으면 롤백)을 받게 한다. 쓰기 트랜잭션 안에서만 부를 수 있다.
+     */
+    public void guard(Long projectId) {
+        Pending pending = current();
+        if (pending == null) throw new IllegalStateException("쓰기 트랜잭션 안에서 불러야 합니다.");
+        if (projectId != null) pending.projectIds.add(projectId);
+    }
+
     @Override
     public boolean requiresPostCommitHandling(EntityPersister persister) {
         return false;
@@ -84,6 +94,18 @@ public class ProjectWriteGuard implements TransactionExecutionListener, PostInse
             if (synchronization instanceof Pending pending) return pending;
         }
         return null;
+    }
+
+    /**
+     * 프로젝트 행을 공유 잠금으로 읽는다. 이 트랜잭션이 프로젝트 엔티티를 이미 읽어 둔 경우(권한 확인 등) 지워진 행을 잠그려 하면
+     * null 이 아니라 예외가 난다 : 둘 다 "프로젝트가 없다" 로 본다.
+     */
+    private boolean exists(Long projectId) {
+        try {
+            return entityManager.find(Project.class, projectId, LockModeType.PESSIMISTIC_READ) != null;
+        } catch (jakarta.persistence.OptimisticLockException | jakarta.persistence.EntityNotFoundException e) {
+            return false;
+        }
     }
 
     private final class Pending implements TransactionSynchronization {
@@ -103,7 +125,7 @@ public class ProjectWriteGuard implements TransactionExecutionListener, PostInse
             entityManager.flush(); // 아직 반영되지 않은 저장의 이벤트를 먼저 받는다
             for (Long projectId : Set.copyOf(projectIds)) {
                 if (!checked.add(projectId)) continue;
-                if (entityManager.find(Project.class, projectId, LockModeType.PESSIMISTIC_READ) == null) throw new CustomException(ErrorCode.PROJECT_NOT_FOUND);
+                if (!exists(projectId)) throw new CustomException(ErrorCode.PROJECT_NOT_FOUND);
             }
         }
     }

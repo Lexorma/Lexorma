@@ -14,7 +14,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * 비밀값 암호화 (AES-256-GCM, JDK 표준 기능만 쓴다). 외부 DB·MCP·AI Endpoint 의 인증 정보를 DB 에 저장할 때 쓴다.
+ * 비밀값 암호화 (AES-256-GCM, JDK 표준 기능만 쓴다). 외부 DB 연결·AI Endpoint 의 인증 정보를 DB 에 저장할 때 쓴다.
  * <pre>
  * 암호문 = v1:&lt;키ID&gt;:&lt;Base64(IV 12바이트 + 암호문 + 인증 태그 16바이트)&gt;
  * </pre>
@@ -24,7 +24,7 @@ import java.util.Base64;
  *   <li>복호화는 인증 태그를 확인한다 : 암호문이 한 비트라도 바뀌었거나 키·자리가 다르면 실패한다. 실패 이유는 구분해 알려 주지 않는다</li>
  *   <li>실패하면 예외다. 평문을 돌려주거나 평문으로 저장하게 두는 경로가 없다. 예외와 로그에 평문·암호문·키를 넣지 않는다</li>
  * </ul>
- * 키가 없어도 이 빈은 만들어진다 (AI·MCP 를 쓰지 않는 Lexorma 는 그대로 뜬다). 쓰는 시점에 {@code SECRET_KEY_NOT_CONFIGURED} 로 실패한다.
+ * 키가 없어도 이 빈은 만들어진다 (원본 DB 연결·AI 를 쓰지 않는 Lexorma 는 그대로 뜬다). 쓰는 시점에 {@code SECRET_KEY_NOT_CONFIGURED} 로 실패한다.
  */
 @Component
 @RequiredArgsConstructor

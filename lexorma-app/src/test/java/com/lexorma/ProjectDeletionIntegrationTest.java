@@ -1,5 +1,17 @@
 package com.lexorma;
 
+import com.lexorma.core.project.domain.enums.DbType;
+import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
+import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec.Name;
+import com.lexorma.source.connection.domain.entity.SourceConnection;
+import com.lexorma.source.connection.domain.enums.DatabaseNameType;
+import com.lexorma.source.catalog.domain.entity.SourceSchema;
+import com.lexorma.source.catalog.domain.entity.SourceTable;
+import com.lexorma.source.connection.domain.enums.IdentifierComparison;
+import com.lexorma.source.catalog.domain.enums.SourceConstraintType;
+import com.lexorma.source.catalog.domain.enums.SourceTableType;
+import com.lexorma.source.connection.repository.SourceConnectionRepository;
+import com.lexorma.source.catalog.service.SourceCatalogWriter;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.logs.domain.entity.Logs;
@@ -80,7 +92,7 @@ class ProjectDeletionIntegrationTest {
      */
     private static final Set<String> PROJECT_TABLES = Set.of("TB_PRJ", "TB_PRJ_MBR", "TB_LOG", "TB_PST", "TB_STD_DMN", "TB_STD_WORD", "TB_STD_TRM", "TB_SCHM", "TB_TBL", "TB_COL",
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
-            "TB_MDL_CHG_HSTRY", "TB_MDL_VER");
+            "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -94,6 +106,8 @@ class ProjectDeletionIntegrationTest {
     @Autowired ModelMappingService mappings;
     @Autowired PhysicalModelRestController physical;
     @Autowired ModelVersionService versionService;
+    @Autowired SourceConnectionRepository sourceConnectionRepository;
+    @Autowired SourceCatalogWriter catalogWriter;
     @Autowired LogsService logsService;
     @Autowired ProjectManageService projectManageService;
     @Autowired TransactionTemplate tx;
@@ -321,6 +335,20 @@ class ProjectDeletionIntegrationTest {
         log.setTimestamp();
         logsService.saveLogs(log);
         versionService.create(admin, new Create("v1", null));
+
+        // 원본 카탈로그 (AI-1b, lexorma-source) : 연결, 스키마, 테이블 2, 컬럼, PK, 인덱스, FK
+        SourceConnection connection = tx.execute(s -> sourceConnectionRepository.save(SourceConnection.builder().projectId(projectId).name("운영 DB")
+                .dbType(DbType.POSTGRESQL).host("db.internal").port(5432).databaseName("app").databaseNameType(DatabaseNameType.DATABASE).username("reader")
+                .identifierComparison(IdentifierComparison.DBMS_DEFAULT).enabled(true).build()));
+        SourceSchema sourceSchema = catalogWriter.saveSchema(projectId, connection.getId(), Name.of("app"), Name.of("public"));
+        SourceTable users = catalogWriter.saveTable(projectId, sourceSchema.getId(), new SourceCatalogSpec.Table(Name.of("users"), SourceTableType.TABLE, "사용자"));
+        catalogWriter.saveColumn(projectId, users.getId(), new SourceCatalogSpec.Column(Name.of("id"), 1, "bigint", null, null, null, false, null, null));
+        SourceTable orders = catalogWriter.saveTable(projectId, sourceSchema.getId(), new SourceCatalogSpec.Table(Name.of("orders"), SourceTableType.TABLE, null));
+        catalogWriter.saveColumn(projectId, orders.getId(), new SourceCatalogSpec.Column(Name.of("user_id"), 1, "bigint", null, null, null, false, null, null));
+        catalogWriter.replaceConstraints(projectId, users.getId(), List.of(new SourceCatalogSpec.Constraint("users_pkey", SourceConstraintType.PRIMARY_KEY, null, List.of(Name.of("id")))));
+        catalogWriter.replaceIndexes(projectId, orders.getId(), List.of(new SourceCatalogSpec.Index("ix_orders_user", "btree", false, List.of(Name.of("user_id")))));
+        catalogWriter.replaceRelations(projectId, orders.getId(), List.of(new SourceCatalogSpec.Relation("fk_orders_user", null, null, Name.of("users"), "CASCADE", null,
+                List.of(new SourceCatalogSpec.ColumnPair(Name.of("user_id"), Name.of("id"))))));
         return new Filled(order);
     }
 

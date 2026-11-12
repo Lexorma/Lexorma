@@ -75,7 +75,7 @@ class SecretCipherTest {
                 SecretScope.ofProject("source-connection", 8L, 31L, "password"),
                 SecretScope.ofProject("source-connection", 7L, 32L, "password"),
                 SecretScope.ofProject("source-connection", 7L, 31L, "apiKey"),
-                SecretScope.ofProject("mcp-server", 7L, 31L, "password"),
+                SecretScope.ofProject("ai-endpoint", 7L, 31L, "password"),
                 SecretScope.global("source-connection", "31", "password"),
                 // 붙여 쓰면 같아 보이는 자리 : 프로젝트 73 의 객체 1 ↔ 프로젝트 7 의 객체 31
                 SecretScope.ofProject("source-connection", 73L, 1L, "password")}) {

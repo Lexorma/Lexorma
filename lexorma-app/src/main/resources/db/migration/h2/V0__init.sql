@@ -1213,3 +1213,323 @@ comment on column TB_MDL_VER.MDL_CNT_CN is '모델 수 내용';
 comment on column TB_MDL_VER.MDL_CN is '모델 내용';
 comment on column TB_MDL_VER.RGTR_ID is '등록자 아이디';
 comment on column TB_MDL_VER.REG_DT is '등록 일시';
+
+-- =====================================================================
+-- 원본 메타데이터 카탈로그 (AI-1b, lexorma-source) : 프로젝트별 외부 DB 연결(출처 접속)과 수집한 원본 구조
+-- 물리 모델(TB_SCHM·TB_TBL·TB_COL …)과 따로 둔다 : 원본은 외부 DB 에서 수집한 사실이고, 물리 모델은 사용자가 설계하는 데이터다.
+-- 이름의 SRC(출처)는 원본 DB 쪽을 뜻한다. ORGNL(원본)은 관계의 "원본 테이블" 로 이미 쓰고 있어 겹치지 않게 했다.
+-- 같은 접속의 객체끼리만 이어지도록 스키마·테이블·관계는 접속 일련번호를 함께 묶어 참조한다 (FK_SRC_TBL_01, FK_SRC_REL_01·02).
+-- =====================================================================
+
+create sequence SQ_SRC_CNTN start with 1 increment by 50;
+create sequence SQ_SRC_SCHM start with 1 increment by 50;
+create sequence SQ_SRC_TBL start with 1 increment by 50;
+create sequence SQ_SRC_COL start with 1 increment by 50;
+create sequence SQ_SRC_CNSTRT start with 1 increment by 50;
+create sequence SQ_SRC_CNSTRT_COL start with 1 increment by 50;
+create sequence SQ_SRC_IDX start with 1 increment by 50;
+create sequence SQ_SRC_IDX_COL start with 1 increment by 50;
+create sequence SQ_SRC_REL start with 1 increment by 50;
+create sequence SQ_SRC_REL_COL start with 1 increment by 50;
+
+-- 출처 접속
+create table TB_SRC_CNTN (
+    SRC_CNTN_SN bigint not null,
+    PRJ_SN bigint not null,
+    CNTN_NM varchar(100) not null,
+    DB_TYPE_CD varchar(20) not null,
+    HOST_NM varchar(255) not null,
+    PORT_NO integer not null,
+    DB_NM varchar(255) not null,
+    DB_NM_TYPE_CD varchar(20) not null,
+    CNTN_USER_NM varchar(255) not null,
+    CNTN_PSWD_CN TEXT,
+    CNTN_OPTN_CN TEXT,
+    IDNTFR_CMPR_CD varchar(20) not null,
+    CNTN_EXPLN varchar(1000),
+    ACTVTN_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_CNTN primary key (SRC_CNTN_SN)
+);
+
+-- 출처 스키마
+create table TB_SRC_SCHM (
+    SRC_SCHM_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    CTLG_NM varchar(255),
+    SCHM_NM varchar(255),
+    PATH_CN varchar(1000) not null,
+    EXST_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_SCHM primary key (SRC_SCHM_SN)
+);
+
+-- 출처 테이블
+create table TB_SRC_TBL (
+    SRC_TBL_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_SCHM_SN bigint not null,
+    TBL_NM varchar(255) not null,
+    CMPR_NM varchar(255) not null,
+    QUOT_YN boolean,
+    TBL_TYPE_CD varchar(20) not null,
+    ANTN_CN TEXT,
+    HASH_VL varchar(255),
+    EXST_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_TBL primary key (SRC_TBL_SN)
+);
+
+-- 출처 컬럼
+create table TB_SRC_COL (
+    SRC_COL_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    COL_NM varchar(255) not null,
+    CMPR_NM varchar(255) not null,
+    QUOT_YN boolean,
+    COL_ORD integer not null,
+    DATA_TYPE_NM varchar(255),
+    MAX_LEN integer,
+    DATA_PRCSN numeric(38,2),
+    DCPT_LEN integer,
+    NULL_ALWNC_YN boolean,
+    BSC_VL_CN TEXT,
+    ANTN_CN TEXT,
+    HASH_VL varchar(255),
+    EXST_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_COL primary key (SRC_COL_SN)
+);
+
+-- 출처 제약조건
+create table TB_SRC_CNSTRT (
+    SRC_CNSTRT_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    CNSTRT_NM varchar(255),
+    CNSTRT_TYPE_CD varchar(20) not null,
+    INSP_CND_CN TEXT,
+    constraint PK_SRC_CNSTRT primary key (SRC_CNSTRT_SN)
+);
+
+-- 출처 제약조건 컬럼
+create table TB_SRC_CNSTRT_COL (
+    SRC_CNSTRT_COL_SN bigint not null,
+    SRC_CNSTRT_SN bigint not null,
+    SRC_COL_SN bigint not null,
+    COL_ORD integer not null,
+    constraint PK_SRC_CNSTRT_COL primary key (SRC_CNSTRT_COL_SN)
+);
+
+-- 출처 인덱스
+create table TB_SRC_IDX (
+    SRC_IDX_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    IDX_NM varchar(255) not null,
+    IDX_TYPE_NM varchar(255),
+    UNQ_YN boolean not null,
+    constraint PK_SRC_IDX primary key (SRC_IDX_SN)
+);
+
+-- 출처 인덱스 컬럼
+create table TB_SRC_IDX_COL (
+    SRC_IDX_COL_SN bigint not null,
+    SRC_IDX_SN bigint not null,
+    SRC_COL_SN bigint not null,
+    COL_ORD integer not null,
+    constraint PK_SRC_IDX_COL primary key (SRC_IDX_COL_SN)
+);
+
+-- 출처 관계
+create table TB_SRC_REL (
+    SRC_REL_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    RFRNC_SRC_TBL_SN bigint,
+    RFRNC_SCHM_NM varchar(255),
+    RFRNC_TBL_NM varchar(255) not null,
+    REL_NM varchar(255),
+    DEL_RULE_CD varchar(20),
+    MDFCN_RULE_CD varchar(20),
+    constraint PK_SRC_REL primary key (SRC_REL_SN)
+);
+
+-- 출처 관계 컬럼
+create table TB_SRC_REL_COL (
+    SRC_REL_COL_SN bigint not null,
+    SRC_REL_SN bigint not null,
+    SRC_COL_SN bigint not null,
+    RFRNC_SRC_COL_SN bigint,
+    RFRNC_COL_NM varchar(255) not null,
+    COL_ORD integer not null,
+    constraint PK_SRC_REL_COL primary key (SRC_REL_COL_SN)
+);
+
+create unique index UX_SRC_CNTN_01 on TB_SRC_CNTN (PRJ_SN, CNTN_NM);
+create unique index UX_SRC_SCHM_01 on TB_SRC_SCHM (SRC_CNTN_SN, PATH_CN);
+create index IX_SRC_SCHM_01 on TB_SRC_SCHM (PRJ_SN);
+create unique index UX_SRC_TBL_01 on TB_SRC_TBL (SRC_SCHM_SN, CMPR_NM);
+create index IX_SRC_TBL_01 on TB_SRC_TBL (PRJ_SN);
+create index IX_SRC_TBL_02 on TB_SRC_TBL (SRC_CNTN_SN);
+create unique index UX_SRC_COL_01 on TB_SRC_COL (SRC_TBL_SN, CMPR_NM);
+create index IX_SRC_COL_01 on TB_SRC_COL (PRJ_SN);
+create index IX_SRC_CNSTRT_01 on TB_SRC_CNSTRT (SRC_TBL_SN);
+create index IX_SRC_CNSTRT_02 on TB_SRC_CNSTRT (PRJ_SN);
+create unique index UX_SRC_CNSTRT_COL_01 on TB_SRC_CNSTRT_COL (SRC_CNSTRT_SN, COL_ORD);
+create index IX_SRC_CNSTRT_COL_01 on TB_SRC_CNSTRT_COL (SRC_COL_SN);
+create index IX_SRC_IDX_01 on TB_SRC_IDX (SRC_TBL_SN);
+create index IX_SRC_IDX_02 on TB_SRC_IDX (PRJ_SN);
+create unique index UX_SRC_IDX_COL_01 on TB_SRC_IDX_COL (SRC_IDX_SN, COL_ORD);
+create index IX_SRC_IDX_COL_01 on TB_SRC_IDX_COL (SRC_COL_SN);
+create index IX_SRC_REL_01 on TB_SRC_REL (SRC_TBL_SN);
+create index IX_SRC_REL_02 on TB_SRC_REL (RFRNC_SRC_TBL_SN);
+create index IX_SRC_REL_03 on TB_SRC_REL (PRJ_SN);
+create unique index UX_SRC_REL_COL_01 on TB_SRC_REL_COL (SRC_REL_SN, COL_ORD);
+create index IX_SRC_REL_COL_01 on TB_SRC_REL_COL (SRC_COL_SN);
+create index IX_SRC_REL_COL_02 on TB_SRC_REL_COL (RFRNC_SRC_COL_SN);
+
+-- 같은 접속의 객체만 참조하게 하는 복합 FK 의 대상 (H2 는 UNIQUE 인덱스가 아니라 UNIQUE 제약을 요구한다)
+alter table TB_SRC_SCHM add constraint UX_SRC_SCHM_02 unique (SRC_SCHM_SN, SRC_CNTN_SN);
+alter table TB_SRC_TBL add constraint UX_SRC_TBL_02 unique (SRC_TBL_SN, SRC_CNTN_SN);
+alter table TB_SRC_SCHM add constraint FK_SRC_SCHM_01 foreign key (SRC_CNTN_SN) references TB_SRC_CNTN;
+alter table TB_SRC_TBL add constraint FK_SRC_TBL_01 foreign key (SRC_SCHM_SN, SRC_CNTN_SN) references TB_SRC_SCHM (SRC_SCHM_SN, SRC_CNTN_SN);
+alter table TB_SRC_COL add constraint FK_SRC_COL_01 foreign key (SRC_TBL_SN) references TB_SRC_TBL;
+alter table TB_SRC_CNSTRT add constraint FK_SRC_CNSTRT_01 foreign key (SRC_TBL_SN) references TB_SRC_TBL;
+alter table TB_SRC_CNSTRT_COL add constraint FK_SRC_CNSTRT_COL_01 foreign key (SRC_CNSTRT_SN) references TB_SRC_CNSTRT;
+alter table TB_SRC_CNSTRT_COL add constraint FK_SRC_CNSTRT_COL_02 foreign key (SRC_COL_SN) references TB_SRC_COL;
+alter table TB_SRC_IDX add constraint FK_SRC_IDX_01 foreign key (SRC_TBL_SN) references TB_SRC_TBL;
+alter table TB_SRC_IDX_COL add constraint FK_SRC_IDX_COL_01 foreign key (SRC_IDX_SN) references TB_SRC_IDX;
+alter table TB_SRC_IDX_COL add constraint FK_SRC_IDX_COL_02 foreign key (SRC_COL_SN) references TB_SRC_COL;
+alter table TB_SRC_REL add constraint FK_SRC_REL_01 foreign key (SRC_TBL_SN, SRC_CNTN_SN) references TB_SRC_TBL (SRC_TBL_SN, SRC_CNTN_SN);
+alter table TB_SRC_REL add constraint FK_SRC_REL_02 foreign key (RFRNC_SRC_TBL_SN, SRC_CNTN_SN) references TB_SRC_TBL (SRC_TBL_SN, SRC_CNTN_SN);
+alter table TB_SRC_REL_COL add constraint FK_SRC_REL_COL_01 foreign key (SRC_REL_SN) references TB_SRC_REL;
+alter table TB_SRC_REL_COL add constraint FK_SRC_REL_COL_02 foreign key (SRC_COL_SN) references TB_SRC_COL;
+alter table TB_SRC_REL_COL add constraint FK_SRC_REL_COL_03 foreign key (RFRNC_SRC_COL_SN) references TB_SRC_COL;
+
+comment on table TB_SRC_CNTN is '출처 접속';
+comment on column TB_SRC_CNTN.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_CNTN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_CNTN.CNTN_NM is '접속 명';
+comment on column TB_SRC_CNTN.DB_TYPE_CD is 'DB 유형 코드';
+comment on column TB_SRC_CNTN.HOST_NM is '호스트 명';
+comment on column TB_SRC_CNTN.PORT_NO is '포트 번호';
+comment on column TB_SRC_CNTN.DB_NM is 'DB 명';
+comment on column TB_SRC_CNTN.DB_NM_TYPE_CD is 'DB 명 유형 코드';
+comment on column TB_SRC_CNTN.CNTN_USER_NM is '접속 사용자 명';
+comment on column TB_SRC_CNTN.CNTN_PSWD_CN is '접속 비밀번호 내용';
+comment on column TB_SRC_CNTN.CNTN_OPTN_CN is '접속 옵션 내용';
+comment on column TB_SRC_CNTN.IDNTFR_CMPR_CD is '식별자 비교 코드';
+comment on column TB_SRC_CNTN.CNTN_EXPLN is '접속 설명';
+comment on column TB_SRC_CNTN.ACTVTN_YN is '활성 여부';
+comment on column TB_SRC_CNTN.REG_DT is '등록 일시';
+comment on column TB_SRC_CNTN.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_CNTN.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_CNTN.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_SCHM is '출처 스키마';
+comment on column TB_SRC_SCHM.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_SCHM.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_SCHM.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_SCHM.CTLG_NM is '카탈로그 명';
+comment on column TB_SRC_SCHM.SCHM_NM is '스키마 명';
+comment on column TB_SRC_SCHM.PATH_CN is '경로 내용';
+comment on column TB_SRC_SCHM.EXST_YN is '존재 여부';
+comment on column TB_SRC_SCHM.REG_DT is '등록 일시';
+comment on column TB_SRC_SCHM.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_SCHM.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_SCHM.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_TBL is '출처 테이블';
+comment on column TB_SRC_TBL.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_TBL.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_TBL.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_TBL.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_TBL.TBL_NM is '테이블 명';
+comment on column TB_SRC_TBL.CMPR_NM is '비교 명';
+comment on column TB_SRC_TBL.QUOT_YN is '따옴표 여부';
+comment on column TB_SRC_TBL.TBL_TYPE_CD is '테이블 유형 코드';
+comment on column TB_SRC_TBL.ANTN_CN is '주석 내용';
+comment on column TB_SRC_TBL.HASH_VL is '해시 값';
+comment on column TB_SRC_TBL.EXST_YN is '존재 여부';
+comment on column TB_SRC_TBL.REG_DT is '등록 일시';
+comment on column TB_SRC_TBL.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_TBL.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_TBL.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_COL is '출처 컬럼';
+comment on column TB_SRC_COL.SRC_COL_SN is '출처 컬럼 일련번호';
+comment on column TB_SRC_COL.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_COL.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_COL.COL_NM is '컬럼 명';
+comment on column TB_SRC_COL.CMPR_NM is '비교 명';
+comment on column TB_SRC_COL.QUOT_YN is '따옴표 여부';
+comment on column TB_SRC_COL.COL_ORD is '컬럼 순서';
+comment on column TB_SRC_COL.DATA_TYPE_NM is '자료 유형 명';
+comment on column TB_SRC_COL.MAX_LEN is '최대 길이';
+comment on column TB_SRC_COL.DATA_PRCSN is '자료 정밀도';
+comment on column TB_SRC_COL.DCPT_LEN is '소수점 길이';
+comment on column TB_SRC_COL.NULL_ALWNC_YN is 'NULL 허용 여부';
+comment on column TB_SRC_COL.BSC_VL_CN is '기본 값 내용';
+comment on column TB_SRC_COL.ANTN_CN is '주석 내용';
+comment on column TB_SRC_COL.HASH_VL is '해시 값';
+comment on column TB_SRC_COL.EXST_YN is '존재 여부';
+comment on column TB_SRC_COL.REG_DT is '등록 일시';
+comment on column TB_SRC_COL.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_COL.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_COL.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_CNSTRT is '출처 제약조건';
+comment on column TB_SRC_CNSTRT.SRC_CNSTRT_SN is '출처 제약조건 일련번호';
+comment on column TB_SRC_CNSTRT.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_CNSTRT.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_CNSTRT.CNSTRT_NM is '제약조건 명';
+comment on column TB_SRC_CNSTRT.CNSTRT_TYPE_CD is '제약조건 유형 코드';
+comment on column TB_SRC_CNSTRT.INSP_CND_CN is '검사 조건 내용';
+comment on table TB_SRC_CNSTRT_COL is '출처 제약조건 컬럼';
+comment on column TB_SRC_CNSTRT_COL.SRC_CNSTRT_COL_SN is '출처 제약조건 컬럼 일련번호';
+comment on column TB_SRC_CNSTRT_COL.SRC_CNSTRT_SN is '출처 제약조건 일련번호';
+comment on column TB_SRC_CNSTRT_COL.SRC_COL_SN is '출처 컬럼 일련번호';
+comment on column TB_SRC_CNSTRT_COL.COL_ORD is '컬럼 순서';
+comment on table TB_SRC_IDX is '출처 인덱스';
+comment on column TB_SRC_IDX.SRC_IDX_SN is '출처 인덱스 일련번호';
+comment on column TB_SRC_IDX.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_IDX.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_IDX.IDX_NM is '인덱스 명';
+comment on column TB_SRC_IDX.IDX_TYPE_NM is '인덱스 유형 명';
+comment on column TB_SRC_IDX.UNQ_YN is '고유 여부';
+comment on table TB_SRC_IDX_COL is '출처 인덱스 컬럼';
+comment on column TB_SRC_IDX_COL.SRC_IDX_COL_SN is '출처 인덱스 컬럼 일련번호';
+comment on column TB_SRC_IDX_COL.SRC_IDX_SN is '출처 인덱스 일련번호';
+comment on column TB_SRC_IDX_COL.SRC_COL_SN is '출처 컬럼 일련번호';
+comment on column TB_SRC_IDX_COL.COL_ORD is '컬럼 순서';
+comment on table TB_SRC_REL is '출처 관계';
+comment on column TB_SRC_REL.SRC_REL_SN is '출처 관계 일련번호';
+comment on column TB_SRC_REL.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_REL.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_REL.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_REL.RFRNC_SRC_TBL_SN is '참조 출처 테이블 일련번호';
+comment on column TB_SRC_REL.RFRNC_SCHM_NM is '참조 스키마 명';
+comment on column TB_SRC_REL.RFRNC_TBL_NM is '참조 테이블 명';
+comment on column TB_SRC_REL.REL_NM is '관계 명';
+comment on column TB_SRC_REL.DEL_RULE_CD is '삭제 규칙 코드';
+comment on column TB_SRC_REL.MDFCN_RULE_CD is '수정 규칙 코드';
+comment on table TB_SRC_REL_COL is '출처 관계 컬럼';
+comment on column TB_SRC_REL_COL.SRC_REL_COL_SN is '출처 관계 컬럼 일련번호';
+comment on column TB_SRC_REL_COL.SRC_REL_SN is '출처 관계 일련번호';
+comment on column TB_SRC_REL_COL.SRC_COL_SN is '출처 컬럼 일련번호';
+comment on column TB_SRC_REL_COL.RFRNC_SRC_COL_SN is '참조 출처 컬럼 일련번호';
+comment on column TB_SRC_REL_COL.RFRNC_COL_NM is '참조 컬럼 명';
+comment on column TB_SRC_REL_COL.COL_ORD is '컬럼 순서';

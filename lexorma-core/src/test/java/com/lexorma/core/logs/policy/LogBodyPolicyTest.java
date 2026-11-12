@@ -26,14 +26,14 @@ class LogBodyPolicyTest {
     }
 
     @Test
-    @DisplayName("경로 : 인증·비밀번호·복구·AI·MCP API 는 본문을 남기지 않고, 그 밖의 API 는 남긴다")
+    @DisplayName("경로 : 인증·비밀번호·복구·원본 DB 연결·AI API 는 본문을 남기지 않고, 그 밖의 API 는 남긴다")
     void paths() {
         for (String path : new String[]{"/api/auth/me", "/api/auth/csrf", "/api/auth/signup", "/api/auth/login", "/api/login/projects", "/api/login/password",
                 "/api/updatePwd", "/api/saveUser/password", "/api/recovery/projects", "/api/recovery/projects/3/activate",
-                "/api/ai/settings", "/api/ai/chat/12/messages", "/api/mcp/servers", "/api/mcp/servers/1/test"}) {
+                "/api/ai/settings", "/api/ai/chat/12/messages", "/api/source/connections", "/api/source/connections/1", "/api/source/tables/5"}) {
             assertThat(LogBodyPolicy.isProtectedPath(path)).as(path).isTrue();
         }
-        for (String path : new String[]{"/api/updateName", "/api/saveTable", "/api/saveUser/update", "/api/modelVersion", "/api/aiReport", "/api/authx", "/api/dashboard"}) {
+        for (String path : new String[]{"/api/updateName", "/api/saveTable", "/api/saveUser/update", "/api/modelVersion", "/api/aiReport", "/api/authx", "/api/sourceX", "/api/mcp/servers", "/api/dashboard"}) {
             assertThat(LogBodyPolicy.isProtectedPath(path)).as(path).isFalse();
         }
         // 경로를 모르면 남기지 않는다
@@ -44,9 +44,9 @@ class LogBodyPolicyTest {
     @DisplayName("@ProtectedLogBody : 경로 목록에 없는 API 도 컨트롤러 메서드·클래스에 붙이면 본문을 남기지 않는다")
     void annotation() throws Exception {
         PlainController plain = new PlainController();
-        assertThat(LogBodyPolicy.isProtected("/api/sourceConnection", new HandlerMethod(plain, "plain"))).isFalse();
-        assertThat(LogBodyPolicy.isProtected("/api/sourceConnection", new HandlerMethod(plain, "secret"))).isTrue();
-        assertThat(LogBodyPolicy.isProtected("/api/sourceConnection", new HandlerMethod(new ProtectedController(), "any"))).isTrue();
+        assertThat(LogBodyPolicy.isProtected("/api/externalSecret", new HandlerMethod(plain, "plain"))).isFalse();
+        assertThat(LogBodyPolicy.isProtected("/api/externalSecret", new HandlerMethod(plain, "secret"))).isTrue();
+        assertThat(LogBodyPolicy.isProtected("/api/externalSecret", new HandlerMethod(new ProtectedController(), "any"))).isTrue();
         // 핸들러가 없어도(정적 리소스 등) 경로 목록은 적용된다
         assertThat(LogBodyPolicy.isProtected("/api/ai/settings", new Object())).isTrue();
     }

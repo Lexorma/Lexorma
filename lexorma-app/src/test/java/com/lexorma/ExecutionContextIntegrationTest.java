@@ -19,6 +19,8 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
+import com.lexorma.source.connection.domain.dto.SourceConnectionDto;
+import com.lexorma.source.connection.service.SourceConnectionService;
 import com.lexorma.system.project.service.ProjectManageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +57,7 @@ class ExecutionContextIntegrationTest {
     @Autowired RoleRepository roleRepository;
     @Autowired ProjectManageService projectManageService;
     @Autowired SecretCipher secretCipher;
+    @Autowired SourceConnectionService sourceConnections;
     @Autowired TransactionTemplate tx;
     @Autowired JdbcTemplate jdbc;
 
@@ -209,11 +212,30 @@ class ExecutionContextIntegrationTest {
     }
 
     @Test
-    @DisplayName("암호화 키 없이도 애플리케이션이 뜨고(이 테스트 컨텍스트), 비밀값 암호화를 쓰는 순간에만 실패한다")
+    @DisplayName("암호화 키 없이도 애플리케이션이 뜨고(이 테스트 컨텍스트), 비밀값 암호화를 쓰는 순간에만 실패한다 (원본 DB 연결 비밀번호)")
     void startsWithoutSecretKey() {
         assertThat(secretCipher.isAvailable()).isFalse();
         assertThatThrownBy(() -> secretCipher.encrypt("secret", SecretScope.ofProject("source-connection", 1L, 1L, "password")))
                 .isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SECRET_KEY_NOT_CONFIGURED));
+
+        // 원본 DB 연결 (AI-1b) : 키가 없으면 비밀번호가 있는 연결은 저장되지 않는다 (평문으로도, 비밀번호만 빠진 채로도 남지 않는다).
+        // 비밀번호 없는 연결은 등록되고, 비밀번호를 넣는 수정은 실패해 이전 값이 남는다
+        Account manager = account("mgr", "ROLE_DBA");
+        Project project = project("ai1a-nokey", manager, manager);
+        AccountDto session = SecurityTestSupport.loginAs(projectRepository, project.getId(), String.valueOf(manager.getId()), "ROLE_DBA");
+        long before = jdbc.queryForObject("select count(*) from TB_SRC_CNTN", Long.class);
+        assertThatThrownBy(() -> sourceConnections.create(session, new SourceConnectionDto.Request("운영", "POSTGRESQL", "db.internal", null, "app", null, "reader", "secret-value", null, null, null, null)))
+                .isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SECRET_KEY_NOT_CONFIGURED));
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_CNTN", Long.class)).isEqualTo(before);
+        SourceConnectionDto.Response open = sourceConnections.create(session, new SourceConnectionDto.Request("운영", "POSTGRESQL", "db.internal", null, "app", null, "reader", null, null, null, null, null));
+        assertThat(open.passwordStatus()).isEqualTo(SourceConnectionDto.PasswordStatus.NONE);
+        assertThatThrownBy(() -> sourceConnections.update(session, open.id(), new SourceConnectionDto.Request("운영", null, "db2.internal", null, "app", null, "reader", "secret-value", null, null, null, null)))
+                .isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SECRET_KEY_NOT_CONFIGURED));
+        assertThat(sourceConnections.detail(session, open.id())).extracting(SourceConnectionDto.Response::host, SourceConnectionDto.Response::passwordConfigured).containsExactly("db.internal", false);
+        // 이미 저장된 암호문은 키가 없으면 "확인할 수 없음" 으로 보인다
+        jdbc.update("update TB_SRC_CNTN set CNTN_PSWD_CN = 'v1:k1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' where SRC_CNTN_SN = ?", open.id());
+        assertThat(sourceConnections.detail(session, open.id()).passwordStatus()).isEqualTo(SourceConnectionDto.PasswordStatus.KEY_NOT_CONFIGURED);
+        sourceConnections.delete(session, open.id());
     }
 
     // ------------------------------------------------------------------ 준비

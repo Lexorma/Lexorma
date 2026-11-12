@@ -289,7 +289,32 @@ public enum ErrorCode {
     /**
      * 실행 컨텍스트의 요청자에게 필요한 권한이 없다 (역할 부족, 프로젝트 관리자·ADMIN 아님).
      */
-    EXECUTION_PERMISSION_DENIED(HttpStatus.FORBIDDEN, "EXECUTION_PERMISSION_DENIED");
+    EXECUTION_PERMISSION_DENIED(HttpStatus.FORBIDDEN, "EXECUTION_PERMISSION_DENIED"),
+
+    /**
+     * 외부 DB 연결을 찾을 수 없습니다. (없는 ID, 다른 프로젝트의 연결)
+     */
+    SOURCE_CONNECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_CONNECTION_NOT_FOUND"),
+
+    /**
+     * 외부 DB 연결 요청이 올바르지 않습니다.
+     */
+    INVALID_SOURCE_CONNECTION(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_CONNECTION"),
+
+    /**
+     * 원본 카탈로그의 객체를 찾을 수 없습니다. (없는 ID, 다른 프로젝트·다른 연결의 객체)
+     */
+    SOURCE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_OBJECT_NOT_FOUND"),
+
+    /**
+     * 원본 카탈로그에 저장할 내용이 올바르지 않습니다. (이름, 구성 컬럼)
+     */
+    INVALID_SOURCE_CATALOG(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_CATALOG"),
+
+    /**
+     * 원본 DB 도구를 실행할 수 없다 : 그런 도구가 없거나, 이 DBMS 를 지원하지 않거나, 연결이 사용 중지 상태이거나, 입력이 도구와 맞지 않는다.
+     */
+    SOURCE_TOOL_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_TOOL_NOT_AVAILABLE");
 
     private final HttpStatus httpStatus;
     private final String code;

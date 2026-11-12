@@ -63,9 +63,9 @@ class LogsInterceptorTest {
     }
 
     @Test
-    @DisplayName("보호 대상 경로(AI·MCP·인증·비밀번호) : 요청·응답 본문과 오류 메시지를 남기지 않고 호출 기록(누가·어느 프로젝트·무엇을·결과)은 남긴다")
+    @DisplayName("보호 대상 경로(원본 DB 연결·AI·인증·비밀번호) : 요청·응답 본문과 오류 메시지를 남기지 않고 호출 기록(누가·어느 프로젝트·무엇을·결과)은 남긴다")
     void protectedPath() throws Exception {
-        for (String path : List.of("/api/ai/settings", "/api/mcp/servers", "/api/updatePwd", "/api/saveUser/password", "/api/auth/csrf")) {
+        for (String path : List.of("/api/ai/settings", "/api/source/connections", "/api/updatePwd", "/api/saveUser/password", "/api/auth/csrf")) {
             Logs log = call(path, "plain", "{\"endpoint\":\"http://10.0.0.5:11434\",\"memo\":\"" + SECRET + "\"}", "{\"prompt\":\"" + SECRET + "\"}",
                     new IllegalArgumentException("bad value " + SECRET));
 
@@ -80,12 +80,12 @@ class LogsInterceptorTest {
     @Test
     @DisplayName("@ProtectedLogBody : 경로 목록에 없는 API 도 본문을 남기지 않는다 (필드 이름을 몰라도 새지 않는다)")
     void protectedByAnnotation() throws Exception {
-        Logs log = call("/api/sourceConnection", "connection", "{\"host\":\"db\",\"memo\":\"" + SECRET + "\"}", "{\"saved\":\"" + SECRET + "\"}", null);
+        Logs log = call("/api/externalSecret", "connection", "{\"host\":\"db\",\"memo\":\"" + SECRET + "\"}", "{\"saved\":\"" + SECRET + "\"}", null);
 
         assertThat(log.getRequestBody()).isEqualTo(LogBodyPolicy.PROTECTED);
         assertThat(log.getResponseBody()).isEqualTo(LogBodyPolicy.PROTECTED);
         assertThat(log.getErrorMessage()).isNull();
-        assertAudit(log, "/api/sourceConnection");
+        assertAudit(log, "/api/externalSecret");
     }
 
     @Test

@@ -94,7 +94,7 @@ Browser ── React SPA (static files in the JAR)
    └── /api/** ── Spring Boot (Security · Session JDBC · JPA) ── PostgreSQL / H2
 ```
 
-Gradle modules (dependency direction `common ← core ← (system, operation, data) ← app`):
+Gradle modules (dependency direction `common ← core ← (system, operation, data, source) ← app`; modules on the same level do not depend on each other):
 
 | Module | Responsibility |
 |---|---|
@@ -103,6 +103,7 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
 | `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history, model versions |
+| `lexorma-source` | External source database connection settings and the source metadata catalog, stored separately from the physical model. Metadata collection (planned) runs inside Lexorma over JDBC — no separate collector or MCP server is required |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |
 
@@ -181,7 +182,7 @@ The default database name and account are kept from the previous project name so
 
 ### Secret encryption key (optional)
 
-Credentials that Lexorma will store for external systems (external database connections, MCP servers, AI endpoints — planned features) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
+Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
 
 | Variable | Description |
 |---|---|

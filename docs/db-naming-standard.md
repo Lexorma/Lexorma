@@ -94,6 +94,7 @@
 
 - `용어` 는 공통표준 `TERM`(기한)과 겹쳐 `TRM`, `허용` 은 `PRMSN`(허가)과 겹쳐 `ALWNC` 로 정했다.
 - `노드` 는 공통표준 단어 `교점`(NODE) 의 약어를 그대로 쓴다.
+- 원본 카탈로그(AI-1b)에서 더한 단어 : `호스트`(HOST), `포트`(PORT), `옵션`(OPTN), `카탈로그`(CTLG), `비교`(CMPR), `존재`(EXST), `해시`(HASH), `규칙`(RULE), `조건`(CND), `따옴표`(QUOT). `주석` 은 공통표준 `댓글`(CMNT)과 겹쳐 `ANTN` 으로 정했다.
 
 ## 3. 테이블·컬럼 목록
 
@@ -611,3 +612,177 @@
 | `CHG_SRC_CD` | 변경_출처_코드 |
 | `USER_ID` | 사용자_아이디 |
 | `CHG_DT` | 변경_일시 |
+
+## 4. 원본 카탈로그 (AI-1b)
+
+프로젝트의 외부 DB 연결과 수집한 원본 구조 (`lexorma-source` 모듈). `SRC`(출처)는 원본 DB 쪽을 뜻한다 — `ORGNL`(원본)은 관계의 원본 테이블로 이미 쓰고 있다. 설명은 [source-catalog-ai1b.md](source-catalog-ai1b.md).
+
+### TB_SRC_CNTN (출처 접속)
+
+시퀀스 : `SQ_SRC_CNTN`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `CNTN_NM` | 접속_명 |
+| `DB_TYPE_CD` | DB_유형_코드 |
+| `HOST_NM` | 호스트_명 |
+| `PORT_NO` | 포트_번호 |
+| `DB_NM` | DB_명 |
+| `DB_NM_TYPE_CD` | DB_명_유형_코드 |
+| `CNTN_USER_NM` | 접속_사용자_명 |
+| `CNTN_PSWD_CN` | 접속_비밀번호_내용 |
+| `CNTN_OPTN_CN` | 접속_옵션_내용 |
+| `IDNTFR_CMPR_CD` | 식별자_비교_코드 |
+| `CNTN_EXPLN` | 접속_설명 |
+| `ACTVTN_YN` | 활성_여부 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_SRC_SCHM (출처 스키마)
+
+시퀀스 : `SQ_SRC_SCHM`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `CTLG_NM` | 카탈로그_명 |
+| `SCHM_NM` | 스키마_명 |
+| `PATH_CN` | 경로_내용 |
+| `EXST_YN` | 존재_여부 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_SRC_TBL (출처 테이블)
+
+시퀀스 : `SQ_SRC_TBL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `SRC_SCHM_SN` | 출처_스키마_일련번호 |
+| `TBL_NM` | 테이블_명 |
+| `CMPR_NM` | 비교_명 |
+| `QUOT_YN` | 따옴표_여부 |
+| `TBL_TYPE_CD` | 테이블_유형_코드 |
+| `ANTN_CN` | 주석_내용 |
+| `HASH_VL` | 해시_값 |
+| `EXST_YN` | 존재_여부 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_SRC_COL (출처 컬럼)
+
+시퀀스 : `SQ_SRC_COL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_COL_SN` | 출처_컬럼_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `COL_NM` | 컬럼_명 |
+| `CMPR_NM` | 비교_명 |
+| `QUOT_YN` | 따옴표_여부 |
+| `COL_ORD` | 컬럼_순서 |
+| `DATA_TYPE_NM` | 자료_유형_명 |
+| `MAX_LEN` | 최대_길이 |
+| `DATA_PRCSN` | 자료_정밀도 |
+| `DCPT_LEN` | 소수점_길이 |
+| `NULL_ALWNC_YN` | NULL_허용_여부 |
+| `BSC_VL_CN` | 기본_값_내용 |
+| `ANTN_CN` | 주석_내용 |
+| `HASH_VL` | 해시_값 |
+| `EXST_YN` | 존재_여부 |
+| `REG_DT` | 등록_일시 |
+| `MDFCN_DT` | 수정_일시 |
+| `RGTR_ID` | 등록자_아이디 |
+| `MDFR_ID` | 수정자_아이디 |
+
+### TB_SRC_CNSTRT (출처 제약조건)
+
+시퀀스 : `SQ_SRC_CNSTRT`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CNSTRT_SN` | 출처_제약조건_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `CNSTRT_NM` | 제약조건_명 |
+| `CNSTRT_TYPE_CD` | 제약조건_유형_코드 |
+| `INSP_CND_CN` | 검사_조건_내용 |
+
+### TB_SRC_CNSTRT_COL (출처 제약조건 컬럼)
+
+시퀀스 : `SQ_SRC_CNSTRT_COL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_CNSTRT_COL_SN` | 출처_제약조건_컬럼_일련번호 |
+| `SRC_CNSTRT_SN` | 출처_제약조건_일련번호 |
+| `SRC_COL_SN` | 출처_컬럼_일련번호 |
+| `COL_ORD` | 컬럼_순서 |
+
+### TB_SRC_IDX (출처 인덱스)
+
+시퀀스 : `SQ_SRC_IDX`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_IDX_SN` | 출처_인덱스_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `IDX_NM` | 인덱스_명 |
+| `IDX_TYPE_NM` | 인덱스_유형_명 |
+| `UNQ_YN` | 고유_여부 |
+
+### TB_SRC_IDX_COL (출처 인덱스 컬럼)
+
+시퀀스 : `SQ_SRC_IDX_COL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_IDX_COL_SN` | 출처_인덱스_컬럼_일련번호 |
+| `SRC_IDX_SN` | 출처_인덱스_일련번호 |
+| `SRC_COL_SN` | 출처_컬럼_일련번호 |
+| `COL_ORD` | 컬럼_순서 |
+
+### TB_SRC_REL (출처 관계)
+
+시퀀스 : `SQ_SRC_REL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_REL_SN` | 출처_관계_일련번호 |
+| `PRJ_SN` | 프로젝트_일련번호 |
+| `SRC_CNTN_SN` | 출처_접속_일련번호 |
+| `SRC_TBL_SN` | 출처_테이블_일련번호 |
+| `RFRNC_SRC_TBL_SN` | 참조_출처_테이블_일련번호 |
+| `RFRNC_SCHM_NM` | 참조_스키마_명 |
+| `RFRNC_TBL_NM` | 참조_테이블_명 |
+| `REL_NM` | 관계_명 |
+| `DEL_RULE_CD` | 삭제_규칙_코드 |
+| `MDFCN_RULE_CD` | 수정_규칙_코드 |
+
+### TB_SRC_REL_COL (출처 관계 컬럼)
+
+시퀀스 : `SQ_SRC_REL_COL`
+
+| 컬럼 | 한글 용어 |
+|---|---|
+| `SRC_REL_COL_SN` | 출처_관계_컬럼_일련번호 |
+| `SRC_REL_SN` | 출처_관계_일련번호 |
+| `SRC_COL_SN` | 출처_컬럼_일련번호 |
+| `RFRNC_SRC_COL_SN` | 참조_출처_컬럼_일련번호 |
+| `RFRNC_COL_NM` | 참조_컬럼_명 |
+| `COL_ORD` | 컬럼_순서 |

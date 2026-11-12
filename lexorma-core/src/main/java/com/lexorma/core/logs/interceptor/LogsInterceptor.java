@@ -24,7 +24,7 @@ import java.nio.charset.StandardCharsets;
  * Restful API 형식으로 들어오는 HTTP 요청단위별 동작을 위해 Interceptor에 로깅 기능 추가
  * - HTTP 요청(Request) 및 응답(Response) 로깅에 Interceptor 적용
  * - 모든 메서드 기반 로깅이 필요할 경우 AOP를 사용하여 적용
- * - 본문 저장 정책 : 인증 정보·AI·MCP API 는 본문을 남기지 않고(LogBodyPolicy), 그 밖에는 비밀값을 마스킹한다(SensitiveDataMasker)
+ * - 본문 저장 정책 : 인증 정보·원본 DB 연결·AI API 는 본문을 남기지 않고(LogBodyPolicy), 그 밖에는 비밀값을 마스킹한다(SensitiveDataMasker)
  */
 @RequiredArgsConstructor
 public class LogsInterceptor implements HandlerInterceptor {
@@ -77,7 +77,7 @@ public class LogsInterceptor implements HandlerInterceptor {
                 return;
             }
 
-            // 인증 정보·AI·MCP API 는 본문을 남기지 않는다 (LogBodyPolicy). 그 밖의 API 는 비밀값을 마스킹한 본문을 남긴다
+            // 인증 정보·원본 DB 연결·AI API 는 본문을 남기지 않는다 (LogBodyPolicy). 그 밖의 API 는 비밀값을 마스킹한 본문을 남긴다
             boolean protectedBody = LogBodyPolicy.isProtected(details.logUrl, handler);
             String requestBody = protectedBody ? LogBodyPolicy.PROTECTED : SensitiveDataMasker.mask(getRequestBody(details.wrappedRequest));
             logger.debug("Captured Request Body: " + requestBody);

@@ -12,14 +12,14 @@ import java.util.List;
 /**
  * 시스템 로그(TB_LOG)의 본문 저장 정책.
  * <p>
- * 인증 정보·AI·MCP 를 다루는 API 는 요청·응답 본문을 저장하지 않고 {@link #PROTECTED} 만 남긴다 (마스킹에 기대지 않는다 :
+ * 인증 정보·원본 DB 연결·AI 를 다루는 API 는 요청·응답 본문을 저장하지 않고 {@link #PROTECTED} 만 남긴다 (마스킹에 기대지 않는다 :
  * 필드 이름을 몰라도, 본문 전체가 민감해도 새지 않는다). 호출 시각·요청자·프로젝트·URL·결과 코드는 그대로 남는다.
  * 오류 메시지도 본문을 되풀이할 수 있어 오류 코드(또는 예외 종류)만 남긴다.
  * <p>
  * 보호 대상은 두 가지로 정한다 :
  * <ul>
- *   <li>{@link #PROTECTED_PATHS} — 경로. AI·MCP 는 경로 전체가 대상이라 앞으로 만드는 API 도 이 경로 아래에 두면 자동으로 보호된다</li>
- *   <li>{@link ProtectedLogBody} — 그 밖의 경로에 있는 API 는 컨트롤러에 붙인다 (예: 외부 DB 연결 등록)</li>
+ *   <li>{@link #PROTECTED_PATHS} — 경로. 원본 DB 연결(/api/source)과 AI(/api/ai)는 경로 전체가 대상이라 앞으로 만드는 API 도 이 경로 아래에 두면 자동으로 보호된다</li>
+ *   <li>{@link ProtectedLogBody} — 그 밖의 경로에 있는 API 는 컨트롤러에 붙인다</li>
  * </ul>
  * 그 밖의 일반 API 는 {@link com.lexorma.core.logs.util.SensitiveDataMasker} 로 비밀 필드와 값 안의 비밀을 가린 본문을 남긴다.
  */
@@ -42,9 +42,10 @@ public final class LogBodyPolicy {
             "/api/saveUser/password",
             // 복구 로그인
             "/api/recovery/**",
-            // AI·MCP : 프롬프트·응답·Endpoint·인증 정보 (AI-2 이후 만드는 API 는 이 경로 아래에 둔다)
-            "/api/ai/**",
-            "/api/mcp/**");
+            // 원본 DB 연결·원본 카탈로그 : 접속 정보(호스트·계정·비밀번호), 드라이버 오류에 섞여 나올 수 있는 접속 정보
+            "/api/source/**",
+            // AI : 프롬프트·응답·Endpoint·인증 정보 (AI 기능을 만들 때 API 는 이 경로 아래에 둔다)
+            "/api/ai/**");
 
     private static final List<PathPattern> PATTERNS = PROTECTED_PATHS.stream().map(PathPatternParser.defaultInstance::parse).toList();
 

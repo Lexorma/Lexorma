@@ -135,7 +135,7 @@ DDL 생성기가 FK 를 만들던 조건과 **같은 조건**일 때만 관계�
 | 비동기·커밋 후 이벤트 | 저장과 다른 트랜잭션이라 동기화 실패 시 부분 저장이 남는다 |
 | **엔티티 콜백으로 표시 + 커밋 직전 같은 트랜잭션에서 동기화 (채택)** | 저장 방식과 무관하게 걸리고, 실패하면 함께 롤백된다. 기존 서비스 코드는 그대로 둔다 |
 
-**구현 (`metamora-data` `physical/sync/`)**
+**구현 (`lexorma-data` `physical/sync/`)**
 
 - `ReferenceSyncListener` : `TableInfo`·`ColumnInfo` 의 JPA 콜백(`@PostPersist`·`@PostUpdate`·`@PostRemove`). 바뀐 테이블 ID 를 현재 트랜잭션에 표시만 한다 (조회·쓰기 없음).
 - `ReferenceSyncBoundary` : `TransactionExecutionListener` 로 쓰기 트랜잭션이 시작될 때마다 동기화 객체를 등록하고, 커밋 직전(`beforeCommit`)에 `flush` → 표시된 테이블을 500개씩 `syncReferenceRelations` 한다. 트랜잭션 시작 때 등록하는 이유는 엔티티 콜백이 flush 때 불리는데 첫 flush 가 커밋 시점일 수 있기 때문이다.
@@ -185,6 +185,8 @@ DDL 생성기가 FK 를 만들던 조건과 **같은 조건**일 때만 관계�
 - 승인: 등록 시 승인 권한이 있으면 승인, 아니면 미승인. 승인·승인 취소는 승인 권한만(`PATCH /api/physical/{kind}/{id}/approval/{true|false}`). 기존 테이블·컬럼 승인 API 는 권한 검사가 주석 처리되어 있으나(별도 개선 과제) 신규 API 는 검사한다.
 
 ## 6. AI-1 연계 (설계만, 구현 없음)
+
+> 2026-11-12 : 사용자가 편집한 물리 모델의 변경 이력은 M-9 1차에서 구현했다 (`TB_MDL_CHG_HSTRY`, [model-change-history-m9.md](model-change-history-m9.md)). 아래의 원본 카탈로그 변경 이력(AI-1)과는 다른 테이블·다른 개념이다.
 
 - **경계:** 내부 물리 모델(`schema_info`·`table_info`·`column_info`·`table_relation`·`table_index`·`table_constraint`)은 사용자가 저장할 때만 바뀐다. 원본 카탈로그는 별도 테이블(AI 로드맵 U-03 권고)이며 내부 모델을 덮어쓰지 않는다.
 - **원본 식별 (AI-1 구현 시 제안):** `db_connection`(프로젝트 하위) → `catalog_schema` → `catalog_table` → `catalog_column` / `catalog_constraint` / `catalog_index`, 각 행은 대리키 + (연결 ID, 정규화 이름 경로, 원문 이름). 비교·매칭은 정규화 이름, 표시·DDL 은 원문(U-24).

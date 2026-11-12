@@ -8,7 +8,7 @@
 - 구현 : 물리 모델 일괄 조회 API, 물리 ERD 화면(데이터 관리 → 물리 ERD), 사용자별 레이아웃 저장·복원, M-1 선행 P1 2건(기본 스키마 동시 생성, PostgreSQL 입력 검증).
 - 구현하지 않음 : ERD 에서 테이블·컬럼·관계 편집(M-8), 관리 화면 연동(M-3), 논리 ERD(M-6), 원본 DB 카탈로그·AI 추정 관계. 조회는 물리 모델을 바꾸지 않는다.
 
-## 2. 백엔드 (`metamora-data` `erd/`)
+## 2. 백엔드 (`lexorma-data` `erd/`)
 
 | 구성 | 내용 |
 |---|---|
@@ -50,7 +50,7 @@
 - **검증 :** 좌표 유한·절댓값 1e7 이하, zoom 0.02~4, 노드 5,000개 이하.
 - 레이아웃 저장은 `TB_ERD_LYT` 만 쓴다. `TB_TBL.MDFCN_DT` 가 바뀌지 않음을 테스트로 확인했다.
 
-## 4. 프론트엔드 (`metamora-web/src/features/erd`)
+## 4. 프론트엔드 (`lexorma-web/src/features/erd`)
 
 | 파일 | 내용 |
 |---|---|
@@ -82,7 +82,7 @@ ERD 코드는 로그인·대시보드 초기 번들에 포함되지 않는다 (�
 
 - `elkjs` 0.12.0 : `EPL-2.0 OR GPL-3.0-or-later` 중 EPL-2.0 선택, 수정 없이 npm 배포본(`elk-api.js`, `elk-worker.min.js`)을 번들. 배포 워커 파일에는 저작권 헤더가 없어 고지를 따로 둔다.
 - `@xyflow/react` 12.12.0 / `@xyflow/system` 0.0.83 : MIT.
-- 조치 : `metamora-web/public/jsons/licenses/THIRD_PARTY_NOTICES.md`(고지·저작권·소스 입수 주소·MIT 전문), `EPL-2.0.md`(전문). jar 와 Docker 이미지에 같이 들어가 `/jsons/licenses/` 로 제공되고, ERD 범례의 "오픈소스 고지" 로 연결된다.
+- 조치 : `lexorma-web/public/jsons/licenses/THIRD_PARTY_NOTICES.md`(고지·저작권·소스 입수 주소·MIT 전문), `EPL-2.0.md`(전문). jar 와 Docker 이미지에 같이 들어가 `/jsons/licenses/` 로 제공되고, ERD 범례의 "오픈소스 고지" 로 연결된다.
 - 판단 보류 : 무수정 Object Code 배포에서 소스 입수 방법을 URL 안내로 충분히 갈음하는지, 다른 서드파티 전체 고지가 필요한지는 법률 검토 사항으로 남긴다 (검증 완료로 보지 않음).
 
 ## 6. M-1 선행 P1
@@ -97,7 +97,7 @@ ERD 코드는 로그인·대시보드 초기 번들에 포함되지 않는다 (�
 # PostgreSQL : 빈 격리 DB 를 만들어 지정 (사용 중인 DB 금지)
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_erd_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-./gradlew :metamora-app:test --tests 'com.koboolean.metamora.ErdIntegrationTest' --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest'
+./gradlew :lexorma-app:test --tests 'com.lexorma.ErdIntegrationTest' --tests 'com.lexorma.PhysicalModelIntegrationTest'
 ```
 
 | 항목 | H2 | PostgreSQL 18.6 |

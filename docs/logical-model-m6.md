@@ -1,5 +1,7 @@
 # M-6. 논리 데이터 모델 — 설계 결정과 구현 기록 (1차 : 도메인·API, 2차 : 관리 화면·논리 ERD·메뉴)
 
+> 2026-11-12 : 이 문서의 대상(논리 모델·엔터티·속성·식별자·관계)을 바꾸면 변경 이력으로 남는다 (M-9 2차, [model-change-history-m9.md](model-change-history-m9.md) 11장). 저장 구조는 바뀌지 않았다.
+
 > [데이터 모델링 로드맵](data-modeling-roadmap.md) M-6 중 **1차(저장 구조·관리 API·논리 ERD 조회 API)** 의 기록이다.
 > 작성일 2026-11-11. 1~7장은 1차 기록이고, **2차(관리 화면·논리 ERD·레이아웃 저장·사이드바 개편)는 8장**이다.
 
@@ -89,12 +91,12 @@ Project
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m6_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m6_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.LogicalModelIntegrationTest' --tests 'com.koboolean.metamora.StandardizationQualityIntegrationTest' \
-  --tests 'com.koboolean.metamora.DictionaryUsageIntegrationTest' --tests 'com.koboolean.metamora.SmokeTest' \
-  --tests 'com.koboolean.metamora.ReferenceSyncIntegrationTest' --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' \
-  --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' --tests 'com.koboolean.metamora.ErdIntegrationTest' \
-  --tests 'com.koboolean.metamora.DataPortalTemplateTest' --tests 'com.koboolean.metamora.TermUploadNameGenerationTest'      # 98 tests, 실패 0, 건너뜀 0
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.LogicalModelIntegrationTest' --tests 'com.lexorma.StandardizationQualityIntegrationTest' \
+  --tests 'com.lexorma.DictionaryUsageIntegrationTest' --tests 'com.lexorma.SmokeTest' \
+  --tests 'com.lexorma.ReferenceSyncIntegrationTest' --tests 'com.lexorma.SchemaManagementIntegrationTest' \
+  --tests 'com.lexorma.PhysicalModelIntegrationTest' --tests 'com.lexorma.ErdIntegrationTest' \
+  --tests 'com.lexorma.DataPortalTemplateTest' --tests 'com.lexorma.TermUploadNameGenerationTest'      # 98 tests, 실패 0, 건너뜀 0
 ```
 
 | 항목 | H2 | PostgreSQL 18.6 |
@@ -182,8 +184,8 @@ PostgreSQL 첫 실행에서 1건 실패했다 : 모델 목록의 이름순이 DB
 ./gradlew clean build      # 341 tests, 실패 0, 건너뜀 2 (V0SeedMigrationTest 의 PostgreSQL 1건, UploadPerformanceTest 1건). npm ci + typecheck + vite build 포함
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m6b_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m6b_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m6b_test \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true --tests '...'   # 6장의 목록 + V0SeedMigrationTest : 101 tests, 실패 0, 건너뜀 0
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m6b_test \
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true --tests '...'   # 6장의 목록 + V0SeedMigrationTest : 101 tests, 실패 0, 건너뜀 0
 ```
 
 | 자동 테스트 | H2 | PostgreSQL 18.6 |
@@ -282,7 +284,7 @@ V0 체크섬 불일치는 1차 때와 같은 방식으로 정리해야 한다. �
 
 ### 10.1 `V1__logical_model_seed.sql` (H2·PostgreSQL)
 
-V0 가 META-MORA 프로젝트에 MetaMora 자체 테이블의 **물리 모델 예제**를 넣는 것처럼, V1 은 같은 내용의 **논리 모델 예제**를 넣는다 (데이터만, 스키마 변경 없음).
+V0 가 META-MORA 프로젝트에 Lexorma 자체 테이블의 **물리 모델 예제**를 넣는 것처럼, V1 은 같은 내용의 **논리 모델 예제**를 넣는다 (데이터만, 스키마 변경 없음).
 
 | 논리 | 물리 예제에서 옮긴 것 | 건수 |
 |---|---|---|

@@ -83,7 +83,7 @@
   - 배치 : A·B·C 저장 → A 만 보내 저장 → B·C 보존, 모델 변경은 배치 버전을 바꾸지 않음, 테이블 삭제 조건(컬럼·승인), 삭제된 테이블 좌표 정리.
   - 권한(VIEWER 변경 불가, USER 는 승인 대기·승인 불가), 프로젝트 격리.
 - H2 : 저장소 전체 `./gradlew clean build` — 362건 중 실패 0, 건너뜀 2.
-- PostgreSQL(격리 DB 를 만들어 실행하고 지움) : `metamora-app` 의 통합·시드·스모크 테스트(`*IntegrationTest`·`V0SeedMigrationTest`·`SmokeTest`) 112건 중 실패 0. 필터 없이 `metamora-app` 전체를 PostgreSQL 설정으로 돌리면 124건 중 1건(`ProjectAccessRevokeTest`)이 컨텍스트를 띄우지 못한다 — 이 테스트는 H2 주소를 고정해 쓰는 테스트라 PostgreSQL 드라이버 설정과 맞지 않는 것이고, 이번 변경과 무관하다(H2 빌드에서는 통과).
+- PostgreSQL(격리 DB 를 만들어 실행하고 지움) : `lexorma-app` 의 통합·시드·스모크 테스트(`*IntegrationTest`·`V0SeedMigrationTest`·`SmokeTest`) 112건 중 실패 0. 필터 없이 `lexorma-app` 전체를 PostgreSQL 설정으로 돌리면 124건 중 1건(`ProjectAccessRevokeTest`)이 컨텍스트를 띄우지 못한다 — 이 테스트는 H2 주소를 고정해 쓰는 테스트라 PostgreSQL 드라이버 설정과 맞지 않는 것이고, 이번 변경과 무관하다(H2 빌드에서는 통과).
 
 ### 4.2 브라우저 검증 (인메모리 H2 로 따로 띄운 애플리케이션, 헤드리스 Chrome)
 
@@ -107,6 +107,8 @@
 - 스키마가 여러 개인 프로젝트의 화면(브라우저는 기본 스키마 하나), 100개를 넘는 페이지 경계에서의 새 테이블.
 - 두 사용자의 동시 편집, 큰 ERD 에서의 반응 속도, Chrome 이외 브라우저, 터치 입력, 820px 보다 좁은 화면, PostgreSQL 을 붙인 상태의 화면.
 - 생성한 DDL 을 실제 DB 에 실행해 보지 않았다(범위 밖). DDL 문자열이 저장된 모델과 같은지만 확인했다.
+
+> 2026-11-12 : 이 화면과 테이블·컬럼 관리에서 한 물리 모델 변경은 변경 이력으로 남는다 (M-9 1차, [model-change-history-m9.md](model-change-history-m9.md)).
 
 ## 5. 후속
 

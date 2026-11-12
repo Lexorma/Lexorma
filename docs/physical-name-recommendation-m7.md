@@ -62,7 +62,7 @@
 
 명칭 진단의 판정·사유 문구는 2차와 같다. M-5 품질 진단(`StandardizationQualityService`)은 건드리지 않았다.
 
-## 3. 백엔드 (`metamora-data` `mapping/`)
+## 3. 백엔드 (`lexorma-data` `mapping/`)
 
 | 구성 | 내용 |
 |---|---|
@@ -127,7 +127,7 @@ PostgreSQL 에서 한 번 실패한 것이 있었다 : 한글 정렬 순서가 D
 
 ### 6.2 브라우저 검증
 
-헤드리스 Chrome(별도 프로필, DevTools 프로토콜), 빌드한 `metamora.jar` 를 `h2-local`(인메모리)·포트 19941 로 띄운 인스턴스. **확인 55건 통과, 콘솔 오류 0** (HTTP 4xx 는 권한·인가 확인용으로 일부러 보낸 요청).
+헤드리스 Chrome(별도 프로필, DevTools 프로토콜), 빌드한 `lexorma.jar` 를 `h2-local`(인메모리)·포트 19941 로 띄운 인스턴스. **확인 55건 통과, 콘솔 오류 0** (HTTP 4xx 는 권한·인가 확인용으로 일부러 보낸 요청).
 
 | 구분 | 확인한 것 |
 |---|---|

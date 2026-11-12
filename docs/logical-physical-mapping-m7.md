@@ -1,5 +1,7 @@
 # M-7. 논리·물리 모델 매핑 — 설계 결정과 구현 기록 (1차 : 도메인·API)
 
+> 2026-11-12 : 이 문서의 대상(엔터티 ↔ 테이블·속성 ↔ 컬럼 매핑)을 바꾸면 변경 이력으로 남는다 (M-9 2차, [model-change-history-m9.md](model-change-history-m9.md) 11장). 저장 구조는 바뀌지 않았다.
+
 > [데이터 모델링 로드맵](data-modeling-roadmap.md) M-7 중 **1차(매핑 저장 구조·관리 API·현황·후보 조회)** 의 기록이다. 작성일 2026-11-11.
 > 매핑 관리 화면과 정합성 비교는 **2차**에서 구현했다 — [model-mapping-quality-m7.md](model-mapping-quality-m7.md). 물리명 추천은 구현하지 않았다. 아래 본문은 1차 시점의 기록이다.
 
@@ -75,7 +77,7 @@ TB_LGCL_ATRB (LogicalAttribute) ─1:1─ TB_ATRB_COL_MPNG (AttributeColumnMappi
 - `V2__logical_physical_mapping.sql` (postgresql·h2 같은 내용) : 시퀀스 2개, 테이블 2개, 인덱스 6개, FK 5개. **스키마만 추가하고 기존 테이블·데이터는 바꾸지 않는다.**
 - 신규 설치 : V0 → V1 → V2. 기존 DB(V0·V1 적용) : V0·V1 체크섬 변화 없이 V2 만 적용된다. `repair`·초기화·수동 DDL 이 필요 없다.
 - **개발 DB(`localhost:15439/metamora`)** : 작업 전 이력은 V0(-1532103848)·V1(-514501166). 작업 중 IDE 에서 실행 중이던 애플리케이션이 재시작하면서 **Flyway 가 V2 를 개발 DB 에 적용했다** (2026-11-11 15:56, 체크섬 324210209, 빈 테이블 2개 추가, 기존 데이터 변화 없음). 의도해서 실행한 것은 아니지만 위 업그레이드 경로 그대로다. **V2 파일은 이미 적용됐으므로 내용을 바꾸면 안 된다** (바꿀 것은 다음 버전으로).
-- V0 의 META-MORA 물리 모델 예제(MetaMora 자체 테이블)에는 새 테이블 2개와 단어 `매핑` 이 없다 — V0 를 바꾸면 기존 DB 의 체크섬이 달라지므로 넣지 않았다. 넣으려면 V1 같은 데이터 전용 마이그레이션이 필요하다 (결정 필요, 8장).
+- V0 의 META-MORA 물리 모델 예제(Lexorma 자체 테이블)에는 새 테이블 2개와 단어 `매핑` 이 없다 — V0 를 바꾸면 기존 DB 의 체크섬이 달라지므로 넣지 않았다. 넣으려면 V1 같은 데이터 전용 마이그레이션이 필요하다 (결정 필요, 8장).
 
 ## 6. 동시성
 
@@ -95,14 +97,14 @@ TB_LGCL_ATRB (LogicalAttribute) ─1:1─ TB_ATRB_COL_MPNG (AttributeColumnMappi
 ./gradlew clean build      # 결과는 아래 표
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m7_test)를 만들어 실행 후 삭제
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m7_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.ModelMappingIntegrationTest' --tests 'com.koboolean.metamora.LogicalModelIntegrationTest' \
-  --tests 'com.koboolean.metamora.StandardizationQualityIntegrationTest' --tests 'com.koboolean.metamora.DictionaryUsageIntegrationTest' \
-  --tests 'com.koboolean.metamora.SmokeTest' --tests 'com.koboolean.metamora.ReferenceSyncIntegrationTest' \
-  --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' \
-  --tests 'com.koboolean.metamora.ErdIntegrationTest' --tests 'com.koboolean.metamora.DataPortalTemplateTest' \
-  --tests 'com.koboolean.metamora.TermUploadNameGenerationTest' --tests 'com.koboolean.metamora.V0SeedMigrationTest'
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.ModelMappingIntegrationTest' --tests 'com.lexorma.LogicalModelIntegrationTest' \
+  --tests 'com.lexorma.StandardizationQualityIntegrationTest' --tests 'com.lexorma.DictionaryUsageIntegrationTest' \
+  --tests 'com.lexorma.SmokeTest' --tests 'com.lexorma.ReferenceSyncIntegrationTest' \
+  --tests 'com.lexorma.SchemaManagementIntegrationTest' --tests 'com.lexorma.PhysicalModelIntegrationTest' \
+  --tests 'com.lexorma.ErdIntegrationTest' --tests 'com.lexorma.DataPortalTemplateTest' \
+  --tests 'com.lexorma.TermUploadNameGenerationTest' --tests 'com.lexorma.V0SeedMigrationTest'
 ```
 
 | 자동 테스트 | H2 | PostgreSQL 18.6 |
@@ -137,7 +139,7 @@ METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 ## 9. 후속 반영 : 예제 모델·COMMENT (V3)
 
 - `V3__mapping_example_and_comments.sql` (postgresql·h2, 시퀀스 문법만 다름) : META-MORA 예제에 매핑 테이블 2개를 넣었다 — 단어 `매핑`·용어 2개, 물리 모델(테이블 2·컬럼 16·FK 관계 5), 논리 모델(엔터티 2·속성 16·주 식별자 2·관계 5). 논리·물리 예제를 매핑으로 잇지는 않았다.
-- MetaMora 자체 테이블 37개·컬럼 357개 전부에 `COMMENT ON` 을 달았다 (테이블 = 한글명, 컬럼 = 한글 용어). 이전에는 COMMENT 가 하나도 없었다. `SPRING_SESSION*`·`flyway_schema_history` 는 제외.
+- Lexorma 자체 테이블 37개·컬럼 357개 전부에 `COMMENT ON` 을 달았다 (테이블 = 한글명, 컬럼 = 한글 용어). 이전에는 COMMENT 가 하나도 없었다. `SPRING_SESSION*`·`flyway_schema_history` 는 제외.
 - **관리 규칙** : 테이블·컬럼을 추가하는 마이그레이션은 같은 파일에 COMMENT 와 예제(물리·논리)를 넣는다. `V0SeedMigrationTest` 가 실제 스키마의 `TB_` 테이블·컬럼 집합과 COMMENT 를 예제(`TB_TBL.TBL_KORN_NM`, `TB_COL.COL_EXPLN`)와 비교해 빠지면 실패한다.
 - 5장·8장의 "V0 예제에 새 테이블이 없다 / 결정 필요" 는 이 마이그레이션으로 해소됐다.
 - 기존 DB : 프로젝트 0 에 같은 이름의 테이블·단어를 직접 등록해 둔 경우 이름으로 찾는 하위 조회가 여러 행이 되어 V3 가 실패할 수 있다 (V1 과 같은 전제).

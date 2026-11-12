@@ -66,9 +66,9 @@
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m3_test)를 만들어 실행 후 삭제
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m3_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' \
-  --tests 'com.koboolean.metamora.ErdIntegrationTest' --tests 'com.koboolean.metamora.SmokeTest'
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.SchemaManagementIntegrationTest' --tests 'com.lexorma.PhysicalModelIntegrationTest' \
+  --tests 'com.lexorma.ErdIntegrationTest' --tests 'com.lexorma.SmokeTest'
 ```
 
 | 항목 | H2 | PostgreSQL 18.6 |

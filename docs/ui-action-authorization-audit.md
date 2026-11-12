@@ -197,7 +197,7 @@
 
 ### 10.1 V3 마이그레이션
 
-- 대상 : `metamora-app/src/main/resources/db/migration/postgresql/V3__mapping_example_and_comments.sql`.
+- 대상 : `lexorma-app/src/main/resources/db/migration/postgresql/V3__mapping_example_and_comments.sql`.
 - 1차 작업 중(10:38) 작업 트리에서 39번째 줄(`TB_ATRB_COL_MPNG.ATRB_COL_MPNG_SN` 의 `insert into TB_COL`) 가운데에 줄바꿈과 공백이 들어가 있는 것을 발견했다. 공백·줄바꿈을 빼면 커밋된 내용과 같았고(SQL 의미 변화 없음, 인코딩·줄 끝 문자 변화 없음), 이번 작업의 도구가 만든 변경이 아니다(편집기에서 들어간 것으로 보인다).
 - **Flyway 체크섬은 줄 단위로 계산하므로 달라진다** : 커밋된 파일 `1360113569`, 줄바꿈이 들어간 상태 `592152589`. V3 가 이미 적용된 DB 는 기동 때 검증(validate)에서 실패한다.
 - 2차 작업을 시작했을 때는 파일이 이미 커밋된 내용으로 돌아가 있었다(11:13, 바이트 단위로 `HEAD` 와 같음, `git status` 에 나오지 않음). 그래서 **복원 작업은 하지 않았다.** V0~V4 다섯 파일 모두 `HEAD` 와 같다.
@@ -275,3 +275,20 @@
 ### 10.6 M-9 착수
 
 P1 로 남은 문제는 없다. 위 표는 모두 P2 이고 M-9(모델 변경 이력)의 설계와 겹치지 않는다. 개발 DB 를 다시 올릴 때 V3 체크섬만 한 번 확인하면 된다(10.1).
+
+## 11. 복구 세션 (2026-11-12, 프로젝트 복구 로그인)
+
+활성 프로젝트가 하나도 없을 때 시스템 ADMIN 이 프로젝트 없이 로그인하는 **복구 세션**이 생겼다 ([기록](project-recovery-login.md)). 이 문서의 권한 매트릭스와의 관계 :
+
+- 복구 세션의 권한은 `ROLE_RECOVERY` 하나이고 역할 계층 밖이다. 위 매트릭스의 어떤 화면·액션도 쓸 수 없다 (`/api/auth/me` 의 `menus` 전부 `false`, `approvalAvailable` `false`).
+- 서버는 `SecurityConfig` 에서 복구 세션의 `/api/**` 를 `/api/recovery/**`(프로젝트 목록·활성화)만 남기고 막는다. 반대로 `/api/recovery/**` 는 일반 세션(ADMIN 포함)이 쓸 수 없다.
+- 프로젝트 수정(`PUT /api/saveProject/project`)에 마지막 활성 프로젝트 확인(`confirmLastActive`)이 추가됐고, 사용자 관리의 권한 변경은 마지막 활성 ADMIN 을 강등할 수 없다.
+
+## 11. 추가 화면 (M-9 2차)
+
+| 화면 | 액션 | 서버 | 화면 |
+|---|---|---|---|
+| 모델 변경 이력 (`/modelHistory`, 메뉴 `model-history`) | 목록·객체별·그룹·상세 조회 | VIEWER, 이력의 프로젝트 = 로그인 프로젝트 | 메뉴·화면 VIEWER 부터. 변경 버튼 없음 (쓰기 API 가 없다) |
+
+NOT_APPROVE 는 메뉴가 없고 API 가 403 이다. 복구 세션은 화면이 복구 화면으로 돌아가고 API 가 403 이다. 테이블 상세·엔터티 상세의 [변경 이력] 버튼은 `canView('model-history')` 일 때만 나온다.
+

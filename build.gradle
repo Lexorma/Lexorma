@@ -6,6 +6,10 @@ plugins {
 }
 
 // 모든 모듈 공통 설정
+allprojects {
+    group = 'com.lexorma'
+}
+
 subprojects {
     apply plugin: 'java-library'
     apply plugin: 'io.spring.dependency-management'
@@ -52,9 +56,9 @@ subprojects {
 }
 
 // 메뉴 모듈 공통 : core(인증/프로젝트) 위에 올라가고, 테스트는 core 픽스처를 사용한다
-configure(subprojects.findAll { it.name in ['metamora-system', 'metamora-operation', 'metamora-data'] }) {
+configure(subprojects.findAll { it.name in ['lexorma-system', 'lexorma-operation', 'lexorma-data'] }) {
     dependencies {
-        api project(':metamora-core')
-        testImplementation testFixtures(project(':metamora-core'))
+        api project(':lexorma-core')
+        testImplementation testFixtures(project(':lexorma-core'))
     }
 }

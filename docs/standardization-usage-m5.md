@@ -35,7 +35,7 @@
 
 이름이 같아도(컬럼명이 용어 약어와 같음, 용어명에 단어 문자열이 들어감) 참조가 없으면 세지 않는다. 컬럼 조회는 N:1 조인만 써서 컬럼 1행이 결과 1행이다.
 
-## 3. 백엔드 (`metamora-data` `dictionary/`)
+## 3. 백엔드 (`lexorma-data` `dictionary/`)
 
 | 구성 | 내용 |
 |---|---|
@@ -68,11 +68,11 @@ VIEWER 에게 컬럼 정보를 주는 것은 물리 ERD(VIEWER)가 이미 주는
 # PostgreSQL 18.6 : 빈 격리 DB(metamora_m5_test)를 만들어 실행 후 삭제
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m5_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-./gradlew :metamora-app:test -PfrontendPrebuilt=true \
-  --tests 'com.koboolean.metamora.DictionaryUsageIntegrationTest' --tests 'com.koboolean.metamora.SmokeTest' \
-  --tests 'com.koboolean.metamora.ReferenceSyncIntegrationTest' --tests 'com.koboolean.metamora.SchemaManagementIntegrationTest' \
-  --tests 'com.koboolean.metamora.PhysicalModelIntegrationTest' --tests 'com.koboolean.metamora.ErdIntegrationTest' \
-  --tests 'com.koboolean.metamora.DataPortalTemplateTest' --tests 'com.koboolean.metamora.TermUploadNameGenerationTest'
+./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
+  --tests 'com.lexorma.DictionaryUsageIntegrationTest' --tests 'com.lexorma.SmokeTest' \
+  --tests 'com.lexorma.ReferenceSyncIntegrationTest' --tests 'com.lexorma.SchemaManagementIntegrationTest' \
+  --tests 'com.lexorma.PhysicalModelIntegrationTest' --tests 'com.lexorma.ErdIntegrationTest' \
+  --tests 'com.lexorma.DataPortalTemplateTest' --tests 'com.lexorma.TermUploadNameGenerationTest'
 ```
 
 | 항목 | H2 | PostgreSQL 18.6 |

@@ -102,7 +102,7 @@ ERD 편집은 "저장 → 다시 조회" 라서 화면이 오래된 상태로 �
 | `CHAR` ↔ `VARCHAR`, `TEXT` ↔ `VARCHAR`, 정수 ↔ `NUMERIC`, 날짜 ↔ 일시, 문자 ↔ 숫자 | 거절 | 거절 (공통 타입이 같은 `NUMBER(n)` 이 되는 경우만 허용) | 거절 |
 | DB 고유 타입·해석할 수 없는 타입 (`ENUM(...)`, `GEOMETRY` …) | 같을 때만 | 같을 때만 | 같을 때만 |
 
-- 판단하지 않는 것 : 부호(UNSIGNED), 문자 집합·콜레이션, 타임존 유무. MetaMora 는 이 정보를 컬럼에 두지 않는다. 같은 타입이어도 이 값이 다르면 실제 DB 에서 실패할 수 있다(특히 MySQL).
+- 판단하지 않는 것 : 부호(UNSIGNED), 문자 집합·콜레이션, 타임존 유무. Lexorma 는 이 정보를 컬럼에 두지 않는다. 같은 타입이어도 이 값이 다르면 실제 DB 에서 실패할 수 있다(특히 MySQL).
 - 실제 DBMS 는 받아 줄 수 있지만 여기서 거절하는 조합이 있다(예 : PostgreSQL 의 `VARCHAR` ↔ `TEXT`). 확신할 수 없는 조합을 호환으로 처리하지 않는다는 기준에 따랐다. 필요하면 타입을 맞추거나 논리 관계로 등록한다.
 - 길이·정밀도만 다른 FK 는 받되, DDL 이 "값이 들어가지 않거나 잘릴 수 있다" 는 기존 경고를 낸다.
 - 프로젝트의 대상 DB 를 나중에 바꾸면 이미 등록된 FK 가 새 DB 기준으로는 맞지 않을 수 있다. 다시 검사하지 않는다(DDL 경고로만 드러난다).
@@ -160,11 +160,11 @@ B 가 가장 안전하다고 본다. 여러 테이블 DDL·Export(M-11)와 함�
 # PostgreSQL : 빈 DB 를 만든 뒤
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/<검증 DB> \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/<검증 DB> \
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/<검증 DB> \
 ./gradlew test -PfrontendPrebuilt=true --rerun
 ```
 
-`--rerun` 을 빼면 직전 H2 결과가 최신으로 판단되어 테스트가 다시 돌지 않는다. `METAMORA_TEST_POSTGRES_URL` 은 `V0SeedMigrationTest` 의 PostgreSQL 쪽을 켠다(없으면 건너뛴다).
+`--rerun` 을 빼면 직전 H2 결과가 최신으로 판단되어 테스트가 다시 돌지 않는다. `LEXORMA_TEST_POSTGRES_URL` 은 `V0SeedMigrationTest` 의 PostgreSQL 쪽을 켠다(없으면 건너뛴다).
 
 ## 6. 물리 ERD 화면 보완
 
@@ -182,7 +182,7 @@ METAMORA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/<검증 DB> \
 | H2 `./gradlew clean build` (프론트엔드 타입 검사·빌드 포함) | 373건, 실패 0, 건너뜀 2 (`V0SeedMigrationTest` 의 PostgreSQL 쪽 1건, `UploadPerformanceTest` 1건) |
 | PostgreSQL 18.6 격리 DB, **전체** (`./gradlew test --rerun`, 모든 모듈) | 373건, 실패 0, 건너뜀 1 (`UploadPerformanceTest`). `ProjectAccessRevokeTest` 7건 포함 |
 
-DB 를 쓰는 테스트는 `metamora-app` 모듈의 136건이고 나머지 237건은 DB 없이 도는 단위 테스트다.
+DB 를 쓰는 테스트는 `lexorma-app` 모듈의 136건이고 나머지 237건은 DB 없이 도는 단위 테스트다.
 
 추가·변경한 테스트
 

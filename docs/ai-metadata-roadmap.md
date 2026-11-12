@@ -1,6 +1,6 @@
 # Lexorma AI 메타데이터 관리 로드맵
 
-> **상태: 계획 문서.** 이 문서의 기능은 **아직 구현되지 않았다.** 각 항목의 "현재 구현 상태"는 작성 시점(2026-11)의 저장소 코드를 기준으로 확인한 내용이며, 구현이 끝난 항목은 릴리스와 함께 이 문서에 반영한다.
+> **상태: 구현 시작 (2026-11-12).** 0단계(공통 기반)의 결정과 **AI-1a 공통 기반 구현**까지 끝났다 — [9장](#9-미확정-사항-종합)의 U-01·U-02·U-04·U-07(초기 방향), [1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리). 외부 DB 수집·MCP·Ollama·Tool Calling 은 **아직 구현되지 않았다.** 4장의 현황은 2026-11-12 의 `dev` 코드를 기준으로 다시 확인한 것이다.
 >
 > README 의 [Project Roadmap](../README.md#project-roadmap) 은 방향만 요약하고, AI·MCP 관련 상세 계획은 이 문서에서 관리한다.
 > ERD·논리/물리 모델링·표준화·DDL/Export 와 **전체 제품 우선순위**는 [데이터 모델링 로드맵](data-modeling-roadmap.md)에서 관리한다. AI 는 모델링·메타데이터 관리를 대체하지 않는 **보조 계층**이다. 다른 문서에서 이 문서의 n단계는 `AI-n` 으로 가리킨다.
@@ -89,19 +89,27 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 |---|---|---|
 | 데이터 사전 (표준 단어/도메인/용어, 단어-용어 매핑, 이음동의어·금칙어, 제정차수) | 구현됨 | `lexorma-data/.../dictionary/domain/entity/Standard{Word,Domain,Term,TermWordMapping}.java` |
 | 데이터 사전 엑셀 업로드/다운로드 (SAX 업로드, SXSSF 출력) | 구현됨 | `dictionary/service/StandardTermService.java`, `excel/util/ExcelExportUtils.java` |
-| 테이블/컬럼 **설계** 정보 (설계 → DDL 방향) | 구현됨 | `table/domain/entity/TableInfo.java`, `column/domain/entity/ColumnInfo.java`, `table/ddl/TableDdlGenerator.java` |
-| 테이블/컬럼 설명 | 일부 구현 | `TableInfo.tableDescription`, `ColumnInfo.columnDesc` 한 개뿐. **원본 COMMENT 와 업무 설명 구분 없음** |
-| 스키마 개념 | 미구현 | 테이블은 `projectId` 아래에만 존재 (스키마/카탈로그 속성 없음) |
-| PK / FK / 인덱스 / 제약조건 | 일부 구현 | 컬럼 단위 boolean(`isPk`, `isUnique`, `isIndex`)과 참조 테이블명 문자열(`refTableName`)뿐. FK 컬럼 쌍·인덱스 구성·제약조건명 모델 없음 |
+| 스키마 관리 | 구현됨 (M-1·M-3) | `schema/` (`TB_SCHM`, 프로젝트별 기본 스키마). 테이블은 스키마에 속한다 |
+| 테이블/컬럼 **설계** 정보 (설계 → DDL 방향) | 구현됨 | `table/`, `column/`, `table/ddl/TableDdlGenerator.java` (PostgreSQL·Oracle·MySQL·MariaDB) |
+| PK / FK / 인덱스 / 제약조건 | 구현됨 (M-1) | `physical/` : 관계 `TB_TBL_REL` + 컬럼 쌍(복합 FK, FK·논리 관계, 출처 `USER`·`REF_COLUMN`·`IMPORTED`·`AI_APPROVED`), 인덱스 `TB_TBL_IDX`, UNIQUE·CHECK `TB_TBL_CNSTRT`. FK 대상 키·타입 검증. PK 는 컬럼의 `isPk` |
+| 물리 ERD · 논리 ERD (조회·편집·사용자별 배치) | 구현됨 (M-2·M-3·M-8) | `erd/`, `logical/`, `lexorma-web/src/features/{erd,logical}` |
+| 논리 모델 (모델·엔터티·속성·식별자·관계) | 구현됨 (M-6) | `logical/` (`TB_LGCL_*`) |
+| 논리 ↔ 물리 매핑, 정합성 진단, 물리명 추천 | 구현됨 (M-7) | `mapping/` (`TB_ENTT_TBL_MPNG`, `TB_ATRB_COL_MPNG`) |
+| 표준화 품질 진단 (용어 없는 컬럼, 약어 불일치, 도메인 ↔ 타입 불일치) | 구현됨 (M-5) | `dictionary/service/StandardizationQualityService.java` |
+| 모델 변경 이력 (사용자가 편집한 물리·논리 모델·매핑) | 구현됨 (M-9) | `history/` (`TB_MDL_CHG_HSTRY`, 변경 전후 JSON, 변경 그룹) — [model-change-history-m9.md](model-change-history-m9.md) |
+| 모델 버전 · 버전 비교 · 비교 결과 ERD | 구현됨 (M-9 3차, M-10 ③) | `version/` (`TB_MDL_VER`, 모델 전체 JSON 스냅샷, 수정·삭제 없음) — [model-version-erd-m10.md](model-version-erd-m10.md) |
+| 프로젝트 삭제 정합성 | 구현됨 | 영구 삭제 = 프로젝트 데이터 전부 삭제. `ProjectDeletedEvent` 를 각 모듈이 같은 트랜잭션에서 처리(`data/project/ProjectDataCleanup` 등), 삭제와 겹친 등록 차단(`core/project/guard/ProjectWriteGuard`) — [project-deletion.md](project-deletion.md) |
+| 테이블/컬럼 설명 | 일부 구현 | `TBL_EXPLN`, `COL_EXPLN` (`varchar(255)`) 한 개뿐. **원본 COMMENT 와 업무 설명 구분 없음** → AI-1b(원본 COMMENT)·AI-1d(업무 설명 `TEXT` 확장) |
 | 뷰 | 미구현 | — |
+| 원본 메타데이터(수집한 카탈로그)와 그 스냅샷·변경분 | 미구현 | 모델 변경 이력·모델 버전은 **사용자가 관리하는 모델**의 것이다. 원본 사실의 이력은 따로 만든다 (AI-1b·AI-1c) |
 | 승인 워크플로 | 일부 구현 | 엔티티별 `isApproval` boolean + `AuthUtil.isApprovalAvailable()`. **검토 이력·반려 사유·검토자 기록 없음** |
-| 변경 이력 / 스냅샷 | 일부 구현 | 사용자가 편집한 **물리 모델**의 변경 이력은 M-9 1차에서 구현 (`TB_MDL_CHG_HSTRY`, 공통 테이블 + 전후 JSON — [model-change-history-m9.md](model-change-history-m9.md)). 원본 메타데이터(수집한 카탈로그)의 변경 이력·스냅샷은 미구현이며 같은 방식을 쓸 수 있다 |
-| 감사 로그 | 일부 구현 | API 요청 로그(`core/logs`, `LogsInterceptor`). 마스킹은 key 에 `passw`/`pwd` 가 들어간 값만 (`core/logs/util/SensitiveDataMasker.java`) |
+| 감사 로그 · 민감정보 마스킹 | 구현됨 (AI-1a 에서 보강) | API 요청 로그(`core/logs`, `TB_LOG`). 인증·AI·MCP API 는 본문을 남기지 않고(`logs/policy/LogBodyPolicy`, `@ProtectedLogBody`), 그 밖에는 비밀 필드와 값 안의 비밀을 가린다(`logs/util/SensitiveDataMasker`) |
+| 비밀값 암호화 저장 | **유틸리티만 구현 (AI-1a)** | `core/crypto/{SecretCipher,SecretKeyring,SecretScope}` (AES-256-GCM, 환경변수 키). 아직 이것으로 저장하는 테이블은 없다. 계정 비밀번호는 해시(`PasswordEncoder`) |
+| 실행 컨텍스트 · 세션 없는 권한 재검증 | **구현 (AI-1a)** | `core/execution/` (`ExecutionContext`, `ExecutionContextVerifier`), `core/project/service/ProjectAuthority`. 비동기 실행기·스케줄러는 없다 |
 | 외부 DB 연결·메타데이터 수집 | 미구현 | `DatabaseMetaData`·외부 DataSource·스키마 import 코드 없음. `DbType`(PostgreSQL/Oracle/MySQL/MariaDB)은 **DDL 생성 대상**으로만 사용 |
 | MCP | 미구현 | MCP 관련 코드·의존성 없음 |
 | AI / LLM / Tool Calling | 미구현 | Spring AI, Ollama, OpenAI 등 의존성·코드 없음 (`gradle/libs.versions.toml`) |
-| 스케줄러 / 배치 | 미구현 | `@EnableScheduling`, `@Scheduled`, 분산 락(ShedLock 등) 없음 |
-| 비밀값 암호화 저장 | 미구현 | 계정 비밀번호 해시(`PasswordEncoder`)만 존재. 양방향 암호화·키 관리 없음 |
+| 스케줄러 / 배치 / 비동기 실행 | 미구현 | `@EnableScheduling`, `@Scheduled`, `@Async`, 분산 락 없음 |
 | 아웃바운드 HTTP 클라이언트 | 미구현 | 사용 중인 클라이언트 없음 (Spring Framework 의 `RestClient`, JDK `HttpClient` 는 추가 의존성 없이 사용 가능) |
 
 ### 4.2 재사용할 수 있는 기존 기능
@@ -117,13 +125,17 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 | 용어명/약어 단어 수 검증·약어 기준 용어명 생성 (`validateWordCount`, `resolveUploadedTermName`, `toEnglishTermName`) | `dictionary/service/StandardTermService.java` | 5 (약어 해석), 6 |
 | 대량 처리 패턴 (500행 청크, `SEQUENCE` id + JDBC 배치, `flush/clear`) | `ExcelUtils`, 업로드 서비스 | 2 (대용량 메타데이터 적재) |
 | 프론트 정의 컬럼 그리드 (`GridColumn[]`, `GET {url}/data`) | `lexorma-web/src/components/grid`, `PageableUtil` | 5, 9 (검토·보고서 화면) |
-| 도메인 이벤트 (`ProjectDeletedEvent`, 현재 리스너 없음) | `core/project/domain/event` | 1·2 (프로젝트 삭제 시 수집/AI 데이터 정리) |
-| 요청 로그 + 민감정보 마스킹 | `core/logs` | 7 공통 (마스킹 키 확장 필요) |
+| 프로젝트 삭제 정리 (`ProjectDeletedEvent` → 모듈별 리스너, `ProjectWriteGuard`) | `core/project`, `data/project/ProjectDataCleanup` | 1·2 (새 테이블을 삭제 목록에 추가. JDBC 로 직접 적재하면 `ProjectWriteGuard` 를 지나지 않으므로 적재 끝에 프로젝트 행을 직접 확인한다) |
+| 요청 로그 본문 정책 + 민감정보 마스킹 | `core/logs` (`LogBodyPolicy`, `@ProtectedLogBody`, `SensitiveDataMasker`) | 전 단계 (AI·MCP API 는 `/api/ai/**`·`/api/mcp/**` 아래에 두거나 `@ProtectedLogBody` 를 붙인다) |
+| 비밀값 암호화 (`SecretCipher`, 자리 `SecretScope`) | `core/crypto` | 2 (외부 DB·MCP 인증 정보), 3 (AI Endpoint 인증 정보) |
+| 실행 컨텍스트와 재검증 (`ExecutionContext`, `ExecutionContextVerifier`) | `core/execution` | 4 (Tool 범위), 5·8 (비동기·배치) |
+| 프로젝트 관리자·ADMIN 판정 (`ProjectAuthority`) | `core/project/service` | 2·3 (연결·AI 설정 권한) |
+| 변경 전후 비교 화면 (`DiffTable`, `diffRows`, `ChangeItem`), 변경 표시 ERD (`VersionErd`, 노드의 `diff`) | `lexorma-web/src/features/{history,version,erd}` | 1·2 (원본 변경분 표시), M-10 ①② |
 
 ### 4.3 구조적 제약 (설계 시 반드시 반영)
 
 - **모듈 의존 방향** `common ← core ← (system, operation, data) ← app` 이 빌드로 강제된다. 메타데이터·데이터 사전은 `lexorma-data` 에 있으므로, AI Tool 이 이를 읽으려면 **배치 위치를 먼저 정해야 한다** (→ [U-01](#9-미확정-사항-종합)).
-- **스키마 변경은 Flyway** (`db/migration/postgresql`, `db/migration/h2` **양쪽**에 같은 버전 추가)이고 JPA 는 `ddl-auto: validate` 다. 엔티티 변경에는 반드시 두 벤더의 마이그레이션이 따라야 한다.
+- **스키마 변경은 Flyway** (`db/migration/postgresql`, `db/migration/h2` **양쪽**에 같은 내용)이고 JPA 는 `ddl-auto: validate` 다. 엔티티 변경에는 반드시 두 벤더의 마이그레이션이 따라야 한다. **지금은 정식 출시 전이라 `V0__init.sql`(스키마)·`V1__seed_data.sql`(예제) 두 파일을 고쳐서 유지한다** — 이미 그 파일로 만든 DB 는 체크섬이 달라져 기동하지 않으므로 개발·검증 DB 는 새로 만든다. **정식 출시 이후에는 적용된 파일을 고치지 않고 새 버전(`V2__…`)을 추가하는 방식으로 바꾼다** ([데이터 모델링 로드맵 — 마이그레이션 정책](data-modeling-roadmap.md#마이그레이션-정책)).
 - **단일 JAR / Docker 배포** (`lexorma.jar`, `Dockerfile`·`Dockerfile-h2`·`Dockerfile.dev`). 별도 프로세스·사이드카를 전제로 하지 않는다.
 - **세션에 들어가는 객체는 Java 직렬화 가능**해야 한다 (Spring Session JDBC). AI 대화 상태·연결 객체를 세션에 넣지 않는다.
 - **새 API 는 `@PreAuthorize` 필수** (없으면 로그인 사용자 전체에 열림), 응답은 JSON, CSRF 유지.
@@ -140,8 +152,8 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 
 | 단계 | 개발 영역 | 우선순위 | 선행 | 현재 상태 |
 |---|---|---|---|---|
-| 0 | 공통 기반 결정 (모듈 배치, 비밀값 저장, 감사·마스킹) | P1 | — | 설계 확인 필요 |
-| 1 | 메타데이터 모델 보강 · 변경 이력 · 상세 설명 분리 | P1 | 0 | 일부 구현 |
+| 0 | 공통 기반 결정 (모듈 배치, 비밀값 저장, 감사·마스킹) | P1 | — | **결정 완료 (2026-11-12)**, 공통 기반 구현은 AI-1a |
+| 1 | 메타데이터 모델 보강 · 변경 이력 · 상세 설명 분리 | P1 | 0 | **AI-1a(공통 기반) 구현**. AI-1b~1d 미구현 |
 | 2 | MCP 기반 외부 DB 메타데이터 수집·동기화 | P1 | 0, 1 | 미구현 |
 | 3 | Ollama 연결 및 Provider 추상화 | P1 | 0 | 미구현 |
 | 4 | Lexorma DB 기반 AI Tool Calling | P1 | 1, 3 | 미구현 |
@@ -179,7 +191,15 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 0단계. 공통 기반 결정
 
 - **목적 및 배경:** 1~11 단계가 공통으로 쓰는 배치 위치·비밀값·감사 기준을 먼저 정해, 단계마다 다른 방식이 생기지 않게 한다.
-- **현재 구현 상태:** 설계 확인 필요. 모듈 규칙상 `system`·`data` 간 상호 참조가 금지되어 있고, 비밀값 암호화·스케줄러가 없다.
+- **현재 구현 상태:** **결정 완료 (2026-11-12).** 결정 내용은 아래 "결정 (AI-0)" 과 [9장](#9-미확정-사항-종합). 결정을 코드로 옮긴 것이 AI-1a 다 ([1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리)).
+- **결정 (AI-0, 2026-11-12):**
+  - **U-01 모듈 배치:** 새 Gradle 모듈을 만들지 않는다. 원본 카탈로그·MCP 수집·AI Provider·Tool Calling·데이터 사전 제안·품질 검사·작업 이력은 **`lexorma-data`** 의 기능 패키지로 둔다. 도메인과 무관한 공통 부품(비밀값 암호화, 민감정보 마스킹·로그 본문 정책, 실행 컨텍스트, 프로젝트 권한 판정)은 **`lexorma-core`** 에 둔다. `data` 가 `core` 를 `api` 로 받으므로 의존 방향(`common ← core ← (system, operation, data) ← app`)이 그대로다. 전역 AI 설정 API 도 `data` 에 두고 `@PreAuthorize("hasRole('ADMIN')")` 로 막는다 (`system` 을 참조하지 않는다).
+  - **U-02 비밀값 암호화:** 환경변수 키 + AES-256-GCM (JDK 표준 기능, 의존성 추가 없음). `LEXORMA_SECRET_KEYS=키ID:Base64(32바이트)[,…]`, `LEXORMA_SECRET_ACTIVE_KEY_ID`(없으면 맨 앞). 암호문 `v1:<키ID>:<Base64(IV 12 + 암호문 + 태그 16)>`, 용도·프로젝트·소유 객체·필드를 AAD 로 묶는다. 키가 없으면 기동은 되고 쓰는 시점에 실패(`SECRET_KEY_NOT_CONFIGURED`), 키 설정이 틀리면 기동을 멈춘다. **키 분실:** 그 키로 만든 비밀값은 복구할 수 없다 → `SECRET_KEY_NOT_FOUND`, 비밀값만 다시 등록한다(연결·카탈로그는 유지). **키 교체:** 새 키를 추가해 활성으로 두고 옛 키를 남긴 채 다시 암호화(`SecretCipher.reencrypt`)한 뒤 옛 키를 뺀다 — 다시 암호화를 돌리는 관리 기능은 비밀값을 저장하는 테이블이 생기는 단계(AI-1b·AI-3)에서 만든다. 외부 Secret Store 는 쓰지 않는다.
+  - **U-04 설정 범위 (혼합):** 전역 AI Provider·Endpoint·사용 가능한 모델 = 시스템 **ADMIN**. 프로젝트의 AI 사용 여부·기본 모델·외부 DB 연결 = **그 프로젝트의 관리자(프로젝트의 관리자 계정) 또는 ADMIN** — 단 그 프로젝트에 접근할 수 있는(활성 프로젝트의 승인된 멤버) 경우에만 (`ProjectAuthority.Access#canManage`). 외부 DB 연결·수집 대상·실행 이력·AI 제안과 승인 결과는 프로젝트 소유 데이터다. **프로젝트별 역할 체계는 새로 만들지 않는다** (역할은 계정 단위 전역, 프로젝트 관리자는 한 명). 프로젝트별 AI 설정은 `TB_PRJ` 의 컬럼이 아니라 `lexorma-data` 의 별도 테이블로 둔다.
+  - **U-07 MCP 초기 방향:** 사용자가 운영하는 **외부 MCP 서버**를 **HTTP** 로 쓴다 (stdio·앱 내장은 초기 범위 밖 → 실행 명령 허용 목록·프로세스 권한 분리가 필요 없다). 수집 요청 동안만 연결하고 끝나면 끊는다. 메타데이터 조회 Tool 만 허용 목록으로 부르고 임의 SQL 실행 Tool 은 부르지 않는다. 구현은 AI-2.
+  - **감사·마스킹:** 인증 정보·AI·MCP API 는 요청·응답 본문을 요청 로그에 남기지 않는다(호출 기록은 남긴다). 프롬프트·응답 본문을 따로 저장할지는 5단계(U-14)에서 정한다. 그 밖의 API 는 비밀 필드(password·passwd·pwd·token·secret·apiKey·authorization·credential·accessKey·secretKey·privateKey·connectionString)와 값 안의 비밀(JDBC URL·URI 의 인증 정보, Bearer·Basic 값)을 가린다.
+  - **실행 컨텍스트:** `USER`(세션의 사용자·프로젝트) / `ASYNC`(요청 시점의 사용자·프로젝트를 작업에 고정) / `SCHEDULED`(세션·요청자 없이 프로젝트 하나). 값(실행 방식, 프로젝트 ID, 요청자 계정 ID, 작업 ID)만 담고, 실행 직전·단계마다 DB 로 다시 확인한다.
+  - **신뢰 경계:** MCP 응답은 적재 전에, Ollama 응답은 해석 직후에 구조·타입·길이·건수·전체 크기를 검증한다. 원본 COMMENT·업무 설명은 프롬프트의 데이터 영역에만 넣는다. 허용하지 않은 Tool 이름과 프로젝트 범위 밖 객체 ID 는 거부한다. (검증 코드는 각 입력을 받는 단계에서 만든다 : AI-2, AI-3, AI-4)
 - **작업 범위:**
   - 새 기능(수집·AI·품질 검사)의 **코드 위치** 결정 (`lexorma-data` 내 기능 패키지 / 신규 모듈 / core 의 조회 포트 + data 구현).
   - **비밀값 저장 방식** 결정: 외부 DB·MCP·AI Endpoint 인증 정보 (암호화 키 출처: 환경변수 / 파일 / 외부 Secret Store).
@@ -198,9 +218,19 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 1단계. 메타데이터 모델 보강 · 변경 이력 · 상세 설명 분리
 
 - **목적 및 배경:** 원본 DB 의 물리적 사실과 Lexorma 의 업무 해석을 구분하고, 최신화가 사람이 작성한 설명을 덮어쓰지 않게 한다. 이후 AI 제안·품질 검사가 어떤 스냅샷을 근거로 했는지 추적할 수 있게 한다.
-- **현재 구현 상태:** 일부 구현. `TableInfo.tableDescription`, `ColumnInfo.columnDesc` 가 설명의 전부이며 출처 구분·이력·스냅샷이 없다. 스키마·FK 구성·인덱스 구성·뷰 모델이 없다.
+- **현재 구현 상태:** **AI-1a 구현 (2026-11-12), AI-1b~1d 미구현.** 물리 모델 쪽은 이미 갖춰져 있다 — 스키마, 복합 FK, 인덱스, UNIQUE·CHECK, 논리 모델·매핑, 모델 변경 이력·버전(4.1). 없는 것은 **원본 쪽**이다 : 외부 DB 연결, 원본 카탈로그(뷰 포함), 원본 COMMENT, 수집 스냅샷·변경분, 원본 ↔ 물리 매핑. 설명은 `TBL_EXPLN`·`COL_EXPLN`(`varchar(255)`) 하나뿐이고 출처 구분이 없다.
+- **작업 분할 (AI-1a → AI-1d):**
+
+  | 작업 | 내용 | 상태 |
+  |---|---|---|
+  | **AI-1a** 공통 기반 | 민감정보 마스킹 확장과 요청 로그 본문 정책, 비밀값 암호화 유틸리티, 실행 컨텍스트와 DB 재검증, 프로젝트 관리자·ADMIN 판정. DB 변경 없음 | **구현 (2026-11-12)** |
+  | **AI-1b** 외부 DB 연결 · 원본 카탈로그 저장 모델 | 연결(비밀값은 `SecretCipher`), 원본 카탈로그를 **물리 모델과 별도 모델**로(U-03 : 연결 → 스키마 → 테이블·뷰 → 컬럼·제약조건·인덱스·FK), **원본 COMMENT 는 카탈로그 객체의 속성**으로 둔다 — 최신화가 업무 설명을 덮어쓸 경로가 구조적으로 없다. Flyway 양쪽, 프로젝트 삭제 정리(`ProjectDataCleanup`), 격리 테스트. 수집은 없다 (테스트 데이터로 적재) | 미구현 |
+  | **AI-1c** 수집 결과 적재 · 변경분 · 스냅샷 | "수집 결과" 를 입력으로 받는 적재(MCP 와 분리), 수집 실행 단위의 스냅샷 경계(`COMPLETED` 만 확정), 변경분(추가·수정·삭제, 달라진 객체만 전후 JSON), 내용 해시, 논리 삭제, 이름 변경 후보 | 미구현 |
+  | **AI-1d** 원본 ↔ 물리 모델 매핑 · 업무 설명 분리 | 원본 카탈로그와 물리 모델의 명시적 매핑, 업무 설명의 생명주기(사용자 관리, 최신화가 바꾸지 않음), **업무 설명 255자 제한을 `TEXT` 로 넓히는 DB 변경은 여기서 한다**(DDL COMMENT 출력·엑셀·화면 영향 확인 포함) | 미구현 |
+
+  모델 변경 이력(`TB_MDL_CHG_HSTRY`)·모델 버전(`TB_MDL_VER`)에는 원본 변경을 섞지 않는다 : 그쪽은 사용자가 편집한 모델의 이력이고 객체를 내부 ID 로 짝짓는다. 원본은 수집 실행 단위로 기록하고 연결·스키마·정규화한 이름으로 짝짓는다. 다시 쓰는 것은 방식(필드 목록 + 전후 JSON, 추가·삭제·수정 판정)과 화면(변경 전후 표, 변경 표시 ERD)이다.
 - **작업 범위:**
-  - **모델 방향 결정 (U-03):** 수집한 물리 메타데이터를 ① 기존 설계 테이블(`table_info`/`column_info`)에 합칠지 ② 별도 원본 카탈로그(예: 연결 → 스키마 → 테이블/뷰 → 컬럼·제약조건·인덱스)로 두고 설계 테이블과 연결할지 결정한다. 물리 모델의 관계·스키마·인덱스 보강([M-1](data-modeling-roadmap.md#m-1-물리-모델-보강-스키마관계인덱스제약))과 **같은 마이그레이션 묶음**으로 설계하고, 원본 카탈로그를 물리 모델로 가져오는 절차는 [M-4](data-modeling-roadmap.md#m-4-역공학-결과의-물리-모델-가져오기erd-자동-생성)가 담당한다.
+  - **모델 방향 결정 (U-03):** 수집한 물리 메타데이터를 ① 기존 설계 테이블(`table_info`/`column_info`)에 합칠지 ② 별도 원본 카탈로그(예: 연결 → 스키마 → 테이블/뷰 → 컬럼·제약조건·인덱스)로 두고 설계 테이블과 연결할지 결정한다. 물리 모델의 관계·스키마·인덱스 보강([M-1](data-modeling-roadmap.md#m-1-물리-모델-보강-스키마관계인덱스제약))은 이미 끝났으므로 원본 카탈로그만 새로 설계하고(**결정 : ② 별도 카탈로그**, AI-1b), 원본 카탈로그를 물리 모델로 가져오는 절차는 [M-4](data-modeling-roadmap.md#m-4-역공학-결과의-물리-모델-가져오기erd-자동-생성)가 담당한다.
   - **속성 분리** (필드명은 예시, 최소 변경안을 설계 단계에서 확정):
 
     | 개념 | 의미 | 최신화 시 |
@@ -581,13 +611,13 @@ AI·MCP 관련 PR 리뷰와 테스트에서 매번 확인한다.
 
 | ID | 사항 | 선택지 / 현재 권고 | 결정 시점 |
 |---|---|---|---|
-| U-01 | 새 기능의 코드 위치 | ① `lexorma-data` 안의 기능 패키지 ② 신규 모듈(의존 방향 규칙 변경 필요) ③ core 에 조회 포트, data 가 구현. **권고: 초기에는 ① (모듈을 늘리지 않음)**, 설정 화면이 system 에 필요해지면 ③ 검토 | 0단계 |
-| U-02 | 비밀값 암호화 키 관리 | 환경변수 키 + 애플리케이션 암호화 / 외부 Secret Store. 키 교체·분실 시 재등록 절차 | 0단계 |
-| U-03 | 원본 메타데이터 저장 모델 | 기존 `table_info/column_info` 확장 vs 별도 원본 카탈로그 + 설계 테이블 연결. **권고: 별도 카탈로그** (설계 데이터와 원본 사실의 생명주기가 다름) | 1단계 |
-| U-04 | AI·연결 설정 범위 | 시스템 전역(관리자) / 프로젝트별(프로젝트 관리자) / 혼합 | 0단계 |
+| U-01 | 새 기능의 코드 위치 | **결정 (2026-11-12) : `lexorma-data` 의 기능 패키지.** 새 모듈 없음. 도메인과 무관한 공통 부품(암호화·마스킹·실행 컨텍스트·프로젝트 권한 판정)은 `lexorma-core` | 0단계 |
+| U-02 | 비밀값 암호화 키 관리 | **결정 (2026-11-12) : 환경변수 키 + AES-256-GCM** (`LEXORMA_SECRET_KEYS`, 키ID 로 여러 키, AAD 로 자리 결합). 분실 시 비밀값 재등록, 교체 시 옛 키를 남기고 다시 암호화. 외부 Secret Store 는 쓰지 않는다. 구현 `core/crypto` (AI-1a) | 0단계 |
+| U-03 | 원본 메타데이터 저장 모델 | **결정 (2026-11-12) : 별도 원본 카탈로그 + 물리 모델과 명시적 매핑** (설계 데이터와 원본 사실의 생명주기가 다름). 구현 AI-1b·AI-1d | 1단계 |
+| U-04 | AI·연결 설정 범위 | **결정 (2026-11-12) : 혼합.** 전역 Provider·Endpoint = ADMIN, 프로젝트 AI 사용·외부 DB 연결 = 그 프로젝트의 관리자 또는 ADMIN(접근 가능한 프로젝트만). 프로젝트별 역할은 만들지 않는다 | 0단계 |
 | U-05 | 승인된 설명·용어 재사용 범위 | 프로젝트 / 조직 / 전역. 초기 권고: 프로젝트 | 1단계 |
 | U-06 | 스냅샷·이력·보고서 보관 | 전체 스냅샷 보관 vs 변경분만, 보관 기간·정리 정책 | 1단계 |
-| U-07 | MCP 서버 형태 | 사용자가 운영하는 외부 서버 / 앱 내장, transport(stdio·HTTP), 인증, 세션 수명, 운영 주체. stdio 를 지원하면 실행 명령 허용 목록(관리자 지정)과 프로세스 권한 분리, 폐쇄망 배포 방식 포함 | 2단계 |
+| U-07 | MCP 서버 형태 | **초기 방향 결정 (2026-11-12) : 사용자가 운영하는 외부 서버, HTTP, 수집 요청 동안만 연결, 임의 SQL 실행 Tool 금지.** 남은 것 : 인증 방식, 외부 DB 접속 정보를 Lexorma 가 저장해 MCP 로 넘길지 MCP 서버가 갖고 있을지(AI-1b 의 연결 테이블 설계 전에 정한다), 폐쇄망 배포 안내. stdio·앱 내장은 초기 범위 밖 | 2단계 |
 | U-08 | MCP 클라이언트 구현 | MCP Java SDK / Spring AI MCP Client / 직접 구현. 의존성 크기·Boot 4.1 호환성으로 결정 | 2단계 |
 | U-09 | 지원 DB 엔진 범위·순서 | 기존 `DbType`(PostgreSQL, Oracle, MySQL, MariaDB) 중 우선 순서 | 2단계 |
 | U-10 | AI 클라이언트 구현 | Spring `RestClient` 직접 구현 vs Spring AI (Tool Calling 요구, 의존성 비용, Boot 4.1 호환성 비교) | 3단계 |
@@ -641,3 +671,4 @@ README 의 기존 로드맵 항목과 상세 문서의 관계. README 항목은 
 | 2026-11-09 | 3차 보완: 원칙 9·10(외부 입력 신뢰 경계, 독립성), 실행 컨텍스트(세션 없는 배치), 다중 연결 식별·식별자 정규화, 부분 최신화 삭제 판정·수집 상태, AI 근거 검증·품질 평가, 승인 시 재검증, 장기 작업 복구, 폐쇄망·운영 지표·SQL 정적 검증, U-20~U-26 |
 
 | 2026-11-10 | M-1 후속의 프로젝트 삭제 잔존 정리(P1)와 AI-1·AI-2 삭제 정책, AI-8 작업 취소의 연계 명시 (중복 과제 없이 문서만 수정) |
+| 2026-11-12 | **AI-0 결정과 AI-1a 구현 반영** : 4장 현황을 실제 코드로 갱신(스키마, 복합 FK·인덱스·제약조건, 논리 모델·매핑, M-9 변경 이력·모델 버전, M-10 ③, 프로젝트 삭제 정합성, Flyway V0·V1 관리 방식), U-01·U-02·U-03·U-04 결정과 U-07 초기 방향, 1단계를 AI-1a~1d 로 분할. AI-1a : 마스킹 확장·요청 로그 본문 정책, `core/crypto`, `core/execution`, `ProjectAuthority`. DB 변경 없음 |

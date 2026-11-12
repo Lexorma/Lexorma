@@ -45,6 +45,11 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+# 비밀값 암호화 키 (외부 DB·MCP·AI Endpoint 인증 정보를 DB 에 저장할 때 쓴다 - core/crypto/SecretKeyring)
+# 키는 이 파일에 적지 않고 환경변수로 준다. 없으면 그 기능만 쓸 수 없고 애플리케이션은 그대로 뜬다.
+#   LEXORMA_SECRET_KEYS=k1:<Base64 32바이트>[,k2:...]      (예: k1:$(openssl rand -base64 32))
+#   LEXORMA_SECRET_ACTIVE_KEY_ID=k1                        (새로 암호화할 때 쓰는 키. 없으면 맨 앞의 키)
+
 # 운영 기본 로그 레벨 : 필요 시 환경변수로 조정 (예: LOGGING_LEVEL_COM_LEXORMA=DEBUG)
 logging:
   level:

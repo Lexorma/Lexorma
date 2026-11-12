@@ -2,6 +2,7 @@ package com.lexorma.core.logs.interceptor;
 
 import com.lexorma.core.logs.domain.entity.Logs;
 import com.lexorma.core.logs.service.LogsService;
+import com.lexorma.core.logs.policy.LogBodyPolicy;
 import com.lexorma.core.logs.util.SensitiveDataMasker;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
  * Restful API 형식으로 들어오는 HTTP 요청단위별 동작을 위해 Interceptor에 로깅 기능 추가
  * - HTTP 요청(Request) 및 응답(Response) 로깅에 Interceptor 적용
  * - 모든 메서드 기반 로깅이 필요할 경우 AOP를 사용하여 적용
+ * - 본문 저장 정책 : 인증 정보·AI·MCP API 는 본문을 남기지 않고(LogBodyPolicy), 그 밖에는 비밀값을 마스킹한다(SensitiveDataMasker)
  */
 @RequiredArgsConstructor
 public class LogsInterceptor implements HandlerInterceptor {
@@ -75,14 +77,16 @@ public class LogsInterceptor implements HandlerInterceptor {
                 return;
             }
 
-            // 요청 및 응답 본문 가져오기 (비밀번호 등 민감정보는 마스킹하여 저장)
-            String requestBody = SensitiveDataMasker.mask(getRequestBody(details.wrappedRequest));
+            // 인증 정보·AI·MCP API 는 본문을 남기지 않는다 (LogBodyPolicy). 그 밖의 API 는 비밀값을 마스킹한 본문을 남긴다
+            boolean protectedBody = LogBodyPolicy.isProtected(details.logUrl, handler);
+            String requestBody = protectedBody ? LogBodyPolicy.PROTECTED : SensitiveDataMasker.mask(getRequestBody(details.wrappedRequest));
             logger.debug("Captured Request Body: " + requestBody);
 
             String header = response.getHeader("Content-Disposition");
 
             // fileData 데이터 저장 시 크기 문제로 인한 File Data 출력
-            String responseBody = header != null && (header.contains("attachment") || header.contains("filename=")) ? "File Data" : SensitiveDataMasker.mask(getResponseBody(details.wrappedResponse));
+            String responseBody = protectedBody ? LogBodyPolicy.PROTECTED
+                    : header != null && (header.contains("attachment") || header.contains("filename=")) ? "File Data" : SensitiveDataMasker.mask(getResponseBody(details.wrappedResponse));
             logger.debug("Captured Response Body: " + responseBody);
 
             int statusCode = response.getStatus(); // 응답 상태 코드
@@ -111,7 +115,8 @@ public class LogsInterceptor implements HandlerInterceptor {
                 // 예외 메시지는 저장 전에 설정 (@RestControllerAdvice로 처리된 예외는 ex가 null이므로 요청 속성에서 가져옴)
                 Throwable error = ex != null ? ex : (Throwable) request.getAttribute(DispatcherServlet.EXCEPTION_ATTRIBUTE);
                 if (error != null) {
-                    log.setErrorMessage(error.getMessage());
+                    // 오류 메시지에도 요청 값이 들어갈 수 있다 : 보호 대상은 오류 코드만, 그 밖에는 메시지 안의 비밀(URL 의 인증 정보 등)을 가린다
+                    log.setErrorMessage(protectedBody ? LogBodyPolicy.errorSummary(error) : SensitiveDataMasker.maskText(error.getMessage()));
                 }
 
                 logger.debug("Saved Log Data: " + log);
@@ -127,7 +132,9 @@ public class LogsInterceptor implements HandlerInterceptor {
             requestDetailsThreadLocal.remove();
 
             if (ex != null) {
-                logger.error("Exception Occurred: ", ex);
+                // 보호 대상 API 의 예외는 메시지·스택에 요청 값이 섞일 수 있어 종류만 남긴다
+                if (LogBodyPolicy.isProtected(request.getRequestURI(), handler)) logger.error("Exception Occurred: {}", LogBodyPolicy.errorSummary(ex));
+                else logger.error("Exception Occurred: ", ex);
             }
         }
     }

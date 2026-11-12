@@ -8,18 +8,20 @@ import com.lexorma.core.project.domain.entity.Project;
 import com.lexorma.core.project.domain.entity.ProjectMember;
 import com.lexorma.core.project.domain.event.ProjectDeletedEvent;
 import com.lexorma.core.project.repository.ProjectMemberRepository;
+import com.lexorma.core.project.service.ProjectAuthority;
+import com.lexorma.core.security.conf.RoleHierarchyConfig;
 import com.lexorma.core.project.repository.ProjectRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.support.CoreFixtures;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -48,8 +50,14 @@ class ProjectManageServiceImplTest {
     @Mock
     ApplicationEventPublisher eventPublisher;
 
-    @InjectMocks
     ProjectManageServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        // 프로젝트 관리자 판정(core 의 ProjectAuthority)은 mock 이 아니라 실제 로직을 같은 mock 저장소 위에서 쓴다
+        service = new ProjectManageServiceImpl(projectMemberRepository, projectRepository, accountRepository, eventPublisher,
+                new ProjectAuthority(projectRepository, accountRepository, RoleHierarchyConfig.roleHierarchy()));
+    }
 
     private static AccountDto login(String accountId) {
         return AccountDto.builder().id(accountId).projectId(0L).build();

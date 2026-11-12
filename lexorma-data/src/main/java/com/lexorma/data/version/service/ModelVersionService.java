@@ -22,6 +22,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -75,10 +76,11 @@ public class ModelVersionService {
         Map<String, Integer> counts = new LinkedHashMap<>();
         objects.forEach((type, list) -> counts.put(type, list.size()));
         try {
+            // REG_DT 는 timestamp(6) : 나노초까지 주는 시계(Linux)에서도 응답과 저장된 값이 같도록 마이크로초로 맞춘다
             ModelVersion saved = repository.saveAndFlush(ModelVersion.builder()
                     .projectId(projectId).versionName(name).description(description).formatVersion(FORMAT_VERSION)
                     .counts(JSON.writeValueAsString(counts)).snapshot(JSON.writeValueAsString(objects))
-                    .createdBy(accountDto.getUsername()).createdAt(LocalDateTime.now()).build());
+                    .createdBy(accountDto.getUsername()).createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)).build());
             return summary(new Object[]{saved.getId(), saved.getVersionName(), saved.getDescription(), saved.getFormatVersion(), saved.getCounts(), saved.getCreatedBy(), saved.getCreatedAt()});
         } catch (DataIntegrityViolationException e) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);

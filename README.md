@@ -179,12 +179,28 @@ A user can be signed in from one place at a time; a later login ends the earlier
 
 The default database name and account are kept from the previous project name so that existing installations keep working. **Set `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` explicitly for a new installation** (the Docker examples below use `lexorma`). Any Spring property can also be overridden the usual way, for example `SPRING_DATASOURCE_URL` or `LOGGING_LEVEL_COM_LEXORMA=DEBUG`.
 
+### Secret encryption key (optional)
+
+Credentials that Lexorma will store for external systems (external database connections, MCP servers, AI endpoints — planned features) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
+
+| Variable | Description |
+|---|---|
+| `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
+| `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
+
+- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error.
+- A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
+- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted.
+- If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
+
 ### Database migrations
 
 Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/migration/{postgresql,h2}`).
 
 - Pending migrations are applied at startup; Hibernate only validates the schema.
-- Applied migration files must never be edited — Flyway compares their checksums at startup.
+- Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
+- **Before the first official release**, the schema is kept in two files (`V0__init.sql`, `V1__seed_data.sql`) that are still edited as the model evolves. A database created by an earlier build may therefore have to be recreated after an update; this is not a safe way to change a database whose data must be kept.
+- **From the first official release on**, applied migration files are frozen and every change is added as a new versioned migration.
 - Back up production databases before upgrading.
 
 ### Sessions

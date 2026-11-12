@@ -65,8 +65,8 @@
 
 ```bash
 ./gradlew clean build      # 332 tests, 실패 0, 건너뜀 2 (환경 변수가 필요한 테스트). npm ci + typecheck + vite build 포함
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m5q_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m5q_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m5q_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m5q_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
   --tests 'com.lexorma.StandardizationQualityIntegrationTest' --tests 'com.lexorma.DictionaryUsageIntegrationTest' \

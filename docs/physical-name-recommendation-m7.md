@@ -45,7 +45,7 @@
 
 응답의 `words` 에 단어별 변환 결과(단어 → 영문약어, 승인·미승인·미등록), `tablePrefix` 에 프로젝트 접두어가 들어 있다 (추천 근거).
 
-**테이블명 추천이 가능한 조건 :** 엔터티명을 표준 단어를 공백(또는 `_`)으로 띄어 적었을 때. 예제(META-MORA)의 엔터티명은 물리 예제의 테이블 한글명이라 37개 전부 `ALREADY_MATCHED` 다. "회원등급"처럼 붙여 쓴 이름은 그 문자열이 표준 단어가 아니면 추천 불가다.
+**테이블명 추천이 가능한 조건 :** 엔터티명을 표준 단어를 공백(또는 `_`)으로 띄어 적었을 때. 예제(LEXORMA)의 엔터티명은 물리 예제의 테이블 한글명이라 37개 전부 `ALREADY_MATCHED` 다. "회원등급"처럼 붙여 쓴 이름은 그 문자열이 표준 단어가 아니면 추천 불가다.
 
 ### 2.3 정합성 명칭 진단과의 관계
 
@@ -111,14 +111,14 @@
 
 ## 6. 검증
 
-작업 트리를 복사한 별도 폴더에서 빌드·실행했다. 개발 DB(`localhost:15439/metamora`)와 IDE 에서 실행 중인 애플리케이션은 건드리지 않았다.
+작업 트리를 복사한 별도 폴더에서 빌드·실행했다. 개발 DB(`localhost:15439/lexorma`)와 IDE 에서 실행 중인 애플리케이션은 건드리지 않았다.
 
 ### 6.1 자동 테스트
 
 | 항목 | H2 | PostgreSQL 18.6 |
 |---|---|---|
 | `./gradlew clean build` | **356 tests, 실패 0, 건너뜀 2** (환경 변수가 필요한 테스트). npm ci + typecheck + vite build 포함 | — |
-| 격리 DB `metamora_m7r_test` (만들어 실행 후 삭제), 2차와 같은 테스트 목록 + `PhysicalNameRecommendationIntegrationTest` | — | **112 tests, 실패 0, 건너뜀 0.** Flyway 이력 V0~V4 |
+| 격리 DB `lexorma_m7r_test` (만들어 실행 후 삭제), 2차와 같은 테스트 목록 + `PhysicalNameRecommendationIntegrationTest` | — | **112 tests, 실패 0, 건너뜀 0.** Flyway 이력 V0~V4 |
 | `PhysicalNameRecommendationIntegrationTest` : 컬럼명(약어 있음·없음·용어 없음, 일치·다름, 대소문자, 공백 제거, 충돌 2종, 매핑하지 않은 속성·엔터티), 요약 = 상태별 목록(DB 조건식 = 자바 판정), 엔터티·속성·컬럼 조건, 검색 4종, 페이징·정렬(허용하지 않은 필드 무시), 명칭 진단과 같은 기대값·판정, 테이블명(일치·추천 가능·미승인 단어·미등록 단어·충돌 2종·밑줄 구분·접두어), 조회 후 이름 불변, 용어 약어 변경 후 갱신, 매핑 목록의 `entityId` 조건, 다른 프로젝트 격리(모델·엔터티·속성·컬럼·표준 단어·접두어), VIEWER 허용·NOT_APPROVE 거절 | 통과 | 통과 |
 | `SmokeTest.physicalNameRecommendation` (HTTP : 예제는 컬럼 357·테이블 37 전부 일치, 요약 = 상태별 목록, 속성·컬럼·엔터티 조건, 필수 조건·잘못된 값 400), `gridSortAndSearch` (추천 그리드 2개 포함) | 통과 | 통과 |
 | 회귀 : `ModelMappingQualityServiceTest`·`IntegrationTest` (명칭 진단이 추천 서비스를 쓰도록 바뀐 뒤 그대로 통과), `ModelMappingIntegrationTest` (1차 API), `TableDesignServiceImplTest` (테이블명 생성 리팩터링 뒤 그대로 통과), M-5·M-6·물리 모델·ERD·표준 사전·승인 관련 통합 테스트 | 통과 | 통과 |

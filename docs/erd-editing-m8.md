@@ -82,14 +82,14 @@
 
 ## 4. 검증
 
-작업 트리를 복사한 별도 폴더에서 빌드·실행했다. 개발 DB(`localhost:15439/metamora`)와 IDE 에서 실행 중인 애플리케이션은 건드리지 않았다.
+작업 트리를 복사한 별도 폴더에서 빌드·실행했다. 개발 DB(`localhost:15439/lexorma`)와 IDE 에서 실행 중인 애플리케이션은 건드리지 않았다.
 
 ### 4.1 자동 테스트
 
 | 항목 | H2 | PostgreSQL 18.6 |
 |---|---|---|
 | `./gradlew clean build` | **357 tests, 실패 0, 건너뜀 2** (환경 변수가 필요한 테스트). npm ci + typecheck + vite build 포함 | — |
-| 격리 DB `metamora_m8_test` (만들어 실행 후 삭제), M-7 3차와 같은 목록 + `LogicalErdEditIntegrationTest` | — | **113 tests, 실패 0, 건너뜀 0** |
+| 격리 DB `lexorma_m8_test` (만들어 실행 후 삭제), M-7 3차와 같은 목록 + `LogicalErdEditIntegrationTest` | — | **113 tests, 실패 0, 건너뜀 0** |
 | `LogicalErdEditIntegrationTest` (ERD 편집이 쓰는 호출 순서) : 엔터티 생성·수정·삭제와 속성 추가·수정·순서·표준 용어 연결·변경·해제가 ERD 조회에 반영, 모델 변경과 배치 저장의 독립(배치 version·좌표 불변, 새 노드 위치 저장·복원, 지운 엔터티의 좌표 제외), 거절(중복명·빈 이름·다른 엔터티의 속성 순서) 뒤 상태 유지, 승인된 엔터티·식별자 속성·관계·M-7 매핑 삭제 보호, 표준 용어 변경 시 컬럼·매핑 불변과 물리명 추천 갱신, VIEWER·USER·NOT_APPROVE, 다른 프로젝트 차단 | 통과 | 통과 |
 | 회귀 : M-6 논리 모델·ERD·배치(`LogicalModelIntegrationTest` 8), M-7 매핑·정합성·물리명 추천, 물리 모델·물리 ERD, 표준 사전·M-5 진단, `SmokeTest` 64 | 통과 | 통과 |
 
@@ -224,7 +224,7 @@
 | 항목 | H2 | PostgreSQL 18.6 |
 |---|---|---|
 | `./gradlew clean build` | **358 tests, 실패 0, 건너뜀 2** | — |
-| 격리 DB `metamora_m8_test` (만들어 실행 후 삭제) | — | **114 tests, 실패 0, 건너뜀 0** |
+| 격리 DB `lexorma_m8_test` (만들어 실행 후 삭제) | — | **114 tests, 실패 0, 건너뜀 0** |
 | `LogicalErdEditIntegrationTest.relationshipsAndIdentifiersFromErd` (신규) : 관계 등록(방향·유형·참여 수, 승인 권한자 = 승인 상태), 같은 쌍의 여러 관계·역방향·자기 참조·이름 없는 관계 허용, 다른 모델·없는 엔터티·잘못된 참여 수 거절, 승인된 관계 수정·삭제 거절, 이름·유형·참여 수·방향 수정, 식별 관계가 자식의 식별자·속성을 만들지 않음, 식별자(주·보조·복합·구성과 순서 변경·주 식별자 중복·다른 엔터티 속성·빈 구성·이름 중복), 식별자 변경이 관계를 바꾸지 않음, 식별자 삭제 후 속성 유지, 관계·식별자 변경과 배치의 독립, VIEWER·USER(승인 대기 관계, 승인된 엔터티의 식별자 거절, 승인 권한 없음)·NOT_APPROVE, 다른 프로젝트 차단, 관계 삭제 후 엔터티·속성·배치 유지 | 통과 | 통과 |
 | 회귀 : 1차 테스트(`editFromErd`), M-6·M-7·물리 모델·ERD·표준 사전, `SmokeTest` | 통과 | 통과 |
 

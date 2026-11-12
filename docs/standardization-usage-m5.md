@@ -65,8 +65,8 @@ VIEWER 에게 컬럼 정보를 주는 것은 물리 ERD(VIEWER)가 이미 주는
 
 ```bash
 ./gradlew clean build      # 324 tests, 실패 0, 건너뜀 2 (환경 변수가 필요한 테스트)
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m5_test)를 만들어 실행 후 삭제
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m5_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m5_test)를 만들어 실행 후 삭제
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m5_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
   --tests 'com.lexorma.DictionaryUsageIntegrationTest' --tests 'com.lexorma.SmokeTest' \

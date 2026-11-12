@@ -185,3 +185,138 @@ dialog .history-group p {
     margin: 0;
     font-size: 13px;
 }
+
+/* 모델 버전 (M-9 3차) : 저장된 객체·달라진 객체 목록은 변경 그룹 목록과 같은 모양에 길이만 넉넉히 */
+dialog .version-list {
+    max-height: 52vh;
+}
+
+dialog .history-filters .search-input {
+    flex: 0 0 220px;
+    width: 220px;
+    max-width: 100%;
+}
+
+/* 긴 버전명·설명 : 목록에서는 두 줄까지만 (전체는 title 과 상세에서), 상세에서는 정해진 높이 안에서 스크롤 */
+.version-clamp {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+dialog .version-description {
+    max-height: 96px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 버전 비교 ERD (M-10 ③) : 달라진 객체 목록 | 변경 전 | 변경 후, 아래에 고른 객체의 달라진 내용 */
+dialog.dialog-xl.version-compare-dialog {
+    width: min(1560px, calc(100vw - 32px));
+}
+
+.history-chips .version-view {
+    margin-left: auto;
+}
+
+.version-erd-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.version-erd-toolbar .btn .octicon {
+    margin-right: 4px;
+}
+
+.version-erd-legend {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.version-erd {
+    position: relative;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
+    height: clamp(320px, 48vh, 640px);
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.version-erd-list {
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    list-style: none;
+    background: var(--gh-canvas);
+}
+
+.version-erd-list li + li {
+    border-top: 1px solid var(--gh-border-muted);
+}
+
+.version-erd-mark {
+    flex: 0 0 14px;
+    color: var(--erd-diff);
+    text-align: center;
+}
+
+.version-erd-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--gh-border);
+}
+
+.version-erd-pane > h5 {
+    margin: 0;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--gh-border);
+    background: var(--gh-canvas);
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.version-erd-pane > .erd-canvas {
+    flex: 1;
+    min-height: 0;
+}
+
+dialog .version-erd-detail {
+    margin-top: 12px;
+}
+
+dialog .version-erd-detail .version-list {
+    max-height: 30vh;
+}
+
+dialog .version-erd-link {
+    padding: 6px 12px 10px;
+}
+
+@media (max-width: 900px) {
+    .version-erd {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+    }
+
+    .version-erd-list {
+        max-height: 140px;
+    }
+
+    .version-erd-pane {
+        height: 300px;
+        border-left: 0;
+        border-top: 1px solid var(--gh-border);
+    }
+}

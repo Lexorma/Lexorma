@@ -24,6 +24,7 @@ import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
 import { ModelHistoryPage } from '../features/history/ModelHistoryPage';
+import { ModelVersionPage } from '../features/version/ModelVersionPage';
 import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
 import { t } from '../lib/i18n';
 
@@ -109,6 +110,7 @@ export function App() {
                 <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
 
                 <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />
+                <Route path="/modelVersion" element={<RequireMenu menuId="model-version"><ModelVersionPage /></RequireMenu>} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
+import { t } from '../../lib/i18n';
 
 /** GET /api/erd, /api/erd/neighbors/{tableId} (ErdDto.Graph) */
 export interface ErdTable {
@@ -68,6 +69,22 @@ export interface Schema {
   isDefault: boolean;
 }
 
+/**
+ * 버전 비교 ERD (M-10 ③) 의 변경 표시. 보통의 ERD 노드에는 없다.
+ * change : 노드에 붙이는 표시 (자신 또는 딸린 행이 달라졌으면 MODIFIED), rows : 행(컬럼·속성) ID → 변경, caption : 부제 앞에 붙이는 말 (스키마명·모델명)
+ */
+export type DiffKind = 'ADDED' | 'REMOVED' | 'MODIFIED';
+export interface NodeDiff {
+  change: DiffKind | null;
+  rows: Map<number, DiffKind>;
+  caption?: string;
+}
+/** 색만으로 구분하지 않도록 기호와 글자를 함께 쓴다 */
+export const DIFF_MARK: Record<DiffKind, string> = { ADDED: '+', REMOVED: '−', MODIFIED: '~' };
+export const DIFF_LABEL: Record<DiffKind, string> = { ADDED: t('추가'), REMOVED: t('삭제'), MODIFIED: t('수정') };
+export const DIFF_COLOR: Record<DiffKind, string> = { ADDED: 'var(--gh-success)', REMOVED: 'var(--gh-danger)', MODIFIED: 'var(--gh-accent)' };
+export const diffClass = (change: DiffKind | null | undefined) => (change ? ` erd-diff-${change.toLowerCase()}` : '');
+
 export type TableNodeData = {
   table: ErdTable;
   columns: ErdColumn[];
@@ -75,6 +92,7 @@ export type TableNodeData = {
   fkColumns: Set<number>;
   /** 화면에 그리는 관계에 쓰인 컬럼 (연결점을 만든다) */
   linkedColumns: Set<number>;
+  diff?: NodeDiff;
 };
 export type TableNode = Node<TableNodeData, 'table'>;
 export type RelationEdge = Edge<{ relation: ErdRelation }>;

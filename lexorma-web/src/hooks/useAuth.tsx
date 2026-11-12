@@ -34,6 +34,9 @@ export type MenuId =
   | 'column-manage'
   | 'standardization-quality'
   | 'model-history'
+  | 'model-version'
+  /** 화면이 아니라 [버전 생성] 버튼 노출 여부 */
+  | 'model-version-create'
   | 'system-management'
   | 'operation-management'
   | 'logical-modeling'

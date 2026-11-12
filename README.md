@@ -35,6 +35,7 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Mapping | Logical ↔ physical mapping | Entity ↔ table and attribute ↔ column mappings with consistency diagnostics |
 | DDL | DDL generation | `CREATE TABLE`, keys, indexes, comments and foreign keys for PostgreSQL (default), Oracle, MySQL and MariaDB, with warnings for incomplete definitions |
 | History | Model change history | Who changed what and when for the physical model, the logical model and the mappings, with before/after comparison and grouping of changes made in one operation |
+| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values) |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 
 ### Planned (not implemented yet)
@@ -42,7 +43,6 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Area | Feature |
 |---|---|
 | Reverse engineering | Importing the structure of an existing database into the physical model and ERD |
-| Model versions | Named model versions and comparison between versions |
 | AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
 
 ### Data Standardization Rules
@@ -65,7 +65,7 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 | `MANAGER` | Manager | Approval, announcements (as the manager of the project) |
 | `DBA` | Database administrator | Project management (own projects), system logs |
 | `USER` | Standard user | Create and change dictionary items and models |
-| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings and the change history |
+| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history and model versions |
 | `NOT_APPROVE` | Unapproved user | Dashboard and announcements only |
 
 Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Newly registered users start as `NOT_APPROVE`.
@@ -94,7 +94,7 @@ Browser ── React SPA (static files in the JAR)
    └── /api/** ── Spring Boot (Security · Session JDBC · JPA) ── PostgreSQL / H2
 ```
 
-Gradle modules (dependency direction `common ← core ← (system, operation, data) ← app`):
+Gradle modules (dependency direction `common ← core ← (system, operation, data, source) ← app`; modules on the same level do not depend on each other):
 
 | Module | Responsibility |
 |---|---|
@@ -102,7 +102,8 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-core` | Authentication, login, project tenancy, request logging |
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
-| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history |
+| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history, model versions |
+| `lexorma-source` | External source database connection settings and the source metadata catalog, stored separately from the physical model. Metadata collection (planned) runs inside Lexorma over JDBC — no separate collector or MCP server is required |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |
 
@@ -179,12 +180,28 @@ A user can be signed in from one place at a time; a later login ends the earlier
 
 The default database name and account are kept from the previous project name so that existing installations keep working. **Set `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` explicitly for a new installation** (the Docker examples below use `lexorma`). Any Spring property can also be overridden the usual way, for example `SPRING_DATASOURCE_URL` or `LOGGING_LEVEL_COM_LEXORMA=DEBUG`.
 
+### Secret encryption key (optional)
+
+Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
+
+| Variable | Description |
+|---|---|
+| `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
+| `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
+
+- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error.
+- A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
+- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted.
+- If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
+
 ### Database migrations
 
 Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/migration/{postgresql,h2}`).
 
 - Pending migrations are applied at startup; Hibernate only validates the schema.
-- Applied migration files must never be edited — Flyway compares their checksums at startup.
+- Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
+- **Before the first official release**, the schema is kept in two files (`V0__init.sql`, `V1__seed_data.sql`) that are still edited as the model evolves. A database created by an earlier build may therefore have to be recreated after an update; this is not a safe way to change a database whose data must be kept.
+- **From the first official release on**, applied migration files are frozen and every change is added as a new versioned migration.
 - Back up production databases before upgrading.
 
 ### Sessions

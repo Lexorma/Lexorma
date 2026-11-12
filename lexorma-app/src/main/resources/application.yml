@@ -45,6 +45,15 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+# 비밀값 암호화 키 (원본 DB 연결 비밀번호·AI Endpoint 인증 정보를 DB 에 저장할 때 쓴다 - core/crypto/SecretKeyring)
+# 키는 이 파일에 적지 않고 환경변수로 준다. 없으면 그 기능만 쓸 수 없고 애플리케이션은 그대로 뜬다.
+#   LEXORMA_SECRET_KEYS=k1:<Base64 32바이트>[,k2:...]      (예: k1:$(openssl rand -base64 32))
+#   LEXORMA_SECRET_ACTIVE_KEY_ID=k1                        (새로 암호화할 때 쓰는 키. 없으면 맨 앞의 키)
+
+# 원본 DB 연결 (lexorma-source) : 연결을 등록하고 내부 도구가 접속할 수 있는 호스트 범위 (운영자 정책 - SourceHostPolicy)
+# 비우면 제한하지 않는다. 예: LEXORMA_SOURCE_ALLOWED_HOSTS=db1.internal,*.db.internal,10.20.30.40
+#   lexorma.source.allowed-hosts=
+
 # 운영 기본 로그 레벨 : 필요 시 환경변수로 조정 (예: LOGGING_LEVEL_COM_LEXORMA=DEBUG)
 logging:
   level:

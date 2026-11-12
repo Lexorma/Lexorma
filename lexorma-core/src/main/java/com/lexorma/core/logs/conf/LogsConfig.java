@@ -19,6 +19,7 @@ public class LogsConfig implements WebMvcConfigurer {
         registry.addInterceptor(new LogsInterceptor(logsService))
                 .addPathPatterns("/api/**")
                 // ERD : 응답(그래프)·요청(배치 좌표)이 크고 물리 모델을 바꾸지 않는다
-                .excludePathPatterns("/api/updatePwd", "/api/**/data", "/api/erd", "/api/erd/**");
+                // 비밀번호 변경(/api/updatePwd)은 빼지 않는다 : 본문 없이 호출 기록만 남긴다 (LogBodyPolicy)
+                .excludePathPatterns("/api/**/data", "/api/erd", "/api/erd/**");
     }
 }

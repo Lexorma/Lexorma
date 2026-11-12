@@ -22,9 +22,10 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { cancelLayout, gridLayout, runLayout, type LayoutEdge, type LayoutNode } from './layout';
-import { columnHandle, TABLE_HANDLE, TableNode, useSimpleNodes } from './TableNode';
+import { relationEdges } from './edges';
+import { TableNode, useSimpleNodes } from './TableNode';
 import {
-  columnsByTable, columnType, MAX_ROWS, NODE_WIDTH, nodeHeight,
+  columnsByTable, columnType, NODE_WIDTH, nodeHeight,
   type ErdColumn, type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
 } from './model';
 import { t, tx } from '../../lib/i18n';
@@ -268,44 +269,13 @@ function ErdWorkspace() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [pendingCount]);
 
-  // 관계선 : 컬럼이 보이면 컬럼 쌍마다 컬럼 연결점에, 축소 상태·생략된 컬럼은 테이블 연결점에 (관계당 1개)
+  // 관계선 : 선택한 테이블에 걸린 관계는 굵기와 색으로 함께 강조한다 (논리 ERD 와 같다). 출처는 상세 패널의 관계 목록에 남는다
   const edges = useMemo<RelationEdge[]>(() => {
     if (!graph.data) return [];
-    const rowIndex = new Map<number, number>();
-    for (const group of columnsByTable(graph.data.columns).values()) group.forEach((c, i) => rowIndex.set(c.id, i));
-    const shown = (columnId: number) => !simple && (rowIndex.get(columnId) ?? MAX_ROWS) < MAX_ROWS;
-
-    // 같은 두 테이블 사이의 관계가 테이블 연결점으로 모이면 선이 완전히 겹쳐 하나만 고를 수 있다 → 꺾이는 위치를 관계마다 달리한다
-    const parallel = new Map<string, number>();
-    const stepPosition = (relation: ErdRelation) => {
-      const key = `${Math.min(relation.sourceTableId, relation.targetTableId)}:${Math.max(relation.sourceTableId, relation.targetTableId)}`;
-      const index = parallel.get(key) ?? 0;
-      parallel.set(key, index + 1);
-      // 0.5(가운데) → 0.35 → 0.65 → 0.2 → 0.8 …  (0.1 ~ 0.9 안에서)
-      const shift = Math.ceil(index / 2) * 0.15 * (index % 2 === 1 ? -1 : 1);
-      return Math.min(0.9, Math.max(0.1, 0.5 + shift));
-    };
-
-    return shownRelations.flatMap((relation) => {
-        const self = relation.sourceTableId === relation.targetTableId;
-        const highlighted = selectedRelation === relation.id || selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
-        const style = {
-          // 선택한 테이블에 걸린 관계는 굵기와 색으로 함께 강조한다 (논리 ERD 와 같다). 출처는 상세 패널의 관계 목록에 남는다
-          stroke: highlighted ? 'var(--gh-accent)' : SOURCE_COLOR[relation.relationSource],
-          strokeDasharray: relation.relationType === 'LOGICAL' ? '6 4' : undefined,
-          strokeWidth: highlighted ? 2.5 : 1.25,
-        };
-        const base = { source: String(relation.sourceTableId), target: String(relation.targetTableId), type: 'smoothstep', style, zIndex: highlighted ? 1 : 0, data: { relation } };
-        const pairs = relation.columns.filter((p) => shown(p.sourceColumnId) && shown(p.targetColumnId));
-        const tableEdge = { ...base, id: `r${relation.id}`, sourceHandle: TABLE_HANDLE.out, targetHandle: self ? TABLE_HANDLE.self : TABLE_HANDLE.in };
-        if (pairs.length < relation.columns.length) return [{ ...tableEdge, pathOptions: { stepPosition: stepPosition(relation) } }];
-        return pairs.map((p, i) => ({
-          ...base,
-          id: `r${relation.id}-${i}`,
-          sourceHandle: columnHandle(p.sourceColumnId, 'out'),
-          targetHandle: columnHandle(p.targetColumnId, self ? 'self' : 'in'),
-        }));
-      });
+    return relationEdges(graph.data.columns, shownRelations, simple, (relation) => {
+      const highlighted = selectedRelation === relation.id || selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
+      return { highlighted, stroke: highlighted ? 'var(--gh-accent)' : SOURCE_COLOR[relation.relationSource] };
+    });
   }, [graph.data, shownRelations, simple, selectedId, selectedRelation]);
 
   const related = useMemo(() => {

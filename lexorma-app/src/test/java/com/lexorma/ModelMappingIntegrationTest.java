@@ -324,7 +324,7 @@ class ModelMappingIntegrationTest {
         schemaService.deleteSchema(admin, schema.id());
         assertThat(jdbc.queryForObject("select count(*) from TB_ENTT_TBL_MPNG where PRJ_SN = ?", Integer.class, projectId)).isZero();
 
-        // 프로젝트 삭제 : 기존 정책대로 프로젝트의 모델 데이터를 지우지 않는다 → 매핑도 양쪽 원본과 함께 남아 끊어진 참조가 생기지 않는다
+        // 프로젝트 삭제 : 매핑이 있어도 지울 수 있고, 매핑과 양쪽 원본이 함께 지워진다 (ProjectDeletionIntegrationTest 가 전체 범위를 본다)
         Entity kept = entity(admin, logicalService.saveModel(admin, new Model(null, "보존", null)), "보존");
         Long keptAttribute = attribute(admin, kept, "보존번호");
         ColumnInfo keptColumn = column(projectId, spare, "KEEP_NO", null);
@@ -332,9 +332,10 @@ class ModelMappingIntegrationTest {
         service.saveAttributeMapping(admin, new AttributeMapping(null, keptMapping.id(), keptAttribute, keptColumn.getId()));
         projectManageService.deleteProject(projectId, admin);
         assertThat(projectRepository.findById(projectId)).isEmpty();
-        assertThat(jdbc.queryForObject("select count(*) from TB_ENTT_TBL_MPNG m join TB_LGCL_ENTT e on e.LGCL_ENTT_SN = m.LGCL_ENTT_SN join TB_TBL t on t.TBL_SN = m.TBL_SN "
-                + "join TB_ATRB_COL_MPNG a on a.ENTT_TBL_MPNG_SN = m.ENTT_TBL_MPNG_SN join TB_LGCL_ATRB la on la.LGCL_ATRB_SN = a.LGCL_ATRB_SN join TB_COL c on c.COL_SN = a.COL_SN "
-                + "where m.PRJ_SN = ?", Integer.class, projectId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from TB_ENTT_TBL_MPNG where PRJ_SN = ?", Integer.class, projectId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from TB_ATRB_COL_MPNG where LGCL_ATRB_SN = ?", Integer.class, keptAttribute)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from TB_LGCL_ENTT where PRJ_SN = ?", Integer.class, projectId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from TB_TBL where PRJ_SN = ?", Integer.class, projectId)).isZero();
     }
 
     @Test

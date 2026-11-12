@@ -5,7 +5,7 @@ import { DateTime, Label, Mono, Muted } from '../../components/grid/cells';
 import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import '../../styles/history.css';
-import { ACTION_VARIANT, actionLabel, diffRows, sourceLabel, targetTypeLabel, type HistoryDetail, type HistorySummary } from './model';
+import { ACTION_VARIANT, actionLabel, diffRows, sourceLabel, targetTypeLabel, type DiffRow, type HistoryDetail, type HistorySummary } from './model';
 
 interface DetailOptions {
   /** [이 객체의 이력] : 목록을 그 객체로 거른다 */
@@ -72,27 +72,7 @@ function HistoryDetailView({ initialId, controls, options }: { initialId: number
           </label>
         )}
       </div>
-      <div className="table-wrap">
-        <table className="history-diff">
-          <thead>
-            <tr>
-              <th>{t('항목')}</th>
-              {before && <th>{t('변경 전')}</th>}
-              {after && <th>{t('변경 후')}</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {shown.length === 0 && <tr><td colSpan={3} className="gh-muted">{t('달라진 항목이 없습니다.')}</td></tr>}
-            {shown.map((row) => (
-              <tr key={row.key} className={!single && row.changed ? 'is-changed' : undefined}>
-                <th scope="row">{row.label}</th>
-                {before && <td className={!single && row.changed ? 'history-before' : undefined}>{row.before.map((line, index) => <div key={index}>{line}</div>)}</td>}
-                {after && <td className={!single && row.changed ? 'history-after' : undefined}>{row.after.map((line, index) => <div key={index}>{line}</div>)}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DiffTable rows={shown} hasBefore={!!before} hasAfter={!!after} />
 
       <div className="history-group">
         <h4>{t('같은 작업의 변경')} <Muted>{t('변경 그룹')} <Mono>{summary.changeGroupId.slice(0, 8)}</Mono> · {t('{0}건', group.data?.length ?? 1)}</Muted></h4>
@@ -120,6 +100,34 @@ function HistoryDetailView({ initialId, controls, options }: { initialId: number
           <button type="button" className="btn" onClick={() => { controls.close(); options.onTarget?.(summary); }}>{t('이 객체의 이력')}</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 변경 전후 비교 표 (모델 버전 화면도 같이 쓴다). 한쪽만 있으면 그쪽 열만 그린다 */
+export function DiffTable({ rows, hasBefore, hasAfter }: { rows: DiffRow[]; hasBefore: boolean; hasAfter: boolean }) {
+  const single = !hasBefore || !hasAfter;
+  return (
+    <div className="table-wrap">
+      <table className="history-diff">
+        <thead>
+          <tr>
+            <th>{t('항목')}</th>
+            {hasBefore && <th>{t('변경 전')}</th>}
+            {hasAfter && <th>{t('변경 후')}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={3} className="gh-muted">{t('달라진 항목이 없습니다.')}</td></tr>}
+          {rows.map((row) => (
+            <tr key={row.key} className={!single && row.changed ? 'is-changed' : undefined}>
+              <th scope="row">{row.label}</th>
+              {hasBefore && <td className={!single && row.changed ? 'history-before' : undefined}>{row.before.map((line, index) => <div key={index}>{line}</div>)}</td>}
+              {hasAfter && <td className={!single && row.changed ? 'history-after' : undefined}>{row.after.map((line, index) => <div key={index}>{line}</div>)}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

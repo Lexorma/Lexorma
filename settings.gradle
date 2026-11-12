@@ -1,9 +1,10 @@
 rootProject.name = 'lexorma'
 
-// 의존 방향: common ← core ← (system, operation, data) ← app
+// 의존 방향: common ← core ← (system, operation, data, source) ← app  (system·operation·data·source 는 서로 참조하지 않는다)
 include 'lexorma-common'     // 공통 기반 (BaseEntity, grid, 예외, 유틸) - 기능 의존 없음
 include 'lexorma-core'       // 인증/로그인, 프로젝트 테넌시, 요청 로그
 include 'lexorma-system'     // 시스템 관리 (사용자/프로젝트/시스템로그)
 include 'lexorma-operation'  // 운영 관리 (공지사항)
 include 'lexorma-data'       // 데이터 관리 (데이터사전/테이블/컬럼)
+include 'lexorma-source'    // 원본 DB 연결, 원본 메타데이터 카탈로그, 내부 수집 Tool 계약 (data 와 서로 참조하지 않는다)
 include 'lexorma-app'        // 실행 모듈 (bootJar, 대시보드, 화면 리소스, Flyway)

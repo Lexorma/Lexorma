@@ -608,6 +608,7 @@ class SmokeTest {
             Map.entry("qualityIssueColumns", "/api/standardizationQuality"),
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             Map.entry("modelHistoryColumns", "/api/modelHistory"),
+            Map.entry("modelVersionColumns", "/api/modelVersion"),
             // modelId 가 필수라 조회할 때 예제 모델 ID 를 붙인다 (gridSortAndSearch)
             Map.entry("mappingQualityColumns", "/api/modelMapping/quality"),
             Map.entry("recommendationColumnColumns", "/api/modelMapping/recommendation/column"),
@@ -989,6 +990,26 @@ class SmokeTest {
                 .extracting(Logs::getLogUrl)
                 .isNotEmpty()
                 .noneMatch(url -> url.endsWith("/data"));
+
+        // 일반 API 는 지금까지처럼 본문이 남는다
+        assertThat(logsRepository.findAll()).filteredOn(log -> "/api/updateName".equals(log.getLogUrl()))
+                .allSatisfy(log -> {
+                    assertThat(log.getRequestBody()).contains("관리자");
+                    assertThat(log.getResponseBody()).isNotEqualTo("[PROTECTED]");
+                    assertThat(log.getUsername()).isEqualTo(USERNAME);
+                });
+        // 인증 API (로그인 정보, CSRF 토큰) 는 호출 기록만 남고 요청·응답 본문은 남지 않는다 (AI-1a 본문 저장 정책)
+        assertThat(logsRepository.findAll()).filteredOn(log -> log.getLogUrl().startsWith("/api/auth/"))
+                .isNotEmpty()
+                .allSatisfy(log -> {
+                    assertThat(log.getRequestBody()).isEqualTo("[PROTECTED]");
+                    assertThat(log.getResponseBody()).isEqualTo("[PROTECTED]");
+                    assertThat(log.getUsername()).isEqualTo(USERNAME);
+                    assertThat(log.getStatusCode()).isNotNull();
+                });
+        // CSRF 토큰 값이 어느 로그에도 없다
+        assertThat(logsRepository.findAll()).noneMatch(log -> csrfToken != null && ((log.getResponseBody() != null && log.getResponseBody().contains(csrfToken))
+                || (log.getRequestBody() != null && log.getRequestBody().contains(csrfToken))));
 
         // 로그인 프로젝트 조회 요청은 비밀번호가 포함되므로 저장되더라도 원문이 남지 않아야 한다
         assertThat(logsRepository.findAll())

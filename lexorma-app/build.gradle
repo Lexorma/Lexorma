@@ -10,6 +10,7 @@ dependencies {
     implementation project(':lexorma-system')
     implementation project(':lexorma-operation')
     implementation project(':lexorma-data')
+    implementation project(':lexorma-source')
 
     // Boot 4는 모듈화되어 flyway-core만으로는 자동 설정이 동작하지 않는다 (누락 시 마이그레이션이 오류 없이 실행되지 않음)
     implementation 'org.springframework.boot:spring-boot-starter-flyway'

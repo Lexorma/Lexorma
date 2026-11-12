@@ -30,6 +30,7 @@ public class Account extends BaseEntity implements Serializable {
     private String username;
 
     @Column(name = "PSWD")
+    @ToString.Exclude // 비밀번호 해시가 로그에 찍히지 않게
     private String password;
 
     @Column(name = "USER_NM")

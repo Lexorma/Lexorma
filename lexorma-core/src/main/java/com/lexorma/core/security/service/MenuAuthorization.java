@@ -76,7 +76,10 @@ public class MenuAuthorization {
             // 데이터 품질 관리
             Map.entry("standardization-quality", "VIEWER"),
             // 모델 변경 이력 (M-9) : 조회만 있는 화면. 이력 조회 API 의 권한과 같다
-            Map.entry("model-history", "VIEWER")
+            Map.entry("model-history", "VIEWER"),
+            // 모델 버전 (M-9 3차) : 화면(목록·과거 버전 조회·비교)은 VIEWER, [버전 생성] 버튼은 USER (버전 생성 API 의 권한과 같다)
+            Map.entry("model-version", "VIEWER"),
+            Map.entry("model-version-create", "USER")
     );
 
     /**
@@ -97,7 +100,7 @@ public class MenuAuthorization {
             new String[]{"logical-model", "logical-erd", "model-mapping"},
 
             "data-quality",
-            new String[]{"standardization-quality", "model-history"},
+            new String[]{"standardization-quality", "model-history", "model-version"},
 
             "physical-modeling",
             new String[]{"schema-manage", "table-manage", "column-manage", "physical-erd"}

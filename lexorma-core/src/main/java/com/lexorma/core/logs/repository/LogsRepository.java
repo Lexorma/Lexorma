@@ -27,4 +27,9 @@ public interface LogsRepository extends JpaRepository<Logs, Long> {
     Page<Logs> findByProjectIdAndRequestBodyContaining(Long projectId, String requestBody, Pageable pageable);
     Page<Logs> findByProjectIdAndResponseBodyContaining(Long projectId, String responseBody, Pageable pageable);
     Page<Logs> findByProjectIdAndErrorMessageContaining(Long projectId, String errorMessage, Pageable pageable);
+
+    /** 프로젝트 영구 삭제 : 그 프로젝트의 요청 로그 (프로젝트 안에서만 조회되는 데이터다) */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("delete from Logs l where l.projectId = :projectId")
+    int deleteAllByProjectId(@Param("projectId") Long projectId);
 }

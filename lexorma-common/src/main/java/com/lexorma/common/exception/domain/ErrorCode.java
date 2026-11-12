@@ -247,6 +247,16 @@ public enum ErrorCode {
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND"),
 
     /**
+     * 모델 버전을 찾을 수 없습니다. (없는 ID, 다른 프로젝트의 버전)
+     */
+    MODEL_VERSION_NOT_FOUND(HttpStatus.NOT_FOUND, "MODEL_VERSION_NOT_FOUND"),
+
+    /**
+     * 모델 버전 요청이 올바르지 않습니다. (버전명·설명 검증, 비교 대상)
+     */
+    INVALID_MODEL_VERSION(HttpStatus.BAD_REQUEST, "INVALID_MODEL_VERSION"),
+
+    /**
      * 마지막 활성 프로젝트 비활성화 : 확인(confirmLastActive=true)을 받은 뒤에만 진행한다.
      */
     LAST_ACTIVE_PROJECT(HttpStatus.CONFLICT, "LAST_ACTIVE_PROJECT"),
@@ -254,7 +264,82 @@ public enum ErrorCode {
     /**
      * 복구 로그인을 할 수 있는 활성 ADMIN 계정이 없어 시스템이 잠긴다 : 마지막 활성 프로젝트 비활성화 / 마지막 ADMIN 변경을 막는다.
      */
-    NO_RECOVERY_ADMIN(HttpStatus.CONFLICT, "NO_RECOVERY_ADMIN");
+    NO_RECOVERY_ADMIN(HttpStatus.CONFLICT, "NO_RECOVERY_ADMIN"),
+
+    /**
+     * 프로젝트에 접근할 수 없다 (비활성 프로젝트, 멤버 아님·승인 취소, 비활성 계정). 로그인 실패 응답이 쓰던 코드와 같은 문구다.
+     */
+    PROJECT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "PROJECT_ACCESS_DENIED"),
+
+    /**
+     * 비밀값 암호화 키(LEXORMA_SECRET_KEYS)가 설정되지 않았다 : 비밀값을 저장·사용하는 기능만 쓸 수 없다.
+     */
+    SECRET_KEY_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "SECRET_KEY_NOT_CONFIGURED"),
+
+    /**
+     * 저장된 비밀값을 암호화한 키가 지금 설정에 없다 (키 분실·삭제) : 비밀값을 다시 등록해야 한다.
+     */
+    SECRET_KEY_NOT_FOUND(HttpStatus.CONFLICT, "SECRET_KEY_NOT_FOUND"),
+
+    /**
+     * 저장된 비밀값을 읽지 못했다 (변조, 다른 자리의 암호문, 키 불일치, 형식 오류). 이유는 구분해 알려 주지 않는다.
+     */
+    SECRET_DECRYPT_FAILED(HttpStatus.CONFLICT, "SECRET_DECRYPT_FAILED"),
+
+    /**
+     * 실행 컨텍스트의 요청자에게 필요한 권한이 없다 (역할 부족, 프로젝트 관리자·ADMIN 아님).
+     */
+    EXECUTION_PERMISSION_DENIED(HttpStatus.FORBIDDEN, "EXECUTION_PERMISSION_DENIED"),
+
+    /**
+     * 외부 DB 연결을 찾을 수 없습니다. (없는 ID, 다른 프로젝트의 연결)
+     */
+    SOURCE_CONNECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_CONNECTION_NOT_FOUND"),
+
+    /**
+     * 외부 DB 연결 요청이 올바르지 않습니다.
+     */
+    INVALID_SOURCE_CONNECTION(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_CONNECTION"),
+
+    /**
+     * 원본 카탈로그의 객체를 찾을 수 없습니다. (없는 ID, 다른 프로젝트·다른 연결의 객체)
+     */
+    SOURCE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_OBJECT_NOT_FOUND"),
+
+    /**
+     * 원본 카탈로그에 저장할 내용이 올바르지 않습니다. (이름, 구성 컬럼)
+     */
+    INVALID_SOURCE_CATALOG(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_CATALOG"),
+
+    /**
+     * 원본 DB 도구를 실행할 수 없다 : 그런 도구가 없거나, 이 DBMS 를 지원하지 않거나, 연결이 사용 중지 상태이거나, 입력이 도구와 맞지 않는다.
+     */
+    SOURCE_TOOL_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_TOOL_NOT_AVAILABLE"),
+
+    /**
+     * 원본 카탈로그 수집 실행을 찾을 수 없다 (없는 작업, 다른 프로젝트·다른 연결의 작업).
+     */
+    SOURCE_COLLECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SOURCE_COLLECTION_NOT_FOUND"),
+
+    /**
+     * 같은 연결의 수집이 이미 진행 중이다.
+     */
+    SOURCE_COLLECTION_IN_PROGRESS(HttpStatus.CONFLICT, "SOURCE_COLLECTION_IN_PROGRESS"),
+
+    /**
+     * 진행 중인 수집이 아니다 (이미 끝났거나 실패·취소된 작업).
+     */
+    SOURCE_COLLECTION_NOT_RUNNING(HttpStatus.CONFLICT, "SOURCE_COLLECTION_NOT_RUNNING"),
+
+    /**
+     * 수집 결과가 완전하지 않아 반영하지 않았다 (일부 스키마 실패, 요청한 스키마 없음, 범위가 맞지 않음).
+     */
+    SOURCE_COLLECTION_INCOMPLETE(HttpStatus.BAD_REQUEST, "SOURCE_COLLECTION_INCOMPLETE"),
+
+    /**
+     * 실행하던 서버가 멈춰 끝나지 않은 수집을 실패로 정리했다 (실행 상태의 오류 코드로만 쓴다).
+     */
+    SOURCE_COLLECTION_ABANDONED(HttpStatus.CONFLICT, "SOURCE_COLLECTION_ABANDONED");
 
     private final HttpStatus httpStatus;
     private final String code;

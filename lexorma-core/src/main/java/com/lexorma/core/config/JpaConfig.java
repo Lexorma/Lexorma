@@ -1,5 +1,7 @@
 package com.lexorma.core.config;
 
+import com.lexorma.core.execution.ExecutionContextHolder;
+import com.lexorma.core.execution.VerifiedExecution;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -24,12 +26,9 @@ public class JpaConfig {
         return () -> {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-            if (authentication == null || !authentication.isAuthenticated()) {
-                return Optional.empty();
-            }
-
-            if(authentication.getPrincipal().equals("anonymousUser")) {
-                return Optional.empty();
+            // 로그인 세션이 없는 실행(비동기·정기 배치)은 실행 컨텍스트의 요청자를 남긴다. 세션이 있으면 지금까지와 같다
+            if (authentication == null || !authentication.isAuthenticated() || !(authentication.getPrincipal() instanceof AccountDto)) {
+                return ExecutionContextHolder.current().map(VerifiedExecution::auditor);
             }
 
             // 세션 정보에서 ID를 가져온 후 userId를 Set

@@ -19,4 +19,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
     Optional<Board> findByIdAndProjectId(Long id, Long projectId);
 
     Page<Board> findAllByProjectIdAndDeleteYn(Long selectedId, char deleteYn, Pageable pageable);
+
+    /** 다른 프로젝트의 공지 (프로젝트 삭제 때 대상 목록 정리) */
+    java.util.List<Board> findAllByProjectIdNot(Long projectId);
 }

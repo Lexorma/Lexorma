@@ -3,8 +3,8 @@ spring:
   datasource:
     url: jdbc:h2:mem:lexorma-test;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
-    username: metamora
-    password: metamora
+    username: lexorma
+    password: lexorma
 
 # API 문서 생성도 회귀 확인 대상에 포함 (springdoc 업그레이드 대비)
 springdoc:

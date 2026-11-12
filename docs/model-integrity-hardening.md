@@ -142,7 +142,7 @@ B 가 가장 안전하다고 본다. 여러 테이블 DDL·Export(M-11)와 함�
 
 ## 5. PostgreSQL 테스트 환경
 
-**문제** : `ProjectAccessRevokeTest` 가 `@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:metamora-revoke…")` 로 H2 주소를 고정했다. PostgreSQL 로 전체 테스트를 돌리면(환경 변수로 드라이버를 바꾼다) H2 주소에 PostgreSQL 드라이버가 붙어 컨텍스트가 뜨지 않았다. 그래서 그동안 PostgreSQL 실행은 테스트를 골라서 돌렸다.
+**문제** : `ProjectAccessRevokeTest` 가 `@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:lexorma-revoke…")` 로 H2 주소를 고정했다. PostgreSQL 로 전체 테스트를 돌리면(환경 변수로 드라이버를 바꾼다) H2 주소에 PostgreSQL 드라이버가 붙어 컨텍스트가 뜨지 않았다. 그래서 그동안 PostgreSQL 실행은 테스트를 골라서 돌렸다.
 
 **판단** : H2 전용 테스트가 아니다. 세션(Spring Session JDBC)·권한 회수는 DB 공통 동작이고, 주소를 고정한 이유는 `SmokeTest` 가 admin 비밀번호를 바꾸므로 **데이터를 나누기 위해서**였다.
 

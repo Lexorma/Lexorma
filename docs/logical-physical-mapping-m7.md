@@ -76,8 +76,8 @@ TB_LGCL_ATRB (LogicalAttribute) ─1:1─ TB_ATRB_COL_MPNG (AttributeColumnMappi
 
 - `V2__logical_physical_mapping.sql` (postgresql·h2 같은 내용) : 시퀀스 2개, 테이블 2개, 인덱스 6개, FK 5개. **스키마만 추가하고 기존 테이블·데이터는 바꾸지 않는다.**
 - 신규 설치 : V0 → V1 → V2. 기존 DB(V0·V1 적용) : V0·V1 체크섬 변화 없이 V2 만 적용된다. `repair`·초기화·수동 DDL 이 필요 없다.
-- **개발 DB(`localhost:15439/metamora`)** : 작업 전 이력은 V0(-1532103848)·V1(-514501166). 작업 중 IDE 에서 실행 중이던 애플리케이션이 재시작하면서 **Flyway 가 V2 를 개발 DB 에 적용했다** (2026-11-11 15:56, 체크섬 324210209, 빈 테이블 2개 추가, 기존 데이터 변화 없음). 의도해서 실행한 것은 아니지만 위 업그레이드 경로 그대로다. **V2 파일은 이미 적용됐으므로 내용을 바꾸면 안 된다** (바꿀 것은 다음 버전으로).
-- V0 의 META-MORA 물리 모델 예제(Lexorma 자체 테이블)에는 새 테이블 2개와 단어 `매핑` 이 없다 — V0 를 바꾸면 기존 DB 의 체크섬이 달라지므로 넣지 않았다. 넣으려면 V1 같은 데이터 전용 마이그레이션이 필요하다 (결정 필요, 8장).
+- **개발 DB(`localhost:15439/lexorma`)** : 작업 전 이력은 V0(-1532103848)·V1(-514501166). 작업 중 IDE 에서 실행 중이던 애플리케이션이 재시작하면서 **Flyway 가 V2 를 개발 DB 에 적용했다** (2026-11-11 15:56, 체크섬 324210209, 빈 테이블 2개 추가, 기존 데이터 변화 없음). 의도해서 실행한 것은 아니지만 위 업그레이드 경로 그대로다. **V2 파일은 이미 적용됐으므로 내용을 바꾸면 안 된다** (바꿀 것은 다음 버전으로).
+- V0 의 LEXORMA 물리 모델 예제(Lexorma 자체 테이블)에는 새 테이블 2개와 단어 `매핑` 이 없다 — V0 를 바꾸면 기존 DB 의 체크섬이 달라지므로 넣지 않았다. 넣으려면 V1 같은 데이터 전용 마이그레이션이 필요하다 (결정 필요, 8장).
 
 ## 6. 동시성
 
@@ -95,9 +95,9 @@ TB_LGCL_ATRB (LogicalAttribute) ─1:1─ TB_ATRB_COL_MPNG (AttributeColumnMappi
 
 ```bash
 ./gradlew clean build      # 결과는 아래 표
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m7_test)를 만들어 실행 후 삭제
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m7_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m7_test)를 만들어 실행 후 삭제
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m7_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/lexorma_m7_test \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
   --tests 'com.lexorma.ModelMappingIntegrationTest' --tests 'com.lexorma.LogicalModelIntegrationTest' \
   --tests 'com.lexorma.StandardizationQualityIntegrationTest' --tests 'com.lexorma.DictionaryUsageIntegrationTest' \
@@ -117,7 +117,7 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 
 - `./gradlew clean build` : **348 tests, 실패 0, 건너뜀 2** (`V0SeedMigrationTest` 의 PostgreSQL 1건, `UploadPerformanceTest` 1건). npm ci + vite build 포함.
 - PostgreSQL 격리 DB : **108 tests, 실패 0, 건너뜀 0.** Flyway 이력 V0·V1·V2 성공, V0·V1 체크섬이 개발 DB 와 같다.
-- 기존 데이터가 있는 DB : 개발 DB 를 `pg_dump` 로 복사한 격리 DB(`metamora_m7_upgrade`, 실행 후 삭제)에서 `ModelMappingIntegrationTest`·`LogicalModelIntegrationTest`·`PhysicalModelIntegrationTest` 18건 통과.
+- 기존 데이터가 있는 DB : 개발 DB 를 `pg_dump` 로 복사한 격리 DB(`lexorma_m7_upgrade`, 실행 후 삭제)에서 `ModelMappingIntegrationTest`·`LogicalModelIntegrationTest`·`PhysicalModelIntegrationTest` 18건 통과.
 
 **미검증 (완료로 보지 않음)**
 
@@ -138,7 +138,7 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 
 ## 9. 후속 반영 : 예제 모델·COMMENT (V3)
 
-- `V3__mapping_example_and_comments.sql` (postgresql·h2, 시퀀스 문법만 다름) : META-MORA 예제에 매핑 테이블 2개를 넣었다 — 단어 `매핑`·용어 2개, 물리 모델(테이블 2·컬럼 16·FK 관계 5), 논리 모델(엔터티 2·속성 16·주 식별자 2·관계 5). 논리·물리 예제를 매핑으로 잇지는 않았다.
+- `V3__mapping_example_and_comments.sql` (postgresql·h2, 시퀀스 문법만 다름) : LEXORMA 예제에 매핑 테이블 2개를 넣었다 — 단어 `매핑`·용어 2개, 물리 모델(테이블 2·컬럼 16·FK 관계 5), 논리 모델(엔터티 2·속성 16·주 식별자 2·관계 5). 논리·물리 예제를 매핑으로 잇지는 않았다.
 - Lexorma 자체 테이블 37개·컬럼 357개 전부에 `COMMENT ON` 을 달았다 (테이블 = 한글명, 컬럼 = 한글 용어). 이전에는 COMMENT 가 하나도 없었다. `SPRING_SESSION*`·`flyway_schema_history` 는 제외.
 - **관리 규칙** : 테이블·컬럼을 추가하는 마이그레이션은 같은 파일에 COMMENT 와 예제(물리·논리)를 넣는다. `V0SeedMigrationTest` 가 실제 스키마의 `TB_` 테이블·컬럼 집합과 COMMENT 를 예제(`TB_TBL.TBL_KORN_NM`, `TB_COL.COL_EXPLN`)와 비교해 빠지면 실패한다.
 - 5장·8장의 "V0 예제에 새 테이블이 없다 / 결정 필요" 는 이 마이그레이션으로 해소됐다.
@@ -149,7 +149,7 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7_test \
 - API 추가 : `GET /entity/lookup`(엔터티 또는 테이블의 매핑 1건), `GET /quality/summary`·`/quality/data`(정합성 비교). 4장의 기존 API 와 DTO 는 바뀌지 않았다.
 - 메뉴 : `model-mapping`(VIEWER)·`model-mapping-edit`(USER) 를 `MENU_ROLES` 에, `model-mapping` 을 `logical-modeling` 그룹에 넣었다.
 - 7장의 "화면 : 매핑 UI 가 없으므로 브라우저 검증 없음"은 2차에서 해소됐다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md).
-- **예제 매핑 (V4)** : `V4__mapping_example_data.sql` 이 META-MORA 예제의 엔터티 37개·속성 357개를 전부 물리 테이블·컬럼에 매핑한다 (엔터티명 = 테이블 한글명, 같은 표준 용어). 5장·7장·9장의 "매핑 테이블은 비어 있다 / 예제를 매핑으로 잇지 않았다"는 V4 로 바뀌었다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md) 8장.
+- **예제 매핑 (V4)** : `V4__mapping_example_data.sql` 이 LEXORMA 예제의 엔터티 37개·속성 357개를 전부 물리 테이블·컬럼에 매핑한다 (엔터티명 = 테이블 한글명, 같은 표준 용어). 5장·7장·9장의 "매핑 테이블은 비어 있다 / 예제를 매핑으로 잇지 않았다"는 V4 로 바뀌었다. 상세는 [model-mapping-quality-m7.md](model-mapping-quality-m7.md) 8장.
 
 ## 11. 3차에서 달라진 점
 

@@ -23,7 +23,7 @@ class V0SeedMigrationTest {
         assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
         String schema = "seed_domains_" + UUID.randomUUID().toString().replace("-", "");
         String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "metamora", "metamora");
+        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema)
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
@@ -127,7 +127,7 @@ class V0SeedMigrationTest {
         int count = 0;
         for (String[] target : new String[][]{{"TB_PRJ", "PRJ_NM"}, {"TB_LGCL_MDL", "MDL_NM"}, {"TB_LGCL_MDL", "MDL_EXPLN"}, {"TB_TBL", "TBL_EXPLN"},
                 {"TB_LGCL_ENTT", "ENTT_EXPLN"}, {"TB_STD_DMN", "DMN_EXPLN"}, {"TB_PST", "PST_TTL"}, {"TB_PST", "PST_CN"}}) {
-            // MetaMora / Metamora / META-MORA
+            // Lexorma / Lexorma / LEXORMA
             count += jdbc.queryForObject("select count(*) from " + s + target[0] + " where lower(" + target[1] + ") like '%meta' || 'mora%' or lower(" + target[1] + ") like '%meta-' || 'mora%'", Integer.class);
         }
         return count;

@@ -95,7 +95,7 @@ ERD 코드는 로그인·대시보드 초기 번들에 포함되지 않는다 (�
 ```bash
 ./gradlew clean build                                             # 290 tests, 실패 0, 건너뜀 2 (환경 변수 필요 테스트)
 # PostgreSQL : 빈 격리 DB 를 만들어 지정 (사용 중인 DB 금지)
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_erd_test \
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_erd_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 ./gradlew :lexorma-app:test --tests 'com.lexorma.ErdIntegrationTest' --tests 'com.lexorma.PhysicalModelIntegrationTest'
 ```

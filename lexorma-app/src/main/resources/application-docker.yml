@@ -1,9 +1,9 @@
 # Docker 이미지 (Postgres) : DB_* 환경변수로 접속 정보 지정
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:lexorma-postgres}:${DB_PORT:5432}/${DB_NAME:metamora}?charSet=UTF-8&reWriteBatchedInserts=true
-    username: ${DB_USERNAME:metamora}
-    password: ${DB_PASSWORD:metamora}
+    url: jdbc:postgresql://${DB_HOST:lexorma-postgres}:${DB_PORT:5432}/${DB_NAME:lexorma}?charSet=UTF-8&reWriteBatchedInserts=true
+    username: ${DB_USERNAME:lexorma}
+    password: ${DB_PASSWORD:lexorma}
   jpa:
     properties:
       hibernate:

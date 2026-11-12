@@ -88,8 +88,8 @@ Project
 
 ```bash
 ./gradlew clean build      # 340 tests, 실패 0, 건너뜀 2 (환경 변수가 필요한 V0SeedMigrationTest 1건, UploadPerformanceTest 1건)
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m6_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m6_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m6_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m6_test \
 SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
   --tests 'com.lexorma.LogicalModelIntegrationTest' --tests 'com.lexorma.StandardizationQualityIntegrationTest' \
@@ -182,9 +182,9 @@ PostgreSQL 첫 실행에서 1건 실패했다 : 모델 목록의 이름순이 DB
 
 ```bash
 ./gradlew clean build      # 341 tests, 실패 0, 건너뜀 2 (V0SeedMigrationTest 의 PostgreSQL 1건, UploadPerformanceTest 1건). npm ci + typecheck + vite build 포함
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m6b_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m6b_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m6b_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m6b_test)를 만들어 실행 후 삭제 (개발 DB 는 건드리지 않았다)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m6b_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/lexorma_m6b_test \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true --tests '...'   # 6장의 목록 + V0SeedMigrationTest : 101 tests, 실패 0, 건너뜀 0
 ```
 
@@ -226,7 +226,7 @@ create unique index UX_LGCL_ERD_LYT_01 on TB_LGCL_ERD_LYT (LGCL_MDL_SN, ACNT_SN)
 alter table TB_LGCL_ERD_LYT add constraint FK_LGCL_ERD_LYT_01 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
 ```
 
-V0 체크섬 불일치는 1차 때와 같은 방식으로 정리해야 한다. 예제 데이터(META-MORA 프로젝트의 자체 물리 모델에 추가한 테이블·컬럼·용어·관계)는 기능에 필요하지 않다.
+V0 체크섬 불일치는 1차 때와 같은 방식으로 정리해야 한다. 예제 데이터(LEXORMA 프로젝트의 자체 물리 모델에 추가한 테이블·컬럼·용어·관계)는 기능에 필요하지 않다.
 
 ### 8.7 후속
 
@@ -275,7 +275,7 @@ V0 체크섬 불일치는 1차 때와 같은 방식으로 정리해야 한다. �
 
 ### 9.4 검증
 
-- `./gradlew clean build` : 341 tests, 실패 0, 건너뜀 2. PostgreSQL 18.6 격리 DB(`metamora_m6c_test`, 실행 후 삭제) : 101 tests, 실패 0, 건너뜀 0.
+- `./gradlew clean build` : 341 tests, 실패 0, 건너뜀 2. PostgreSQL 18.6 격리 DB(`lexorma_m6c_test`, 실행 후 삭제) : 101 tests, 실패 0, 건너뜀 0.
 - 고친 테스트 : `MenuAuthorizationTest`(새 그룹·화면 ID), `LogicalModelIntegrationTest`(자동 승인, 승인 권한자의 속성 편집, USER 거절·승인 대기 등록), `SmokeTest`(자동 승인 → 승인취소 → 삭제 흐름, `/api/auth/me` 메뉴).
 - 브라우저(Chrome, ADMIN, 인메모리 H2) : 메뉴 순서, 표준 도메인·단어·용어 화면과 강조 메뉴, 예전 주소 이동(검색 유지), 품질 진단 위치, 대시보드 카드 링크, 엔터티·관계 등록 직후 승인 표시, 승인된 엔터티에 속성 추가, 엔터티명 읽기 전용·삭제 버튼 숨김, 승인된 관계의 수정·삭제 비활성. 콘솔 오류 0.
 - **미검증** : 영어 화면(브라우저 언어를 바꿔 보지 않았다), VIEWER·USER 계정 화면.
@@ -284,11 +284,11 @@ V0 체크섬 불일치는 1차 때와 같은 방식으로 정리해야 한다. �
 
 ### 10.1 `V1__logical_model_seed.sql` (H2·PostgreSQL)
 
-V0 가 META-MORA 프로젝트에 Lexorma 자체 테이블의 **물리 모델 예제**를 넣는 것처럼, V1 은 같은 내용의 **논리 모델 예제**를 넣는다 (데이터만, 스키마 변경 없음).
+V0 가 LEXORMA 프로젝트에 Lexorma 자체 테이블의 **물리 모델 예제**를 넣는 것처럼, V1 은 같은 내용의 **논리 모델 예제**를 넣는다 (데이터만, 스키마 변경 없음).
 
 | 논리 | 물리 예제에서 옮긴 것 | 건수 |
 |---|---|---|
-| 논리 모델 `META-MORA` | — | 1 |
+| 논리 모델 `LEXORMA` | — | 1 |
 | 엔터티 | 테이블 한글명·설명 (승인 상태) | 35 |
 | 속성 | 컬럼 설명(이름), 순서, NOT NULL → 필수, 컬럼의 표준 용어 연결 | 341 |
 | 주 식별자 | PK 컬럼 (`{엔터티명} 식별자`) | 35 (속성 35) |
@@ -297,7 +297,7 @@ V0 가 META-MORA 프로젝트에 Lexorma 자체 테이블의 **물리 모델 예
 - **ID 는 시퀀스에서 받고 부모는 이름으로 찾는다.** V0 처럼 고정 ID 를 쓰면 이미 논리 모델을 등록한 DB 와 겹칠 수 있다. 시퀀스 값을 그대로 ID 로 써도 Hibernate 의 pooled 할당 구간과 겹치지 않는다.
 - 표준 용어는 V0 예제 용어 ID 를 쓰되, 그 용어가 지워진 DB 에서는 연결 없이(null) 들어간다.
 - 논리 모델은 물리 테이블·컬럼을 참조하지 않는다 — 작성 시점의 물리 예제를 옮겨 적은 것이고 이후에는 따로 바뀐다. V0 의 물리 예제를 바꾸면 V1 도 맞춘다 (`V0SeedMigrationTest` 가 엔터티·속성·관계·식별자 속성 수를 물리 예제와 비교한다).
-- **기존 DB** : V1 은 새 버전이라 체크섬 문제 없이 자동 적용된다 (V0 체크섬 불일치와 `TB_LGCL_ERD_LYT` 반영은 8.6 대로 별개). 프로젝트 0 에 이미 `META-MORA` 라는 논리 모델이 있으면 UNIQUE 로 실패하므로 그 경우 이름을 바꾼 뒤 적용한다.
+- **기존 DB** : V1 은 새 버전이라 체크섬 문제 없이 자동 적용된다 (V0 체크섬 불일치와 `TB_LGCL_ERD_LYT` 반영은 8.6 대로 별개). 프로젝트 0 에 이미 `LEXORMA` 라는 논리 모델이 있으면 UNIQUE 로 실패하므로 그 경우 이름을 바꾼 뒤 적용한다.
 - 저장소 정책 변경 : "V0 만 유지"에서 **V0 + 데이터 전용 V1** 로 (요청에 따른 예외, `CLAUDE.md` 반영).
 
 ### 10.2 권한명 국제화
@@ -314,8 +314,8 @@ V0 의 권한 설명(`TB_ROLE.ROLE_EXPLN`)이 영문(Administrator, Manager, …
 
 ### 10.4 검증
 
-- `./gradlew clean build` : 341 tests, 실패 0, 건너뜀 2. PostgreSQL 18.6 격리 DB(`metamora_m6d_test`, 실행 후 삭제) : 101 tests, 실패 0, 건너뜀 0 — Flyway 이력 V0·V1 성공, `META-MORA` 엔터티 35·관계 39 확인.
-- 브라우저(Chrome, ADMIN, 인메모리 H2) : 메뉴 순서, 내 정보의 권한명 "관리자"(서버 값은 Administrator), 논리 모델 관리에 `META-MORA` 모델(엔터티 35·관계 39), 논리 ERD 자동 배치 표시. 콘솔 오류 0.
+- `./gradlew clean build` : 341 tests, 실패 0, 건너뜀 2. PostgreSQL 18.6 격리 DB(`lexorma_m6d_test`, 실행 후 삭제) : 101 tests, 실패 0, 건너뜀 0 — Flyway 이력 V0·V1 성공, `LEXORMA` 엔터티 35·관계 39 확인.
+- 브라우저(Chrome, ADMIN, 인메모리 H2) : 메뉴 순서, 내 정보의 권한명 "관리자"(서버 값은 Administrator), 논리 모델 관리에 `LEXORMA` 모델(엔터티 35·관계 39), 논리 ERD 자동 배치 표시. 콘솔 오류 0.
 - **미검증** : 이미 데이터가 있는 DB 에 V1 을 적용하는 경우(빈 DB 에서만 실행), 영어 화면.
 
 ## 11. M-7 1차 이후 달라진 점 (논리·물리 매핑)

@@ -152,13 +152,13 @@
 
 ## 6. 검증
 
-검증은 작업 트리를 복사한 별도 폴더에서 했다 (IDE 에서 실행 중인 애플리케이션의 빌드 산출물과 섞이지 않게). 개발 DB(`localhost:15439/metamora`)는 읽지도 쓰지도 않았다.
+검증은 작업 트리를 복사한 별도 폴더에서 했다 (IDE 에서 실행 중인 애플리케이션의 빌드 산출물과 섞이지 않게). 개발 DB(`localhost:15439/lexorma`)는 읽지도 쓰지도 않았다.
 
 ```bash
 ./gradlew clean build      # 354 tests, 실패 0, 건너뜀 2 (환경 변수가 필요한 테스트). npm ci + typecheck + vite build 포함
-# PostgreSQL 18.6 : 빈 격리 DB(metamora_m7q_test)를 만들어 실행 후 삭제
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
+# PostgreSQL 18.6 : 빈 격리 DB(lexorma_m7q_test)를 만들어 실행 후 삭제
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma_m7q_test SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/lexorma_m7q_test \
 ./gradlew :lexorma-app:test -PfrontendPrebuilt=true \
   --tests 'com.lexorma.ModelMappingQualityIntegrationTest' --tests 'com.lexorma.ModelMappingIntegrationTest' \
   --tests 'com.lexorma.LogicalModelIntegrationTest' --tests 'com.lexorma.StandardizationQualityIntegrationTest' \
@@ -205,7 +205,7 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
 
 ## 7. 확인된 사실 · 제약 · 후속
 
-- **예제(META-MORA) : V4 로 전부 매핑되어 있다** (8장). 정합성 요약은 일치 1,913 / 불일치 0 / 비교 불가 229 / 미매핑 0 이다. 6.2 의 브라우저 검증은 V4 를 넣기 전(예제가 전부 미매핑인 상태)에 한 것이다.
+- **예제(LEXORMA) : V4 로 전부 매핑되어 있다** (8장). 정합성 요약은 일치 1,913 / 불일치 0 / 비교 불가 229 / 미매핑 0 이다. 6.2 의 브라우저 검증은 V4 를 넣기 전(예제가 전부 미매핑인 상태)에 한 것이다.
 - **대량 데이터 :** 모델 1개의 속성 × 6행을 조회마다 계산한다. 속성 수천 개 규모는 문제없을 크기지만 실행 시간·메모리를 재지 않았다. 모델 하나가 수만 속성이 되면 진단 결과 저장(AI-6)이나 SQL 로 걸러낼 수 있는 유형(매핑 여부·표준 용어·필수·식별자)의 분리가 필요하다.
 - **정합성 진단 확장 후보 :** 논리 관계 ↔ 물리 FK, 보조 식별자 ↔ UNIQUE, 매핑되지 않은 물리 테이블·컬럼 목록(물리 기준 역방향), 논리 데이터 유형 ↔ 타입 분류(유형 코드 체계가 생기면), 엔터티명 ↔ 테이블 한글명.
 - **물리명 추천 :** 3차에서 구현했다 ([physical-name-recommendation-m7.md](physical-name-recommendation-m7.md)). `NAME` 진단의 기대 컬럼명은 이제 추천 서비스(`PhysicalNameRecommendationService.recommendColumnName`)가 계산한다 (판정·사유는 그대로).
@@ -215,11 +215,11 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
 
 ## 8. 예제 매핑 데이터 (V4)
 
-`V4__mapping_example_data.sql` (postgresql·h2 같은 내용) : META-MORA 예제의 논리 모델과 물리 모델을 매핑 행으로 잇는다. **스키마는 바꾸지 않는다** (V0~V3 파일도 그대로).
+`V4__mapping_example_data.sql` (postgresql·h2 같은 내용) : LEXORMA 예제의 논리 모델과 물리 모델을 매핑 행으로 잇는다. **스키마는 바꾸지 않는다** (V0~V3 파일도 그대로).
 
 | 대상 | 규칙 | 결과 (새 DB) |
 |---|---|---|
-| 엔터티 ↔ 테이블 | 프로젝트 0 의 `META-MORA` 모델 엔터티명 = 프로젝트 0 테이블의 한글명 (V1·V3 이 물리 예제의 한글명으로 엔터티를 만들었다) | 37건 (엔터티 37 전부) |
+| 엔터티 ↔ 테이블 | 프로젝트 0 의 `LEXORMA` 모델 엔터티명 = 프로젝트 0 테이블의 한글명 (V1·V3 이 물리 예제의 한글명으로 엔터티를 만들었다) | 37건 (엔터티 37 전부) |
 | 속성 ↔ 컬럼 | 위로 이어진 엔터티·테이블 안에서 같은 표준 용어(`STD_TRM_SN`)를 참조하는 속성과 컬럼 | 357건 (속성 357 전부) |
 
 - **예제 데이터에만 해당하는 규칙이다.** 애플리케이션은 여전히 이름·용어가 같다고 자동으로 매핑하지 않는다 (1차 정책 "자동 매핑 없음"은 화면·API 의 동작에 대한 것이고 그대로다).
@@ -233,10 +233,10 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/metamora_m7q_test \
 | 항목 | 결과 |
 |---|---|
 | `./gradlew clean build` (H2) | 354 tests, 실패 0, 건너뜀 2 |
-| PostgreSQL 18.6 빈 격리 DB (`metamora_m7q_test`, 실행 후 삭제) | 6장과 같은 110 tests, 실패 0. Flyway 이력 V0~V4 |
-| 기존 데이터가 있는 DB : 개발 DB 를 `pg_dump` 로 복사한 격리 DB (`metamora_m7q_upgrade`, 실행 후 삭제) | V0~V3 체크섬 변화 없이 V4 만 적용. 복사본에는 사용자가 등록한 `계정 ↔ TB_ACNT` 매핑(속성 매핑 0건)이 있었고, V4 뒤 엔터티 매핑 37건(기존 1 + 추가 36)·속성 매핑 357건이 됐다. 이어서 매핑·정합성·논리·물리 통합 테스트 19건 통과 |
+| PostgreSQL 18.6 빈 격리 DB (`lexorma_m7q_test`, 실행 후 삭제) | 6장과 같은 110 tests, 실패 0. Flyway 이력 V0~V4 |
+| 기존 데이터가 있는 DB : 개발 DB 를 `pg_dump` 로 복사한 격리 DB (`lexorma_m7q_upgrade`, 실행 후 삭제) | V0~V3 체크섬 변화 없이 V4 만 적용. 복사본에는 사용자가 등록한 `계정 ↔ TB_ACNT` 매핑(속성 매핑 0건)이 있었고, V4 뒤 엔터티 매핑 37건(기존 1 + 추가 36)·속성 매핑 357건이 됐다. 이어서 매핑·정합성·논리·물리 통합 테스트 19건 통과 |
 | 예제의 정합성 요약 (빌드한 jar, H2 인메모리) | 엔터티 37 / 37, 속성 357 / 357 매핑. 일치 1,913, 불일치 0, 비교 불가 229 (도메인에 길이 없음 223, 주 식별자 없는 엔터티 6), 미매핑 0. M-5 품질 진단도 0건 그대로 |
 | `SmokeTest.modelMapping` | 예제의 계정 매핑을 해제 → 등록·오류 코드 확인 → 같은 짝으로 복원하도록 바꿨다 |
 
-- **개발 DB(`localhost:15439/metamora`)에는 직접 적용하지 않았다.** IDE 에서 실행 중인 애플리케이션이 다시 시작할 때 Flyway 가 V4 를 적용한다 (위 복사본 검증과 같은 경로). 적용된 뒤에는 V4 파일을 바꾸면 안 된다.
+- **개발 DB(`localhost:15439/lexorma`)에는 직접 적용하지 않았다.** IDE 에서 실행 중인 애플리케이션이 다시 시작할 때 Flyway 가 V4 를 적용한다 (위 복사본 검증과 같은 경로). 적용된 뒤에는 V4 파일을 바꾸면 안 된다.
 - V4 를 넣은 뒤의 화면은 브라우저로 다시 확인하지 않았다 (API 응답만 확인).

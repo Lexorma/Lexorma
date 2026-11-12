@@ -202,7 +202,7 @@
 - **Flyway 체크섬은 줄 단위로 계산하므로 달라진다** : 커밋된 파일 `1360113569`, 줄바꿈이 들어간 상태 `592152589`. V3 가 이미 적용된 DB 는 기동 때 검증(validate)에서 실패한다.
 - 2차 작업을 시작했을 때는 파일이 이미 커밋된 내용으로 돌아가 있었다(11:13, 바이트 단위로 `HEAD` 와 같음, `git status` 에 나오지 않음). 그래서 **복원 작업은 하지 않았다.** V0~V4 다섯 파일 모두 `HEAD` 와 같다.
 - 검증 (일회용 PostgreSQL 18.6 컨테이너, 볼륨 없음, 끝난 뒤 삭제) : 빈 DB 에 V0~V4 적용 성공 → 같은 DB 로 다시 기동해 "5 migrations validated, up to date". 이력 테이블의 체크섬은 V0 `-1532103848`, V1 `-514501166`, V2 `324210209`, V3 `1360113569`, V4 `650038310`.
-- **확인하지 못한 것** : 개발 DB(`metamora`, 15439)의 이력 테이블. 작업 시점에 컨테이너가 내려가 있었고 올리지 않았다. 개발 DB 가 커밋된 파일로 적용됐다면 위 값과 같아야 한다 — `select version, checksum from flyway_schema_history order by installed_rank` 로 비교할 수 있다. Flyway repair 는 실행하지 않았다.
+- **확인하지 못한 것** : 개발 DB(`lexorma`, 15439)의 이력 테이블. 작업 시점에 컨테이너가 내려가 있었고 올리지 않았다. 개발 DB 가 커밋된 파일로 적용됐다면 위 값과 같아야 한다 — `select version, checksum from flyway_schema_history order by installed_rank` 로 비교할 수 있다. Flyway repair 는 실행하지 않았다.
 
 ### 10.2 데이터 사전 승인 정책
 

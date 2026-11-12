@@ -17,8 +17,6 @@ Lexorma is an open-source web application for data standardization and metadata 
 - **One model, several views** — the same model is edited in management screens and in ERDs, and exported as DBMS-specific DDL.
 - **Traceability** — approvals, logical ↔ physical mappings and a change history show how the model got to its current state.
 
-> Lexorma was previously developed under the name MetaMora. See [Upgrading from MetaMora](#upgrading-from-metamora) if you run an existing installation.
-
 ---
 
 ## 2. Key Features
@@ -175,9 +173,9 @@ A user can be signed in from one place at a time; a later login ends the earlier
 |---|---|---|
 | `DB_HOST` | `lexorma-postgres` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
-| `DB_NAME` | `metamora` | Database name |
-| `DB_USERNAME` | `metamora` | Database user |
-| `DB_PASSWORD` | `metamora` | Database password |
+| `DB_NAME` | `lexorma` | Database name |
+| `DB_USERNAME` | `lexorma` | Database user |
+| `DB_PASSWORD` | `lexorma` | Database password |
 
 The default database name and account are kept from the previous project name so that existing installations keep working. **Set `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` explicitly for a new installation** (the Docker examples below use `lexorma`). Any Spring property can also be overridden the usual way, for example `SPRING_DATASOURCE_URL` or `LOGGING_LEVEL_COM_LEXORMA=DEBUG`.
 
@@ -196,13 +194,6 @@ Login sessions are stored in the database (Spring Session JDBC), so users stay s
 ### Brand assets
 
 The icon and share image live in `lexorma-web/public/images` and are served under `/images/**`: `favicon.svg` (source; also the logo on the login, sign-up, header and footer), `favicon.png` (512×512), `apple-touch-icon.png` (180×180) and `og-image.png` (1200×630). The PNG files are rendered from `favicon.svg`; replace all four together. There is no web app manifest (the app is not a PWA).
-
-### Upgrading from MetaMora
-
-- Keep the existing database. Table names and data are unchanged, and the default connection settings still point to the `metamora` database and account.
-- The migrations were consolidated into two files (`V0__init.sql` schema, `V1__seed_data.sql` seed data). A database created by an earlier build has a different Flyway history (V0–V5) and fails validation at startup; it needs its history re-baselined by an administrator after a backup (table structure is unchanged). Its seeded names (`META-MORA` project, welcome announcement) stay as they are — only new installations are seeded as `LEXORMA`.
-- Login sessions created before the rename keep working: the application reads session data stored under the old package name.
-- Docker Compose service and container names changed (`lexorma-postgres`, `lexorma-app`). Stop the containers started under the old names before starting the new ones; the data directory (`docker/volume/metamora`) is reused as is.
 
 ---
 

@@ -1,9 +1,9 @@
 # 개발 서버
 spring:
   datasource:
-    url: jdbc:postgresql://lexorma-postgres:5432/metamora?charSet=UTF-8&reWriteBatchedInserts=true
-    username: metamora
-    password: metamora
+    url: jdbc:postgresql://lexorma-postgres:5432/lexorma?charSet=UTF-8&reWriteBatchedInserts=true
+    username: lexorma
+    password: lexorma
   jpa:
     properties:
       hibernate:

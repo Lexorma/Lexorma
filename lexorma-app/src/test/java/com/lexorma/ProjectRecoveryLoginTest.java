@@ -228,7 +228,7 @@ class ProjectRecoveryLoginTest {
         // 일반 업무 API 는 ADMIN 이어도 모두 403 (세션은 끊기지 않는다)
         for (String path : List.of(PROTECTED_API, "/api/selectUser/data?page=0&size=10", "/api/getProject/managed", "/api/erd",
                 "/api/selectTable/ddl/1", "/api/selectNotice/data?page=0&size=10",
-                "/api/modelHistory/data?page=0&size=10", "/api/modelHistory/1", "/api/modelHistory/group/1", "/api/no-such-api")) {
+                "/api/modelHistory/data?page=0&size=10", "/api/modelHistory/1", "/api/modelHistory/group/1", "/api/modelVersion/data?page=0&size=10", "/api/modelVersion/1/snapshot", "/api/modelVersion/compare?baseId=1", "/api/no-such-api")) {
             HttpResponse<String> denied = browser.get(path);
             assertThat(denied.statusCode()).as(path).isEqualTo(403);
             assertThat(code(denied)).as(path).isEqualTo("ACCESS_DENIED");

@@ -710,6 +710,27 @@ create index IX_MDL_CHG_HSTRY_01 on TB_MDL_CHG_HSTRY (PRJ_SN, CHG_DT);
 create index IX_MDL_CHG_HSTRY_02 on TB_MDL_CHG_HSTRY (PRJ_SN, TRGT_TYPE_CD, TRGT_SN);
 create index IX_MDL_CHG_HSTRY_03 on TB_MDL_CHG_HSTRY (CHG_GROUP_ID);
 
+-- ---------- 모델 버전 (M-9 3차) ----------
+-- 사용자가 명시적으로 만든 시점의 모델 전체 구조(JSON). 추가만 한다 (수정·삭제 API 없음). 변경 이력과 같이 모델 테이블로 가는 FK 는 두지 않는다.
+
+create sequence SQ_MDL_VER start with 1 increment by 50;
+
+create table TB_MDL_VER (
+    MDL_VER_SN bigint not null,
+    PRJ_SN bigint not null,
+    VER_NM varchar(100) not null,
+    VER_EXPLN varchar(1000),
+    FRMT_VER_NO integer not null,
+    MDL_CNT_CN TEXT not null,
+    MDL_CN TEXT not null,
+    RGTR_ID varchar(255),
+    REG_DT timestamp(6) not null,
+    constraint PK_MDL_VER primary key (MDL_VER_SN)
+);
+
+-- 프로젝트 안에서 버전명은 하나뿐이다 (동시에 같은 이름으로 만들어도 하나만 남는다)
+create unique index UK_MDL_VER_01 on TB_MDL_VER (PRJ_SN, VER_NM);
+
 -- ---------- 로그인 세션 (Spring Session JDBC) ----------
 -- spring-session-jdbc 4.1.1 의 schema-postgresql.sql 그대로 (spring.session.jdbc.initialize-schema: never). 라이브러리 고정 스키마라 명명 규칙에서 제외한다.
 -- 로그인 세션을 DB 에 보관해 애플리케이션 재시작/컨테이너 재생성 후에도 유지한다. 만료 세션은 Spring Session 이 주기적으로 지운다.
@@ -1182,3 +1203,13 @@ comment on column TB_MDL_CHG_HSTRY.CHG_AFTR_CN is '변경 이후 내용';
 comment on column TB_MDL_CHG_HSTRY.CHG_SRC_CD is '변경 출처 코드';
 comment on column TB_MDL_CHG_HSTRY.USER_ID is '사용자 아이디';
 comment on column TB_MDL_CHG_HSTRY.CHG_DT is '변경 일시';
+comment on table TB_MDL_VER is '모델 버전';
+comment on column TB_MDL_VER.MDL_VER_SN is '모델 버전 일련번호';
+comment on column TB_MDL_VER.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_MDL_VER.VER_NM is '버전 명';
+comment on column TB_MDL_VER.VER_EXPLN is '버전 설명';
+comment on column TB_MDL_VER.FRMT_VER_NO is '형식 버전 번호';
+comment on column TB_MDL_VER.MDL_CNT_CN is '모델 수 내용';
+comment on column TB_MDL_VER.MDL_CN is '모델 내용';
+comment on column TB_MDL_VER.RGTR_ID is '등록자 아이디';
+comment on column TB_MDL_VER.REG_DT is '등록 일시';

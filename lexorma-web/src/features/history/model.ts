@@ -71,6 +71,7 @@ const FIELD_LABELS: Record<string, string> = {
   attributeName: t('속성명'), attributeDescription: t('속성 설명'), identifierName: t('식별자명'), isPrimary: t('주 식별자'), attributes: t('구성 속성'),
   sourceEntity: t('출발 엔터티'), targetEntity: t('도착 엔터티'), relationshipName: t('관계명'), relationshipDescription: t('관계 설명'), isIdentifying: t('식별 관계'),
   sourceMin: t('출발 최소'), sourceMax: t('출발 최대'), targetMin: t('도착 최소'), targetMax: t('도착 최대'),
+  schemaName: t('스키마명'), schemaDescription: t('설명'), isDefault: t('기본 스키마'),
   table: t('테이블'), mapping: t('엔터티 매핑'), attribute: t('속성'), column: t('컬럼'), sourceColumn: t('원본 컬럼'), targetColumn: t('대상 컬럼'), columnOrder: t('순서'),
 };
 
@@ -147,7 +148,7 @@ function comparable(value: unknown, ignoreOrder: boolean): string {
  * 변경 전후 JSON → 비교 줄. 저장된 키를 그대로 쓴다 : 한쪽에만 있는 필드, 모르는 필드, null, 빈 배열, 중첩 객체 모두 줄로 나온다.
  * changed 는 값이 실제로 다른 줄이다 (생성·삭제는 모든 줄이 한쪽뿐이다).
  */
-export function diffRows(detail: HistoryDetail): DiffRow[] {
+export function diffRows(detail: { summary: { targetType: string }; before: HistoryState | null; after: HistoryState | null }): DiffRow[] {
   const before = detail.before ? fields(detail.before) : new Map<string, unknown>();
   const after = detail.after ? fields(detail.after) : new Map<string, unknown>();
   const keys = [...new Set([...after.keys(), ...before.keys()])];

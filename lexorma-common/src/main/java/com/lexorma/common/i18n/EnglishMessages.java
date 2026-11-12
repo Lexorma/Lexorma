@@ -269,6 +269,8 @@ final class EnglishMessages {
         add("관계명", "relationship name");
         add("데이터 유형", "data type");
         add("설명", "description");
+        add("버전명", "version name");
+        add("비교할 버전을 서로 다르게 선택해주세요.", "Select two different versions to compare.");
         add("논리 모델", "logical model");
         add("엔터티", "entity");
         add("속성", "attribute");

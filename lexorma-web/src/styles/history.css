@@ -185,3 +185,29 @@ dialog .history-group p {
     margin: 0;
     font-size: 13px;
 }
+
+/* 모델 버전 (M-9 3차) : 저장된 객체·달라진 객체 목록은 변경 그룹 목록과 같은 모양에 길이만 넉넉히 */
+dialog .version-list {
+    max-height: 52vh;
+}
+
+dialog .history-filters .search-input {
+    flex: 0 0 220px;
+    width: 220px;
+    max-width: 100%;
+}
+
+/* 긴 버전명·설명 : 목록에서는 두 줄까지만 (전체는 title 과 상세에서), 상세에서는 정해진 높이 안에서 스크롤 */
+.version-clamp {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+dialog .version-description {
+    max-height: 96px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

@@ -247,6 +247,16 @@ public enum ErrorCode {
     PROJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND"),
 
     /**
+     * 모델 버전을 찾을 수 없습니다. (없는 ID, 다른 프로젝트의 버전)
+     */
+    MODEL_VERSION_NOT_FOUND(HttpStatus.NOT_FOUND, "MODEL_VERSION_NOT_FOUND"),
+
+    /**
+     * 모델 버전 요청이 올바르지 않습니다. (버전명·설명 검증, 비교 대상)
+     */
+    INVALID_MODEL_VERSION(HttpStatus.BAD_REQUEST, "INVALID_MODEL_VERSION"),
+
+    /**
      * 마지막 활성 프로젝트 비활성화 : 확인(confirmLastActive=true)을 받은 뒤에만 진행한다.
      */
     LAST_ACTIVE_PROJECT(HttpStatus.CONFLICT, "LAST_ACTIVE_PROJECT"),

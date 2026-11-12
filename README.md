@@ -35,6 +35,7 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Mapping | Logical ↔ physical mapping | Entity ↔ table and attribute ↔ column mappings with consistency diagnostics |
 | DDL | DDL generation | `CREATE TABLE`, keys, indexes, comments and foreign keys for PostgreSQL (default), Oracle, MySQL and MariaDB, with warnings for incomplete definitions |
 | History | Model change history | Who changed what and when for the physical model, the logical model and the mappings, with before/after comparison and grouping of changes made in one operation |
+| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values) |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 
 ### Planned (not implemented yet)
@@ -42,7 +43,6 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Area | Feature |
 |---|---|
 | Reverse engineering | Importing the structure of an existing database into the physical model and ERD |
-| Model versions | Named model versions and comparison between versions |
 | AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
 
 ### Data Standardization Rules
@@ -65,7 +65,7 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 | `MANAGER` | Manager | Approval, announcements (as the manager of the project) |
 | `DBA` | Database administrator | Project management (own projects), system logs |
 | `USER` | Standard user | Create and change dictionary items and models |
-| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings and the change history |
+| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history and model versions |
 | `NOT_APPROVE` | Unapproved user | Dashboard and announcements only |
 
 Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Newly registered users start as `NOT_APPROVE`.
@@ -102,7 +102,7 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-core` | Authentication, login, project tenancy, request logging |
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
-| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history |
+| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history, model versions |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |
 

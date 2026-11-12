@@ -227,6 +227,98 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         return map;
     }
 
+    /** 이름 자리(Ref)를 대상 종류별 조회로 이름으로 바꾼다. 조회되지 않는 대상은 missing 이 주는 이름, 그래도 없으면 null (ID 만 남는다) */
+    private void fillNames(List<Map<String, Object>> maps, java.util.function.BiFunction<Class<?>, Object, String> missing) {
+        Map<Class<?>, Set<Object>> wanted = new LinkedHashMap<>();
+        maps.forEach(map -> map.values().forEach(value -> {
+            if (value instanceof Ref ref) wanted.computeIfAbsent(ref.type(), key -> new java.util.LinkedHashSet<>()).add(ref.id());
+        }));
+        Map<Ref, String> names = new java.util.HashMap<>();
+        wanted.forEach((type, idSet) -> {
+            List<Object> ids = new ArrayList<>(idSet);
+            String field = NAME_FIELDS.get(type);
+            for (int from = 0; from < ids.size(); from += BATCH_SIZE) {
+                entityManager.createQuery("select e.id, e." + field + " from " + type.getSimpleName() + " e where e.id in :ids", Object[].class)
+                        .setParameter("ids", ids.subList(from, Math.min(from + BATCH_SIZE, ids.size())))
+                        .getResultList()
+                        .forEach(row -> names.put(new Ref(type, row[0]), (String) row[1]));
+            }
+            for (Object id : ids) {
+                if (!names.containsKey(new Ref(type, id))) names.put(new Ref(type, id), missing.apply(type, id));
+            }
+        });
+        maps.forEach(map -> map.replaceAll((key, value) -> value instanceof Ref ref ? names.get(ref) : value));
+    }
+
+    /**
+     * 이력·버전에 담는 엔티티 → 필드 (스키마와 자식 행 포함). 엔티티에 속성을 더하고 여기에 넣지 않으면 이력에도 버전에도 빠지므로,
+     * 테스트(ModelSnapshotFieldCoverageTest)가 엔티티의 영속 속성과 이 목록을 비교한다.
+     */
+    public static Map<Class<?>, List<String>> recordedFields() {
+        Map<Class<?>, List<String>> result = new LinkedHashMap<>();
+        result.put(SchemaInfo.class, SCHEMA_FIELDS.fields());
+        TRACKED.forEach((entityClass, tracked) -> result.put(entityClass, tracked.fields()));
+        CHILDREN.forEach((entityClass, child) -> result.put(entityClass, child.fields()));
+        return result;
+    }
+
+    /** 모델 버전(M-9 3차)에 담는 객체 하나 : 이력의 "변경 후" 와 같은 필드·같은 모양 */
+    public record ObjectState(Long id, String name, Map<String, Object> state) {}
+
+    /** 스키마는 이력 대상이 아니지만 모델 구조의 일부라 스냅샷에는 담는다 */
+    public static final String SCHEMA = "SCHEMA";
+    private static final Tracked SCHEMA_FIELDS = new Tracked(null, "schemaName", null, List.of("schemaName", "schemaDescription", "isDefault"));
+
+    /**
+     * 프로젝트의 현재 모델 전체 : 대상 종류 → 객체 (ID 순). 이력과 같은 필드 목록을 쓰므로 이력에 남는 값과 버전에 담기는 값이 같다.
+     * 호출한 트랜잭션에서 읽는다 (일관된 시점은 호출하는 쪽이 트랜잭션 격리로 정한다).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, List<ObjectState>> currentState(Long projectId) {
+        Map<Class<?>, Tracked> targets = new LinkedHashMap<>();
+        targets.put(SchemaInfo.class, SCHEMA_FIELDS);
+        TRACKED.entrySet().stream().sorted(Comparator.comparing((Map.Entry<Class<?>, Tracked> entry) -> entry.getValue().type())).forEach(entry -> targets.put(entry.getKey(), entry.getValue()));
+
+        Map<String, List<ObjectState>> result = new LinkedHashMap<>();
+        List<Map<String, Object>> maps = new ArrayList<>();
+        targets.forEach((entityClass, tracked) -> {
+            EntityPersister persister = persister(entityClass);
+            String owner = tracked.projectVia() == null ? "e.projectId" : "e." + tracked.projectVia() + ".projectId";
+            List<?> rows = entityManager.createQuery("select e from " + entityClass.getSimpleName() + " e where " + owner + " = :projectId order by e.id", entityClass)
+                    .setParameter("projectId", projectId).setHint("org.hibernate.readOnly", true).getResultList();
+            Map<Long, Map<String, Object>> states = new LinkedHashMap<>();
+            rows.forEach(row -> states.put((Long) identifier(row), snapshot(persister, persister.getValues(row), tracked.fields())));
+
+            // 자식 행(관계의 컬럼 쌍, 인덱스·제약조건의 컬럼, 식별자의 구성 속성)은 부모의 배열로 넣는다
+            CHILDREN.forEach((childClass, child) -> {
+                if (child.parent() != entityClass) return;
+                states.values().forEach(state -> state.put(child.listKey(), new ArrayList<Map<String, Object>>()));
+                EntityPersister childPersister = persister(childClass);
+                List<Long> parentIds = new ArrayList<>(states.keySet());
+                for (int from = 0; from < parentIds.size(); from += BATCH_SIZE) {
+                    entityManager.createQuery("select c from " + childClass.getSimpleName() + " c where c." + child.parentProperty() + ".id in :ids order by c." + child.orderField() + ", c.id", childClass)
+                            .setParameter("ids", parentIds.subList(from, Math.min(from + BATCH_SIZE, parentIds.size()))).setHint("org.hibernate.readOnly", true)
+                            .getResultList()
+                            .forEach(row -> {
+                                Object[] values = childPersister.getValues(row);
+                                Map<String, Object> value = snapshot(childPersister, values, child.fields());
+                                maps.add(value);
+                                ((List<Map<String, Object>>) states.get((Long) identifier(values[index(childPersister, child.parentProperty())])).get(child.listKey())).add(value);
+                            });
+                }
+            });
+            maps.addAll(states.values());
+            List<ObjectState> objects = new ArrayList<>();
+            states.forEach((id, state) -> objects.add(new ObjectState(id, null, state)));
+            result.put(tracked.type() == null ? SCHEMA : tracked.type().name(), objects);
+        });
+
+        fillNames(maps, (type, id) -> null);
+        targets.forEach((entityClass, tracked) -> result.computeIfPresent(tracked.type() == null ? SCHEMA : tracked.type().name(), (code, objects) -> objects.stream()
+                .map(object -> new ObjectState(object.id(), tracked.type() == null ? (String) object.state().get(tracked.nameField()) : Pending.targetName(tracked, object.state()), object.state())).toList()));
+        return result;
+    }
+
     private static int index(EntityPersister persister, String property) {
         String[] names = persister.getPropertyNames();
         for (int i = 0; i < names.length; i++) {
@@ -427,26 +519,11 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                     });
                 }
             }
-            Map<Class<?>, java.util.Set<Object>> wanted = new LinkedHashMap<>();
-            maps.forEach(map -> map.values().forEach(value -> {
-                if (value instanceof Ref ref) wanted.computeIfAbsent(ref.type(), key -> new java.util.LinkedHashSet<>()).add(ref.id());
-            }));
-            Map<Ref, String> names = new java.util.HashMap<>();
-            wanted.forEach((type, idSet) -> {
-                List<Object> ids = new ArrayList<>(idSet);
-                String field = NAME_FIELDS.get(type);
-                for (int from = 0; from < ids.size(); from += BATCH_SIZE) {
-                    entityManager.createQuery("select e.id, e." + field + " from " + type.getSimpleName() + " e where e.id in :ids", Object[].class)
-                            .setParameter("ids", ids.subList(from, Math.min(from + BATCH_SIZE, ids.size())))
-                            .getResultList()
-                            .forEach(row -> names.put(new Ref(type, row[0]), (String) row[1]));
-                }
-                for (Object id : ids) {
-                    Entry gone = entries.get(type.getSimpleName() + ":" + id);
-                    if (!names.containsKey(new Ref(type, id)) && gone != null && gone.before != null) names.put(new Ref(type, id), (String) gone.before.get(field));
-                }
+            // 이 트랜잭션에서 지워진 대상은 지워지기 전 이름
+            fillNames(maps, (type, id) -> {
+                Entry gone = entries.get(type.getSimpleName() + ":" + id);
+                return gone != null && gone.before != null ? (String) gone.before.get(NAME_FIELDS.get(type)) : null;
             });
-            maps.forEach(map -> map.replaceAll((key, value) -> value instanceof Ref ref ? names.get(ref) : value));
         }
 
         /** 프로젝트 ID 가 없는 엔티티(속성·식별자·속성 매핑)는 부모에서 물려받는다 : 같은 트랜잭션에서 바뀐 부모 → 없으면 저장된 부모 */
@@ -465,7 +542,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         }
 
         /** 목록에서 알아볼 이름 (삭제된 대상도 이 이름으로 보인다) */
-        private String targetName(Tracked tracked, Map<String, Object> shown) {
+        private static String targetName(Tracked tracked, Map<String, Object> shown) {
             return switch (tracked.type()) {
                 case PHYSICAL_COLUMN -> joined(".", shown.get("tableName"), shown.get("columnName"));
                 case LOGICAL_ATTRIBUTE -> joined(".", shown.get("entityName"), shown.get("attributeName"));

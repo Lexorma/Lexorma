@@ -90,10 +90,13 @@ export function ProjectManagePage() {
     if (response.result) openProjectForm('U', response.project);
   };
 
+  // 영구 삭제 : 프로젝트명을 직접 입력해야 진행된다 (권한·삭제 조건은 서버가 다시 확인한다)
   const deleteProject = () => {
-    dialog.confirm(t('프로젝트 삭제 시 복구가 불가합니다.\n해당 프로젝트를 삭제하시겠습니까?'), async () => {
-      const response = await api<{ result: boolean }>(`/api/deleteProject/project/${enc(selected.id)}`, { method: 'DELETE' });
-      if (response.result) dialog.alert(t('정상적으로 삭제 되었습니다.'), () => reloadProjects());
+    dialog.open({
+      title: t('프로젝트 영구 삭제'),
+      content: ({ close }: DialogControls) => (
+        <DeleteProjectForm project={selected} onDeleted={() => { close(); dialog.alert(t('정상적으로 삭제 되었습니다.'), () => void reloadProjects()); }} />
+      ),
     });
   };
 
@@ -327,6 +330,44 @@ function ProjectForm({ type, projectData, onSaved }: { type: 'C' | 'U'; projectD
           <button type="submit" id="btn-save-project" className="btn btn-primary">{t('저장')}</button>
         </div>
       )}
+    </form>
+  );
+}
+
+/** 프로젝트 영구 삭제 확인 : 무엇이 지워지는지 알리고, 프로젝트명이 일치할 때만 [영구 삭제] 를 누를 수 있다 */
+function DeleteProjectForm({ project, onDeleted }: { project: ManagedProject; onDeleted: () => void }) {
+  const [name, setName] = useState('');
+  const [pending, setPending] = useState(false);
+  // 버튼을 연달아 눌러도 요청은 한 번만 보낸다 (state 는 다음 렌더링에야 바뀌므로 ref 로 막는다)
+  const sending = useRef(false);
+  const matched = name === project.projectName;
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!matched || sending.current) return;
+    sending.current = true;
+    setPending(true);
+    try {
+      const response = await api<{ result: boolean }>(`/api/deleteProject/project/${enc(project.id)}`, { method: 'DELETE' });
+      if (response.result) onDeleted();
+    } catch {
+      // 실패 사유는 공통 오류 알림으로 표시된다. 다시 시도할 수 있게 버튼만 되살린다
+      sending.current = false;
+      setPending(false);
+    }
+  };
+
+  return (
+    <form className="edit-form" onSubmit={onSubmit}>
+      <p className="table-name-help">
+        {t('{0} 프로젝트와 이 프로젝트의 모든 데이터가 영구히 삭제됩니다. 데이터 사전, 스키마·테이블·컬럼, 논리 모델, 논리·물리 매핑, 공지사항, 모델 변경 이력, 모델 버전, 시스템 로그가 함께 지워지며 되돌릴 수 없습니다.', project.projectName)}
+      </p>
+      <p className="table-name-help">{t('데이터를 남겨 두려면 삭제하지 말고 프로젝트를 비활성화하세요. (프로젝트 수정에서 활성화를 끕니다)')}</p>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label htmlFor="deleteProjectName">{t('삭제하려면 프로젝트명 {0} 을(를) 입력하세요.', project.projectName)}</label>
+        <input type="text" className="form-control" id="deleteProjectName" autoComplete="off" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <button type="submit" className="btn btn-danger" disabled={!matched || pending}>{pending ? t('삭제하는 중입니다.') : t('영구 삭제')}</button>
     </form>
   );
 }

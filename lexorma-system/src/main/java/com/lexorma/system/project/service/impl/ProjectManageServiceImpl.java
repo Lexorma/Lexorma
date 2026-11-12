@@ -126,7 +126,8 @@ public class ProjectManageServiceImpl implements ProjectManageService {
     @Override
     @Transactional
     public void deleteProject(Long selectedId, AccountDto accountDto) {
-        Project project = projectRepository.findById(selectedId).orElse(null);
+        // 프로젝트 행을 잠근다 : 같은 프로젝트의 삭제 요청이 겹치지 않고, 이 프로젝트에 데이터를 넣는 트랜잭션(ProjectWriteGuard)과 순서가 정해진다
+        Project project = projectRepository.findByIdForUpdate(selectedId).orElse(null);
 
         if(project == null){
             throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED, "삭제를 할 수 없습니다.");
@@ -144,6 +145,7 @@ public class ProjectManageServiceImpl implements ProjectManageService {
             throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED, "기본 프로젝트는 삭제가 불가능합니다.");
         }
 
+        // 영구 삭제 : 각 모듈이 이 이벤트를 받아 자기 프로젝트 데이터를 지운다 (동기 실행, 같은 트랜잭션 → 하나라도 실패하면 전체 롤백)
         eventPublisher.publishEvent(new ProjectDeletedEvent(project.getId()));
         projectMemberRepository.deleteAll(project.getProjectMember());
 

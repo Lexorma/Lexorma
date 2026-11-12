@@ -71,6 +71,7 @@ export const MENU: MenuEntry[] = [
     items: [
       { id: 'standardization-quality', label: t('표준화 품질 진단'), path: '/standardizationQuality' },
       { id: 'model-history', label: t('모델 변경 이력'), path: '/modelHistory' },
+      { id: 'model-version', label: t('모델 버전 관리'), path: '/modelVersion' },
     ],
   },
 ];

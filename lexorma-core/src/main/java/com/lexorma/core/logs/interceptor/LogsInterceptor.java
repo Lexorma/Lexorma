@@ -117,6 +117,9 @@ public class LogsInterceptor implements HandlerInterceptor {
                 logger.debug("Saved Log Data: " + log);
                 logsService.saveLogs(log);
             }
+        } catch (com.lexorma.common.exception.CustomException e) {
+            // 요청을 처리하는 사이 프로젝트가 지워졌다 (자기 프로젝트를 지운 요청 등) : 지워진 프로젝트에는 로그도 남기지 않는다
+            if (e.getErrorCode() != com.lexorma.common.exception.domain.ErrorCode.PROJECT_NOT_FOUND) logger.error("Error saving request log", e);
         } catch (Exception e) {
             logger.error("Error saving request log", e);
         } finally {

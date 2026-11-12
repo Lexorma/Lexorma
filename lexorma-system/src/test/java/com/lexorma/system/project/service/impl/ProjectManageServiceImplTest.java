@@ -111,7 +111,7 @@ class ProjectManageServiceImplTest {
         @Test
         @DisplayName("존재하지 않는 프로젝트는 DATA_CANNOT_BE_DELETED")
         void notFound() {
-            when(projectRepository.findById(5L)).thenReturn(Optional.empty());
+            when(projectRepository.findByIdForUpdate(5L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.deleteProject(5L, login("1")))
                     .isInstanceOf(CustomException.class)
@@ -123,7 +123,7 @@ class ProjectManageServiceImplTest {
         void hasOtherMembers() {
             Project project = CoreFixtures.project(5L, CoreFixtures.account(1L, "manager"));
             CoreFixtures.addMember(project, CoreFixtures.account(2L, "member"), true);
-            when(projectRepository.findById(5L)).thenReturn(Optional.of(project));
+            when(projectRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(project));
 
             assertThatThrownBy(() -> service.deleteProject(5L, login("1")))
                     .hasMessageContaining("프로젝트 관리자 외의 멤버가 존재");
@@ -133,7 +133,7 @@ class ProjectManageServiceImplTest {
         @DisplayName("프로젝트 관리자가 아니면 삭제할 수 없다")
         void notManager() {
             Project project = CoreFixtures.project(5L, CoreFixtures.account(1L, "manager"));
-            when(projectRepository.findById(5L)).thenReturn(Optional.of(project));
+            when(projectRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(project));
 
             assertThatThrownBy(() -> service.deleteProject(5L, login("2")))
                     .hasMessageContaining("프로젝트 관리자 외는 삭제가 불가능");
@@ -143,7 +143,7 @@ class ProjectManageServiceImplTest {
         @DisplayName("기본 프로젝트(id=0)는 삭제할 수 없다")
         void defaultProject() {
             Project project = CoreFixtures.project(0L, CoreFixtures.account(1L, "manager"));
-            when(projectRepository.findById(0L)).thenReturn(Optional.of(project));
+            when(projectRepository.findByIdForUpdate(0L)).thenReturn(Optional.of(project));
 
             assertThatThrownBy(() -> service.deleteProject(0L, login("1")))
                     .hasMessageContaining("기본 프로젝트는 삭제가 불가능");
@@ -155,7 +155,7 @@ class ProjectManageServiceImplTest {
         void success() {
             Project project = CoreFixtures.project(5L, CoreFixtures.account(1L, "manager"));
             List<ProjectMember> members = project.getProjectMember();
-            when(projectRepository.findById(5L)).thenReturn(Optional.of(project));
+            when(projectRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(project));
 
             service.deleteProject(5L, login("1"));
 

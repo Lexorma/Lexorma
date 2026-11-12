@@ -608,6 +608,7 @@ class SmokeTest {
             Map.entry("qualityIssueColumns", "/api/standardizationQuality"),
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             Map.entry("modelHistoryColumns", "/api/modelHistory"),
+            Map.entry("modelVersionColumns", "/api/modelVersion"),
             // modelId 가 필수라 조회할 때 예제 모델 ID 를 붙인다 (gridSortAndSearch)
             Map.entry("mappingQualityColumns", "/api/modelMapping/quality"),
             Map.entry("recommendationColumnColumns", "/api/modelMapping/recommendation/column"),

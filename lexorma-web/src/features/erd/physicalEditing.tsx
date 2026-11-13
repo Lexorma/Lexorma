@@ -1,3 +1,4 @@
+import { includeText, keysText, type Member as IndexMember } from '../index/model';
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
@@ -20,6 +21,12 @@ interface TableIndex {
   id: number;
   indexName: string;
   indexType: string | null;
+  /** USER : 직접 등록 / COLUMN : 컬럼의 인덱스 여부에서 만든 인덱스 (컬럼 편집에서 바꾼다) */
+  indexSource?: 'USER' | 'COLUMN';
+  /** M-14 2차 : 표현식·정렬을 포함한 검색 키, INCLUDE, WHERE (ERD 는 보여 주기만 하고 고치지 않는다 — 인덱스 관리에서 수정) */
+  members?: IndexMember[] | null;
+  includeColumns?: { columnId: number; columnName: string | null }[] | null;
+  condition?: string | null;
   isUnique: boolean | null;
   columns: ColumnRef[];
   isApproval: boolean | null;
@@ -263,13 +270,15 @@ type KeyKind = 'index' | 'constraint';
  * 테이블의 인덱스·제약조건(UNIQUE·CHECK) 관리. PK 와 단일 컬럼의 고유값·인덱스는 컬럼 설정(컬럼 편집)이고, 여기는 이름 있는·복합 키다
  * (같은 구성을 두 곳에 두지 않는다 — 서버가 거절한다). editable 이 아니면 조회만 한다.
  */
-export function TableKeys({ table, columns, editable, approvalAvailable, onChanged }: {
+export function TableKeys({ table, columns, editable, approvalAvailable, onChanged, onIndexManage }: {
   table: ErdTable;
   columns: ErdColumn[];
   editable: boolean;
   approvalAvailable: boolean;
   /** 저장·삭제·승인 뒤 (ERD 다시 조회) */
   onChanged: () => void;
+  /** [인덱스 관리에서 보기] (인덱스 관리 메뉴 권한이 있을 때) */
+  onIndexManage?: () => void;
 }) {
   const dialog = useDialog();
   const model = useQuery({
@@ -297,12 +306,14 @@ export function TableKeys({ table, columns, editable, approvalAvailable, onChang
   if (!model.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
 
   const pk = columns.filter((c) => c.isPk);
-  const actions = (kind: KeyKind, id: number, name: string, approved: boolean) => (
+  const actions = (kind: KeyKind, id: number, name: string, approved: boolean, fromColumn = false) => (
     <td>
-      <div className="logical-actions">
-        {editable && <button type="button" className="btn btn-sm btn-danger" disabled={approved} title={approved ? APPROVED_NOTE : undefined} onClick={() => remove(kind, id, name)}>{t('삭제')}</button>}
-        {approvalAvailable && <button type="button" className="btn btn-sm" onClick={() => void toggleApproval(kind, id, approved)}>{approved ? t('승인취소') : tc('버튼', '승인')}</button>}
-      </div>
+      {fromColumn ? <span className="gh-muted">{t('컬럼 편집에서 변경')}</span> : (
+        <div className="logical-actions">
+          {editable && <button type="button" className="btn btn-sm btn-danger" disabled={approved} title={approved ? APPROVED_NOTE : undefined} onClick={() => remove(kind, id, name)}>{t('삭제')}</button>}
+          {approvalAvailable && <button type="button" className="btn btn-sm" onClick={() => void toggleApproval(kind, id, approved)}>{approved ? t('승인취소') : tc('버튼', '승인')}</button>}
+        </div>
+      )}
     </td>
   );
   const withActions = editable || approvalAvailable;
@@ -312,10 +323,10 @@ export function TableKeys({ table, columns, editable, approvalAvailable, onChang
     <div className="erd-keys">
       <p className="form-help">
         {t('PK : {0}', pk.length ? pk.map((c) => c.columnName).join(', ') : t('없음'))}
-        {' · '}{t('PK 와 단일 컬럼의 고유값·인덱스는 컬럼 편집에서 정합니다. 여기서는 이름 있는 인덱스와 복합 UNIQUE·CHECK 를 관리합니다.')}
+        {' · '}{t('PK·고유값과 컬럼 속성 인덱스는 컬럼 편집에서 정합니다. 여기서는 이름 있는 인덱스와 복합 UNIQUE·CHECK 를 관리합니다. 인덱스 수정·변경 요청은 인덱스 관리에서 합니다.')}
       </p>
 
-      <h4>{t('인덱스 ({0})', model.data.indexes.length)}</h4>
+      <h4>{t('인덱스 ({0})', model.data.indexes.length)}{onIndexManage && <> <button type="button" className="btn btn-sm" onClick={onIndexManage}>{t('인덱스 관리에서 보기')}</button></>}</h4>
       {model.data.indexes.length === 0 ? <p className="gh-muted">{t('등록된 인덱스가 없습니다.')}</p> : (
         <div className="dict-detail-columns"><div className="table-wrap"><table>
           <thead><tr>{[t('인덱스명'), t('구분'), t('컬럼 (순서대로)'), t('승인 상태'), ...(withActions ? [t('관리')] : [])].map((h) => <th key={h}>{h}</th>)}</tr></thead>
@@ -323,10 +334,10 @@ export function TableKeys({ table, columns, editable, approvalAvailable, onChang
             {model.data.indexes.map((index) => (
               <tr key={index.id}>
                 <td className="gh-mono">{index.indexName}</td>
-                <td>{index.isUnique ? 'UNIQUE' : 'INDEX'}{index.indexType ? ` · ${index.indexType}` : ''}</td>
-                <td className="gh-mono">{index.columns.map((c) => c.columnName).join(', ')}</td>
+                <td>{index.isUnique ? 'UNIQUE' : 'INDEX'}{index.indexType ? ` · ${index.indexType}` : ''}{index.indexSource === 'COLUMN' ? ` · ${t('컬럼 속성')}` : ''}</td>
+                <td className="gh-mono">{keysText(index)}{index.includeColumns?.length ? ` INCLUDE (${includeText(index)})` : ''}{index.condition ? ` WHERE ${index.condition}` : ''}</td>
                 <td>{approval(index.isApproval)}</td>
-                {withActions && actions('index', index.id, index.indexName, !!index.isApproval)}
+                {withActions && actions('index', index.id, index.indexName, !!index.isApproval, index.indexSource === 'COLUMN')}
               </tr>
             ))}
           </tbody>

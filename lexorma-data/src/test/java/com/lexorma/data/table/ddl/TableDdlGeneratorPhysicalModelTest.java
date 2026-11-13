@@ -230,17 +230,130 @@ class TableDdlGeneratorPhysicalModelTest {
     }
 
     @Test
-    @DisplayName("컬럼 설정과 같은 구성의 UNIQUE·인덱스는 한 번만 만든다")
+    @DisplayName("컬럼 설정·컬럼 인덱스와 같은 구성의 UNIQUE·인덱스는 한 번만 만든다")
     void deduplicate() {
         custNo.setIsUnique(true);
         orderDt.setIsIndex(true);
-        TableDdlGenerator.Extras duplicates = new TableDdlGenerator.Extras(
-                List.of(unique("UK_DUP", custNo)), List.of(index("IX_DUP", false, orderDt), index("UX_DUP", true, orderNo)), List.of());
+        TableDdlGenerator.Extras duplicates = new TableDdlGenerator.Extras(List.of(unique("UK_DUP", custNo)),
+                List.of(LegacyDdlFixtures.columnIndex("TB_ORDER", orderDt), index("IX_DUP", false, orderDt), index("UX_DUP", true, orderNo)), List.of());
 
         String ddl = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(), duplicates).ddl();
 
         assertThat(ddl).contains("CONSTRAINT UK_TB_ORDER_CUST_NO UNIQUE (CUST_NO)")
                 .contains("CREATE INDEX IX_TB_ORDER_ORDER_DT ON sales.TB_ORDER (ORDER_DT);")
                 .doesNotContain("UK_DUP").doesNotContain("IX_DUP").doesNotContain("UX_DUP"); // UX_DUP = PK 와 같은 구성
+    }
+
+    @Test
+    @DisplayName("컬럼의 인덱스 여부만으로는 인덱스를 만들지 않는다 : 인덱스는 물리 모델 인덱스(컬럼 인덱스 포함)에서만 나온다")
+    void columnFlagAloneMakesNoIndex() {
+        orderDt.setIsIndex(true);
+        assertThat(TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(), TableDdlGenerator.Extras.NONE).ddl())
+                .doesNotContain("CREATE INDEX");
+    }
+
+    @Test
+    @DisplayName("인덱스 유형 : DBMS 별 문법으로 내고, 만들 수 없는 유형은 기본 유형으로 바꾸지 않고 주석 + 경고")
+    void indexTypes() {
+        TableIndex gin = index("IX_GIN", false, custNo);
+        gin.setIndexType("GIN");
+        TableIndex bitmap = index("IX_BITMAP", false, orderDt);
+        bitmap.setIndexType("bitmap");
+        TableIndex hash = index("UX_HASH", true, statCd);
+        hash.setIndexType("HASH");
+        TableIndex fulltext = index("IX_FT", false, statGrp);
+        fulltext.setIndexType("FULLTEXT");
+        TableDdlGenerator.Extras extras = new TableDdlGenerator.Extras(List.of(), List.of(gin, bitmap, hash, fulltext), List.of());
+
+        TableDdlGenerator.Result pg = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(), extras);
+        assertThat(pg.ddl()).contains("CREATE INDEX IX_GIN ON sales.TB_ORDER USING gin (CUST_NO);")
+                .contains("-- CREATE INDEX IX_BITMAP ON sales.TB_ORDER (ORDER_DT); -- bitmap")
+                .contains("-- CREATE UNIQUE INDEX UX_HASH ON sales.TB_ORDER (STAT_CD); -- HASH") // PostgreSQL 고유 인덱스는 B-tree 만
+                .contains("-- CREATE INDEX IX_FT");
+        assertThat(pg.warnings()).anyMatch(w -> w.startsWith("IX_BITMAP : ")).anyMatch(w -> w.startsWith("UX_HASH : ")).anyMatch(w -> w.startsWith("IX_FT : "));
+
+        String oracle = TableDdlGenerator.generate(DbType.ORACLE, order, order.getColumns(), Map.of(), extras).ddl();
+        assertThat(oracle).contains("CREATE BITMAP INDEX IX_BITMAP ON sales.TB_ORDER (ORDER_DT);").contains("-- CREATE INDEX IX_GIN");
+
+        String mysql = TableDdlGenerator.generate(DbType.MYSQL, order, order.getColumns(), Map.of(), extras).ddl();
+        assertThat(mysql).contains("CREATE UNIQUE INDEX UX_HASH ON sales.TB_ORDER (STAT_CD) USING HASH;")
+                .contains("CREATE FULLTEXT INDEX IX_FT ON sales.TB_ORDER (STAT_GRP_CD);");
+
+        assertThat(TableDdlGenerator.normalizeIndexType(" sp-gist ")).isEqualTo("SPGIST");
+        assertThat(TableDdlGenerator.indexTypeProblem(DbType.POSTGRESQL, null, true)).isNull();
+        assertThat(TableDdlGenerator.indexTypeProblem(DbType.POSTGRESQL, "btree", true)).isNull();
+        assertThat(TableDdlGenerator.indexTypeProblem(DbType.ORACLE, "BITMAP", true)).isNotNull();
+    }
+
+    // ------------------------------------------------------------------ M-14 2차 : 고급 인덱스
+
+    private static TableIndexColumn member(ColumnInfo column, String expression, String sort, int order) {
+        return TableIndexColumn.builder().column(column).expression(expression).sort(sort).columnOrder(order).build();
+    }
+
+    private static TableIndex advanced(String name, String type, boolean unique, String condition, TableIndexColumn... members) {
+        TableIndex index = TableIndex.builder().indexName(name).indexType(type).isUnique(unique).condition(condition).build();
+        for (TableIndexColumn m : members) {
+            m.setTableIndex(index);
+            index.getColumns().add(m);
+        }
+        return index;
+    }
+
+    @Test
+    @DisplayName("PostgreSQL 고급 인덱스 : 표현식(괄호), 정렬·NULLS, INCLUDE, WHERE, 모두 함께 — 키·INCLUDE 순서 보존")
+    void advancedPostgresql() {
+        TableIndex expression = advanced("IX_LOWER", null, false, null, member(null, "lower(STAT_CD)", null, 1));
+        TableIndex partial = advanced("IX_ACTIVE", null, false, "AMT > 0", member(custNo, null, null, 1));
+        TableIndex sorted = advanced("IX_DT", null, false, null, member(orderDt, null, "DESC NULLS LAST", 1), member(custNo, null, "NULLS FIRST", 2));
+        TableIndex include = advanced("IX_INC", "BTREE", true, null, member(statCd, null, null, 1), member(amt, null, "INCLUDE", 2), member(custNo, null, "INCLUDE", 3));
+        TableIndex all = advanced("IX_ALL", null, false, "AMT > 0 AND STAT_CD <> 'X'",
+                member(null, "lower(STAT_CD)", null, 1), member(orderDt, null, "DESC", 2), member(amt, null, "INCLUDE", 3));
+        TableDdlGenerator.Result result = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(expression, partial, sorted, include, all), List.of()));
+
+        assertThat(result.ddl())
+                .contains("CREATE INDEX IX_LOWER ON sales.TB_ORDER ((lower(STAT_CD)));")
+                .contains("CREATE INDEX IX_ACTIVE ON sales.TB_ORDER (CUST_NO) WHERE AMT > 0;")
+                .contains("CREATE INDEX IX_DT ON sales.TB_ORDER (ORDER_DT DESC NULLS LAST, CUST_NO NULLS FIRST);")
+                .contains("CREATE UNIQUE INDEX IX_INC ON sales.TB_ORDER USING btree (STAT_CD) INCLUDE (AMT, CUST_NO);")
+                .contains("CREATE INDEX IX_ALL ON sales.TB_ORDER ((lower(STAT_CD)), ORDER_DT DESC) INCLUDE (AMT) WHERE AMT > 0 AND STAT_CD <> 'X';");
+        assertThat(result.warnings()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("부분 UNIQUE 는 같은 컬럼의 UNIQUE 제약과 다른 인덱스다 (중복으로 빼지 않는다). 같은 고급 정의는 한 번만")
+    void advancedDeduplication() {
+        custNo.setIsUnique(true);
+        TableIndex partialUnique = advanced("UX_PARTIAL", null, true, "AMT > 0", member(custNo, null, null, 1));
+        TableIndex twin = advanced("UX_TWIN", null, true, "AMT > 0", member(custNo, null, null, 1));
+        String ddl = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(partialUnique, twin), List.of())).ddl();
+        assertThat(ddl).contains("CONSTRAINT UK_TB_ORDER_CUST_NO UNIQUE (CUST_NO)").contains("UX_PARTIAL").doesNotContain("UX_TWIN");
+    }
+
+    @Test
+    @DisplayName("고급 속성 조합 : 다른 DBMS·정렬 없는 유형·INCLUDE 없는 유형은 기본값으로 바꾸지 않고 주석 + 경고, 저장 검증 규칙과 같다")
+    void advancedProblems() {
+        TableIndex expression = advanced("IX_EXPR", null, false, null, member(null, "lower(STAT_CD)", null, 1));
+        TableIndex ginSorted = advanced("IX_GIN_DESC", "GIN", false, null, member(statCd, null, "DESC", 1));
+        TableIndex hashInclude = advanced("IX_HASH_INC", "HASH", false, null, member(statCd, null, null, 1), member(amt, null, "INCLUDE", 2));
+
+        TableDdlGenerator.Result oracle = TableDdlGenerator.generate(DbType.ORACLE, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(expression), List.of()));
+        assertThat(oracle.ddl()).contains("-- CREATE INDEX IX_EXPR ON sales.TB_ORDER ((lower(STAT_CD)));");
+        assertThat(oracle.warnings()).anyMatch(w -> w.startsWith("IX_EXPR : "));
+
+        TableDdlGenerator.Result pg = TableDdlGenerator.generate(DbType.POSTGRESQL, order, order.getColumns(), Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(ginSorted, hashInclude), List.of()));
+        assertThat(pg.ddl()).contains("-- CREATE INDEX IX_GIN_DESC ON sales.TB_ORDER (STAT_CD DESC); -- GIN")
+                .contains("-- CREATE INDEX IX_HASH_INC ON sales.TB_ORDER (STAT_CD) INCLUDE (AMT); -- HASH");
+        assertThat(pg.warnings()).hasSize(2);
+
+        assertThat(TableDdlGenerator.advancedProblem(DbType.POSTGRESQL, "GIST", false, false, true, true)).isNull();
+        assertThat(TableDdlGenerator.advancedProblem(DbType.POSTGRESQL, "BRIN", true, false, false, true)).isNull();
+        assertThat(TableDdlGenerator.advancedProblem(DbType.MYSQL, null, false, true, false, false)).isNotNull();
+        assertThat(TableDdlGenerator.keyCountProblem(DbType.POSTGRESQL, "SPGIST", 2)).isNotNull();
+        assertThat(TableDdlGenerator.keyCountProblem(DbType.POSTGRESQL, "GIN", 2)).isNull();
     }
 }

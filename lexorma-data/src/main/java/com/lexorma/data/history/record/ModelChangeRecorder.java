@@ -102,7 +102,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             Map.entry(TableRelation.class, new Tracked(TargetType.PHYSICAL_RELATION, "relationName", null,
                     List.of("sourceTable", "targetTable", "relationName", "relationType", "relationSource", "derivedColumnId", APPROVAL))),
             Map.entry(TableIndex.class, new Tracked(TargetType.PHYSICAL_INDEX, "indexName", null,
-                    List.of("tableInfo", "indexName", "indexType", "isUnique", APPROVAL))),
+                    List.of("tableInfo", "indexName", "indexType", "isUnique", "condition", "indexSource", "derivedColumnId", APPROVAL))),
             Map.entry(TableConstraint.class, new Tracked(TargetType.PHYSICAL_CONSTRAINT, "constraintName", null,
                     List.of("tableInfo", "constraintName", "constraintType", "checkExpression", APPROVAL))),
             // 논리 모델 (M-9 2차)
@@ -125,7 +125,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
 
     private static final Map<Class<?>, Child> CHILDREN = Map.of(
             TableRelationColumn.class, new Child(TableRelation.class, "relation", "columns", "columnOrder", List.of("sourceColumn", "targetColumn", "columnOrder")),
-            TableIndexColumn.class, new Child(TableIndex.class, "tableIndex", "columns", "columnOrder", List.of("column", "columnOrder")),
+            TableIndexColumn.class, new Child(TableIndex.class, "tableIndex", "columns", "columnOrder", List.of("column", "expression", "sort", "columnOrder")),
             TableConstraintColumn.class, new Child(TableConstraint.class, "tableConstraint", "columns", "columnOrder", List.of("column", "columnOrder")),
             LogicalIdentifierAttribute.class, new Child(LogicalIdentifier.class, "identifier", "attributes", "sortOrder", List.of("attribute", "sortOrder")));
 
@@ -437,7 +437,9 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
 
                 String name = shown == null ? null : targetName(item.tracked(), shown);
                 if (name != null && name.length() > 255) name = name.substring(0, 255); // 이름 길이 때문에 모델 저장이 실패하지 않게 한다
-                boolean derived = shown != null && TableRelation.Source.REF_COLUMN.name().equals(shown.get("relationSource"));
+                // 참조 테이블명 → 관계, 컬럼의 인덱스 여부 → 인덱스 : 저장 경로가 아니라 동기화가 만든 변경
+                boolean derived = shown != null && (TableRelation.Source.REF_COLUMN.name().equals(shown.get("relationSource"))
+                        || TableIndex.Source.COLUMN.name().equals(shown.get("indexSource")));
 
                 entityManager.persist(ModelChangeHistory.builder()
                         .projectId(projectId)

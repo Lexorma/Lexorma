@@ -42,8 +42,11 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class ModelVersionService {
 
-    /** 모델 내용 JSON 의 형식 번호 (대상 종류 → [{id, name, state}]) */
-    static final int FORMAT_VERSION = 1;
+    /**
+     * 모델 내용 JSON 의 형식 번호 (대상 종류 → [{id, name, state}]). 2 : 인덱스 state 에 indexSource·derivedColumnId (M-14 1차),
+     * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차). 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능)
+     */
+    static final int FORMAT_VERSION = 3;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -293,6 +296,7 @@ public class ModelVersionService {
         for (String name : state.propertyNames()) {
             if (name.endsWith("Name") && state.has(name.substring(0, name.length() - 4) + "Id")) continue;
             JsonNode value = state.get(name);
+            if (value.isNull()) continue; // 예전 형식에 없던 필드(null)와 같다
             if (value.isArray()) {
                 List<JsonNode> rows = new ArrayList<>();
                 value.forEach(row -> rows.add(row.isObject() ? comparable(null, row) : row));

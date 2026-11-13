@@ -24,7 +24,8 @@ import java.util.regex.Pattern;
 /**
  * 테이블/컬럼 설계 정보로 대상 DB 의 CREATE TABLE DDL 을 만든다. (테이블 관리 > 테이블 상세 > DDL 보기)
  *
- * - 컬럼은 정렬 순서(sortOrder) 순, PK 는 CONSTRAINT PK_테이블명, 고유값은 UK_테이블명_컬럼명, 인덱스는 IX_테이블명_컬럼명
+ * - 컬럼은 정렬 순서(sortOrder) 순, PK 는 CONSTRAINT PK_테이블명, 고유값은 UK_테이블명_컬럼명
+ * - 인덱스는 물리 모델 인덱스만 쓴다 (컬럼의 인덱스 여부 = 출처 COLUMN 인덱스 IX_테이블명_컬럼명). 유형은 DBMS 별 문법({@link #indexStatement})
  * - 참조 테이블명이 있는 컬럼은 FK_테이블명_컬럼명 (참조 테이블의 단일 PK 를 참조, ALTER TABLE 로 생성)
  * - NOT NULL : NULL 비허용 / PK / 필수 입력 컬럼
  * - 주석 : PostgreSQL·Oracle 은 COMMENT ON, MySQL·MariaDB 는 컬럼/테이블 COMMENT 옵션
@@ -168,24 +169,21 @@ public final class TableDdlGenerator {
         }
         sql.append(";\n");
 
-        // 인덱스 (PK/고유값 컬럼은 이미 인덱스가 있으므로 제외)
-        List<ColumnInfo> indexColumns = ordered.stream()
-                .filter(c -> Boolean.TRUE.equals(c.getIsIndex()) && !Boolean.TRUE.equals(c.getIsPk()) && !Boolean.TRUE.equals(c.getIsUnique()))
-                .toList();
+        // 인덱스 : 모두 물리 모델 인덱스(TB_TBL_IDX)에서 만든다. 컬럼의 인덱스 여부는 출처 COLUMN 인덱스로 이미 들어 있다 (M-14 D-19)
         List<String> indexes = new ArrayList<>();
         Set<List<String>> indexKeys = new HashSet<>();
-        indexColumns.forEach(c -> {
-            indexKeys.add(List.of(c.getColumnName()));
-            indexes.add("CREATE INDEX " + constraintName(db, "IX_" + tableName + "_" + c.getColumnName())
-                    + " ON " + qualifiedName + " (" + c.getColumnName() + ");");
-        });
+        Set<String> advancedKeys = new HashSet<>();
         for (TableIndex index : extras.indexes()) {
-            List<String> names = index.getColumns().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).toList();
             boolean unique = Boolean.TRUE.equals(index.getIsUnique());
-            if (unique ? uniqueKeys.add(Set.copyOf(names)) : indexKeys.add(names)) {
-                indexes.add("CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + constraintName(db, index.getIndexName())
-                        + " ON " + qualifiedName + " (" + String.join(", ", names) + ");");
+            boolean add;
+            if (index.isPlain()) {
+                List<String> names = index.getColumns().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).toList();
+                add = unique ? uniqueKeys.add(Set.copyOf(names)) : indexKeys.add(names);
+            } else {
+                // 표현식·정렬·INCLUDE·조건이 있는 인덱스는 같은 정의일 때만 한 번 (부분 UNIQUE 는 UNIQUE 제약과 같은 것이 아니다)
+                add = advancedKeys.add(unique + "|" + members(index) + "|" + index.getCondition());
             }
+            if (add) indexes.add(indexStatement(db, qualifiedName, index, warnings));
         }
         if (!indexes.isEmpty()) {
             sql.append("\n").append(String.join("\n", indexes)).append("\n");
@@ -211,6 +209,119 @@ public final class TableDdlGenerator {
         }
 
         return new Result(sql.toString(), warnings);
+    }
+
+    // ------------------------------------------------------------------ 인덱스 (M-14 D-21)
+
+    /** DBMS 별로 DDL 에 낼 수 있는 인덱스 유형 (저장값 = 대문자, '-'·'_'·공백 없음). 유형이 없으면 DBMS 기본(B-tree) */
+    public static List<String> supportedIndexTypes(DbType dbType) {
+        return switch (DbType.orDefault(dbType)) {
+            case POSTGRESQL -> List.of("BTREE", "HASH", "GIN", "GIST", "SPGIST", "BRIN");
+            case ORACLE -> List.of("BTREE", "BITMAP");
+            case MYSQL, MARIADB -> List.of("BTREE", "HASH", "FULLTEXT", "SPATIAL");
+        };
+    }
+
+    /** 저장·비교용 유형 값 : 대문자, '-'·'_'·공백 제거 (B-Tree → BTREE, sp_gist → SPGIST). 비어 있으면 null */
+    public static String normalizeIndexType(String type) {
+        if (!notBlank(type)) return null;
+        return type.trim().toUpperCase(Locale.ROOT).replaceAll("[\\s_-]+", "");
+    }
+
+    /**
+     * 이 DBMS 에서 그 유형(과 고유 여부)의 인덱스를 만들 수 없는 이유. 만들 수 있으면 null.
+     * 고유 인덱스 : PostgreSQL 은 B-tree 만, Oracle 은 BITMAP 불가, MySQL·MariaDB 는 FULLTEXT·SPATIAL 불가.
+     */
+    public static String indexTypeProblem(DbType dbType, String type, boolean unique) {
+        DbType db = DbType.orDefault(dbType);
+        String normalized = normalizeIndexType(type);
+        if (normalized == null) return null;
+        if (!supportedIndexTypes(db).contains(normalized)) {
+            return Messages.get("{0} 에서 지원하지 않는 인덱스 유형입니다. ({1}, 지원 : {2})", db.getLabel(), type.trim(), String.join(", ", supportedIndexTypes(db)));
+        }
+        boolean uniqueAllowed = switch (db) {
+            case POSTGRESQL -> normalized.equals("BTREE");
+            case ORACLE -> !normalized.equals("BITMAP");
+            case MYSQL, MARIADB -> !normalized.equals("FULLTEXT") && !normalized.equals("SPATIAL");
+        };
+        return unique && !uniqueAllowed ? Messages.get("{0} 에서 {1} 인덱스는 고유(UNIQUE)로 만들 수 없습니다.", db.getLabel(), normalized) : null;
+    }
+
+    /**
+     * 표현식·정렬·INCLUDE·WHERE 조건(M-14 2차)과 DBMS·유형의 조합 문제. 문제가 없거나 고급 속성이 없으면 null.
+     * PostgreSQL 만 지원한다. 정렬(ASC/DESC·NULLS)은 B-tree 만, INCLUDE 는 B-tree·GiST·SP-GiST 만 (PostgreSQL 문서 기준).
+     */
+    public static String advancedProblem(DbType dbType, String type, boolean expression, boolean sort, boolean include, boolean condition) {
+        DbType db = DbType.orDefault(dbType);
+        if (!expression && !sort && !include && !condition) return null;
+        if (db != DbType.POSTGRESQL) return Messages.get("{0} 에서는 표현식·정렬·INCLUDE·WHERE 조건 인덱스를 지원하지 않습니다. (PostgreSQL 만)", db.getLabel());
+        String method = normalizeIndexType(type) == null ? "BTREE" : normalizeIndexType(type);
+        if (sort && !method.equals("BTREE")) return Messages.get("{0} 인덱스는 정렬(ASC/DESC·NULLS)을 지원하지 않습니다. (BTREE 만)", method);
+        if (include && !Set.of("BTREE", "GIST", "SPGIST").contains(method)) return Messages.get("{0} 인덱스는 INCLUDE 를 지원하지 않습니다. (BTREE·GIST·SPGIST 만)", method);
+        return null;
+    }
+
+    /** PostgreSQL HASH·SP-GiST 는 키가 하나만 된다 (저장 검증 전용 : 예전에 저장한 인덱스의 DDL 출력은 바꾸지 않는다) */
+    public static String keyCountProblem(DbType dbType, String type, int keys) {
+        String method = normalizeIndexType(type);
+        if (DbType.orDefault(dbType) == DbType.POSTGRESQL && keys > 1 && ("HASH".equals(method) || "SPGIST".equals(method))) {
+            return Messages.get("{0} 인덱스는 키를 하나만 가질 수 있습니다.", method);
+        }
+        return null;
+    }
+
+    /** 키 목록 (표현식은 괄호로 감싼다 : 어떤 식이든 PostgreSQL 인덱스 요소로 유효하다) */
+    private static String members(TableIndex index) {
+        return String.join(", ", index.keyMembers().stream()
+                .map(c -> (c.getColumn() != null ? c.getColumn().getColumnName() : "(" + c.getExpression() + ")") + (c.getSort() == null ? "" : " " + c.getSort()))
+                .toList());
+    }
+
+    /**
+     * CREATE INDEX 문 하나. 유형은 PostgreSQL USING 방식, Oracle BITMAP, MySQL·MariaDB FULLTEXT·SPATIAL / USING BTREE·HASH 로 낸다.
+     * 대상 DBMS 에서 만들 수 없는 유형(프로젝트 DBMS 를 바꾼 뒤의 예전 값 등)은 기본 유형으로 바꾸지 않고 주석으로 내고 경고한다.
+     */
+    public static String indexStatement(DbType dbType, String qualifiedName, TableIndex index, List<String> warnings) {
+        DbType db = DbType.orDefault(dbType);
+        boolean unique = Boolean.TRUE.equals(index.getIsUnique());
+        String type = normalizeIndexType(index.getIndexType());
+        List<String> includes = index.includeMembers().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).toList();
+        String columns = " (" + members(index) + ")";
+        String tail = (includes.isEmpty() ? "" : " INCLUDE (" + String.join(", ", includes) + ")")
+                + (index.getCondition() == null ? "" : " WHERE " + index.getCondition());
+        String name = constraintName(db, index.getIndexName());
+
+        String problem = indexTypeProblem(db, type, unique);
+        if (problem == null) {
+            problem = advancedProblem(db, type, index.keyMembers().stream().anyMatch(c -> c.getColumn() == null),
+                    index.keyMembers().stream().anyMatch(c -> c.getSort() != null), !includes.isEmpty(), index.getCondition() != null);
+        }
+        if (problem != null) {
+            warnings.add(index.getIndexName() + " : " + problem + " " + Messages.get("DDL 에 주석으로만 냈습니다."));
+            return "-- CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + name + " ON " + qualifiedName + columns + tail + ";"
+                    + (index.getIndexType() == null ? "" : " -- " + index.getIndexType());
+        }
+        String prefix = unique ? "UNIQUE " : "";
+        String using = "";
+        if (type != null) {
+            switch (db) {
+                case POSTGRESQL -> using = " USING " + type.toLowerCase(Locale.ROOT);
+                case ORACLE -> { if (type.equals("BITMAP")) prefix = "BITMAP "; }
+                case MYSQL, MARIADB -> {
+                    if (type.equals("FULLTEXT") || type.equals("SPATIAL")) prefix = type + " ";
+                    else using = " USING " + type;
+                }
+            }
+        }
+        return db == DbType.POSTGRESQL
+                ? "CREATE " + prefix + "INDEX " + name + " ON " + qualifiedName + using + columns + tail + ";"
+                : "CREATE " + prefix + "INDEX " + name + " ON " + qualifiedName + columns + using + ";";
+    }
+
+    /** 인덱스 하나의 DDL 미리보기 (인덱스 관리 화면) */
+    public static Result indexDdl(DbType dbType, TableInfo table, TableIndex index, String defaultSchemaName) {
+        List<String> warnings = new ArrayList<>();
+        return new Result(indexStatement(dbType, qualifiedName(table, defaultSchemaName), index, warnings) + "\n", warnings);
     }
 
     // ------------------------------------------------------------------ 외래키

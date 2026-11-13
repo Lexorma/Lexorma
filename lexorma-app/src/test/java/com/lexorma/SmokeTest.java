@@ -618,6 +618,7 @@ class SmokeTest {
             Map.entry("standardDomainsColumns", "/api/getStandardDomains"),
             Map.entry("tableColumns", "/api/selectTable"),
             Map.entry("columnColumns", "/api/selectColumn"),
+            Map.entry("indexColumns", "/api/physical/index"),
             Map.entry("noticeColumns", "/api/selectNotice"),
             Map.entry("userColumns", "/api/selectUser"),
             Map.entry("projectColumns", "/api/getProject/" + PROJECT_ID),

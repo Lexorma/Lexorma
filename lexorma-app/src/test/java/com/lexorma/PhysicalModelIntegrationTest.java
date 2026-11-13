@@ -131,7 +131,7 @@ class PhysicalModelIntegrationTest {
                 .contains("CREATE TABLE sales.TB_ORDER (")
                 .contains("CONSTRAINT UK_TB_ORDER_STAT_GRP_CD_STAT_CD UNIQUE (STAT_GRP_CD, STAT_CD)")
                 .contains("CONSTRAINT CK_TB_ORDER_1 CHECK (STAT_CD <> '')")
-                .contains("CREATE INDEX IX_TB_ORDER_STAT_CD_STAT_GRP_CD ON sales.TB_ORDER (STAT_CD, STAT_GRP_CD);")
+                .contains("CREATE INDEX IX_TB_ORDER_STAT_CD_STAT_GRP_CD ON sales.TB_ORDER USING btree (STAT_CD, STAT_GRP_CD);") // 저장한 유형 (M-14)
                 .contains("ALTER TABLE sales.TB_ORDER ADD CONSTRAINT FK_TB_ORDER_STAT_GRP_CD FOREIGN KEY (STAT_GRP_CD, STAT_CD) REFERENCES TB_CODE (GRP_CD, CD);");
 
         PhysicalModelDto.TableModel model = physicalModelService.selectTableModel(admin, code.getId());

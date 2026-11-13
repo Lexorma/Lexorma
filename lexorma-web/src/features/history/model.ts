@@ -67,6 +67,7 @@ const FIELD_LABELS: Record<string, string> = {
   example: t('데이터 예시'), standardTerms: t('표준 용어'), standardTerm: t('표준 용어'), sourceTable: t('원본 테이블'), targetTable: t('대상 테이블'), relationName: t('관계명'),
   relationType: t('관계 유형'), relationSource: t('관계 출처'), derivedColumnId: t('참조 테이블명을 지정한 컬럼 ID'), columns: t('컬럼 구성'), indexName: t('인덱스명'),
   indexType: t('인덱스 방식'), constraintName: t('제약조건명'), constraintType: t('제약조건 유형'), checkExpression: t('CHECK 조건식'),
+  indexSource: t('인덱스 출처'), condition: t('WHERE 조건'), expression: t('표현식'), sort: t('정렬'),
   modelName: t('모델명'), modelDescription: t('모델 설명'), model: t('논리 모델'), entityName: t('엔터티명'), entityDescription: t('엔터티 설명'), entity: t('엔터티'),
   attributeName: t('속성명'), attributeDescription: t('속성 설명'), identifierName: t('식별자명'), isPrimary: t('주 식별자'), attributes: t('구성 속성'),
   sourceEntity: t('출발 엔터티'), targetEntity: t('도착 엔터티'), relationshipName: t('관계명'), relationshipDescription: t('관계 설명'), isIdentifying: t('식별 관계'),

@@ -94,7 +94,7 @@ class ProjectDeletionIntegrationTest {
      * 목록이 실제 스키마와 다르면 실패하고, 준비 데이터가 없는 테이블이 있어도 실패한다.
      */
     private static final Set<String> PROJECT_TABLES = Set.of("TB_PRJ", "TB_PRJ_MBR", "TB_LOG", "TB_PST", "TB_STD_DMN", "TB_STD_WORD", "TB_STD_TRM", "TB_SCHM", "TB_TBL", "TB_COL",
-            "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
+            "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY");
 
@@ -312,7 +312,9 @@ class ProjectDeletionIntegrationTest {
         ColumnInfo stat = column(projectId, order, "STAT_CD", false);
         physical.saveRelation(admin, new Relation(null, null, "FK", null, order.getId(), null, code.getId(), null,
                 List.of(new ColumnPair(statGrp.getId(), null, grp.getId(), null), new ColumnPair(stat.getId(), null, cd.getId(), null)), null));
-        physical.saveIndex(admin, new PhysicalModelDto.Index(null, order.getId(), null, null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
+        PhysicalModelDto.Index index = physical.saveIndex(admin, new PhysicalModelDto.Index(null, order.getId(), null, null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null)).getBody();
+        // 승인된 인덱스의 수정 → 변경 요청 (TB_IDX_CHG_DMND, 승인 권한자라 바로 승인)
+        physical.updateIndex(admin, index.id(), new PhysicalModelDto.Index(null, null, "IX_ORD_STAT", null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), null, "UNIQUE", null, List.of(new PhysicalModelDto.ColumnRef(statGrp.getId(), null), new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), "CK_ORD_STAT", "CHECK", "STAT_CD <> ''", null, null));
         jdbc.update("update TB_COL set STD_TRM_SN = ? where COL_SN = ?", base - 1, orderNo.getId());

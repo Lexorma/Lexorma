@@ -108,6 +108,32 @@ final class EnglishMessages {
                 "The name must start with a letter or _ and contain only letters, numbers, _ and $. ({0})");
         add("알 수 없는 유형입니다. ({0})", "Unknown type. ({0})");
         add("대상을 찾을 수 없습니다.", "The target could not be found.");
+        // 인덱스 관리 (M-14)
+        add("인덱스의 테이블은 바꿀 수 없습니다.", "The table of an index cannot be changed.");
+        add("승인 대기 중인 변경 요청이 있습니다. 먼저 승인하거나 반려해주세요.", "A change request is pending. Approve or reject it first.");
+        add("바뀐 내용이 없습니다.", "Nothing has changed.");
+        add("이미 처리된 변경 요청입니다.", "The change request has already been processed.");
+        add("요청 뒤에 인덱스가 바뀌었습니다. 요청을 반려하고 다시 요청해주세요.", "The index changed after the request. Reject the request and request again.");
+        add("컬럼의 인덱스 여부로 만든 인덱스입니다. 컬럼 관리에서 인덱스 여부를 바꿔주세요.",
+                "This index comes from the column's index setting. Change the index setting in Columns.");
+        add("{0} 에서 지원하지 않는 인덱스 유형입니다. ({1}, 지원 : {2})", "{0} does not support this index type. ({1}, supported: {2})");
+        add("{0} 에서 {1} 인덱스는 고유(UNIQUE)로 만들 수 없습니다.", "{0} cannot create a {1} index as UNIQUE.");
+        add("DDL 에 주석으로만 냈습니다.", "It is output only as a comment in the DDL.");
+        // 고급 인덱스 (M-14 2차)
+        add("{0} 에서는 표현식·정렬·INCLUDE·WHERE 조건 인덱스를 지원하지 않습니다. (PostgreSQL 만)",
+                "{0} does not support expression, sort, INCLUDE or WHERE indexes. (PostgreSQL only)");
+        add("{0} 인덱스는 정렬(ASC/DESC·NULLS)을 지원하지 않습니다. (BTREE 만)", "{0} indexes do not support ordering (ASC/DESC, NULLS). (BTREE only)");
+        add("{0} 인덱스는 INCLUDE 를 지원하지 않습니다. (BTREE·GIST·SPGIST 만)", "{0} indexes do not support INCLUDE. (BTREE, GIST, SPGIST only)");
+        add("{0} 인덱스는 키를 하나만 가질 수 있습니다.", "{0} indexes can have only one key.");
+        add("검색 키는 컬럼 또는 표현식 중 하나만 지정합니다.", "Each key is either a column or an expression.");
+        add("정렬 값이 올바르지 않습니다. ({0})", "Invalid ordering. ({0})");
+        add("같은 표현식이 두 번 들어 있습니다.", "The same expression appears twice.");
+        add("{0} 은(는) 검색 키와 INCLUDE 에 함께 둘 수 없습니다.", "{0} cannot be both a key and an INCLUDE column.");
+        add("WHERE 조건을 입력해주세요.", "Enter the WHERE condition.");
+        add("표현식을 입력해주세요.", "Enter the expression.");
+        add("표현식·조건은 1000자까지 입력할 수 있습니다.", "Expressions and conditions can be up to 1000 characters.");
+        add("표현식·조건에는 ; -- /* */ 를 쓸 수 없습니다.", "Expressions and conditions cannot contain ; -- /* */.");
+        add("표현식·조건의 괄호나 따옴표 짝이 맞지 않습니다.", "Parentheses or quotes in the expression or condition do not match.");
 
         // ---------------------------------------------------------------- ERD
         add("한 번에 1~{0}개 테이블까지 조회할 수 있습니다.", "You can view 1 to {0} tables at a time.");

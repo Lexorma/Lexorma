@@ -34,7 +34,9 @@ class TableDdlGeneratorTest {
     @Test
     @DisplayName("PostgreSQL : 정렬 순서대로 컬럼, PK/UK 제약, 인덱스, COMMENT ON 을 만든다")
     void postgresql() {
-        TableDdlGenerator.Result result = TableDdlGenerator.generate(DbType.POSTGRESQL, table(), columns());
+        List<ColumnInfo> columns = columns();
+        TableDdlGenerator.Result result = TableDdlGenerator.generate(DbType.POSTGRESQL, table(), columns, Map.of(),
+                new TableDdlGenerator.Extras(List.of(), List.of(LegacyDdlFixtures.columnIndex("TB_USER", columns.get(0))), List.of()));
         String ddl = result.ddl();
 
         assertThat(ddl).contains("CREATE TABLE TB_USER (")

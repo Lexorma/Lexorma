@@ -69,6 +69,8 @@ public class MenuAuthorization {
             Map.entry("schema-manage", "VIEWER"),
             Map.entry("table-manage", "VIEWER"),
             Map.entry("column-manage", "USER"),
+            // 인덱스 관리 (M-14) : 목록·상세·DDL 조회 API 가 VIEWER. 등록·수정·삭제는 physical-model-edit, 승인·반려는 approvalAvailable
+            Map.entry("index-manage", "VIEWER"),
             Map.entry("physical-erd", "VIEWER"),
             // 화면 메뉴가 아니라 물리 모델 변경 버튼(스키마·테이블 관리의 등록·수정·삭제·엑셀, 물리 ERD 편집 모드) 노출용 : 물리 모델 변경 API 의 권한과 같다
             Map.entry("physical-model-edit", "USER"),
@@ -103,7 +105,7 @@ public class MenuAuthorization {
             new String[]{"standardization-quality", "model-history", "model-version"},
 
             "physical-modeling",
-            new String[]{"schema-manage", "table-manage", "column-manage", "physical-erd"}
+            new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "physical-erd"}
     );
 
     private final RoleHierarchy roleHierarchy;

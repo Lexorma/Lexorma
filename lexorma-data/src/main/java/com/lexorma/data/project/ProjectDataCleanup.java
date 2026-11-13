@@ -39,9 +39,10 @@ public class ProjectDataCleanup {
             "delete from TB_LGCL_ATRB where LGCL_ENTT_SN in " + ENTITIES,
             "delete from TB_LGCL_ENTT where PRJ_SN = :projectId",
             "delete from TB_LGCL_MDL where PRJ_SN = :projectId",
-            // 물리 모델 : 관계·인덱스·제약조건 → 배치 → 컬럼 → 테이블 → 스키마
+            // 물리 모델 : 관계·인덱스(변경 요청 → 컬럼 → 인덱스)·제약조건 → 배치 → 컬럼 → 테이블 → 스키마
             "delete from TB_TBL_REL_COL where REL_SN in (select REL_SN from TB_TBL_REL where PRJ_SN = :projectId)",
             "delete from TB_TBL_REL where PRJ_SN = :projectId",
+            "delete from TB_IDX_CHG_DMND where PRJ_SN = :projectId",
             "delete from TB_TBL_IDX_COL where IDX_SN in (select IDX_SN from TB_TBL_IDX where PRJ_SN = :projectId)",
             "delete from TB_TBL_IDX where PRJ_SN = :projectId",
             "delete from TB_TBL_CNSTRT_COL where CNSTRT_SN in (select CNSTRT_SN from TB_TBL_CNSTRT where PRJ_SN = :projectId)",

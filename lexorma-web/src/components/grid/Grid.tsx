@@ -95,6 +95,11 @@ export interface GridProps {
   initialSearch?: { column: string; query: string };
   /** 조회 결과가 없을 때의 안내 (검색어 없이 비어 있을 때) */
   emptyText?: string;
+  /**
+   * 표의 최소 폭(px). 컬럼 폭(%)을 정한 그리드는 화면 폭에 맞춰 줄어드는데, 열이 많으면 좁은 화면에서 값이 한 글자씩 줄바꿈되거나
+   * 옆 칸과 겹친다. 주면 그 폭 아래에서는 줄이지 않고 표 영역을 가로 스크롤한다 (주지 않은 그리드는 그대로)
+   */
+  minWidth?: number;
 }
 
 interface PageData {
@@ -103,7 +108,7 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch, emptyText } = props;
+  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch, emptyText, minWidth } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
@@ -385,7 +390,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
 
         <div className="dt-layout-row dt-layout-table">
           <div className="dt-layout-cell dt-layout-full">
-            <table id={id} className={`table table-striped table-bordered dataTable${fixed ? ' grid-fixed' : ''}`}>
+            <table id={id} className={`table table-striped table-bordered dataTable${fixed ? ' grid-fixed' : ''}`} style={minWidth ? { minWidth } : undefined}>
               {fixed && (
                 <colgroup>
                   {headers.map((header) => <col key={header.id} style={{ width: (header.column.columnDef.meta as GridColumn).width }} />)}

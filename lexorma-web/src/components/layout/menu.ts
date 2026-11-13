@@ -62,6 +62,7 @@ export const MENU: MenuEntry[] = [
       { id: 'schema-manage', label: t('스키마 관리'), path: '/schemaManage' },
       { id: 'table-manage', label: t('테이블 관리'), path: '/tableManage' },
       { id: 'column-manage', label: t('컬럼 관리'), path: '/columnManage' },
+      { id: 'index-manage', label: t('인덱스 관리'), path: '/indexManage' },
       { id: 'physical-erd', label: t('물리 ERD'), path: '/physicalErd' },
     ],
   },

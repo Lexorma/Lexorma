@@ -1,17 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4F8EF7"/>
-      <stop offset="1" stop-color="#7357F6"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2F81F7"/>
+      <stop offset="1" stop-color="#0550AE"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.28" cy="0.2" r="0.75">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="132" fill="url(#bg)"/>
-  <rect x="16" y="16" width="480" height="480" rx="132" fill="url(#glow)"/>
-  <path d="M184 150 V346 H344"
-        fill="none" stroke="#FFFFFF" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="344" cy="186" r="34" fill="#FFD166"/>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <path d="M150 132h36a18 18 0 0 1 18 18v140a18 18 0 0 0 18 18h140a18 18 0 0 1 18 18v36a18 18 0 0 1-18 18H150a18 18 0 0 1-18-18V150a18 18 0 0 1 18-18z" fill="#FFFFFF"/>
+  <rect x="232" y="132" width="148" height="60" rx="18" fill="#7EE7C8"/>
+  <rect x="232" y="220" width="148" height="60" rx="18" fill="#FFFFFF" fill-opacity="0.4"/>
 </svg>

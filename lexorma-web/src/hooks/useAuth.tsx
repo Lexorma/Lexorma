@@ -32,6 +32,7 @@ export type MenuId =
   | 'table-manage'
   | 'physical-erd'
   | 'column-manage'
+  | 'index-manage'
   | 'standardization-quality'
   | 'model-history'
   | 'model-version'

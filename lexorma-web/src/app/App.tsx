@@ -23,6 +23,7 @@ import { DictionaryPage, DictionaryRedirect } from '../features/dictionary/DataD
 import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
+import { IndexManagePage } from '../features/index/IndexManagePage';
 import { ModelHistoryPage } from '../features/history/ModelHistoryPage';
 import { ModelVersionPage } from '../features/version/ModelVersionPage';
 import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
@@ -107,6 +108,7 @@ export function App() {
                 <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
                 <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
                 <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />
+                <Route path="/indexManage" element={<RequireMenu menuId="index-manage"><IndexManagePage /></RequireMenu>} />
                 <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
 
                 <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />

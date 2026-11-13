@@ -2,9 +2,11 @@ package com.lexorma.data.physical.controller;
 
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
+import com.lexorma.common.utils.PageableUtil;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.data.physical.domain.dto.PhysicalModelDto;
 import com.lexorma.data.physical.service.PhysicalModelService;
+import com.lexorma.data.table.domain.dto.TableDdlDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,66 @@ public class PhysicalModelRestController {
     public ResponseEntity<PhysicalModelDto.Index> saveIndex(@AuthenticationPrincipal AccountDto accountDto,
                                                             @RequestBody PhysicalModelDto.Index index) {
         return ResponseEntity.ok(physicalModelService.saveIndex(accountDto, index));
+    }
+
+    @Operation(summary = "인덱스 수정", description = "미승인 인덱스는 바로 반영. 승인된 인덱스는 변경 요청(승인 대기)을 만들고 승인 권한자의 요청은 즉시 승인된다. "
+            + "컬럼의 인덱스 여부로 만든 인덱스(indexSource COLUMN)는 컬럼 관리에서 바꾼다")
+    @PreAuthorize("hasRole('USER')")
+    @PutMapping("/index/{id}")
+    public ResponseEntity<PhysicalModelDto.IndexSaveResult> updateIndex(@AuthenticationPrincipal AccountDto accountDto,
+                                                                        @PathVariable(name = "id") Long id,
+                                                                        @RequestBody PhysicalModelDto.Index index) {
+        return ResponseEntity.ok(physicalModelService.updateIndex(accountDto, id, index));
+    }
+
+    @Operation(summary = "인덱스 변경 요청 승인/반려", description = "approve true = 승인(요청한 정의 반영), false = 반려(승인된 정의 유지). 승인 권한자만")
+    @PreAuthorize("hasRole('USER')")
+    @PatchMapping("/index/request/{requestId}/{approve}")
+    public ResponseEntity<PhysicalModelDto.ChangeRequest> processIndexChangeRequest(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                    @PathVariable(name = "requestId") Long requestId,
+                                                                                    @PathVariable(name = "approve") boolean approve) {
+        return ResponseEntity.ok(physicalModelService.processIndexChangeRequest(accountDto, requestId, approve));
+    }
+
+    @Operation(summary = "인덱스 목록 (Grid)", description = "프로젝트의 인덱스. schemaId·tableId·isApproval(Y/N)·indexSource(USER/COLUMN) 조건, searchColumn indexName / tableName / columnNames")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/index/data")
+    public ResponseEntity<Map<String, Object>> selectIndexes(@AuthenticationPrincipal AccountDto accountDto,
+                                                             @RequestParam(value = "page") int page,
+                                                             @RequestParam(value = "size") int size,
+                                                             @RequestParam(required = false, value = "sort") String sort,
+                                                             @RequestParam(required = false, value = "searchColumn") String searchColumn,
+                                                             @RequestParam(required = false, value = "searchQuery") String searchQuery,
+                                                             @RequestParam(required = false, value = "schemaId") Long schemaId,
+                                                             @RequestParam(required = false, value = "tableId") Long tableId,
+                                                             @RequestParam(required = false, value = "isApproval") String isApproval,
+                                                             @RequestParam(required = false, value = "indexSource") String indexSource) {
+        return PageableUtil.getGridPageableMap(physicalModelService.selectIndexes(accountDto, PageableUtil.getGridPageable(page, size, sort),
+                searchColumn, searchQuery, schemaId, tableId, isApproval, indexSource));
+    }
+
+    @Operation(summary = "인덱스 유형", description = "프로젝트 대상 DBMS 에서 DDL 로 낼 수 있는 인덱스 유형")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/index/types")
+    public ResponseEntity<PhysicalModelDto.IndexTypes> indexTypes(@AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(physicalModelService.indexTypes(accountDto));
+    }
+
+    @Operation(summary = "인덱스 상세", description = "인덱스 정의·소속 스키마·테이블·변경 요청 이력")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/index/{id}")
+    public ResponseEntity<PhysicalModelDto.IndexDetail> selectIndex(@AuthenticationPrincipal AccountDto accountDto,
+                                                                   @PathVariable(name = "id") Long id) {
+        return ResponseEntity.ok(physicalModelService.selectIndex(accountDto, id));
+    }
+
+    @Operation(summary = "인덱스 DDL 미리보기", description = "CREATE INDEX 문 하나 (프로젝트 대상 DBMS 문법, 실행하지 않는다)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/index/{id}/ddl")
+    public ResponseEntity<TableDdlDto> indexDdl(@AuthenticationPrincipal AccountDto accountDto,
+                                                @PathVariable(name = "id") Long id,
+                                                @RequestParam(required = false, value = "defaultSchemaName") String defaultSchemaName) {
+        return ResponseEntity.ok(physicalModelService.indexDdl(accountDto, id, defaultSchemaName));
     }
 
     @Operation(summary = "제약조건 등록", description = "UNIQUE(컬럼, 복합 가능) / CHECK(조건식)")

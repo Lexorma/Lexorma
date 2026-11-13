@@ -1,0 +1,144 @@
+/* 인덱스 관리 (M-14) : 공통 패턴(edit-form·dict-detail·history-diff·gh-dialog-actions) 위에 인덱스에만 필요한 배치만 둔다 */
+
+/* 목록 : 긴 이름·컬럼 목록은 한 줄로 자르고 전체 값은 title 툴팁·상세에서 본다 */
+#indexManageGrid .index-cell {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 인덱스명 + 변경 요청 라벨 : 이름만 줄이고 라벨은 항상 보인다 */
+#indexManageGrid .index-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+#indexManageGrid .index-name-cell > .index-cell {
+    min-width: 0;
+}
+
+#indexManageGrid .index-name-cell > .gh-label {
+    flex: none;
+}
+
+#indexManageGrid > thead > tr > th {
+    white-space: nowrap;
+}
+
+/* 좁은 화면 : 필터(스키마·승인·출처) 3개 + 검색이 한 줄에 들어가지 않으므로 이 화면만 줄을 나눈다 */
+@media (max-width: 768px) {
+    .index-grid-container .search-container {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+
+    .index-grid-container .search-container > .search-column-select {
+        flex: 1 1 30%;
+        max-width: none;
+    }
+}
+
+/* 등록·수정 : 나란히 둘 항목 (좁으면 아래로) */
+dialog .index-form .index-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 12px;
+}
+
+dialog .index-form .index-form-row > * {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+
+dialog .index-form .form-group > .index-form-row {
+    gap: 8px;
+}
+
+/* 검색 키·INCLUDE 편집 표 : 표 안 컨트롤은 내용 폭 (전체 폭으로 늘어나 세로로 쌓이지 않게) */
+dialog .index-editor td {
+    vertical-align: middle;
+}
+
+dialog .index-editor td .form-control {
+    width: auto;
+    min-width: 96px;
+    height: 28px;
+    padding: 3px 8px;
+    font-size: 13px;
+}
+
+dialog .index-editor td.index-editor-main {
+    width: 100%;
+    min-width: 200px;
+}
+
+dialog .index-editor td.index-editor-main .form-control {
+    width: 100%;
+}
+
+dialog .index-editor .index-editor-order {
+    display: flex;
+    gap: 4px;
+}
+
+dialog .index-editor .index-editor-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+dialog .index-editor .index-editor-add > select {
+    flex: 1 1 220px;
+    width: auto;
+    min-width: 0;
+}
+
+dialog .index-editor h4 .gh-muted {
+    margin-left: 6px;
+    font-weight: 400;
+}
+
+dialog .index-form .form-check {
+    margin-bottom: 0 !important;
+}
+
+/* 상세 */
+dialog .index-detail .index-detail-note {
+    margin: 0 0 12px;
+}
+
+dialog .index-detail .dict-detail-columns:first-of-type {
+    margin-top: 0;
+}
+
+dialog .index-detail .index-request + .index-request {
+    margin-top: 12px;
+}
+
+dialog .index-detail .index-request-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+dialog .index-detail .index-request-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* 변경 전후 : 좁은 화면에서도 한 글자씩 끊기지 않게 최소 폭을 두고 가로 스크롤, 키는 줄마다 하나 */
+dialog .index-detail .index-diff-wrap .history-diff {
+    min-width: 480px;
+}
+
+dialog .index-detail .index-diff-wrap .history-diff td {
+    white-space: pre-wrap;
+}

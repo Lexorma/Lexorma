@@ -13,8 +13,9 @@ interface TableDdl {
   pendingApprovals?: string[];
 }
 
-/** 테이블 DDL : 프로젝트 대상 DB(시스템 관리 > 프로젝트 관리) 기준으로 서버에서 생성한 DDL */
-export function TableDdlView({ tableId }: { tableId: number }) {
+/** 테이블 DDL : 프로젝트 대상 DB(시스템 관리 > 프로젝트 관리) 기준으로 서버에서 생성한 DDL. ddlUrl 을 주면 그 DDL (예: 인덱스 하나) */
+export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: string }) {
+  const url = ddlUrl ?? `/api/selectTable/ddl/${enc(tableId)}`;
   const dialog = useDialog();
   const [copied, setCopied] = useState(false);
   // 스키마명 포함 : 기본 스키마 테이블에 붙일 실제 스키마명. [적용] 을 눌러야 DDL 에 반영한다 (다른 스키마의 테이블은 항상 스키마명이 붙는다)
@@ -22,8 +23,8 @@ export function TableDdlView({ tableId }: { tableId: number }) {
   const [schemaInput, setSchemaInput] = useState('');
   const [schemaName, setSchemaName] = useState('');
   const { data, error } = useQuery({
-    queryKey: ['table-ddl', tableId, schemaName],
-    queryFn: () => api<TableDdl>(`/api/selectTable/ddl/${enc(tableId)}${schemaName ? `?defaultSchemaName=${enc(schemaName)}` : ''}`, { silent: true }),
+    queryKey: ['table-ddl', url, schemaName],
+    queryFn: () => api<TableDdl>(`${url}${schemaName ? `?defaultSchemaName=${enc(schemaName)}` : ''}`, { silent: true }),
     gcTime: 0,
     placeholderData: keepPreviousData,
   });

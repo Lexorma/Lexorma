@@ -28,7 +28,8 @@ class V0SeedMigrationTest {
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
             // V0 (스키마·COMMENT) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑) + V2 (원본 인덱스 표현식·정렬·조건 : 스키마·COMMENT·예제)
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
+            // + V3 (M-14 인덱스 출처·변경 요청 : 스키마·COMMENT·컬럼 인덱스 이관·예제) + V4 (M-14 2차 고급 인덱스 : 조건·표현식·정렬)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             var jdbc = new JdbcTemplate(dataSource);
             // 초기 데이터에 예전 프로젝트 이름이 없다
             assertThat(oldNames(jdbc, "\"" + schema + "\".")).isZero();

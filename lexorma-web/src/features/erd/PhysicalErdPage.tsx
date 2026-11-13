@@ -7,6 +7,7 @@ import '../../styles/erd.css';
 import { NoticeMarkdown } from '../notice/NoticeMarkdown';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
+import { indexManagePath } from '../index/model';
 import { useTableDetail } from '../table/tableDetail';
 import { TableForm } from '../table/TableForm';
 import type { Schema as TableSchema } from '../schema/schemas';
@@ -448,9 +449,10 @@ function ErdWorkspace() {
     dialog.open({
       title: t('인덱스·제약조건 · {0}', table.tableName),
       className: 'dialog-xl',
-      content: (
+      content: ({ close }: DialogControls) => (
         <TableKeys table={table} columns={(graph.data?.columns ?? []).filter((c) => c.tableId === table.id)} editable={editing} approvalAvailable={approvalAvailable}
-          onChanged={() => void refresh()} />
+          onChanged={() => void refresh()}
+          onIndexManage={canView('index-manage') ? () => { close(); leave(indexManagePath(table.id)); } : undefined} />
       ),
     });
   };

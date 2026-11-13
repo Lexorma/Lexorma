@@ -171,10 +171,16 @@ public class SourceCatalogWriter {
         for (SourceCatalogSpec.Index spec : specs) {
             String name = limited(spec.name());
             if (name == null) throw invalid("이름이 없거나 너무 깁니다.");
-            if (spec.columns() == null || spec.columns().isEmpty()) throw invalid("구성 컬럼이 없습니다.");
-            SourceIndex index = SourceIndex.builder().projectId(projectId).sourceTable(table).name(name).indexType(spec.indexType()).uniqueIndex(spec.unique()).build();
-            for (int i = 0; i < spec.columns().size(); i++) {
-                index.getColumns().add(SourceIndexColumn.builder().sourceIndex(index).sourceColumn(column(connection, table, spec.columns().get(i))).columnOrder(i + 1).build());
+            if (spec.members() == null || spec.members().isEmpty()) throw invalid("구성 컬럼이 없습니다.");
+            SourceIndex index = SourceIndex.builder().projectId(projectId).sourceTable(table).name(name).indexType(spec.indexType()).uniqueIndex(spec.unique())
+                    .condition(spec.predicate()).build();
+            for (int i = 0; i < spec.members().size(); i++) {
+                SourceCatalogSpec.IndexMember member = spec.members().get(i);
+                if (member == null) throw invalid("구성 컬럼이 없습니다.");
+                boolean expression = member.expression() != null && !member.expression().isEmpty();
+                if (expression == (member.name() != null && member.name().value() != null)) throw invalid("인덱스 구성 요소는 컬럼과 표현식 중 하나여야 합니다.");
+                index.getColumns().add(SourceIndexColumn.builder().sourceIndex(index).sourceColumn(expression ? null : column(connection, table, member.name()))
+                        .expression(expression ? member.expression() : null).sort(SourceCatalogRules.sort(member.sort())).columnOrder(i + 1).build());
             }
             saved.add(indexRepository.save(index));
         }

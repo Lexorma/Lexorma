@@ -10,7 +10,7 @@ import lombok.Setter;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 원본 인덱스 : 이름, 방식(원본 표현 그대로), 고유 여부, 구성 컬럼(순서대로) */
+/** 원본 인덱스 : 이름, 방식(원본 표현 그대로), 고유 여부, 부분 인덱스 조건, 구성 요소(컬럼 또는 표현식, 순서대로) */
 @Entity
 @Table(name = "TB_SRC_IDX")
 @Getter
@@ -41,6 +41,10 @@ public class SourceIndex {
 
     @Column(name = "UNQ_YN", nullable = false)
     private Boolean uniqueIndex;
+
+    /** 부분 인덱스 조건 (원본 표현 그대로). 없으면 null */
+    @Column(name = "CND_CN", columnDefinition = "TEXT")
+    private String condition;
 
     @Builder.Default
     @OneToMany(mappedBy = "sourceIndex", cascade = CascadeType.ALL, orphanRemoval = true)

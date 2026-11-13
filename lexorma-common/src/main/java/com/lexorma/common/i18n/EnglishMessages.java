@@ -288,6 +288,12 @@ final class EnglishMessages {
         add("DB 사용자명의 형식이 올바르지 않습니다.", "The database user name is not valid.");
         add("허용하지 않는 연결 옵션입니다. 사용할 수 있는 옵션 : {0}", "This connection option is not allowed. Available options: {0}");
         add("사용 중지된 연결입니다.", "The connection is disabled.");
+        // AI-2b : 원본 DB 수집·연결 테스트
+        add("인덱스 구성 요소는 컬럼과 표현식 중 하나여야 합니다.", "Each index member must be either a column or an expression.");
+        add("인덱스 정렬 방식이 올바르지 않습니다.", "The index sort option is invalid.");
+        add("이 DB 유형은 아직 수집할 수 없습니다 : {0}", "Collection is not supported for this database type yet: {0}");
+        add("접속 대상이나 계정을 바꾸면 비밀번호를 다시 입력해야 합니다.", "Enter the password again when you change the connection target or account.");
+        add("끝난 세션입니다.", "The session has already ended.");
         add("이 호스트로는 접속할 수 없습니다. 운영자가 허용한 호스트만 사용할 수 있습니다.", "Connecting to this host is not allowed. Only hosts allowed by the operator can be used.");
         add("실행할 수 없는 도구입니다 : {0}", "The tool cannot be run: {0}");
         add("도구의 입력이 올바르지 않습니다 : {0}", "The tool input is not valid: {0}");

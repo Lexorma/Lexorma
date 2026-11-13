@@ -1,5 +1,7 @@
 package com.lexorma.source.connection.domain.dto;
 
+import com.lexorma.source.tool.SourceMetadata;
+
 import java.util.Map;
 
 /** 외부 DB 연결 요청·응답. 비밀번호는 요청으로만 받고 응답에는 설정 여부만 준다. JDBC URL 은 받지 않는다 */
@@ -47,5 +49,18 @@ public final class SourceConnectionDto {
     public record Response(Long id, String name, String dbType, String host, Integer port, String databaseName, String databaseNameType, String username,
                            boolean passwordConfigured, PasswordStatus passwordStatus, Map<String, String> options, String identifierComparison,
                            String description, boolean enabled, boolean driverAvailable, long schemaCount) {
+    }
+
+    /**
+     * 연결 테스트 결과 (AI-2b). 비밀번호·JDBC URL·드라이버 메시지는 넣지 않는다.
+     *
+     * @param connected        원본 DB 에 접속했는지
+     * @param metadataReadable 시스템 카탈로그를 읽을 수 있는지
+     * @param tls              전송 암호화 상태 (암호화했는지, 인증서·호스트명을 확인했는지는 따로 알린다)
+     * @param errorCode        실패한 경우의 오류 코드 (SOURCE_*)
+     * @param message          사용자에게 보일 문구 (요청 언어)
+     */
+    public record TestResult(boolean connected, boolean metadataReadable, String productName, String productVersion, SourceMetadata.Tls tls, String errorCode,
+                             String message) {
     }
 }

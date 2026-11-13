@@ -339,7 +339,77 @@ public enum ErrorCode {
     /**
      * 실행하던 서버가 멈춰 끝나지 않은 수집을 실패로 정리했다 (실행 상태의 오류 코드로만 쓴다).
      */
-    SOURCE_COLLECTION_ABANDONED(HttpStatus.CONFLICT, "SOURCE_COLLECTION_ABANDONED");
+    SOURCE_COLLECTION_ABANDONED(HttpStatus.CONFLICT, "SOURCE_COLLECTION_ABANDONED"),
+
+    /**
+     * 원본 DB 접속 시간이 초과되었다 (연결 타임아웃).
+     */
+    SOURCE_CONNECT_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "SOURCE_CONNECT_TIMEOUT"),
+
+    /**
+     * 원본 DB 에 접속하지 못했다 (주소·포트·네트워크). 원인 상세는 응답에 넣지 않는다.
+     */
+    SOURCE_CONNECT_FAILED(HttpStatus.BAD_GATEWAY, "SOURCE_CONNECT_FAILED"),
+
+    /**
+     * 원본 DB 가 계정·비밀번호를 거절했다.
+     */
+    SOURCE_AUTH_FAILED(HttpStatus.BAD_GATEWAY, "SOURCE_AUTH_FAILED"),
+
+    /**
+     * 원본 DB 계정에 메타데이터 조회 권한이 없다.
+     */
+    SOURCE_PERMISSION_DENIED(HttpStatus.BAD_GATEWAY, "SOURCE_PERMISSION_DENIED"),
+
+    /**
+     * 원본 DB 와의 TLS 연결 또는 인증서 검증에 실패했다.
+     */
+    SOURCE_TLS_FAILED(HttpStatus.BAD_GATEWAY, "SOURCE_TLS_FAILED"),
+
+    /**
+     * 이 DBMS 의 JDBC 드라이버가 배포본에 없다.
+     */
+    SOURCE_DRIVER_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_DRIVER_NOT_AVAILABLE"),
+
+    /**
+     * 접속 대상 주소가 원본 DB 접속 정책에 맞지 않는다 (루프백·링크 로컬·메타데이터·멀티캐스트, 허용되지 않은 사설 주소, 허용 호스트 밖).
+     */
+    SOURCE_HOST_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SOURCE_HOST_NOT_ALLOWED"),
+
+    /**
+     * 원본 DB 의 메타데이터 조회 시간이 초과되었다.
+     */
+    SOURCE_QUERY_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "SOURCE_QUERY_TIMEOUT"),
+
+    /**
+     * 원본 DB 의 메타데이터 조회가 실패했다.
+     */
+    SOURCE_METADATA_FAILED(HttpStatus.BAD_GATEWAY, "SOURCE_METADATA_FAILED"),
+
+    /**
+     * 수집하는 동안 원본의 구조가 바뀌어 일관된 결과를 만들지 못했다.
+     */
+    SOURCE_CHANGED_DURING_COLLECTION(HttpStatus.CONFLICT, "SOURCE_CHANGED_DURING_COLLECTION"),
+
+    /**
+     * 사용자가 수집을 취소했다 (실행 상태의 오류 코드로만 쓴다).
+     */
+    SOURCE_CANCELLED(HttpStatus.CONFLICT, "SOURCE_CANCELLED"),
+
+    /**
+     * 전체 수집 제한 시간을 넘어 중단했다.
+     */
+    SOURCE_COLLECTION_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "SOURCE_COLLECTION_TIMEOUT"),
+
+    /**
+     * 수집 작업 대기열이 가득 찼거나 서버가 종료 중이라 작업을 받지 못했다.
+     */
+    SOURCE_COLLECTION_REJECTED(HttpStatus.SERVICE_UNAVAILABLE, "SOURCE_COLLECTION_REJECTED"),
+
+    /**
+     * 연결 테스트를 너무 자주 요청했다.
+     */
+    SOURCE_TEST_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "SOURCE_TEST_RATE_LIMITED");
 
     private final HttpStatus httpStatus;
     private final String code;

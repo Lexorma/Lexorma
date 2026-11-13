@@ -16,6 +16,15 @@ public final class SourceCollectionDto {
     private SourceCollectionDto() {
     }
 
+    /**
+     * 수동 최신화 요청 (AI-2b).
+     *
+     * @param type    FULL · PARTIAL
+     * @param schemas PARTIAL 의 대상 스키마 (원본 이름 그대로, 대소문자 구분). FULL 은 비운다
+     */
+    public record RefreshRequest(String type, List<String> schemas) {
+    }
+
     public record Execution(Long id, Long connectionId, String jobId, String executionType, String collectionType, String status, Integer reflectedOrder,
                             LocalDateTime startedAt, LocalDateTime endedAt, LocalDateTime reflectedAt, Integer tableCount, Integer columnCount,
                             Integer versionCount, Integer changeCount, String errorCode, String errorMessage) {

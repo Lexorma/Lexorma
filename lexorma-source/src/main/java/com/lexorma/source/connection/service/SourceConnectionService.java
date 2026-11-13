@@ -142,6 +142,43 @@ public class SourceConnectionService {
         return rows;
     }
 
+    /**
+     * 저장하지 않은 연결 설정 (연결 테스트, AI-2b). 등록·수정과 같은 검증을 거친다. 저장하지 않는다.
+     *
+     * @param password 접속에 쓸 비밀번호 : 요청에 있으면 그것, 비워 둔 수정이면 저장된 것 — 단 DBMS·호스트·포트·데이터베이스·계정이 저장된 것과 같을 때만
+     *                 (다른 주소로 바꾼 설정에 저장된 비밀번호를 보내지 않는다)
+     */
+    public record Draft(SourceConnection connection, java.util.function.Supplier<String> password) {
+    }
+
+    /** @param id 수정 중인 연결 (없으면 새 연결) */
+    @Transactional(readOnly = true)
+    public Draft draft(AccountDto accountDto, Long id, SourceConnectionDto.Request request) {
+        Long projectId = manage(accountDto);
+        SourceConnection current = id == null ? null : connection(projectId, id);
+        // 테스트에는 연결명이 필요 없다 : 비어 있으면 검증만 통과하게 채운다
+        if (request != null && trim(request.name()) == null) {
+            request = new SourceConnectionDto.Request("connection-test", request.dbType(), request.host(), request.port(), request.databaseName(), request.databaseNameType(),
+                    request.username(), request.password(), request.options(), request.identifierComparison(), request.description(), request.enabled());
+        }
+        Validated validated = validate(request, current);
+        SourceConnection draft = SourceConnection.builder().id(current == null ? null : current.getId()).projectId(projectId).name(validated.name())
+                .dbType(validated.dbType()).host(validated.host()).port(validated.port()).databaseName(validated.databaseName()).databaseNameType(validated.nameType())
+                .username(validated.username()).options(validated.options()).identifierComparison(validated.comparison()).enabled(true).build();
+        if (validated.password() != null) {
+            String password = validated.password();
+            return new Draft(draft, () -> password);
+        }
+        if (current == null || current.getEncryptedPassword() == null) return new Draft(draft, () -> null);
+        boolean sameTarget = current.getDbType() == draft.getDbType() && current.getHost().equalsIgnoreCase(draft.getHost()) && current.getPort().equals(draft.getPort())
+                && current.getDatabaseName().equals(draft.getDatabaseName()) && current.getDatabaseNameType() == draft.getDatabaseNameType()
+                && current.getUsername().equals(draft.getUsername());
+        if (!sameTarget) throw invalid("접속 대상이나 계정을 바꾸면 비밀번호를 다시 입력해야 합니다.");
+        String encrypted = current.getEncryptedPassword();
+        SecretScope scope = scope(current);
+        return new Draft(draft, () -> secretCipher.decrypt(encrypted, scope));
+    }
+
     /** 비밀번호의 암호화 자리 : 다른 프로젝트·다른 연결의 암호문을 옮겨 와도 읽히지 않는다 */
     public static SecretScope scope(SourceConnection connection) {
         return SecretScope.ofProject(SECRET_PURPOSE, connection.getProjectId(), connection.getId(), SECRET_FIELD);

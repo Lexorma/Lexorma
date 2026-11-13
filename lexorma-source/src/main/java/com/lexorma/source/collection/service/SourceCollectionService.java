@@ -204,10 +204,16 @@ public class SourceCollectionService {
 
     /** 결과를 만들지 못한 수집을 실패로 남긴다 (AI-2 의 도구 오류, 시간 초과 등). 오류 코드는 정해진 모양만 받는다 */
     public SourceCollectionDto.Execution fail(ExecutionContext context, String jobId, String errorCode) {
-        SourceCatalogLoader.verify(verifier, context);
         SourceCollectionExecution execution = find(context, jobId);
         try {
             String code = Objects.requireNonNullElse(SourceCollectionPreparer.errorCode(errorCode), ErrorCode.SOURCE_COLLECTION_INCOMPLETE.name());
+            try {
+                SourceCatalogLoader.verify(verifier, context);
+            } catch (CustomException denied) {
+                // 수집 도중 권한이 회수된 실행도 끝낸다 (진행 중으로 남으면 그 연결의 수집을 다시 시작할 수 없다). 남기는 코드는 권한 오류다
+                finish(execution.getId(), CollectionStatus.FAILED, denied.getErrorCode().name(), null, List.of());
+                throw denied;
+            }
             finish(execution.getId(), CollectionStatus.FAILED, code, null, List.of());
         } finally {
             instance.release(execution.getId());

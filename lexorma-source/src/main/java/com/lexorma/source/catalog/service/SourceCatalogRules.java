@@ -47,6 +47,13 @@ public final class SourceCatalogRules {
         return value;
     }
 
+    /** 인덱스 구성 요소의 정렬 : 비었으면 기본(null), 20자를 넘으면 받지 않는다 */
+    public static String sort(String value) {
+        if (value == null || value.isBlank()) return null;
+        if (value.length() > RULE_MAX) throw invalid("인덱스 정렬 방식이 올바르지 않습니다.");
+        return value;
+    }
+
     /** 타입 표현·인덱스 방식처럼 255자 칸에 원본 그대로 넣는 값 */
     public static String text255(String value) {
         if (value != null && value.length() > NAME_MAX) throw invalid("값이 너무 깁니다.");

@@ -24,7 +24,16 @@ public final class SourceCatalogDto {
     public record Constraint(Long id, String name, String type, String checkExpression, List<String> columns) {
     }
 
-    public record Index(Long id, String name, String indexType, boolean unique, List<String> columns) {
+    /**
+     * @param columns   구성 컬럼 (표현식 요소는 빼고 순서대로)
+     * @param members   구성 요소 전체 (컬럼 또는 표현식, 정렬)
+     * @param predicate 부분 인덱스 조건
+     */
+    public record Index(Long id, String name, String indexType, boolean unique, List<String> columns, List<IndexMember> members, String predicate) {
+    }
+
+    /** @param sort 기본(오름차순)이면 null */
+    public record IndexMember(String columnName, String expression, String sort) {
     }
 
     /** @param referencedColumnId 참조되는 컬럼이 카탈로그에 없으면 null (이름은 남는다) */

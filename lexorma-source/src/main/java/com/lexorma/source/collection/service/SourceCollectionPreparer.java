@@ -173,10 +173,23 @@ public class SourceCollectionPreparer {
             if (index == null) throw invalid("수집 결과가 올바르지 않습니다.");
             String indexName = limited(index.name());
             if (indexName == null) throw invalid("이름이 없거나 너무 깁니다.");
-            if (index.columns() == null || index.columns().isEmpty()) throw invalid("구성 컬럼이 없습니다.");
-            List<String> members = members(connection, columnHashes, index.columns());
-            indexes.add(new SourceCatalogCanonical.Index(SourceCatalogCanonical.indexKey(dbType, indexName, index.unique(), members), indexName,
-                    SourceCatalogRules.text255(index.indexType()), index.unique(), members));
+            if (index.members() == null || index.members().isEmpty()) throw invalid("구성 컬럼이 없습니다.");
+            // 구성 요소 : 이 테이블의 컬럼 또는 표현식 (PostgreSQL 의 표현식 인덱스). 순서대로 둔다
+            List<String> members = new ArrayList<>();
+            List<String> expressions = new ArrayList<>();
+            List<String> sorts = new ArrayList<>();
+            for (SourceCatalogSpec.IndexMember member : index.members()) {
+                if (member == null) throw invalid("구성 컬럼이 없습니다.");
+                boolean column = member.name() != null && member.name().value() != null;
+                boolean expression = member.expression() != null && !member.expression().isEmpty();
+                if (column == expression) throw invalid("인덱스 구성 요소는 컬럼과 표현식 중 하나여야 합니다.");
+                members.add(column ? member(connection, columnHashes, member.name()) : null);
+                expressions.add(expression ? member.expression() : null);
+                sorts.add(SourceCatalogRules.sort(member.sort()));
+            }
+            String predicate = index.predicate() == null || index.predicate().isEmpty() ? null : index.predicate();
+            indexes.add(new SourceCatalogCanonical.Index(SourceCatalogCanonical.indexKey(dbType, indexName, index.unique(), members, expressions), indexName,
+                    SourceCatalogRules.text255(index.indexType()), index.unique(), members, expressions, sorts, predicate));
         }
         indexes = SourceCatalogCanonical.unique(indexes);
 

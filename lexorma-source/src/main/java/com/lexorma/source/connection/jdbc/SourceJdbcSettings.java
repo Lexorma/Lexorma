@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
@@ -18,7 +19,7 @@ import java.util.regex.Pattern;
  *   <li><b>드라이버는 DBMS 마다 정해진 하나</b>다. 드라이버 클래스 이름을 입력받지 않는다</li>
  *   <li><b>연결 옵션은 허용 목록</b>에 있는 이름·값만 받는다. 임의 옵션(파일 읽기, 다른 주소로의 접속, 로그 출력 등)을 열 수 있는 것은 없다</li>
  * </ul>
- * 이 클래스는 접속하지 않는다. 실제 연결·타임아웃·읽기 전용 설정은 메타데이터 수집 도구(AI-2)가 이 규칙으로 만든 값으로 한다.
+ * 이 클래스는 접속하지 않는다. 실제 연결은 {@code SourceToolExecutor} 가 이 규칙으로 만든 URL·속성으로 한다.
  */
 public final class SourceJdbcSettings {
 
@@ -128,6 +129,32 @@ public final class SourceJdbcSettings {
         StringBuilder query = new StringBuilder();
         new LinkedHashMap<>(normalized).forEach((name, value) -> query.append(query.isEmpty() ? "?" : "&").append(name).append('=').append(value));
         return url + query;
+    }
+
+    /**
+     * 접속 속성 (AI-2b). 계정·비밀번호와 서버가 정한 값만 넣는다 — 사용자가 고르는 옵션은 URL 의 허용 목록(sslmode)뿐이다.
+     * <ul>
+     *   <li>시간 : connectTimeout(소켓 연결)·loginTimeout(접속·인증 전체)·socketTimeout(응답을 기다리는 최대 시간 : 끊긴 네트워크에서 영원히 기다리지 않는다). 단위는 초</li>
+     *   <li>세션 : 읽기 전용이 기본(default_transaction_read_only), 서버 쪽 조회 제한 시간(statement_timeout), 이름 찾기는 pg_catalog 만(search_path)</li>
+     *   <li>소켓 : {@link SourceGuardedSocketFactory} — 실제 접속 주소를 {@link SourceAddressPolicy} 로 확인한다</li>
+     * </ul>
+     */
+    public static Properties connectionProperties(DbType dbType, String username, String password, int connectTimeoutSeconds, int queryTimeoutSeconds,
+                                                  String allowedNetworks) {
+        if (dbType != DbType.POSTGRESQL) throw new IllegalArgumentException("지원하지 않는 DB 유형입니다.");
+        Properties properties = new Properties();
+        properties.setProperty("user", username);
+        if (password != null) properties.setProperty("password", password);
+        properties.setProperty("connectTimeout", Integer.toString(connectTimeoutSeconds));
+        properties.setProperty("loginTimeout", Integer.toString(connectTimeoutSeconds));
+        // 조회 제한 시간(Statement·서버)보다 넉넉하게 : 정상 조회는 그 전에 끝나거나 취소된다
+        properties.setProperty("socketTimeout", Integer.toString(queryTimeoutSeconds * 2));
+        properties.setProperty("tcpKeepAlive", "true");
+        properties.setProperty("ApplicationName", "Lexorma metadata collector");
+        properties.setProperty("options", "-c default_transaction_read_only=on -c statement_timeout=" + queryTimeoutSeconds * 1000 + " -c search_path=pg_catalog");
+        properties.setProperty("socketFactory", SourceGuardedSocketFactory.class.getName());
+        properties.setProperty(SourceGuardedSocketFactory.ALLOWED_NETWORKS, allowedNetworks == null ? "" : allowedNetworks);
+        return properties;
     }
 
     /** 표시용 : 대문자 DBMS 이름 */

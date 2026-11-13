@@ -5,6 +5,10 @@
 > **원본 DB 에 접속하지 않는다** : 실제 수집 도구(JDBC)는 AI-2 다. AI-1c 는 수집 결과(`SourceCollectionSpec`)를 받는 내부 경로·버전·이력·조회 API 까지다.
 > 코드는 `lexorma-source` 의 `collection/` 패키지다 (`lexorma-data` 와 의존하지 않는다).
 
+
+> **AI-2b (2026-11-13)** : PostgreSQL 수집 도구가 이 수집 실행을 부른다 ([source-postgresql-collection-ai2b.md](source-postgresql-collection-ai2b.md)). 이 문서의 규칙은 바뀌지 않았고 두 가지만 더했다 —
+> ① 인덱스 정규화 JSON 에 `expressions`·`sorts`·`predicate` 를 **값이 있을 때만** 넣는다 (표현식·부분·정렬 인덱스). 컬럼만의 오름차순 인덱스는 지금 JSON·해시 그대로라 `FORMAT`(1)·해시 접두사(`v1:`)를 올리지 않았고, 저장된 버전을 고치지 않는다.
+> ② `fail` 이 실행 컨텍스트 재확인에 실패하면 실행을 그 권한 오류 코드로 FAILED 로 닫은 뒤 예외를 던진다 (예전에는 RUNNING 으로 남아 그 연결의 수집을 다시 시작할 수 없었다).
 ## 1. 구조 (U-06 : 현재 상태 + 변경분 이력 + 기준 상태)
 
 ```text

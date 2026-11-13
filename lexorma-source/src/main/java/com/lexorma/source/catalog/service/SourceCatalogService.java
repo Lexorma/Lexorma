@@ -81,7 +81,9 @@ public class SourceCatalogService {
                 constraintRepository.findAllBySourceTable_IdOrderByIdAsc(tableId).stream().map(constraint -> new SourceCatalogDto.Constraint(constraint.getId(), constraint.getName(),
                         constraint.getType().name(), constraint.getCheckExpression(), constraint.getColumns().stream().map(c -> c.getSourceColumn().getName()).toList())).toList(),
                 indexRepository.findAllBySourceTable_IdOrderByIdAsc(tableId).stream().map(index -> new SourceCatalogDto.Index(index.getId(), index.getName(), index.getIndexType(),
-                        Boolean.TRUE.equals(index.getUniqueIndex()), index.getColumns().stream().map(c -> c.getSourceColumn().getName()).toList())).toList(),
+                        Boolean.TRUE.equals(index.getUniqueIndex()), index.getColumns().stream().filter(c -> c.getSourceColumn() != null).map(c -> c.getSourceColumn().getName()).toList(),
+                        index.getColumns().stream().map(c -> new SourceCatalogDto.IndexMember(c.getSourceColumn() == null ? null : c.getSourceColumn().getName(), c.getExpression(),
+                                c.getSort())).toList(), index.getCondition())).toList(),
                 relationRepository.findAllBySourceTable_IdOrderByIdAsc(tableId).stream().map(SourceCatalogService::relation).toList(),
                 relationRepository.findAllByReferencedTable_IdOrderByIdAsc(tableId).stream().map(SourceCatalogService::relation).toList());
     }

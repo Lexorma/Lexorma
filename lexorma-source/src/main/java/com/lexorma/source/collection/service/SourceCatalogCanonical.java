@@ -98,10 +98,25 @@ public final class SourceCatalogCanonical {
         }
     }
 
-    public record Index(String key, String name, String indexType, boolean unique, List<String> columns) implements Keyed<Index> {
+    /**
+     * @param columns     구성 요소마다 컬럼의 비교 명 (표현식 요소는 null)
+     * @param expressions 구성 요소마다 표현식 (컬럼 요소는 null). 표현식이 하나도 없으면 null
+     * @param sorts       구성 요소마다 정렬 (기본이면 null). 모두 기본이면 null
+     * @param predicate   부분 인덱스 조건
+     * 표현식·정렬·조건이 없는 인덱스는 JSON 에 그 항목이 없다 : 컬럼만의 오름차순 인덱스는 FORMAT 1 의 JSON·해시 그대로다 (기존 버전과 비교해도 바뀐 것으로 보이지 않는다)
+     */
+    public record Index(String key, String name, String indexType, boolean unique, List<String> columns, List<String> expressions, List<String> sorts,
+                        String predicate) implements Keyed<Index> {
+
+        public Index {
+            columns = columns == null ? null : java.util.Collections.unmodifiableList(new ArrayList<>(columns));
+            expressions = allNull(expressions) ? null : java.util.Collections.unmodifiableList(new ArrayList<>(expressions));
+            sorts = allNull(sorts) ? null : java.util.Collections.unmodifiableList(new ArrayList<>(sorts));
+        }
+
         @Override
         public Index withKey(String key) {
-            return new Index(key, name, indexType, unique, columns);
+            return new Index(key, name, indexType, unique, columns, expressions, sorts, predicate);
         }
 
         public Map<String, Object> json() {
@@ -111,7 +126,14 @@ public final class SourceCatalogCanonical {
             map.put("indexType", indexType);
             map.put("unique", unique);
             map.put("columns", columns);
+            if (expressions != null) map.put("expressions", expressions);
+            if (sorts != null) map.put("sorts", sorts);
+            if (predicate != null) map.put("predicate", predicate);
             return map;
+        }
+
+        private static boolean allNull(List<String> values) {
+            return values == null || values.stream().allMatch(java.util.Objects::isNull);
         }
     }
 
@@ -222,9 +244,15 @@ public final class SourceCatalogCanonical {
         return type + ":sig:" + String.join(",", columns) + (checkExpression == null ? "" : ":" + checkExpression);
     }
 
-    public static String indexKey(DbType dbType, String name, boolean unique, List<String> columns) {
+    /** @param expressions 구성 요소마다 표현식 (없으면 null) : 이름 없는 표현식 인덱스의 서명에 쓴다 */
+    public static String indexKey(DbType dbType, String name, boolean unique, List<String> columns, List<String> expressions) {
         if (stableName(dbType, name)) return "name:" + name;
-        return "sig:" + (unique ? "U" : "N") + ":" + String.join(",", columns);
+        List<String> members = new ArrayList<>();
+        for (int i = 0; i < columns.size(); i++) {
+            String expression = expressions == null ? null : expressions.get(i);
+            members.add(expression == null ? columns.get(i) : "(" + expression + ")");
+        }
+        return "sig:" + (unique ? "U" : "N") + ":" + String.join(",", members);
     }
 
     public static String relationKey(DbType dbType, String name, String referencedCatalog, String referencedSchema, String referencedTable, List<ColumnPair> columns) {

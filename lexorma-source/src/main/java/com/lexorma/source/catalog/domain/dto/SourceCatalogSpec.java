@@ -32,7 +32,26 @@ public final class SourceCatalogSpec {
     public record Constraint(String name, SourceConstraintType type, String checkExpression, List<Name> columns) {
     }
 
-    public record Index(String name, String indexType, boolean unique, List<Name> columns) {
+    /**
+     * @param members   구성 요소 (순서대로). 컬럼 또는 표현식 하나씩
+     * @param predicate 부분 인덱스 조건 (원본 표현). 없으면 null
+     */
+    public record Index(String name, String indexType, boolean unique, List<IndexMember> members, String predicate) {
+        /** 컬럼만으로 된 오름차순 인덱스 */
+        public Index(String name, String indexType, boolean unique, List<Name> columns) {
+            this(name, indexType, unique, columns == null ? null : columns.stream().map(IndexMember::column).toList(), null);
+        }
+    }
+
+    /**
+     * 인덱스 구성 요소 : 컬럼(name) 또는 표현식(expression) 중 하나.
+     *
+     * @param sort 기본(오름차순, PostgreSQL 은 NULLS LAST)이면 null. 그 밖에는 원본 표기 (DESC, NULLS FIRST, DESC NULLS LAST) 또는 INCLUDE (키가 아닌 포함 컬럼)
+     */
+    public record IndexMember(Name name, String expression, String sort) {
+        public static IndexMember column(Name name) {
+            return new IndexMember(name, null, null);
+        }
     }
 
     public record ColumnPair(Name column, Name referencedColumn) {

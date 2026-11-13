@@ -1,6 +1,6 @@
 # Lexorma AI 메타데이터 관리 로드맵
 
-> **상태: 구현 중 (2026-11-13).** 0단계(공통 기반)의 결정, **AI-1a 공통 기반**, **AI-1b 외부 DB 연결·원본 카탈로그 저장 모델(아키텍처 보완 포함)**, **AI-1c 수집 실행·스냅샷·변경 이력**까지 끝났다 — [9장](#9-미확정-사항-종합), [1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리), [AI-1b 기록](source-catalog-ai1b.md), [AI-1c 기록](source-catalog-versioning.md), [원본 DB 연동·내부 도구 아키텍처](source-tool-architecture.md). **원본 DB 수집 도구·Ollama·Tool Calling 은 아직 구현되지 않았다.** 4장의 현황은 2026-11-12 의 `dev` 코드를 기준으로 다시 확인한 것이다.
+> **상태: 구현 중 (2026-11-13).** 0단계(공통 기반)의 결정, **AI-1a 공통 기반**, **AI-1b 외부 DB 연결·원본 카탈로그 저장 모델(아키텍처 보완 포함)**, **AI-1c 수집 실행·스냅샷·변경 이력**, **AI-2b PostgreSQL JDBC 수집·수동 최신화**까지 끝났다 — [9장](#9-미확정-사항-종합), [1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리), [AI-1b 기록](source-catalog-ai1b.md), [AI-1c 기록](source-catalog-versioning.md), [원본 DB 연동·내부 도구 아키텍처](source-tool-architecture.md), [AI-2b 기록](source-postgresql-collection-ai2b.md). **Oracle·MySQL·MariaDB 수집 도구·Ollama·Tool Calling 은 아직 구현되지 않았다.** **개발 순서 (2026-11-13)** : ~~AI-2b 배포 패키징 검증~~(완료) → 데이터 모델링 M-14(인덱스 관리)·M-15(VIEW 관리) → AI 후속 재개 ([데이터 모델링 로드맵 5.3](data-modeling-roadmap.md#53-개발-순서-조정-2026-11-13)). 재개할 AI 단계는 정하지 않았다. 4장의 현황은 2026-11-12 의 `dev` 코드를 기준으로 다시 확인한 것이다.
 >
 > README 의 [Project Roadmap](../README.md#project-roadmap) 은 방향만 요약하고, AI·원본 DB 수집 관련 상세 계획은 이 문서에서 관리한다.
 > ERD·논리/물리 모델링·표준화·DDL/Export 와 **전체 제품 우선순위**는 [데이터 모델링 로드맵](data-modeling-roadmap.md)에서 관리한다. AI 는 모델링·메타데이터 관리를 대체하지 않는 **보조 계층**이다. 다른 문서에서 이 문서의 n단계는 `AI-n` 으로 가리킨다.
@@ -105,13 +105,13 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 | 프로젝트 삭제 정합성 | 구현됨 | 영구 삭제 = 프로젝트 데이터 전부 삭제. `ProjectDeletedEvent` 를 각 모듈이 같은 트랜잭션에서 처리(`data/project/ProjectDataCleanup` 등), 삭제와 겹친 등록 차단(`core/project/guard/ProjectWriteGuard`) — [project-deletion.md](project-deletion.md) |
 | 테이블/컬럼 설명 | 일부 구현 | `TBL_EXPLN`, `COL_EXPLN` (`varchar(255)`) 한 개뿐. **원본 COMMENT 와 업무 설명 구분 없음** → AI-1b(원본 COMMENT)·AI-1d(업무 설명 `TEXT` 확장) |
 | 뷰 | 원본 쪽만 구현 (AI-1b) | 원본 카탈로그는 테이블·뷰를 구분해 저장한다(`TB_SRC_TBL.TBL_TYPE_CD`). 물리 모델에는 뷰가 없다. 뷰 정의 SQL 은 저장하지 않는다 |
-| 원본 메타데이터 카탈로그 | **저장 모델 (AI-1b)·수집 실행·스냅샷·변경 이력 (AI-1c) 구현**, 원본 DB 수집 도구는 미구현 (AI-2) | `lexorma-source` : 연결 → 이름 공간(카탈로그·스키마) → 테이블·뷰 → 컬럼, PK·UNIQUE·CHECK, 인덱스, FK (`TB_SRC_*`). 원본 COMMENT 는 여기에만 있다. 물리 모델과 이어져 있지 않다 — [source-catalog-ai1b.md](source-catalog-ai1b.md). 수집 실행(`TB_SRC_CLCT_EXCN`·`_TRGT`), 테이블·스키마 단위 버전(`TB_SRC_TBL_VER`·`TB_SRC_SCHM_VER`), 객체별 변경 이력(`TB_SRC_CHG_HSTRY`), 과거 상태 조회 — [source-catalog-versioning.md](source-catalog-versioning.md) |
+| 원본 메타데이터 카탈로그 | **저장 모델 (AI-1b)·수집 실행·스냅샷·변경 이력 (AI-1c)·PostgreSQL 수집 (AI-2b) 구현**, Oracle·MySQL·MariaDB 수집은 미구현 | `lexorma-source` : 연결 → 이름 공간(카탈로그·스키마) → 테이블·뷰 → 컬럼, PK·UNIQUE·CHECK, 인덱스, FK (`TB_SRC_*`). 원본 COMMENT 는 여기에만 있다. 물리 모델과 이어져 있지 않다 — [source-catalog-ai1b.md](source-catalog-ai1b.md). 수집 실행(`TB_SRC_CLCT_EXCN`·`_TRGT`), 테이블·스키마 단위 버전(`TB_SRC_TBL_VER`·`TB_SRC_SCHM_VER`), 객체별 변경 이력(`TB_SRC_CHG_HSTRY`), 과거 상태 조회 — [source-catalog-versioning.md](source-catalog-versioning.md) |
 | 승인 워크플로 | 일부 구현 | 엔티티별 `isApproval` boolean + `AuthUtil.isApprovalAvailable()`. **검토 이력·반려 사유·검토자 기록 없음** |
 | 감사 로그 · 민감정보 마스킹 | 구현됨 (AI-1a 에서 보강) | API 요청 로그(`core/logs`, `TB_LOG`). 인증·원본 DB 연결(`/api/source/**`)·AI API 는 본문을 남기지 않고(`logs/policy/LogBodyPolicy`, `@ProtectedLogBody`), 그 밖에는 비밀 필드와 값 안의 비밀을 가린다(`logs/util/SensitiveDataMasker`) |
 | 비밀값 암호화 저장 | 구현 (AI-1a 유틸리티, AI-1b 에서 처음 사용) | `core/crypto/{SecretCipher,SecretKeyring,SecretScope}` (AES-256-GCM, 환경변수 키). 원본 DB 연결 비밀번호(`TB_SRC_CNTN.CNTN_PSWD_CN`)를 이것으로 저장한다. 키 교체 뒤 다시 암호화를 돌리는 관리 기능은 아직 없다. 계정 비밀번호는 해시(`PasswordEncoder`) |
 | 실행 컨텍스트 · 세션 없는 권한 재검증 | **구현 (AI-1a)** | `core/execution/` (`ExecutionContext`, `ExecutionContextVerifier`), `core/project/service/ProjectAuthority`. 비동기 실행기·스케줄러는 없다 |
-| 외부 DB 연결 | **연결 설정 관리 구현 (AI-1b)**, 접속·수집은 미구현 | `lexorma-source` 의 `TB_SRC_CNTN` : 프로젝트별, DBMS·호스트·포트·데이터베이스명(Oracle 서비스명·SID)·계정·암호화한 비밀번호·허용된 옵션. JDBC URL·드라이버 클래스는 입력받지 않고 서버가 정한다(`SourceJdbcSettings`). 접속하는 코드는 아직 없다 (AI-2) |
-| 내부 도구 (원본 DB) | **계약 구현 (AI-1b)**, 도구 구현은 없음 | `lexorma-source` 의 `tool/` : `SourceMetadataTool`, `SourceToolExecutor`(실행 직전 권한·연결·호스트 정책·DBMS 확인), `SourceToolRegistry`. 등록된 도구가 없다 (DBMS 별 수집 도구는 AI-2) |
+| 외부 DB 연결 | **연결 설정 관리 구현 (AI-1b)**, 접속·수집은 미구현 | `lexorma-source` 의 `TB_SRC_CNTN` : 프로젝트별, DBMS·호스트·포트·데이터베이스명(Oracle 서비스명·SID)·계정·암호화한 비밀번호·허용된 옵션. JDBC URL·드라이버 클래스는 입력받지 않고 서버가 정한다(`SourceJdbcSettings`). PostgreSQL 은 연결 테스트·수동 최신화로 실제 접속한다 (AI-2b : 읽기 전용 세션, 접속 대상 주소 정책, 호출 제한 — [기록](source-postgresql-collection-ai2b.md)) |
+| 내부 도구 (원본 DB) | **계약 (AI-1b)·PostgreSQL 도구 7개 (AI-2b) 구현** | `lexorma-source` 의 `tool/` : `SourceMetadataTool`, `SourceToolExecutor`(실행 직전 권한·연결·호스트 정책·DBMS 확인, 세션 하나에 JDBC 연결 하나), `SourceToolRegistry`, `tool/postgresql/PostgresSourceTools`. Oracle·MySQL·MariaDB 도구는 없다 |
 | MCP | 없음 (후속 선택 기능) | AI-1b 첫 구현의 MCP 서버 설정(`TB_MCP_SRVR`)은 아키텍처 보완에서 제거했다. MCP 코드·의존성 없음 |
 | AI / LLM / Tool Calling | 미구현 | Spring AI, Ollama, OpenAI 등 의존성·코드 없음 (`gradle/libs.versions.toml`) |
 | 스케줄러 / 배치 / 비동기 실행 | 미구현 | `@EnableScheduling`, `@Scheduled`, `@Async`, 분산 락 없음 |
@@ -140,7 +140,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 4.3 구조적 제약 (설계 시 반드시 반영)
 
 - **모듈 의존 방향** `common ← core ← (system, operation, data) ← app` 이 빌드로 강제된다. 메타데이터·데이터 사전은 `lexorma-data` 에 있으므로, AI Tool 이 이를 읽으려면 **배치 위치를 먼저 정해야 한다** (→ [U-01](#9-미확정-사항-종합)).
-- **스키마 변경은 Flyway** (`db/migration/postgresql`, `db/migration/h2` **양쪽**에 같은 내용)이고 JPA 는 `ddl-auto: validate` 다. 엔티티 변경에는 반드시 두 벤더의 마이그레이션이 따라야 한다. **지금은 정식 출시 전이라 `V0__init.sql`(스키마)·`V1__seed_data.sql`(예제) 두 파일을 고쳐서 유지한다** — 이미 그 파일로 만든 DB 는 체크섬이 달라져 기동하지 않으므로 개발·검증 DB 는 새로 만든다. **정식 출시 이후에는 적용된 파일을 고치지 않고 새 버전(`V2__…`)을 추가하는 방식으로 바꾼다** ([데이터 모델링 로드맵 — 마이그레이션 정책](data-modeling-roadmap.md#마이그레이션-정책)).
+- **스키마 변경은 Flyway** (`db/migration/postgresql`, `db/migration/h2` **양쪽**에 같은 내용)이고 JPA 는 `ddl-auto: validate` 다. 엔티티 변경에는 반드시 두 벤더의 마이그레이션이 따라야 한다. **지금은 정식 출시 전이라 `V0__init.sql`(스키마)·`V1__seed_data.sql`(예제) 두 파일을 고쳐서 유지한다** — 이미 그 파일로 만든 DB 는 체크섬이 달라져 기동하지 않으므로 개발·검증 DB 는 새로 만든다. **정식 출시 이후에는 적용된 파일을 고치지 않고 새 버전(`V2__…`)을 추가하는 방식으로 바꾼다** ([데이터 모델링 로드맵 — 마이그레이션 정책](data-modeling-roadmap.md#마이그레이션-정책)). **AI-2b 부터 새 버전 방식이다** (소유자 결정, 2026-11-13) : `V2__source_index_expression.sql` 을 더했고 V0·V1 은 고치지 않았다.
 - **단일 JAR / Docker 배포** (`lexorma.jar`, `Dockerfile`·`Dockerfile-h2`·`Dockerfile.dev`). 별도 프로세스·사이드카를 전제로 하지 않는다.
 - **세션에 들어가는 객체는 Java 직렬화 가능**해야 한다 (Spring Session JDBC). AI 대화 상태·연결 객체를 세션에 넣지 않는다.
 - **새 API 는 `@PreAuthorize` 필수** (없으면 로그인 사용자 전체에 열림), 응답은 JSON, CSRF 유지.
@@ -159,7 +159,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 |---|---|---|---|---|
 | 0 | 공통 기반 결정 (모듈 배치, 비밀값 저장, 감사·마스킹) | P1 | — | **결정 완료 (2026-11-12)**, 공통 기반 구현은 AI-1a |
 | 1 | 메타데이터 모델 보강 · 변경 이력 · 상세 설명 분리 | P1 | 0 | **AI-1a(공통 기반)·AI-1b(연결·원본 카탈로그 저장 모델)·AI-1c(수집 실행·스냅샷·변경 이력) 구현**. AI-1d 미구현 |
-| 2 | DBMS 별 내부 메타데이터 수집 도구 (JDBC) | P1 | 0, 1 | 미구현 (도구 계약·실행기는 AI-1b 에 있다) |
+| 2 | DBMS 별 내부 메타데이터 수집 도구 (JDBC) | P1 | 0, 1 | **PostgreSQL 구현 (AI-2b)**. Oracle·MySQL·MariaDB 미구현 |
 | 3 | Ollama 연결 및 Provider 추상화 | P1 | 0 | 미구현 |
 | 4 | Lexorma DB 기반 AI Tool Calling | P1 | 1, 3 | 미구현 |
 | 5 | AI 데이터 사전 초안 생성 및 승인 | P1 | 1, 4 | 미구현 |
@@ -282,7 +282,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 2단계. DBMS 별 내부 메타데이터 수집 도구 (JDBC)
 
 - **목적 및 배경:** 문서가 없는 외부 DB 의 구조 정보를 사용자 요청 시에만 읽어 자체 DB 를 갱신한다.
-- **현재 구현 상태:** 미구현. 연결 설정(`TB_SRC_CNTN`)·원본 카탈로그·도구 계약(`SourceMetadataTool`, `SourceToolExecutor`, `SourceToolRegistry`)은 AI-1b 에 있다 ([아키텍처](source-tool-architecture.md)). 등록된 도구와 원본 DB 에 접속하는 코드가 없고, PostgreSQL 외 JDBC 드라이버가 배포본에 없다.
+- **현재 구현 상태:** **AI-2b PostgreSQL 구현 (2026-11-13)** — 도구 7개(`PostgresSourceTools`), JDBC 세션(`SourceToolSession` : 연결 하나·읽기 전용 REPEATABLE READ·조회/전체 제한 시간·취소), 접속 대상 주소 정책과 실제 소켓의 주소 확인(DNS rebinding), 연결 테스트 API·호출 제한, 비동기 수동 최신화·취소 API(`SourceRefreshService`), 표현식·부분·정렬 인덱스 모델(V2), 실제 PostgreSQL 통합 테스트 ([기록](source-postgresql-collection-ai2b.md)). **Oracle·MySQL·MariaDB 도구와 그 드라이버는 없다.** 건수 급감은 경고 로그만 남긴다 (U-26 임계값 미정). **배포 검증 완료 (2026-11-13)** : 실행 jar(`java -jar`, JDK 21)와 `Dockerfile` 이미지에서 실제 PostgreSQL 연결 테스트·FULL 수집 COMPLETED·변경 없는 재수집(버전·이력 0건)·소켓 팩토리 적재와 소켓 단위 차단·읽기 전용 세션을 확인했다 ([기록 11장](source-postgresql-collection-ai2b.md#11-남은-문제--다음-단계)). 코드 변경 없음. **AI-2 후속 후보** : PostgreSQL VIEW 정의 SQL 수집(지금은 존재·컬럼·COMMENT 만) — 데이터 모델링 M-15 연계, M-4 의 VIEW 가져오기 선행 (M-15 자체의 선행은 아님, 비밀값 처리는 U-21).
 - **작업 범위:**
   - **연결 확인 도구 :** JDBC 로 접속해 버전·권한을 확인한다 (등록은 AI-1b 에 있다 : DBMS·호스트·포트·DB명·읽기 전용 계정·암호화한 비밀번호).
   - **DBMS 별 수집 도구 :** PostgreSQL(`information_schema`·`pg_catalog`), Oracle(`ALL_*` 딕셔너리 뷰), MySQL·MariaDB(`information_schema`)에 정해진 메타데이터 조회만 보낸다. 결과는 공통 모양(`SourceCatalogSpec`)으로 바꿔 AI-1c 적재로 넘긴다. 입력으로 받은 SQL 은 실행하지 않는다.
@@ -644,7 +644,7 @@ AI·원본 DB 수집 관련 PR 리뷰와 테스트에서 매번 확인한다.
 | U-23 | SQL 정적 검증 | 메타데이터 대조만 / SQL 파서 도입(의존성·지원 DBMS 비교) | 10단계 |
 | U-24 | 식별자 정규화 규칙 | **결정 (2026-11-12, AI-1b)** : 원본 이름은 그대로 저장하고 비교용 이름을 따로 둔다. PostgreSQL 은 따옴표 없는 이름을 소문자, Oracle 은 대문자로 접고 따옴표 식별자는 그대로. MySQL·MariaDB 는 컬럼만 항상 접고 테이블·데이터베이스는 연결에 정한 규칙을 따르며 모르면 합치지 않는다. 따옴표 여부를 모르는 이름은 접지 않는다 ([기록 5장](source-catalog-ai1b.md#5-원본-식별자-정책-u-24)). **보완 재검토** : 수집 경로가 MCP → 내부 JDBC 로 바뀌어도 그대로다 (JDBC 의 카탈로그 조회가 돌려주는 이름도 이미 접힌 이름이다). 다만 내부 도구는 서버 설정(`lower_case_table_names`)을 직접 읽을 수 있으므로 AI-2 에서 MySQL·MariaDB 연결의 비교 규칙을 자동으로 채울 수 있다 | 1단계 |
 | U-25 | 연결 삭제 시 처리 | **결정 (2026-11-12, AI-1b)** : 연결을 지우면 그 연결의 원본 카탈로그(와 AI-1c 의 수집 이력·스냅샷)를 한 트랜잭션에서 모두 지운다 (보존 기간 없음). 물리·논리 모델·데이터 사전은 남긴다. 원본 ↔ 물리 매핑(AI-1d)은 매핑만 해제한다. 프로젝트 영구 삭제도 같다. **보완 재검토** : MCP 서버를 없애도 바뀌지 않는다 (연결이 프로젝트 소유인 것은 같다). 프로젝트 삭제 처리는 `lexorma-source` 가 `ProjectDeletedEvent` 를 직접 받는 방식으로 옮겼다 | 1단계 |
-| U-26 | 부분 실패·부분 결과 처리 | **부분 실패 결정 (2026-11-13, AI-1c)** : 한 실행에서 스키마 하나라도 완전하게 수집하지 못하면 **전체를 반영하지 않는다** (실행 FAILED, `PARTIAL_FAILED` 상태 없음, 대상별 결과만 남김). 요청한 스키마가 없으면 NOT_FOUND 로 실패, 빈 FULL 결과는 실패. **결과 누락 의심 기준(건수 급감 임계값·경고·승인)은 미정** | 임계값 : 2단계 |
+| U-26 | 부분 실패·부분 결과 처리 | **부분 실패 결정 (2026-11-13, AI-1c)** : 한 실행에서 스키마 하나라도 완전하게 수집하지 못하면 **전체를 반영하지 않는다** (실행 FAILED, `PARTIAL_FAILED` 상태 없음, 대상별 결과만 남김). 요청한 스키마가 없으면 NOT_FOUND 로 실패, 빈 FULL 결과는 실패. **결과 누락 의심 기준(건수 급감 임계값·경고·승인)은 미정** — AI-2b 는 직전 반영보다 절반 아래로 줄면 경고 로그만 남기고 막지 않는다 | 임계값 : 2단계 |
 
 ---
 
@@ -684,3 +684,6 @@ README 의 기존 로드맵 항목과 상세 문서의 관계. README 항목은 
 | 2026-11-12 | **AI-1b 아키텍처 보완** : MCP 필수 의존성 제거(`TB_MCP_SRVR`·MCP API 삭제), 원본 DB 연결을 Lexorma 가 직접 JDBC 로 접속하는 설정 모델로 변경(호스트·포트·DB명·계정·암호화 비밀번호·허용 옵션, JDBC URL·드라이버는 서버가 결정), 새 모듈 `lexorma-source`(data 와 서로 의존하지 않음), 내부 도구 계약(`SourceMetadataTool`·`SourceToolExecutor`), API 경로 `/api/source/**`. 원칙 1·9·10 수정, 원칙 11(단일 서버)·12(내부 도구 ↔ AI 도구 구분) 추가. U-01 수정, U-07 재결정(MCP = 후속 선택), U-08 을 JDBC 드라이버 배포로 교체, U-06 방향, U-24·U-25 재검토. 2단계를 'DBMS 별 내부 메타데이터 수집 도구' 로 변경. 기록은 [source-catalog-ai1b.md](source-catalog-ai1b.md) 10장, [source-tool-architecture.md](source-tool-architecture.md) |
 | 2026-11-13 | **AI-1c 구현 반영** : 수집 실행·대상(`TB_SRC_CLCT_EXCN`·`TB_SRC_CLCT_TRGT`), 테이블·스키마 단위 버전(`TB_SRC_TBL_VER`·`TB_SRC_SCHM_VER`, 바뀐 것만), 객체별 변경 이력(`TB_SRC_CHG_HSTRY`), 정규화 JSON·해시, 생성 차수, FULL·PARTIAL 수집과 부분 실패 전체 보류, 멱등성·중복 실행 차단·멈춘 실행 정리, 잠금 순서 통일(프로젝트 → 연결, `ProjectWriteGuard.lock`), 나중에 들어온 참조 대상의 FK 연결(`RFRNC_CTLG_NM` 추가), 과거 상태 조회 API. U-06 방식·U-26 부분 실패 결정. Flyway V0·V1 수정. 기록은 [source-catalog-versioning.md](source-catalog-versioning.md) |
 | 2026-11-13 | **AI-1c 정합성 보완** : 원본 변경 감지를 현재 카탈로그가 아닌 **마지막 확정 버전** 기준으로 바꾸고 현재 카탈로그 복구와 나눔(한 건 단위 Writer 로 바뀐 뒤의 잘못된 버전·이력 생성·누락·삭제 표시 내용 수정), Writer 를 테스트 전용으로 제한(운영 호출 검사), 동시성 테스트를 고정 대기 대신 DB 잠금 대기 확인으로. DB 변경 없음 |
+| 2026-11-13 | **AI-2b PostgreSQL JDBC 수집 구현** : 도구 7개·JDBC 세션(연결 하나, 읽기 전용 REPEATABLE READ, 제한 시간·취소)·접속 대상 주소 정책(`lexorma.source.allowed-networks`, 실제 소켓 확인)·연결 테스트 API(호출 제한)·비동기 수동 최신화·취소 API, 표현식 인덱스 모델(`V2__source_index_expression.sql` : 마이그레이션을 새 버전으로 더하는 방식의 시작), `fail` 의 권한 재확인 실패 처리 보완. 기록은 [source-postgresql-collection-ai2b.md](source-postgresql-collection-ai2b.md) |
+| 2026-11-13 | 개발 순서 조정 반영 (문서만) : AI-2b 배포 패키징 검증 → 데이터 모델링 M-14·M-15 → AI 후속. PostgreSQL VIEW 정의 수집을 AI-2 후속 후보로 기록 (AI-2b 완료 범위는 그대로) |
+| 2026-11-13 | AI-2b 배포 검증 완료 반영 (문서만) : bootJar·Docker 에서 실제 PostgreSQL 연결·수집 확인, 개발 순서의 첫 항목 완료 |

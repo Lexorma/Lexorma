@@ -369,11 +369,18 @@ class SourceCatalogLoader {
             }
             List<SourceCatalogCanonical.Index> indexes = new ArrayList<>();
             for (SourceIndex index : work.indexes) {
-                List<String> members = index.getColumns().stream().sorted(java.util.Comparator.comparing(SourceIndexColumn::getColumnOrder))
-                        .map(member -> member.getSourceColumn().getCompareName()).toList();
+                List<SourceIndexColumn> ordered = index.getColumns().stream().sorted(java.util.Comparator.comparing(SourceIndexColumn::getColumnOrder)).toList();
+                List<String> members = new ArrayList<>();
+                List<String> expressions = new ArrayList<>();
+                List<String> sorts = new ArrayList<>();
+                for (SourceIndexColumn member : ordered) {
+                    members.add(member.getSourceColumn() == null ? null : member.getSourceColumn().getCompareName());
+                    expressions.add(member.getExpression());
+                    sorts.add(member.getSort());
+                }
                 boolean unique = Boolean.TRUE.equals(index.getUniqueIndex());
-                indexes.add(new SourceCatalogCanonical.Index(SourceCatalogCanonical.indexKey(dbType, index.getName(), unique, members), index.getName(), index.getIndexType(),
-                        unique, members));
+                indexes.add(new SourceCatalogCanonical.Index(SourceCatalogCanonical.indexKey(dbType, index.getName(), unique, members, expressions), index.getName(),
+                        index.getIndexType(), unique, members, expressions, sorts, index.getCondition()));
             }
             List<SourceCatalogCanonical.Relation> relations = new ArrayList<>();
             for (SourceRelation relation : work.relations) {
@@ -518,9 +525,13 @@ class SourceCatalogLoader {
             }
             if (work.replaceIndexes) {
                 for (SourceCatalogCanonical.Index item : spec.indexes()) {
-                    SourceIndex index = SourceIndex.builder().projectId(projectId).sourceTable(work.row).name(item.name()).indexType(item.indexType()).uniqueIndex(item.unique()).build();
+                    SourceIndex index = SourceIndex.builder().projectId(projectId).sourceTable(work.row).name(item.name()).indexType(item.indexType()).uniqueIndex(item.unique())
+                            .condition(item.predicate()).build();
                     for (int i = 0; i < item.columns().size(); i++) {
-                        index.getColumns().add(SourceIndexColumn.builder().sourceIndex(index).sourceColumn(columns.get(item.columns().get(i))).columnOrder(i + 1).build());
+                        String column = item.columns().get(i);
+                        index.getColumns().add(SourceIndexColumn.builder().sourceIndex(index).sourceColumn(column == null ? null : columns.get(column))
+                                .expression(item.expressions() == null ? null : item.expressions().get(i)).sort(item.sorts() == null ? null : item.sorts().get(i))
+                                .columnOrder(i + 1).build());
                     }
                     entityManager.persist(index);
                 }

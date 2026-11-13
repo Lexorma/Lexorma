@@ -53,6 +53,10 @@ spring:
 # 원본 DB 연결 (lexorma-source) : 연결을 등록하고 내부 도구가 접속할 수 있는 호스트 범위 (운영자 정책 - SourceHostPolicy)
 # 비우면 제한하지 않는다. 예: LEXORMA_SOURCE_ALLOWED_HOSTS=db1.internal,*.db.internal,10.20.30.40
 #   lexorma.source.allowed-hosts=
+# 접속할 수 있는 사설·루프백 주소 대역 (CIDR, 쉼표). 비우면 사설·루프백으로는 접속하지 않는다. 링크 로컬·클라우드 메타데이터·멀티캐스트는 항상 막는다
+#   LEXORMA_SOURCE_ALLOWED_NETWORKS=10.20.0.0/16,192.168.1.10
+# 수집 실행 제한 (기본값) : 접속 10초, 조회 30초, 수집 전체 10분, 작업 스레드 2·대기열 10, 연결 테스트 계정당 1분 10번 — docs/source-postgresql-collection-ai2b.md 10장
+#   lexorma.source.jdbc.connect-timeout-seconds=10 / query-timeout-seconds=30, lexorma.source.collection.timeout=PT10M / workers=2 / queue-capacity=10
 
 # 운영 기본 로그 레벨 : 필요 시 환경변수로 조정 (예: LOGGING_LEVEL_COM_LEXORMA=DEBUG)
 logging:

@@ -53,15 +53,17 @@ lexorma-app           조립·실행 (bootJar, Flyway, 화면 리소스)
 사용자 요청 (최신화 버튼)        비동기 작업            정기 배치
    └── ExecutionContext.user    └── .async(...)       └── .scheduled(...)
                      \               |               /
-                      SourceToolExecutor.execute(도구 이름, 컨텍스트, 연결 ID, 입력)
+                      SourceToolExecutor.execute(도구 이름, 컨텍스트, 연결 ID, 입력)   ← 도구 하나
+                      SourceToolExecutor.session(컨텍스트, 연결 ID, session -> …)      ← 도구 여러 개, JDBC 연결 하나 (AI-2b)
                         1. 실행 컨텍스트 재검증 (DB) : 프로젝트 존재·활성, 요청자가 지금도 관리자 또는 ADMIN
                            (정기 배치는 요청자가 없어 프로젝트 상태만)
                         2. 연결 : 그 프로젝트의 것만, 사용 중지면 거절
                         3. 접속 범위 : 운영자의 호스트 허용 범위를 실행 시점에 다시 확인
                         4. 도구 : 이름·DBMS 로 찾고 입력 타입 확인 (미지원 DBMS 는 거절)
                         5. SourceToolContext 생성 (JDBC URL = 검증한 항목으로 서버가 조립)
-                      → SourceMetadataTool.execute(context, input)
-                      → (AI-2) 원본 DB 메타데이터 → SourceCollectionSpec(스키마별 완결 여부 + SourceCatalogSpec)
+                      → SourceToolSession.run(도구 이름, 입력) → SourceMetadataTool.execute(context, input)
+                           도구는 context.query(고정 SQL, 값, 행 변환) 로만 읽는다. 첫 조회에서 접속 (주소 정책 → 드라이버 → 읽기 전용 REPEATABLE READ)
+                      → (AI-2b) SourceRefreshService 가 도구 결과를 SourceCollectionSpec(스키마별 완결 여부 + SourceCatalogSpec)으로 묶는다 → 세션 종료(연결 닫음)
                       → (AI-1c) SourceCollectionService.apply : 한 트랜잭션에서 현재 카탈로그·버전·변경 이력 반영 (source-catalog-versioning.md)
 ```
 
@@ -80,15 +82,16 @@ lexorma-app           조립·실행 (bootJar, Flyway, 화면 리소스)
 - **드라이버는 DBMS 마다 정해진 하나**다 (PostgreSQL `org.postgresql.Driver`, Oracle `oracle.jdbc.OracleDriver`, MySQL `com.mysql.cj.jdbc.Driver`, MariaDB `org.mariadb.jdbc.Driver`). 드라이버 클래스를 입력받지 않는다.
 - **연결 옵션은 허용 목록**의 이름·값만 받는다. 지금은 전송 암호화 방식만 연다 (PostgreSQL `sslmode`, MySQL·MariaDB `sslMode`, Oracle 없음). 비밀값·파일 읽기·다른 주소로의 접속·임의 클래스 로딩을 여는 옵션은 받지 않는다.
 - **접속 가능한 호스트**는 운영자가 `LEXORMA_SOURCE_ALLOWED_HOSTS`(이름 또는 `*.` 접미사, 쉼표 구분)로 좁힐 수 있다. 연결을 등록·수정할 때와 도구를 실행하기 직전에 확인한다. 비우면 제한하지 않는다.
-- 타임아웃 기본값 : 접속 10초, 조회 30초 (`SourceToolContext` 의 상수). 실제 적용과 읽기 전용 연결 설정(`setReadOnly`), DNS 해석 결과의 주소 대역 확인은 실제 접속을 만드는 AI-2 에서 한다.
-- 원본 DB 계정은 메타데이터 조회 권한만 가진 읽기 전용 계정을 권한다 (등록 화면·운영 문서에서 안내 — AI-2).
+- 타임아웃 기본값 : 접속 10초, 조회 30초 (`SourceToolContext` 의 상수, `lexorma.source.jdbc.*` 로 바꿀 수 있다). **AI-2b 에서 실제로 적용한다** : 드라이버의 connectTimeout·loginTimeout·socketTimeout, 조회마다 query timeout·서버 statement_timeout, 수집 전체 10분.
+- **접속 주소 (AI-2b, `SourceAddressPolicy`)** : 루프백·사설 대역은 `LEXORMA_SOURCE_ALLOWED_NETWORKS`(CIDR)에 있을 때만, 링크 로컬·메타데이터·멀티캐스트·미지정은 항상 막는다. 드라이버의 소켓(`SourceGuardedSocketFactory`)이 실제로 연결하는 주소를 다시 확인한다 (DNS rebinding). 연결은 읽기 전용(`setReadOnly` + 세션 기본 `default_transaction_read_only=on`) REPEATABLE READ 이고, 드라이버 예외는 오류 코드로만 바꾼다 (`SourceJdbcErrors`) — [AI-2b 기록](source-postgresql-collection-ai2b.md) 2·3장.
+- 원본 DB 계정은 메타데이터 조회 권한만 가진 읽기 전용 계정을 권한다 (PostgreSQL 은 테이블 권한 없이 시스템 카탈로그를 읽는다).
 
 ### 3.4 DBMS 별 확장
 
 ```text
 SourceToolExecutor
    └── SourceToolRegistry.find(도구 이름, DbType)
-          ├── PostgreSQL 구현   (information_schema / pg_catalog)
+          ├── PostgreSQL 구현   (pg_catalog, AI-2b 구현 : tool/postgresql/PostgresSourceTools)
           ├── Oracle 구현       (ALL_* 딕셔너리 뷰)
           ├── MySQL 구현        (information_schema)
           └── MariaDB 구현      (information_schema)
@@ -129,5 +132,5 @@ Source Connector
 | MySQL | `com.mysql:mysql-connector-j` | GPL-2.0 + Universal FOSS Exception | 없음 |
 | Oracle | `com.oracle.database.jdbc:ojdbc11` | Oracle Free Use Terms and Conditions | 없음 |
 
-- 이 보완에서는 드라이버를 더하지 않았다 (실제 접속은 AI-2). 연결 응답의 `driverAvailable` 이 드라이버가 배포본에 있는지 알려 준다.
+- 이 보완에서는 드라이버를 더하지 않았다. AI-2b 도 더하지 않았다 : PostgreSQL 은 이미 있는 드라이버로 접속하고, 다른 DBMS 의 접속은 `SOURCE_DRIVER_NOT_AVAILABLE` 이다. 연결 응답의 `driverAvailable` 이 드라이버가 배포본에 있는지 알려 준다.
 - MySQL·MariaDB·Oracle 드라이버를 기본 배포본에 넣을지, 운영자가 넣게 할지는 라이선스 조건(특히 GPL 계열의 재배포)과 함께 AI-2 착수 전에 정한다.

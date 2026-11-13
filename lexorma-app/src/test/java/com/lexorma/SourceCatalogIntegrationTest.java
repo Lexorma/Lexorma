@@ -326,7 +326,9 @@ class SourceCatalogIntegrationTest {
         assertThatThrownBy(() -> tools.execute(ProbeTool.NAME, ExecutionContext.user(dto(a.manager, a.project)), ora, "x")).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_TOOL_NOT_AVAILABLE));
         assertThatThrownBy(() -> tools.execute(SourceTools.TABLE_DISCOVERY, ExecutionContext.user(dto(a.manager, a.project)), pg, null)).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_TOOL_NOT_AVAILABLE));
         assertThatThrownBy(() -> tools.execute(ProbeTool.NAME, ExecutionContext.user(dto(a.manager, a.project)), pg, 42)).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_TOOL_NOT_AVAILABLE));
-        assertThat(registry.names(DbType.POSTGRESQL)).containsExactly(ProbeTool.NAME);
+        // AI-2b : PostgreSQL 은 수집 도구 7개가 있다 (이름은 AI-1b 의 계약 그대로)
+        assertThat(registry.names(DbType.POSTGRESQL)).containsExactlyInAnyOrder(ProbeTool.NAME, SourceTools.CONNECTION_TEST, SourceTools.SCHEMA_DISCOVERY,
+                SourceTools.TABLE_DISCOVERY, SourceTools.COLUMN_DISCOVERY, SourceTools.CONSTRAINT_DISCOVERY, SourceTools.INDEX_DISCOVERY, SourceTools.RELATIONSHIP_DISCOVERY);
         assertThat(registry.names(DbType.ORACLE)).isEmpty();
         // 사용 중지된 연결, 다른 프로젝트의 연결, 없는 연결
         assertThatThrownBy(() -> tools.execute(ProbeTool.NAME, ExecutionContext.user(dto(a.manager, a.project)), off, "x")).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_TOOL_NOT_AVAILABLE));

@@ -57,7 +57,7 @@
 | `TB_SRC_TBL` | 테이블·뷰(`TBL_TYPE_CD`). 원본 이름, 비교용 이름, 따옴표 여부(알 때만), 원본 COMMENT(`ANTN_CN`), 내용 해시 자리(`HASH_VL`, AI-1c 가 채운다), 원본 존재 여부(`EXST_YN`) |
 | `TB_SRC_COL` | 컬럼. 원본 순서, **DBMS 가 준 타입 표현 그대로**(`character varying(320)`, `text[]`), 길이·정밀도·소수 자릿수, NULL 허용, 기본값 표현식 원문(`TEXT`), 원본 COMMENT |
 | `TB_SRC_CNSTRT`, `_COL` | PK·UNIQUE·CHECK. 원본 이름, 구성 컬럼(순서대로), CHECK 조건식 원문(`TEXT`) |
-| `TB_SRC_IDX`, `_COL` | 인덱스. 이름, 방식(원본 표현), 고유 여부, 구성 컬럼(순서대로) |
+| `TB_SRC_IDX`, `_COL` | 인덱스. 이름, 방식(원본 표현), 고유 여부, 부분 인덱스 조건(`CND_CN`, AI-2b), 구성 요소(순서대로 : 컬럼 또는 표현식 `EXPR_CN`, 정렬 `SORT_CD`, AI-2b) |
 | `TB_SRC_REL`, `_COL` | FK. 참조하는 테이블, 참조되는 테이블(다른 스키마 가능), 컬럼 쌍(순서대로), 삭제·수정 규칙(원본 표현) |
 
 - 표준 용어와 이어 두지 않는다. 뷰의 정의 SQL 은 저장하지 않는다.
@@ -70,7 +70,7 @@
 
 임의로 바꿔 넣지 않고 받지 않거나 버리지 않는 쪽을 택했다.
 
-- 표현식·함수 기반 인덱스의 표현식, 인덱스 컬럼의 정렬 방향(ASC·DESC)·부분 인덱스 조건·INCLUDE 컬럼 : 자리가 없다. 컬럼으로 이루어진 구성만 저장한다.
+- ~~표현식·함수 기반 인덱스의 표현식, 인덱스 컬럼의 정렬 방향(ASC·DESC)·부분 인덱스 조건·INCLUDE 컬럼~~ : **AI-2b 에서 더했다** (`V2__source_index_expression.sql`, [기록 5장](source-postgresql-collection-ai2b.md#5-표현식-인덱스-모델-v2-마이그레이션)). 인덱스 연산자 클래스·콜레이션은 여전히 담지 않는다.
 - 제약조건의 지연 여부(DEFERRABLE)·검증 여부, FK 의 MATCH 방식.
 - 뷰 정의 SQL, Materialized View·Sequence·Synonym·Partition·Trigger·Procedure·Function (로드맵 U-21).
 - 컬럼의 문자 집합·콜레이션, 자동 증가·생성 컬럼 표시 (타입 표현이나 기본값 원문에 들어 있으면 그 글자로만 남는다).

@@ -4,6 +4,8 @@
 --  * 테이블 : JPA 엔티티 기준 + 로그인 세션(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES : spring-session-jdbc 고정 스키마)
 --  * COMMENT : 테이블 = 한글명, 컬럼 = 한글 용어 (V1 의 예제 물리 모델과 같다)
 -- PostgreSQL / H2 양쪽에 같이 반영한다 (세션 속성 컬럼 타입만 다르다).
+-- 2026-11-13 : 예전 V2~V6 의 스키마 변경(원본 인덱스 표현식, 인덱스 관리 M-14, VIEW 관리 M-15)을 이 파일에 합쳤다.
+--   TABLE·VIEW 이름은 스키마 안에서 하나다 (UX_TBL_01·UX_VIEW_01 = SCHM_SN + 이름, 같은 스키마의 TABLE·VIEW 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 막는다).
 -- =====================================================================
 
 -- ---------- 시퀀스 ----------
@@ -30,6 +32,11 @@ create sequence SQ_TBL_IDX start with 1 increment by 50;
 create sequence SQ_TBL_IDX_COL start with 1 increment by 50;
 create sequence SQ_TBL_CNSTRT start with 1 increment by 50;
 create sequence SQ_TBL_CNSTRT_COL start with 1 increment by 50;
+create sequence SQ_IDX_CHG_DMND start with 1 increment by 50;
+create sequence SQ_VIEW start with 1 increment by 50;
+create sequence SQ_VIEW_COL start with 1 increment by 50;
+create sequence SQ_VIEW_RFRNC start with 1 increment by 50;
+create sequence SQ_VIEW_CHG_DMND start with 1 increment by 50;
 create sequence SQ_ERD_LYT start with 1 increment by 50;
 create sequence SQ_LGCL_MDL start with 1 increment by 50;
 create sequence SQ_LGCL_ENTT start with 1 increment by 50;
@@ -281,7 +288,8 @@ create table TB_STD_TRM_WORD (
 
 -- ---------- 물리 모델 (스키마 → 테이블 → 컬럼, 관계·인덱스·제약조건) ----------
 
--- 스키마 : 프로젝트마다 기본 스키마 1개 (DDL 에 스키마명을 붙이지 않는다). 스키마명은 프로젝트 안에서 중복 불가
+-- 스키마 : 프로젝트마다 기본 스키마 1개 (DDL 에 스키마명을 붙이지 않는다). 스키마명은 프로젝트 안에서 중복 불가.
+-- 테이블·VIEW 의 이름 공간 단위이기도 하다 (SCHM_SN 은 프로젝트 전체에서 유일한 내부 ID)
 create table TB_SCHM (
     SCHM_SN bigint not null,
     PRJ_SN bigint not null,
@@ -295,7 +303,7 @@ create table TB_SCHM (
     constraint PK_SCHM primary key (SCHM_SN)
 );
 
--- 테이블
+-- 테이블 : 내부 ID(TBL_SN)로 식별하고, 이름(TBL_NM)은 스키마 안에서 하나다 (UX_TBL_01). 다른 스키마에는 같은 이름이 있을 수 있다
 create table TB_TBL (
     TBL_SN bigint not null,
     PRJ_SN bigint not null,
@@ -406,15 +414,39 @@ create table TB_TBL_IDX (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    -- 출처 (M-14 D-19) : USER(사용자 정의) / COLUMN(컬럼의 인덱스 여부에서 만든 인덱스, DRVN_COL_SN = 그 컬럼)
+    IDX_SRC_CD varchar(20) not null,
+    DRVN_COL_SN bigint,
+    -- WHERE 조건 (M-14 2차, PostgreSQL 부분 인덱스)
+    CND_CN TEXT,
     constraint PK_TBL_IDX primary key (IDX_SN)
 );
 
+-- 인덱스 구성 요소 : 컬럼(COL_SN) 또는 표현식(EXPR_CN) 하나. SORT_CD = null(ASC) / DESC / DESC NULLS LAST / NULLS FIRST / INCLUDE(키가 아닌 포함 컬럼)
 create table TB_TBL_IDX_COL (
     IDX_COL_SN bigint not null,
     IDX_SN bigint not null,
-    COL_SN bigint not null,
+    COL_SN bigint,
     COL_ORD integer not null,
+    EXPR_CN TEXT,
+    SORT_CD varchar(20),
     constraint PK_TBL_IDX_COL primary key (IDX_COL_SN)
+);
+
+-- 승인된 인덱스의 변경 요청 (M-14 D-20)
+-- DMND_STTS_CD : REQUESTED / APPROVED / REJECTED, 요청자·요청 일시 = RGTR_ID·REG_DT, 처리자·처리 일시 = MDFR_ID·MDFCN_DT
+create table TB_IDX_CHG_DMND (
+    IDX_CHG_DMND_SN bigint not null,
+    PRJ_SN bigint not null,
+    IDX_SN bigint not null,
+    CHG_BFR_CN TEXT not null,
+    CHG_AFTR_CN TEXT not null,
+    DMND_STTS_CD varchar(20) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_IDX_CHG_DMND primary key (IDX_CHG_DMND_SN)
 );
 
 -- 테이블 제약조건 (CNSTRT_TYPE_CD : UNIQUE / CHECK)
@@ -439,6 +471,61 @@ create table TB_TBL_CNSTRT_COL (
     COL_SN bigint not null,
     COL_ORD integer not null,
     constraint PK_TBL_CNSTRT_COL primary key (CNSTRT_COL_SN)
+);
+
+-- VIEW (M-15) : 테이블 모델과 독립. 내부 ID(VIEW_SN)로 식별하고, 이름은 스키마 안에서 TABLE 이름과 같은 이름 공간이다
+-- (대문자 저장, UX_VIEW_01 = 스키마 + 이름, TABLE 과의 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 확인한다)
+-- VIEW_DFN_CN : CREATE VIEW … AS 뒤의 조회 문 원문 (실행하지 않는다)
+create table TB_VIEW (
+    VIEW_SN bigint not null,
+    PRJ_SN bigint not null,
+    SCHM_SN bigint not null,
+    VIEW_NM varchar(255) not null,
+    VIEW_KORN_NM varchar(255),
+    VIEW_EXPLN varchar(1000),
+    VIEW_DFN_CN TEXT not null,
+    APRV_YN boolean,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_VIEW primary key (VIEW_SN)
+);
+-- 출력 컬럼 : 사용자가 관리하는 메타데이터 (정의 SQL 에서 추출하지 않는다)
+create table TB_VIEW_COL (
+    VIEW_COL_SN bigint not null,
+    VIEW_SN bigint not null,
+    COL_NM varchar(255) not null,
+    COL_KORN_NM varchar(255),
+    DATA_TYPE_NM varchar(255),
+    COL_ORD integer not null,
+    COL_EXPLN varchar(255),
+    constraint PK_VIEW_COL primary key (VIEW_COL_SN)
+);
+-- 참조 객체 : RFRNC_TYPE_CD TABLE / VIEW. 내부 참조는 RFRNC_TBL_SN 또는 RFRNC_VIEW_SN, 모델에 없는 객체(미확인)는 두 ID 가 비고 RFRNC_SCHM_NM·RFRNC_TRGT_NM 만 둔다
+create table TB_VIEW_RFRNC (
+    VIEW_RFRNC_SN bigint not null,
+    VIEW_SN bigint not null,
+    RFRNC_TYPE_CD varchar(20) not null,
+    RFRNC_TBL_SN bigint,
+    RFRNC_VIEW_SN bigint,
+    RFRNC_SCHM_NM varchar(255),
+    RFRNC_TRGT_NM varchar(255),
+    constraint PK_VIEW_RFRNC primary key (VIEW_RFRNC_SN)
+);
+-- 승인된 VIEW 의 변경 요청 : 변경 전·후 정의 전체(기본 정보·정의 SQL·출력 컬럼·참조 객체) JSON. DMND_STTS_CD : REQUESTED / APPROVED / REJECTED
+create table TB_VIEW_CHG_DMND (
+    VIEW_CHG_DMND_SN bigint not null,
+    PRJ_SN bigint not null,
+    VIEW_SN bigint not null,
+    CHG_BFR_CN TEXT not null,
+    CHG_AFTR_CN TEXT not null,
+    DMND_STTS_CD varchar(20) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_VIEW_CHG_DMND primary key (VIEW_CHG_DMND_SN)
 );
 
 -- 물리 ERD 레이아웃 : 사용자 × 프로젝트 1건 (물리 모델과 분리).
@@ -567,7 +654,7 @@ create table TB_LGCL_ERD_LYT (
 -- ---------- 인덱스 ----------
 
 create unique index UX_SCHM_01 on TB_SCHM (PRJ_SN, SCHM_NM);
-create index IX_TBL_01 on TB_TBL (SCHM_SN);
+create unique index UX_TBL_01 on TB_TBL (SCHM_SN, TBL_NM);
 create index IX_CMN_COL_01 on TB_CMN_COL (PRJ_SN);
 create index IX_TBL_REL_01 on TB_TBL_REL (PRJ_SN);
 create index IX_TBL_REL_02 on TB_TBL_REL (ORGNL_TBL_SN);
@@ -577,11 +664,20 @@ create unique index UX_TBL_REL_COL_01 on TB_TBL_REL_COL (REL_SN, COL_ORD);
 create index IX_TBL_REL_COL_01 on TB_TBL_REL_COL (ORGNL_COL_SN);
 create index IX_TBL_REL_COL_02 on TB_TBL_REL_COL (TRGT_COL_SN);
 create index IX_TBL_IDX_01 on TB_TBL_IDX (TBL_SN);
+create unique index UX_TBL_IDX_01 on TB_TBL_IDX (DRVN_COL_SN);
 create unique index UX_TBL_IDX_COL_01 on TB_TBL_IDX_COL (IDX_SN, COL_ORD);
 create index IX_TBL_IDX_COL_01 on TB_TBL_IDX_COL (COL_SN);
 create index IX_TBL_CNSTRT_01 on TB_TBL_CNSTRT (TBL_SN);
 create unique index UX_TBL_CNSTRT_COL_01 on TB_TBL_CNSTRT_COL (CNSTRT_SN, COL_ORD);
 create index IX_TBL_CNSTRT_COL_01 on TB_TBL_CNSTRT_COL (COL_SN);
+create index IX_IDX_CHG_DMND_01 on TB_IDX_CHG_DMND (IDX_SN, DMND_STTS_CD);
+create unique index UX_VIEW_01 on TB_VIEW (SCHM_SN, VIEW_NM);
+create unique index UX_VIEW_COL_01 on TB_VIEW_COL (VIEW_SN, COL_ORD);
+create unique index UX_VIEW_RFRNC_01 on TB_VIEW_RFRNC (VIEW_SN, RFRNC_TBL_SN);
+create unique index UX_VIEW_RFRNC_02 on TB_VIEW_RFRNC (VIEW_SN, RFRNC_VIEW_SN);
+create index IX_VIEW_RFRNC_01 on TB_VIEW_RFRNC (RFRNC_TBL_SN);
+create index IX_VIEW_RFRNC_02 on TB_VIEW_RFRNC (RFRNC_VIEW_SN);
+create index IX_VIEW_CHG_DMND_01 on TB_VIEW_CHG_DMND (VIEW_SN, DMND_STTS_CD);
 create unique index UX_ERD_LYT_01 on TB_ERD_LYT (PRJ_SN, ACNT_SN);
 create unique index UX_LGCL_MDL_01 on TB_LGCL_MDL (PRJ_SN, MDL_NM);
 create unique index UX_LGCL_ENTT_01 on TB_LGCL_ENTT (LGCL_MDL_SN, ENTT_NM);
@@ -627,6 +723,14 @@ alter table TB_TBL_IDX_COL add constraint FK_TBL_IDX_COL_02 foreign key (COL_SN)
 alter table TB_TBL_CNSTRT add constraint FK_TBL_CNSTRT_01 foreign key (TBL_SN) references TB_TBL on delete cascade;
 alter table TB_TBL_CNSTRT_COL add constraint FK_TBL_CNSTRT_COL_01 foreign key (CNSTRT_SN) references TB_TBL_CNSTRT on delete cascade;
 alter table TB_TBL_CNSTRT_COL add constraint FK_TBL_CNSTRT_COL_02 foreign key (COL_SN) references TB_COL;
+alter table TB_IDX_CHG_DMND add constraint FK_IDX_CHG_DMND_01 foreign key (IDX_SN) references TB_TBL_IDX on delete cascade;
+-- VIEW 의 참조 대상(TABLE·VIEW)은 CASCADE 하지 않는다 : 참조하는 VIEW 가 있으면 삭제를 막는다 (서비스가 먼저 알린다)
+alter table TB_VIEW add constraint FK_VIEW_01 foreign key (SCHM_SN) references TB_SCHM;
+alter table TB_VIEW_COL add constraint FK_VIEW_COL_01 foreign key (VIEW_SN) references TB_VIEW on delete cascade;
+alter table TB_VIEW_RFRNC add constraint FK_VIEW_RFRNC_01 foreign key (VIEW_SN) references TB_VIEW on delete cascade;
+alter table TB_VIEW_RFRNC add constraint FK_VIEW_RFRNC_02 foreign key (RFRNC_TBL_SN) references TB_TBL;
+alter table TB_VIEW_RFRNC add constraint FK_VIEW_RFRNC_03 foreign key (RFRNC_VIEW_SN) references TB_VIEW;
+alter table TB_VIEW_CHG_DMND add constraint FK_VIEW_CHG_DMND_01 foreign key (VIEW_SN) references TB_VIEW on delete cascade;
 -- 논리 모델 : 삭제 순서는 서비스가 정한다 (엔터티는 관계가 없을 때만, 속성은 식별자에 쓰이지 않을 때만) - CASCADE 없음
 alter table TB_LGCL_ENTT add constraint FK_LGCL_ENTT_01 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
 alter table TB_LGCL_ATRB add constraint FK_LGCL_ATRB_01 foreign key (LGCL_ENTT_SN) references TB_LGCL_ENTT;
@@ -1045,12 +1149,29 @@ comment on column TB_TBL_IDX.REG_DT is '등록 일시';
 comment on column TB_TBL_IDX.MDFCN_DT is '수정 일시';
 comment on column TB_TBL_IDX.RGTR_ID is '등록자 아이디';
 comment on column TB_TBL_IDX.MDFR_ID is '수정자 아이디';
+comment on column TB_TBL_IDX.IDX_SRC_CD is '인덱스 출처 코드';
+comment on column TB_TBL_IDX.DRVN_COL_SN is '파생 컬럼 일련번호';
+comment on column TB_TBL_IDX.CND_CN is '조건 내용';
 
 comment on table TB_TBL_IDX_COL is '테이블 인덱스 컬럼';
 comment on column TB_TBL_IDX_COL.IDX_COL_SN is '인덱스 컬럼 일련번호';
 comment on column TB_TBL_IDX_COL.IDX_SN is '인덱스 일련번호';
 comment on column TB_TBL_IDX_COL.COL_SN is '컬럼 일련번호';
 comment on column TB_TBL_IDX_COL.COL_ORD is '컬럼 순서';
+comment on column TB_TBL_IDX_COL.EXPR_CN is '표현식 내용';
+comment on column TB_TBL_IDX_COL.SORT_CD is '정렬 코드';
+
+comment on table TB_IDX_CHG_DMND is '인덱스 변경 요청';
+comment on column TB_IDX_CHG_DMND.IDX_CHG_DMND_SN is '인덱스 변경 요청 일련번호';
+comment on column TB_IDX_CHG_DMND.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_IDX_CHG_DMND.IDX_SN is '인덱스 일련번호';
+comment on column TB_IDX_CHG_DMND.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_IDX_CHG_DMND.CHG_AFTR_CN is '변경 이후 내용';
+comment on column TB_IDX_CHG_DMND.DMND_STTS_CD is '요청 상태 코드';
+comment on column TB_IDX_CHG_DMND.REG_DT is '등록 일시';
+comment on column TB_IDX_CHG_DMND.MDFCN_DT is '수정 일시';
+comment on column TB_IDX_CHG_DMND.RGTR_ID is '등록자 아이디';
+comment on column TB_IDX_CHG_DMND.MDFR_ID is '수정자 아이디';
 
 comment on table TB_TBL_CNSTRT is '테이블 제약조건';
 comment on column TB_TBL_CNSTRT.CNSTRT_SN is '제약조건 일련번호';
@@ -1070,6 +1191,47 @@ comment on column TB_TBL_CNSTRT_COL.CNSTRT_COL_SN is '제약조건 컬럼 일련
 comment on column TB_TBL_CNSTRT_COL.CNSTRT_SN is '제약조건 일련번호';
 comment on column TB_TBL_CNSTRT_COL.COL_SN is '컬럼 일련번호';
 comment on column TB_TBL_CNSTRT_COL.COL_ORD is '컬럼 순서';
+
+comment on table TB_VIEW is '뷰';
+comment on column TB_VIEW.VIEW_SN is '뷰 일련번호';
+comment on column TB_VIEW.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_VIEW.SCHM_SN is '스키마 일련번호';
+comment on column TB_VIEW.VIEW_NM is '뷰 명';
+comment on column TB_VIEW.VIEW_KORN_NM is '뷰 한글 명';
+comment on column TB_VIEW.VIEW_EXPLN is '뷰 설명';
+comment on column TB_VIEW.VIEW_DFN_CN is '뷰 정의 내용';
+comment on column TB_VIEW.APRV_YN is '승인 여부';
+comment on column TB_VIEW.REG_DT is '등록 일시';
+comment on column TB_VIEW.MDFCN_DT is '수정 일시';
+comment on column TB_VIEW.RGTR_ID is '등록자 아이디';
+comment on column TB_VIEW.MDFR_ID is '수정자 아이디';
+comment on table TB_VIEW_COL is '뷰 컬럼';
+comment on column TB_VIEW_COL.VIEW_COL_SN is '뷰 컬럼 일련번호';
+comment on column TB_VIEW_COL.VIEW_SN is '뷰 일련번호';
+comment on column TB_VIEW_COL.COL_NM is '컬럼 명';
+comment on column TB_VIEW_COL.COL_KORN_NM is '컬럼 한글 명';
+comment on column TB_VIEW_COL.DATA_TYPE_NM is '자료 유형 명';
+comment on column TB_VIEW_COL.COL_ORD is '컬럼 순서';
+comment on column TB_VIEW_COL.COL_EXPLN is '컬럼 설명';
+comment on table TB_VIEW_RFRNC is '뷰 참조';
+comment on column TB_VIEW_RFRNC.VIEW_RFRNC_SN is '뷰 참조 일련번호';
+comment on column TB_VIEW_RFRNC.VIEW_SN is '뷰 일련번호';
+comment on column TB_VIEW_RFRNC.RFRNC_TYPE_CD is '참조 유형 코드';
+comment on column TB_VIEW_RFRNC.RFRNC_TBL_SN is '참조 테이블 일련번호';
+comment on column TB_VIEW_RFRNC.RFRNC_VIEW_SN is '참조 뷰 일련번호';
+comment on column TB_VIEW_RFRNC.RFRNC_SCHM_NM is '참조 스키마 명';
+comment on column TB_VIEW_RFRNC.RFRNC_TRGT_NM is '참조 대상 명';
+comment on table TB_VIEW_CHG_DMND is '뷰 변경 요청';
+comment on column TB_VIEW_CHG_DMND.VIEW_CHG_DMND_SN is '뷰 변경 요청 일련번호';
+comment on column TB_VIEW_CHG_DMND.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_VIEW_CHG_DMND.VIEW_SN is '뷰 일련번호';
+comment on column TB_VIEW_CHG_DMND.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_VIEW_CHG_DMND.CHG_AFTR_CN is '변경 이후 내용';
+comment on column TB_VIEW_CHG_DMND.DMND_STTS_CD is '요청 상태 코드';
+comment on column TB_VIEW_CHG_DMND.REG_DT is '등록 일시';
+comment on column TB_VIEW_CHG_DMND.MDFCN_DT is '수정 일시';
+comment on column TB_VIEW_CHG_DMND.RGTR_ID is '등록자 아이디';
+comment on column TB_VIEW_CHG_DMND.MDFR_ID is '수정자 아이디';
 
 comment on table TB_ERD_LYT is 'ERD 레이아웃';
 comment on column TB_ERD_LYT.ERD_LYT_SN is 'ERD 레이아웃 일련번호';
@@ -1346,15 +1508,19 @@ create table TB_SRC_IDX (
     IDX_NM varchar(255) not null,
     IDX_TYPE_NM varchar(255),
     UNQ_YN boolean not null,
+    -- 부분 인덱스 조건 (AI-2b)
+    CND_CN TEXT,
     constraint PK_SRC_IDX primary key (SRC_IDX_SN)
 );
 
--- 출처 인덱스 컬럼
+-- 출처 인덱스 컬럼 : 컬럼 또는 표현식(EXPR_CN, 출처 컬럼 없음) 하나 (AI-2b)
 create table TB_SRC_IDX_COL (
     SRC_IDX_COL_SN bigint not null,
     SRC_IDX_SN bigint not null,
-    SRC_COL_SN bigint not null,
+    SRC_COL_SN bigint,
     COL_ORD integer not null,
+    EXPR_CN TEXT,
+    SORT_CD varchar(20),
     constraint PK_SRC_IDX_COL primary key (SRC_IDX_COL_SN)
 );
 
@@ -1515,11 +1681,14 @@ comment on column TB_SRC_IDX.SRC_TBL_SN is '출처 테이블 일련번호';
 comment on column TB_SRC_IDX.IDX_NM is '인덱스 명';
 comment on column TB_SRC_IDX.IDX_TYPE_NM is '인덱스 유형 명';
 comment on column TB_SRC_IDX.UNQ_YN is '고유 여부';
+comment on column TB_SRC_IDX.CND_CN is '조건 내용';
 comment on table TB_SRC_IDX_COL is '출처 인덱스 컬럼';
 comment on column TB_SRC_IDX_COL.SRC_IDX_COL_SN is '출처 인덱스 컬럼 일련번호';
 comment on column TB_SRC_IDX_COL.SRC_IDX_SN is '출처 인덱스 일련번호';
 comment on column TB_SRC_IDX_COL.SRC_COL_SN is '출처 컬럼 일련번호';
 comment on column TB_SRC_IDX_COL.COL_ORD is '컬럼 순서';
+comment on column TB_SRC_IDX_COL.EXPR_CN is '표현식 내용';
+comment on column TB_SRC_IDX_COL.SORT_CD is '정렬 코드';
 comment on table TB_SRC_REL is '출처 관계';
 comment on column TB_SRC_REL.SRC_REL_SN is '출처 관계 일련번호';
 comment on column TB_SRC_REL.PRJ_SN is '프로젝트 일련번호';

@@ -1,6 +1,7 @@
 package com.lexorma.core.login.controller;
 
 import com.lexorma.core.project.repository.ProjectRepository;
+import com.lexorma.core.project.service.ProjectAuthority;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.core.security.repository.UserRepository;
 import com.lexorma.core.security.service.MenuAuthorization;
@@ -43,6 +44,7 @@ public class AuthRestController {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final UserService userService;
+    private final ProjectAuthority projectAuthority;
 
     @Operation(summary = "현재 로그인 정보", description = "로그인하지 않았으면 authenticated=false 를 반환합니다. 메뉴 노출 여부와 승인 권한을 함께 반환합니다.")
     @GetMapping("/me")
@@ -87,6 +89,9 @@ public class AuthRestController {
         // 그리드의 소문자 버튼(승인 등) / 관리자 전용 동작 노출 여부.
         // 승인·관리 API 는 모두 USER 이상이라, 역할이 VIEWER 이하인 프로젝트 관리자에게는 버튼을 보이지 않는다 (눌러도 403)
         body.put("approvalAvailable", menuAuthorization.hasRole("USER") && AuthUtil.isApprovalAvailable());
+        // 프로젝트 설정(원본 DB 연결·수집 등)을 바꿀 수 있는지 : 그 프로젝트의 관리자 또는 ADMIN (ProjectAuthority.canManage, 서버 확인과 같은 기준).
+        // 역할 조건(USER 이상)은 버튼마다 menus 의 …-manage 로 함께 본다
+        body.put("projectManageable", !recovery && projectAuthority.canManage(accountDto.getProjectId(), Long.valueOf(accountDto.getId())));
         return ResponseEntity.ok(body);
     }
 

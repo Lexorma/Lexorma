@@ -417,5 +417,77 @@ final class EnglishMessages {
         add("필수", "Required");
         add("선택", "Optional");
         add("주 식별자", "Primary identifier");
+
+        // VIEW 관리 (M-15)
+        add("CREATE VIEW 문 전체가 아니라 AS 뒤의 조회 문(SELECT / WITH …)만 입력해주세요.", "Enter only the query after AS (SELECT / WITH …), not the whole CREATE VIEW statement.");
+        add("VIEW {0} 이(가) 이 VIEW 를 참조합니다. 그 VIEW 의 참조 객체에서 먼저 빼주세요.", "VIEW {0} references this view. Remove it from that view's referenced objects first.");
+        add("VIEW {0} 이(가) 참조하는 테이블입니다. VIEW 의 참조 객체에서 먼저 빼주세요.", "The table is referenced by VIEW {0}. Remove it from the view's referenced objects first.");
+        add("VIEW 는 자기 자신을 참조할 수 없습니다.", "A view cannot reference itself.");
+        add("VIEW 정의가 없습니다.", "The view definition is missing.");
+        add("{0} : {1} 의 VIEW 에는 COMMENT 를 붙일 수 없어 논리명을 넣지 않았습니다.", "{0}: {1} views do not support COMMENT, so the logical name was not added.");
+        add("{0} : 같은 이름의 테이블이 있습니다. 테이블과 VIEW 는 같은 이름을 쓸 수 없습니다.", "{0}: a table with the same name exists. A table and a view cannot share a name.");
+        add("{0} : 정의 SQL 이 {1} 기준 검사를 통과하지 않아 원문 그대로 넣었습니다.", "{0}: the definition SQL did not pass the {1} check, so it was added as written.");
+        add("{0} {1} 은(는) SQL 예약어라 쓸 수 없습니다.", "{0} {1} is an SQL reserved word and cannot be used.");
+        add("{0} {1} 은(는) 영문자·숫자·_·$ 로 된 63자 이내의 이름이어야 하고 영문자나 _ 로 시작해야 합니다.", "{0} {1} must be up to 63 letters, digits, _ or $ and start with a letter or _.");
+        add("{0} {1} 의 형식이 올바르지 않습니다. (공백·따옴표·마침표 없이 255자 이내)", "{0} {1} is not valid. (Up to 255 characters without spaces, quotes or periods)");
+        add("{0} 에 VIEW 가 있습니다.", "{0} has views.");
+        add("{0} 은(는) 모델에 있는 객체입니다. 목록에서 골라 내부 참조로 연결해주세요.", "{0} exists in the model. Choose it from the list to link it as an internal reference.");
+        add("같은 참조 객체가 두 번 들어 있습니다 : {0}", "The same referenced object appears twice: {0}");
+        add("모델에 없는(미확인) 참조 객체가 있어 생성 순서를 보장하지 않습니다 : {0}", "Some referenced objects are not in the model (unresolved), so the creation order is not guaranteed: {0}");
+        add("순환 참조가 됩니다 : {0}", "This creates a circular reference: {0}");
+        add("순환 참조가 있어 생성 순서를 정할 수 없는 VIEW 가 있습니다 : {0}", "The creation order of some views cannot be determined because of circular references: {0}");
+        add("승인 대기 중인 변경 요청은 DDL 에 반영하지 않았습니다 (확정된 정의 기준).", "Pending change requests are not reflected in the DDL (based on the confirmed definition).");
+        add("요청 뒤에 VIEW 가 바뀌었습니다. 요청을 반려하고 다시 요청해주세요.", "The view changed after the request. Reject the request and request again.");
+        add("이 스크립트 밖의 VIEW 를 참조합니다 (먼저 만들어야 합니다) : {0}", "References views outside this script (create them first): {0}");
+        add("정의 SQL 에 조회가 아닌 명령({0})이 들어 있습니다. 조회 문만 입력해주세요.", "The definition SQL contains a non-query command ({0}). Enter a query only.");
+        add("정의 SQL 에는 문장 하나만 입력할 수 있습니다. (; 뒤에 다른 문장이 있습니다)", "The definition SQL can contain only one statement. (There is another statement after ;)");
+        add("정의 SQL 은 SELECT 또는 WITH 로 시작하는 조회 문이어야 합니다.", "The definition SQL must be a query starting with SELECT or WITH.");
+        add("정의 SQL 은 {0}자까지 입력할 수 있습니다.", "The definition SQL can be up to {0} characters.");
+        add("정의 SQL 을 입력해주세요.", "Enter the definition SQL.");
+        add("정의 SQL 의 괄호 짝이 맞지 않습니다.", "The parentheses in the definition SQL do not match.");
+        add("정의 SQL 의 따옴표나 주석(/* */)이 닫히지 않았습니다.", "A quote or comment (/* */) in the definition SQL is not closed.");
+        add("참조 객체 유형은 TABLE / VIEW 중 하나입니다.", "The referenced object type must be TABLE or VIEW.");
+        add("참조 객체 유형이 대상과 맞지 않습니다.", "The referenced object type does not match the target.");
+        add("참조 객체 정보가 없습니다.", "The referenced object is missing.");
+        add("참조 객체는 {0}개까지 등록할 수 있습니다.", "Up to {0} referenced objects can be registered.");
+        add("참조 객체는 테이블과 VIEW 중 하나만 지정합니다.", "A referenced object is either a table or a view.");
+        add("참조 객체를 고르거나, 모델에 없는 객체면 이름을 입력해주세요.", "Choose a referenced object, or enter its name if it is not in the model.");
+        add("참조할 VIEW 를 찾을 수 없습니다. (#{0})", "The view to reference was not found. (#{0})");
+        add("참조할 테이블을 찾을 수 없습니다. (#{0})", "The table to reference was not found. (#{0})");
+        add("출력 컬럼 {0}", "Output column {0}");
+        add("출력 컬럼 정보가 없습니다.", "The output column is missing.");
+        add("출력 컬럼은 {0}개까지 등록할 수 있습니다.", "Up to {0} output columns can be registered.");
+        add("VIEW : {0}", "View: {0}");
+        add("VIEW명", "View name");
+        add("출력 컬럼명", "Output column name");
+        add("논리명", "Logical name");
+        add("컬럼 논리명", "Column logical name");
+        add("참조 객체명", "Referenced object name");
+        add("참조 스키마명", "Referenced schema name");
+        add("{0} : 요청 뒤에 같은 이름의 테이블·VIEW 가 등록되어 승인할 수 없습니다. 요청을 반려하고 다른 이름으로 다시 요청해주세요.", "{0}: a table or view with this name was registered after the request, so it cannot be approved. Reject the request and request again with another name.");
+
+        // 통합 DDL Export (M-11)
+        add("이 스크립트 밖의 테이블을 참조합니다 (대상 DB 에 먼저 있어야 합니다) : {0}", "References tables outside this script (they must already exist in the target DB): {0}");
+        add("{0} : Oracle 의 스키마는 사용자(계정)라 이 스크립트에서 만들지 않습니다.", "{0}: in Oracle a schema is a user (account), so this script does not create it.");
+        add("Oracle 은 스키마가 사용자(계정)라 CREATE SCHEMA 를 넣지 않았습니다. 대상 스키마 사용자를 먼저 만들어야 합니다.", "In Oracle a schema is a user (account), so CREATE SCHEMA was not added. Create the schema users first.");
+        add("{0} : 컬럼이 없어 CREATE TABLE 을 만들 수 없습니다.", "{0}: CREATE TABLE cannot be generated because the table has no columns.");
+        add("이 스크립트 밖의 테이블을 참조하는 FK 가 있습니다 (대상 DB 에 먼저 있어야 합니다) : {0}", "Some foreign keys reference tables outside this script (they must already exist in the target DB): {0}");
+        add("VIEW 생성 순서는 등록된 참조 정보 기준입니다. 정의 SQL 이 실제로 참조하는 객체와 다르면 실행이 실패할 수 있습니다.", "The view creation order is based on the registered references. If the definition SQL references other objects, execution may fail.");
+        add("승인 대기 중인 VIEW 변경 요청 {0}건은 반영하지 않았습니다 (확정된 정의 기준).", "{0} pending view change request(s) are not reflected (based on the confirmed definition).");
+        add("승인 대기 중인 인덱스 변경 요청 {0}건은 반영하지 않았습니다 (확정된 정의 기준).", "{0} pending index change request(s) are not reflected (based on the confirmed definition).");
+        add("내보낼 테이블·VIEW 가 없습니다.", "There are no tables or views to export.");
+        add("{0} 에서는 통합 DDL 의 실제 실행을 검증하지 않았습니다.", "Execution of the integrated DDL has not been verified on {0}.");
+        add("승인 기준 Export 는 범위 안에 승인 대기 항목이 없어야 합니다. 승인을 마치거나 승인 기준을 끄고 설계용 DDL 로 받아주세요.", "An approved-only export requires no pending items in scope. Finish the approvals, or turn off approved-only and get the design DDL.");
+        add("승인 대기 항목 포함", "includes pending items");
+        add("같은 스키마 안에서 이름이 겹치는 객체가 있어 실행이 실패할 수 있습니다 (길이 제한으로 자른 이름 포함) : {0}", "Some objects in the same schema have the same name, so execution may fail (including names truncated to the length limit): {0}");
+        add("지원하지 않는 DBMS 입니다 : {0}", "Unsupported DBMS: {0}");
+
+        // 스키마 단위 TABLE·VIEW 이름 (2026-11-13)
+        add("{0} : 다른 사용자가 이 테이블을 수정했습니다. 다시 열어 수정해주세요.", "{0}: another user changed this table. Open it again and edit.");
+        add("{0} : 여러 스키마에 같은 이름의 테이블이 있습니다. 스키마명.테이블명으로 적어주세요.", "{0}: tables with this name exist in several schemas. Write it as schema.table.");
+        add("참조 테이블 {0} 이(가) 여러 스키마에 있습니다. 스키마명.테이블명으로 적어주세요.", "The referenced table {0} exists in several schemas. Write it as schema.table.");
+        add("{0} : 참조 테이블 {1} 이(가) 여러 스키마에 있어 FK 를 만들지 않았습니다. 스키마명.테이블명으로 지정해주세요.", "{0}: the referenced table {1} exists in several schemas, so no FK was created. Specify it as schema.table.");
+        add("스키마명 포함 {0} 이(가) 스키마 {1} 와(과) 같아 같은 이름의 객체가 겹칩니다 : {2}. 다른 스키마명을 쓰거나 비워주세요.", "The schema name to include, {0}, is the same as schema {1}, so objects with the same name collide: {2}. Use another schema name or leave it empty.");
+        add("스키마명 포함 {0} 이(가) 스키마 {1} 와(과) 같아 기본 스키마의 객체가 그 스키마에 함께 만들어집니다.", "The schema name to include, {0}, is the same as schema {1}, so objects of the default schema are created in that schema too.");
     }
 }

@@ -12,6 +12,7 @@ import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
+import com.lexorma.data.table.service.TableNameResolver;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.common.exception.CustomException;
@@ -85,14 +86,18 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Long projectId = accountDto.getProjectId();
 
         String searchTableName = null;
+        // "스키마명.테이블명" 으로 찾을 수도 있다 (테이블명은 스키마 안에서만 하나다)
+        TableNameResolver.Name name = TableNameResolver.Name.parse(tableName);
 
-        if(!tableName.isEmpty()){
-            searchTableName = "%" + tableName.toUpperCase() + "%";
+        if(name != null){
+            searchTableName = "%" + name.tableName() + "%";
         }
 
         List<TableInfo> tableInfos = tableInfoRepository.findAllByProjectIdAndTableNameLikeAndIsApproval(projectId, searchTableName, true);
 
-        return tableInfos.stream().map(TableInfoDto::fromEntity).toList();
+        return tableInfos.stream()
+                .filter(table -> name == null || name.schemaName() == null || (table.getSchema() != null && table.getSchema().getSchemaName().equalsIgnoreCase(name.schemaName())))
+                .map(TableInfoDto::fromEntity).toList();
     }
 
     @Override
@@ -127,6 +132,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         }
 
         ColumnInfo columnInfo = columnInfoDto.toEntity();
+        rejectAmbiguousReferences(projectId, tableInfo, java.util.Collections.singleton(columnInfo.getRefTableName()));
         columnInfo.setTableInfo(tableInfo);
         columnInfo.setProjectId(projectId);
 
@@ -259,13 +265,15 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         // 업로드 중에는 테이블/표준용어가 바뀌지 않으므로 조회 결과(ID)를 캐시한다. (없으면 null 로 기록)
         Map<String, Long> tableIdByName = new HashMap<>();
+        Map<Long, String> tableNameById = new HashMap<>();
+        Set<String> ambiguousTableNames = new HashSet<>();
         Map<String, Long> termIdByAbbreviation = new HashMap<>();
 
         // 청크(500행) 단위 : 테이블/용어/중복은 청크당 IN 조회 한 번씩, 저장은 JDBC 배치, 저장 후 영속성 컨텍스트 비우기
         ExcelUtils.readExcelRowsInChunks(file, 0, tableExcelHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
             List<Map<String, String>> columnRows = rows.stream().filter(map -> !map.get("tableName").isEmpty()).toList();
 
-            loadColumnUploadReferences(projectId, columnRows, tableIdByName, termIdByAbbreviation);
+            loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdByAbbreviation);
             Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
 
             List<ColumnInfo> columnInfos = new ArrayList<>();
@@ -292,12 +300,16 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     }
                 }
 
-                String tableName = map.get("tableName").toUpperCase();
-                Long tableInfoId = tableIdByName.get(tableName);
+                String writtenTableName = map.get("tableName").toUpperCase();
+                Long tableInfoId = tableIdByName.get(writtenTableName);
 
-                if (tableInfoId == null) {
-                    throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED, tableName);
+                if (ambiguousTableNames.contains(writtenTableName)) {
+                    throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED, "{0} : 여러 스키마에 같은 이름의 테이블이 있습니다. 스키마명.테이블명으로 적어주세요.", writtenTableName);
                 }
+                if (tableInfoId == null) {
+                    throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED, writtenTableName);
+                }
+                String tableName = tableNameById.get(tableInfoId);
 
                 // 표준용어 : 영문약어(대문자) 우선, 없으면 입력값 그대로
                 String columnName = map.get("columnName");
@@ -321,6 +333,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
                 if (existingColumns.contains(columnKey)) {
                     throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableName + "." + columnName);
+                }
+
+                if (map.get("refTableName") != null && !map.get("refTableName").isBlank()) {
+                    TableInfo owner = entityManager.find(TableInfo.class, tableInfoId);
+                    rejectAmbiguousReferences(projectId, owner, java.util.Collections.singleton(map.get("refTableName")));
                 }
 
                 // 연관은 조회 없이 ID 참조로 연결한다. (테이블/용어의 컬럼 목록 컬렉션은 건드리지 않는다 - FK 가 기준)
@@ -359,22 +376,48 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         });
     }
 
+    /** 참조 테이블명 중 이 테이블의 스키마 기준으로 여러 스키마의 테이블이 되어 정할 수 없는 것 (대문자). 없는 테이블은 예전처럼 허용한다 (관계가 생기지 않을 뿐) */
+    private Set<String> ambiguousReferences(Long projectId, TableInfo table, java.util.Collection<String> references) {
+        List<String> written = references.stream().filter(r -> r != null && !r.isBlank()).map(r -> r.trim().toUpperCase()).toList();
+        if (written.isEmpty()) return Set.of();
+        List<TableInfo> candidates = tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId,
+                written.stream().map(TableNameResolver::tableNameOf).collect(Collectors.toSet()));
+        return written.stream()
+                .filter(r -> TableNameResolver.resolve(r, table.getSchema(), candidates, null).status() == TableNameResolver.Status.AMBIGUOUS)
+                .collect(Collectors.toSet());
+    }
+
+    private void rejectAmbiguousReferences(Long projectId, TableInfo table, java.util.Collection<String> references) {
+        Set<String> ambiguous = ambiguousReferences(projectId, table, references);
+        if (!ambiguous.isEmpty()) {
+            throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "참조 테이블 {0} 이(가) 여러 스키마에 있습니다. 스키마명.테이블명으로 적어주세요.", ambiguous.iterator().next());
+        }
+    }
+
+    private static String ambiguousMessage(String reference) {
+        return Messages.get("참조 테이블 {0} 이(가) 여러 스키마에 있습니다. 스키마명.테이블명으로 적어주세요.", reference.trim().toUpperCase());
+    }
+
     /**
      * 청크에서 쓰는 테이블명/표준용어(영문약어) 중 캐시에 없는 것을 IN 조회 한 번씩으로 불러온다.
+     * 테이블명은 "테이블명" 또는 "스키마명.테이블명" : 테이블명은 스키마 안에서만 하나라서, 여러 스키마에 있는 이름은 스키마를 적어야 한다 (TableNameResolver).
      */
-    private void loadColumnUploadReferences(Long projectId, List<Map<String, String>> columnRows,
-                                            Map<String, Long> tableIdByName, Map<String, Long> termIdByAbbreviation) {
-        Set<String> tableNames = columnRows.stream()
+    private void loadColumnUploadReferences(Long projectId, List<Map<String, String>> columnRows, Map<String, Long> tableIdByName,
+                                            Map<Long, String> tableNameById, Set<String> ambiguousTableNames, Map<String, Long> termIdByAbbreviation) {
+        Set<String> writtenNames = columnRows.stream()
                 .map(map -> map.get("tableName").toUpperCase())
                 .filter(name -> !tableIdByName.containsKey(name))
                 .collect(Collectors.toSet());
 
-        if (!tableNames.isEmpty()) {
-            tableNames.forEach(name -> tableIdByName.put(name, null));
-            tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, tableNames)
-                    .forEach(table -> {
-                        if (tableIdByName.get(table.getTableName()) == null) tableIdByName.put(table.getTableName(), table.getId());
-                    });
+        if (!writtenNames.isEmpty()) {
+            List<TableInfo> candidates = tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId,
+                    writtenNames.stream().map(TableNameResolver::tableNameOf).collect(Collectors.toSet()));
+            for (String written : writtenNames) {
+                TableNameResolver.Result target = TableNameResolver.resolve(written, null, candidates, null);
+                tableIdByName.put(written, target.status() == TableNameResolver.Status.FOUND ? target.table().getId() : null);
+                if (target.status() == TableNameResolver.Status.FOUND) tableNameById.put(target.table().getId(), target.table().getTableName());
+                if (target.status() == TableNameResolver.Status.AMBIGUOUS) ambiguousTableNames.add(written);
+            }
         }
 
         Set<String> abbreviations = columnRows.stream()
@@ -537,6 +580,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         List<ColumnBulkSaveDto.Row> rows = request.getRows() == null ? List.of() : request.getRows();
         Map<String, StandardTerm> termByRowKey = new HashMap<>();
         Set<Long> seenIds = new HashSet<>();
+        // 새로 적거나 바꾼 참조 테이블명 (행 키 → 값) : 여러 스키마에 있어 정할 수 없는 이름은 스키마명을 적게 한다
+        Map<String, String> changedReferences = new java.util.LinkedHashMap<>();
 
         for (ColumnBulkSaveDto.Row row : rows) {
             String key = row.getKey();
@@ -551,6 +596,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 같은 컬럼이 두 번 들어 있습니다.", column.getColumnName())));
                 } else if (!Boolean.TRUE.equals(column.getIsApproval())) {
                     validateRowFields(row, column.getColumnName(), errors);
+                    String reference = trimToNull(row.getRefTableName());
+                    if (reference != null && !reference.equalsIgnoreCase(String.valueOf(column.getRefTableName()))) changedReferences.put(key, reference);
                 }
                 continue;
             }
@@ -567,8 +614,13 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 continue;
             }
             validateRowFields(row, columnName, errors);
+            if (trimToNull(row.getRefTableName()) != null) changedReferences.put(key, trimToNull(row.getRefTableName()));
             termByRowKey.put(key, term);
         }
+        Set<String> ambiguous = ambiguousReferences(projectId, tableInfo, changedReferences.values());
+        changedReferences.forEach((key, reference) -> {
+            if (ambiguous.contains(reference.toUpperCase())) errors.add(new ColumnBulkSaveDto.RowError(key, ambiguousMessage(reference)));
+        });
 
         if (!errors.isEmpty()) {
             return ColumnBulkSaveDto.Result.fail(errors);

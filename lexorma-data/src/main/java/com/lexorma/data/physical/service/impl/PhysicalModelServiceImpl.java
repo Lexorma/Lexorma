@@ -25,6 +25,7 @@ import com.lexorma.data.table.ddl.TableDdlGenerator;
 import com.lexorma.data.table.domain.dto.TableDdlDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
+import com.lexorma.data.table.service.TableNameResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
@@ -685,9 +686,10 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         entityManager.flush();
         ReferenceSyncBoundary.synced(projectId, tableIds);
 
+        // 이 테이블들을 가리킬 수 있는 이름 : 테이블명, 스키마명.테이블명 (TableNameResolver)
         Set<String> tableNames = tableInfoRepository.findAllById(tableIds).stream()
                 .filter(t -> projectId.equals(t.getProjectId()))
-                .map(t -> normalize(t.getTableName()))
+                .flatMap(t -> TableNameResolver.namesOf(t).stream())
                 .collect(Collectors.toSet());
 
         List<ColumnInfo> ownColumns = columnInfoRepository.findAllByTableInfo_IdIn(tableIds).stream()
@@ -715,20 +717,18 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .collect(Collectors.toMap(TableRelation::getDerivedColumnId, Function.identity()));
 
         Set<String> refNames = candidates.values().stream()
-                .filter(c -> notBlank(c.getRefTableName()))
-                .map(c -> normalize(c.getRefTableName()))
+                .map(c -> TableNameResolver.tableNameOf(c.getRefTableName()))
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, List<TableInfo>> targetsByName = refNames.isEmpty() ? Map.of()
-                : tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, refNames).stream()
-                    .collect(Collectors.groupingBy(TableInfo::getTableName));
-        Set<Long> targetIds = targetsByName.values().stream().flatMap(List::stream).map(TableInfo::getId).collect(Collectors.toSet());
+        List<TableInfo> namedTables = refNames.isEmpty() ? List.of() : tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, refNames);
+        Set<Long> targetIds = namedTables.stream().map(TableInfo::getId).collect(Collectors.toSet());
         Map<Long, List<ColumnInfo>> pkByTable = targetIds.isEmpty() ? Map.of()
                 : columnInfoRepository.findAllByTableInfo_IdInAndIsPkTrue(targetIds).stream()
                     .collect(Collectors.groupingBy(c -> c.getTableInfo().getId()));
 
         for (ColumnInfo column : candidates.values()) {
-            ColumnInfo targetPk = referencedPk(column, targetsByName, pkByTable);
             TableRelation relation = existing.get(column.getId());
+            ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());
 
             if (targetPk == null) {
                 if (relation != null) relationRepository.delete(relation);
@@ -848,14 +848,14 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     }
 
     /**
-     * 참조 테이블명 → 참조 PK 컬럼. DDL 생성기의 FK 조건과 같다 : 같은 프로젝트에 그 이름의 테이블이 정확히 1개,
+     * 참조 테이블명 → 참조 PK 컬럼. DDL 생성기의 FK 조건과 같다 : 이름이 테이블 하나로 정해지고({@link TableNameResolver}, 이미 있는 관계의 대상은 모호해도 유지),
      * 그 테이블의 PK 가 정확히 1개, 자기 PK 를 가리키지 않음. 아니면 null (관계를 만들지 않는다)
      */
-    private static ColumnInfo referencedPk(ColumnInfo column, Map<String, List<TableInfo>> targetsByName, Map<Long, List<ColumnInfo>> pkByTable) {
+    private static ColumnInfo referencedPk(ColumnInfo column, List<TableInfo> namedTables, Map<Long, List<ColumnInfo>> pkByTable, Long currentTargetId) {
         if (column.getTableInfo() == null || !notBlank(column.getRefTableName())) return null;
-        List<TableInfo> targets = targetsByName.get(normalize(column.getRefTableName()));
-        if (targets == null || targets.size() != 1) return null;
-        List<ColumnInfo> pk = pkByTable.getOrDefault(targets.get(0).getId(), List.of());
+        TableNameResolver.Result target = TableNameResolver.resolve(column.getRefTableName(), column.getTableInfo().getSchema(), namedTables, currentTargetId);
+        if (target.status() != TableNameResolver.Status.FOUND) return null;
+        List<ColumnInfo> pk = pkByTable.getOrDefault(target.table().getId(), List.of());
         if (pk.size() != 1 || pk.get(0).getId().equals(column.getId())) return null;
         return pk.get(0);
     }

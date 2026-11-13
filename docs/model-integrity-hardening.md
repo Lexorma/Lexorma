@@ -140,6 +140,10 @@ ERD 편집은 "저장 → 다시 조회" 라서 화면이 오래된 상태로 �
 
 B 가 가장 안전하다고 본다. 여러 테이블 DDL·Export(M-11)와 함께 정하는 편이 낫다.
 
+**스키마 단위 이름 (2026-11-13)** : 참조 테이블명의 FK 는 테이블 스키마 기준으로 정하고, 여러 스키마에 있어 정할 수 없으면 DDL·관계를 만들지 않는다 (이미 확정된 관계는 유지) — [기록](schema-scoped-naming.md#3-이름-기반-참조-tablenameresolver).
+
+**결정 (2026-11-13, M-11)** : 기본은 A 그대로(개별 DDL 포함), 통합 DDL Export 에 B 를 선택 모드("승인 기준")로 더했다. C 는 하지 않는다 — [통합 DDL Export](integrated-ddl-export-m11.md#2-결정-사항-2026-11-13-사용자-결정).
+
 ## 5. PostgreSQL 테스트 환경
 
 **문제** : `ProjectAccessRevokeTest` 가 `@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:lexorma-revoke…")` 로 H2 주소를 고정했다. PostgreSQL 로 전체 테스트를 돌리면(환경 변수로 드라이버를 바꾼다) H2 주소에 PostgreSQL 드라이버가 붙어 컨텍스트가 뜨지 않았다. 그래서 그동안 PostgreSQL 실행은 테스트를 골라서 돌렸다.

@@ -48,6 +48,8 @@ import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.data.version.domain.dto.ModelVersionDto.Create;
 import com.lexorma.data.version.service.ModelVersionService;
+import com.lexorma.data.view.domain.dto.ViewDto;
+import com.lexorma.data.view.service.PhysicalViewService;
 import com.lexorma.operation.board.domain.entity.Board;
 import com.lexorma.operation.notice.repository.BoardCategoryRepository;
 import com.lexorma.operation.notice.repository.BoardRepository;
@@ -96,7 +98,7 @@ class ProjectDeletionIntegrationTest {
     private static final Set<String> PROJECT_TABLES = Set.of("TB_PRJ", "TB_PRJ_MBR", "TB_LOG", "TB_PST", "TB_STD_DMN", "TB_STD_WORD", "TB_STD_TRM", "TB_SCHM", "TB_TBL", "TB_COL",
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
-            "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY");
+            "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -110,6 +112,7 @@ class ProjectDeletionIntegrationTest {
     @Autowired ModelMappingService mappings;
     @Autowired PhysicalModelRestController physical;
     @Autowired ModelVersionService versionService;
+    @Autowired PhysicalViewService viewService;
     @Autowired SourceConnectionRepository sourceConnectionRepository;
     @Autowired SourceCatalogWriter catalogWriter;
     @Autowired SourceCollectionService collections;
@@ -318,6 +321,14 @@ class ProjectDeletionIntegrationTest {
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), null, "UNIQUE", null, List.of(new PhysicalModelDto.ColumnRef(statGrp.getId(), null), new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), "CK_ORD_STAT", "CHECK", "STAT_CD <> ''", null, null));
         jdbc.update("update TB_COL set STD_TRM_SN = ? where COL_SN = ?", base - 1, orderNo.getId());
+
+        // VIEW (M-15) : 테이블을 참조하는 VIEW, 그 VIEW 를 참조하는 VIEW (출력 컬럼·참조 객체), 승인된 VIEW 의 수정 → 변경 요청 (승인 권한자라 바로 승인)
+        ViewDto.Save orderView = new ViewDto.Save(null, "VW_ORD", null, null, "SELECT ORD_NO FROM TB_ORD",
+                List.of(new ViewDto.Column("ORD_NO", null, null, null)), List.of(new ViewDto.Reference("TABLE", order.getId(), null, null, null)));
+        Long orderViewId = viewService.create(admin, orderView).id();
+        viewService.create(admin, new ViewDto.Save(null, "VW_ORD_ALL", null, null, "SELECT * FROM VW_ORD", List.of(),
+                List.of(new ViewDto.Reference("VIEW", null, orderViewId, null, null), new ViewDto.Reference("TABLE", null, null, "EXT", "TB_OUTSIDE"))));
+        viewService.update(admin, orderViewId, new ViewDto.Save(null, "VW_ORD", "주문 VIEW", null, orderView.definition(), orderView.columns(), orderView.references()));
 
         // 논리 모델 : 모델, 엔터티 2, 속성, 식별자, 관계 + 매핑
         Model model = logical.saveModel(admin, new Model(null, "주문 모델", null));

@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,13 +50,22 @@ public final class TableDdlGenerator {
      * 컬럼 설정 밖의 물리 모델 (M-1)
      * @param relations 이 테이블이 원본인 사용자 정의 FK 관계 (참조 테이블명에서 만든 REF_COLUMN 관계는 컬럼의 참조 테이블명으로 이미 만든다)
      * @param targetUniqueKeys 관계 대상 테이블 ID → 그 테이블의 UNIQUE 제약·고유 인덱스 컬럼명 구성 (FK 가 참조할 수 있는 키인지 판단)
+     * @param ambiguousRefTables 여러 스키마에 같은 이름이 있어 정할 수 없는 참조 테이블명 (컬럼에 적은 그대로, 대문자)
      */
     public record Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations,
-                         Map<Long, List<Set<String>>> targetUniqueKeys) {
+                         Map<Long, List<Set<String>>> targetUniqueKeys, Set<String> ambiguousRefTables) {
         public static final Extras NONE = new Extras(List.of(), List.of(), List.of());
 
         public Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations) {
-            this(constraints, indexes, relations, Map.of());
+            this(constraints, indexes, relations, Map.of(), Set.of());
+        }
+
+        public Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations, Map<Long, List<Set<String>>> targetUniqueKeys) {
+            this(constraints, indexes, relations, targetUniqueKeys, Set.of());
+        }
+
+        public Extras withAmbiguousRefTables(Set<String> ambiguous) {
+            return new Extras(constraints, indexes, relations, targetUniqueKeys, ambiguous);
         }
     }
 
@@ -72,7 +82,8 @@ public final class TableDdlGenerator {
     }
 
     /**
-     * @param refPkColumns 참조 테이블명(대문자) → 그 테이블의 PK 컬럼 (정렬 순서). 등록되지 않은 테이블은 키가 없다.
+     * @param refPkColumns 참조 테이블명(컬럼에 적은 그대로, 대문자 : 테이블명 또는 스키마명.테이블명) → 그 테이블의 PK 컬럼 (정렬 순서).
+     *                     이름이 이 테이블 기준으로 정해지지 않은 것(미등록·모호)은 키가 없다.
      *                     컬럼의 참조 테이블명으로 FK 를 만들고, 참조 컬럼과 PK 의 타입이 같은지 확인할 때 쓴다.
      */
     public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns) {
@@ -89,6 +100,37 @@ public final class TableDdlGenerator {
      */
     public static Result generate(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns, Extras extras,
                                   String defaultSchemaName) {
+        Parts parts = parts(dbType, table, columns, refPkColumns, extras, defaultSchemaName);
+        StringBuilder sql = new StringBuilder(parts.header());
+        if (!parts.hasColumns()) {
+            sql.append("-- ").append(Messages.get("등록된 컬럼이 없습니다.")).append("\n");
+            return new Result(sql.toString(), parts.warnings());
+        }
+        sql.append(parts.createTable());
+        for (List<String> section : List.of(parts.indexes(), parts.foreignKeys(), parts.comments())) {
+            if (!section.isEmpty()) sql.append("\n").append(String.join("\n", section)).append("\n");
+        }
+        return new Result(sql.toString(), parts.warnings());
+    }
+
+    /**
+     * 테이블 하나의 DDL 을 문장 묶음으로 나눈 것. {@link #generate} 는 header · createTable · indexes · foreignKeys · comments 순서로 이어 붙이고,
+     * 통합 Export(M-11)는 여러 테이블의 같은 묶음끼리 모은다 (모든 CREATE TABLE → 인덱스 → FK).
+     *
+     * @param header      "-- DBMS DDL : 테이블명 (한글명)" 한 줄
+     * @param createTable CREATE TABLE 문 (; 와 줄바꿈 포함, MySQL·MariaDB 는 테이블 COMMENT 옵션 포함). 컬럼이 없으면 null
+     * @param indexes     CREATE INDEX 문 (대상 DBMS 에서 만들 수 없는 인덱스는 -- 주석으로 낸 문장)
+     * @param foreignKeys ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY 문
+     * @param comments    COMMENT ON 문 (PostgreSQL·Oracle)
+     */
+    public record Parts(String header, String createTable, List<String> indexes, List<String> foreignKeys, List<String> comments, List<String> warnings) {
+        public boolean hasColumns() {
+            return createTable != null;
+        }
+    }
+
+    public static Parts parts(DbType dbType, TableInfo table, List<ColumnInfo> columns, Map<String, List<ColumnInfo>> refPkColumns, Extras extras,
+                              String defaultSchemaName) {
         DbType db = DbType.orDefault(dbType);
         String tableName = table.getTableName();
         String qualifiedName = qualifiedName(table, defaultSchemaName);
@@ -98,15 +140,14 @@ public final class TableDdlGenerator {
                 .sorted(Comparator.comparing(ColumnInfo::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
 
-        StringBuilder sql = new StringBuilder();
-        sql.append("-- ").append(db.getLabel()).append(" DDL : ").append(tableName);
-        if (notBlank(table.getTableKorName())) sql.append(" (").append(table.getTableKorName()).append(")");
-        sql.append("\n");
+        StringBuilder header = new StringBuilder();
+        header.append("-- ").append(db.getLabel()).append(" DDL : ").append(tableName);
+        if (notBlank(table.getTableKorName())) header.append(" (").append(table.getTableKorName()).append(")");
+        header.append("\n");
 
         if (ordered.isEmpty()) {
             warnings.add(Messages.get("등록된 컬럼이 없습니다. 컬럼 관리에서 컬럼을 먼저 등록해주세요."));
-            sql.append("-- ").append(Messages.get("등록된 컬럼이 없습니다.")).append("\n");
-            return new Result(sql.toString(), warnings);
+            return new Parts(header.toString(), null, List.of(), List.of(), List.of(), warnings);
         }
 
         List<String> lines = new ArrayList<>();
@@ -158,6 +199,7 @@ public final class TableDdlGenerator {
             }
         }
 
+        StringBuilder sql = new StringBuilder();
         sql.append("CREATE TABLE ").append(qualifiedName).append(" (\n")
                 .append(String.join(",\n", lines))
                 .append("\n)");
@@ -185,30 +227,21 @@ public final class TableDdlGenerator {
             }
             if (add) indexes.add(indexStatement(db, qualifiedName, index, warnings));
         }
-        if (!indexes.isEmpty()) {
-            sql.append("\n").append(String.join("\n", indexes)).append("\n");
-        }
 
         // 외래키 : 참조 테이블의 단일 PK 를 참조한다. 테이블 생성 순서와 관계없이 실행할 수 있도록 ALTER TABLE 로 따로 만든다.
-        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, warnings, defaultSchemaName);
+        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, extras.ambiguousRefTables(), warnings, defaultSchemaName);
         foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), extras.targetUniqueKeys(), warnings, defaultSchemaName));
-        if (!foreignKeys.isEmpty()) {
-            sql.append("\n").append(String.join("\n", foreignKeys)).append("\n");
-        }
 
         // 주석 (PostgreSQL / Oracle)
+        List<String> comments = new ArrayList<>();
         if (!isMySqlFamily(db)) {
-            List<String> comments = new ArrayList<>();
             if (tableComment != null) comments.add("COMMENT ON TABLE " + qualifiedName + " IS " + quote(tableComment) + ";");
             ordered.stream()
                     .filter(c -> notBlank(c.getColumnDesc()))
                     .forEach(c -> comments.add("COMMENT ON COLUMN " + qualifiedName + "." + c.getColumnName() + " IS " + quote(c.getColumnDesc()) + ";"));
-            if (!comments.isEmpty()) {
-                sql.append("\n").append(String.join("\n", comments)).append("\n");
-            }
         }
 
-        return new Result(sql.toString(), warnings);
+        return new Parts(header.toString(), sql.toString(), indexes, foreignKeys, comments, warnings);
     }
 
     // ------------------------------------------------------------------ 인덱스 (M-14 D-21)
@@ -333,7 +366,7 @@ public final class TableDdlGenerator {
      * - 참조 컬럼과 참조 PK 의 타입(대상 DB 타입으로 바꾼 값)이 다르면 FK 는 만들되 경고한다.
      */
     static List<String> foreignKeys(DbType db, String tableName, String qualifiedName, List<ColumnInfo> columns,
-                                    Map<String, List<ColumnInfo>> refPkColumns, List<String> warnings, String defaultSchemaName) {
+                                    Map<String, List<ColumnInfo>> refPkColumns, Set<String> ambiguous, List<String> warnings, String defaultSchemaName) {
         List<String> statements = new ArrayList<>();
 
         for (ColumnInfo column : columns) {
@@ -342,14 +375,16 @@ public final class TableDdlGenerator {
             String refTable = column.getRefTableName().trim().toUpperCase(Locale.ROOT);
             List<ColumnInfo> pk = refPkColumns.get(refTable);
 
-            if (pk == null) {
+            if (pk == null && ambiguous.contains(refTable)) {
+                warnings.add(Messages.get("{0} : 참조 테이블 {1} 이(가) 여러 스키마에 있어 FK 를 만들지 않았습니다. 스키마명.테이블명으로 지정해주세요.", column.getColumnName(), refTable));
+            } else if (pk == null) {
                 warnings.add(Messages.get("{0} : 참조 테이블 {1} 이(가) 테이블 관리에 등록되어 있지 않아 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else if (pk.isEmpty()) {
                 warnings.add(Messages.get("{0} : 참조 테이블 {1} 에 PK 가 없어 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else if (pk.size() > 1) {
                 warnings.add(Messages.get("{0} : 참조 테이블 {1} 의 PK 가 복합키({2})라 FK 를 만들지 않았습니다.", column.getColumnName(), refTable,
                         String.join(", ", pk.stream().map(ColumnInfo::getColumnName).toList())));
-            } else if (refTable.equals(tableName) && pk.get(0).getColumnName().equals(column.getColumnName())) {
+            } else if (isSelf(pk.get(0), column, refTable, tableName)) {
                 warnings.add(Messages.get("{0} : 참조 테이블 {1} 의 PK 가 자기 자신이라 FK 를 만들지 않았습니다.", column.getColumnName(), refTable));
             } else {
                 ColumnInfo refPk = pk.get(0);
@@ -361,6 +396,13 @@ public final class TableDdlGenerator {
             }
         }
         return statements;
+    }
+
+    /** 참조 PK 가 이 컬럼 자신인가 : 저장된 컬럼은 ID 로, ID 가 없으면(미리보기·테스트) 이름으로 */
+    private static boolean isSelf(ColumnInfo refPk, ColumnInfo column, String refTable, String tableName) {
+        if (refPk == column) return true;
+        if (refPk.getId() != null || column.getId() != null) return Objects.equals(refPk.getId(), column.getId());
+        return (refTable.equals(tableName) || refTable.endsWith("." + tableName)) && refPk.getColumnName().equals(column.getColumnName());
     }
 
     /**
@@ -602,6 +644,10 @@ public final class TableDdlGenerator {
     /**
      * 제약/인덱스 이름 : Oracle(12.1 이하 30자), MySQL(64자) 제한을 넘으면 자른다.
      */
+    public static String objectName(DbType dbType, String name) {
+        return constraintName(DbType.orDefault(dbType), name);
+    }
+
     private static String constraintName(DbType db, String name) {
         int max = switch (db) {
             case ORACLE -> 30;

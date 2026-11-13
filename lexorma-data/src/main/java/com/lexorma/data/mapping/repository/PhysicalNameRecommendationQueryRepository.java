@@ -161,12 +161,12 @@ public class PhysicalNameRecommendationQueryRepository {
     }
 
     /** 프로젝트에서 그 이름을 쓰는 테이블 (테이블명은 프로젝트 안에서 유일해야 한다 — 테이블 등록·수정의 중복 기준) */
-    public record NamedTable(Long tableId, String tableName, String mappedEntityName) {
+    public record NamedTable(Long tableId, Long schemaId, String tableName, String mappedEntityName) {
     }
 
     public List<NamedTable> findTablesByName(Long projectId, Collection<String> upperNames) {
         if (upperNames.isEmpty()) return List.of();
-        return query.select(Projections.constructor(NamedTable.class, table.id, table.tableName, mappedEntity.entityName))
+        return query.select(Projections.constructor(NamedTable.class, table.id, table.schema.id, table.tableName, mappedEntity.entityName))
                 .from(table)
                 .leftJoin(tableMapping).on(tableMapping.table.eq(table))
                 .leftJoin(tableMapping.entity, mappedEntity)

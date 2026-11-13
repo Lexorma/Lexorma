@@ -32,6 +32,26 @@ class TableDdlGeneratorTest {
     }
 
     @Test
+    @DisplayName("문장 묶음(통합 Export M-11) : 묶음을 header·CREATE TABLE·인덱스·FK·COMMENT 순서로 이으면 generate 와 글자까지 같다")
+    void partsReassembleToGenerate() {
+        for (DbType db : DbType.values()) {
+            TableDdlGenerator.Parts parts = TableDdlGenerator.parts(db, table(), columns(), Map.of(), TableDdlGenerator.Extras.NONE, null);
+            StringBuilder joined = new StringBuilder(parts.header()).append(parts.createTable());
+            for (List<String> section : List.of(parts.indexes(), parts.foreignKeys(), parts.comments())) {
+                if (!section.isEmpty()) joined.append("\n").append(String.join("\n", section)).append("\n");
+            }
+            TableDdlGenerator.Result result = TableDdlGenerator.generate(db, table(), columns(), Map.of(), TableDdlGenerator.Extras.NONE, null);
+            assertThat(joined.toString()).as(db.name()).isEqualTo(result.ddl());
+            assertThat(parts.warnings()).isEqualTo(result.warnings());
+            assertThat(parts.createTable()).startsWith("CREATE TABLE TB_USER (").endsWith(";\n");
+        }
+        TableDdlGenerator.Parts empty = TableDdlGenerator.parts(DbType.POSTGRESQL, table(), List.of(), Map.of(), TableDdlGenerator.Extras.NONE, null);
+        assertThat(empty.hasColumns()).isFalse();
+        assertThat(empty.indexes()).isEmpty();
+        assertThat(TableDdlGenerator.objectName(DbType.ORACLE, "IX_" + "A".repeat(40))).hasSize(30);
+    }
+
+    @Test
     @DisplayName("PostgreSQL : 정렬 순서대로 컬럼, PK/UK 제약, 인덱스, COMMENT ON 을 만든다")
     void postgresql() {
         List<ColumnInfo> columns = columns();

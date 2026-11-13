@@ -93,6 +93,8 @@ export type TableNodeData = {
   /** 화면에 그리는 관계에 쓰인 컬럼 (연결점을 만든다) */
   linkedColumns: Set<number>;
   diff?: NodeDiff;
+  /** 같은 이름의 테이블이 다른 스키마에도 보일 때 이름 앞에 붙일 스키마명 (테이블명은 스키마 안에서만 하나다) */
+  schemaPrefix?: string;
 };
 export type TableNode = Node<TableNodeData, 'table'>;
 export type RelationEdge = Edge<{ relation: ErdRelation }>;

@@ -35,7 +35,8 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
 
     ColumnInfo findByIdAndProjectId(Long id, Long projectId);
 
-    List<ColumnInfo> findAllByProjectIdAndRefTableName(Long projectId, String refTableName);
+    /** 스키마명 변경 : 참조 테이블명을 "스키마명.테이블명" 으로 적은 컬럼 (대문자 접두어) */
+    List<ColumnInfo> findAllByProjectIdAndRefTableNameStartingWith(Long projectId, String prefix);
 
     /** 엑셀 업로드 : 청크에서 이미 등록된 (테이블 ID, 컬럼명) 조합을 한 번에 조회 → [tableInfoId, columnName] */
     @Query("select c.tableInfo.id, c.columnName from ColumnInfo c " +

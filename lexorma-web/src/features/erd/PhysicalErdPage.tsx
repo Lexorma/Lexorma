@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
+import { Background, Controls, MarkerType, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow, type Edge, type NodeChange } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import { NoticeMarkdown } from '../notice/NoticeMarkdown';
@@ -24,7 +24,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { cancelLayout, gridLayout, runLayout, type LayoutEdge, type LayoutNode } from './layout';
 import { relationEdges } from './edges';
-import { TableNode, useSimpleNodes } from './TableNode';
+import { TABLE_HANDLE, TableNode, useSimpleNodes } from './TableNode';
+import { isViewNodeId, VIEW_HANDLE, ViewNode, viewNodeId, type ViewNodeType } from './ViewNode';
+import { isInternal, referenceName, referenceTypeLabel, viewManagePath, type ErdView } from '../view/model';
 import {
   columnsByTable, columnType, NODE_WIDTH, nodeHeight,
   type ErdColumn, type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
@@ -32,7 +34,10 @@ import {
 import { t, tx } from '../../lib/i18n';
 
 const PAGE_SIZE = 100;
-const nodeTypes = { table: TableNode };
+const nodeTypes = { table: TableNode, view: ViewNode };
+/** VIEW 참조선 (M-15) : FK 가 아니다. 점선·보라색·화살표(참조되는 쪽)로 관계선과 구분한다 */
+const VIEW_REF_COLOR = 'var(--gh-done)';
+type ErdEdge = RelationEdge | Edge<{ viewId: number }>;
 
 interface SearchScope {
   kind: 'search';
@@ -71,7 +76,7 @@ const SOURCE_LABEL: Record<ErdRelation['relationSource'], string> = {
   AI_APPROVED: t('AI 추정 승인'),
 };
 
-const toLayoutNode = (n: TableNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.columns.length) });
+const toLayoutNode = (n: TableNodeType | ViewNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.columns.length) });
 
 /**
  * 물리 ERD : 저장된 물리 모델 조회 + 내 배치 저장. 편집 모드(M-8 3차, 물리 모델 변경 권한)에서는 테이블·컬럼·관계·인덱스·제약조건을 바꾼다 —
@@ -100,7 +105,7 @@ function ErdWorkspace() {
   const [selectedRelation, setSelectedRelation] = useState<number | null>(null);
   const dialog = useDialog();
   const navigate = useNavigate();
-  const flow = useReactFlow<TableNodeType, RelationEdge>();
+  const flow = useReactFlow<TableNodeType | ViewNodeType, ErdEdge>();
   const simple = useSimpleNodes();
   // 테이블 상세·컬럼 편집은 화면을 옮기지 않고 이 화면에서 연다 (테이블 관리와 같은 대화상자)
   const { openTableDetailById } = useTableDetail();
@@ -109,18 +114,28 @@ function ErdWorkspace() {
   // 테이블·컬럼 관리에서 넘어온 경우 (?schemaId=&tableId=) : 그 스키마를 조회하고 해당 테이블을 선택·가운데로 옮긴다
   const [linked] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return { schemaId: /^\d+$/.test(params.get('schemaId') ?? '') ? params.get('schemaId')! : '', tableId: /^\d+$/.test(params.get('tableId') ?? '') ? params.get('tableId') : null };
+    return {
+      schemaId: /^\d+$/.test(params.get('schemaId') ?? '') ? params.get('schemaId')! : '',
+      tableId: /^\d+$/.test(params.get('tableId') ?? '') ? params.get('tableId') : null,
+      viewId: /^\d+$/.test(params.get('viewId') ?? '') ? params.get('viewId') : null,
+    };
   });
   const focusRequest = useRef<string | null>(linked.tableId);
+  // VIEW 관리에서 넘어온 경우 (?viewId=) : VIEW 노드가 그려진 뒤 그 노드를 선택·가운데로
+  const viewFocusRequest = useRef<string | null>(linked.viewId ? viewNodeId(Number(linked.viewId)) : null);
   const [, setSearchParams] = useSearchParams();
   useEffect(() => {
     // 한 번 쓴 파라미터는 지운다 (새로 고침·범위 변경 뒤에 다시 그 테이블로 끌려가지 않게)
-    if (linked.schemaId || linked.tableId) setSearchParams({}, { replace: true });
+    if (linked.schemaId || linked.tableId || linked.viewId) setSearchParams({}, { replace: true });
   }, []);
 
   const [scope, setScope] = useState<Scope>({ ...INITIAL_SCOPE, schemaId: linked.schemaId });
   const [form, setForm] = useState<SearchScope>({ ...INITIAL_SCOPE, schemaId: linked.schemaId });
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
+  // VIEW 노드 (M-15) : 테이블 노드와 따로 둔다 (배치 저장 대상이 아니다). 위치는 이 화면에서만 기억한다
+  const [viewNodes, setViewNodes, onViewNodesChange] = useNodesState<ViewNodeType>([]);
+  const viewPositions = useRef(new Map<string, XY>());
+  const [showViews, setShowViews] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [onlyRelated, setOnlyRelated] = useState(false);
   const [depth, setDepth] = useState(1);
@@ -153,6 +168,20 @@ function ErdWorkspace() {
     queryFn: ({ signal }) => api<ErdGraph>(graphKey, { signal, silent: true }),
     enabled: layout.isSuccess,
   });
+
+  // VIEW : 범위 조회는 같은 스키마 조건, 이웃 조회는 전체에서 화면의 테이블·VIEW 를 참조하는 것만 (아래 shownViews)
+  const viewScope = scope.kind === 'search' ? scope.schemaId : '';
+  const views = useQuery({
+    queryKey: ['erd-views', user?.projectId, viewScope],
+    queryFn: () => api<ErdView[]>(`/api/erd/views${viewScope ? `?schemaId=${enc(viewScope)}` : ''}`, { silent: true }),
+    enabled: showViews && layout.isSuccess,
+  });
+  const shownViews = useMemo(() => {
+    if (!showViews || !views.data || !graph.data) return [];
+    if (scope.kind === 'search') return views.data;
+    const tableIds = new Set(graph.data.tables.map((t) => t.id));
+    return views.data.filter((v) => v.references.some((r) => r.tableId != null && tableIds.has(r.tableId)));
+  }, [showViews, views.data, graph.data, scope.kind]);
 
   const schemaName = useMemo(() => new Map(schemas.data?.map((s) => [s.id, s.schemaName])), [schemas.data]);
   // 양쪽 테이블이 모두 조회 범위에 있는 관계만 선으로 그린다 (나머지는 상세 패널에)
@@ -190,11 +219,15 @@ function ErdWorkspace() {
     const columns = columnsByTable(data.columns);
     const fkColumns = new Set(data.relations.filter((r) => r.relationType === 'FK').flatMap((r) => r.columns.map((p) => p.sourceColumnId)));
     const linkedColumns = new Set(shownRelations.flatMap((r) => r.columns.flatMap((p) => [p.sourceColumnId, p.targetColumnId])));
+    // 테이블명은 스키마 안에서만 하나다 : 같은 이름이 여러 스키마에서 보이면 노드에 스키마명을 붙여 구분한다
+    const nameCount = new Map<string, number>();
+    data.tables.forEach((table) => nameCount.set(table.tableName, (nameCount.get(table.tableName) ?? 0) + 1));
     const built: TableNodeType[] = data.tables.map((table) => ({
       id: String(table.id),
       type: 'table',
       position: positions.current.get(String(table.id)) ?? { x: 0, y: 0 },
-      data: { table, columns: columns.get(table.id) ?? [], fkColumns, linkedColumns },
+      data: { table, columns: columns.get(table.id) ?? [], fkColumns, linkedColumns,
+        schemaPrefix: (nameCount.get(table.tableName) ?? 0) > 1 ? schemaName.get(table.schemaId) : undefined },
     }));
     const missing = built.filter((n) => !positions.current.has(n.id));
     const moveViewport = shownGraph.current !== graphKey;
@@ -227,7 +260,7 @@ function ErdWorkspace() {
       }
       if (cancelled) return;
       setNodes(built);
-      setSelectedId((id) => (id && built.some((n) => n.id === id) ? id : scope.kind === 'neighbors' && !focusRequest.current ? String(scope.tableId) : null));
+      setSelectedId((id) => (id && (isViewNodeId(id) || built.some((n) => n.id === id)) ? id : scope.kind === 'neighbors' && !focusRequest.current ? String(scope.tableId) : null));
       setSelectedRelation((id) => (id != null && data.relations.some((r) => r.id === id) ? id : null));
 
       const requested = focusRequest.current;
@@ -263,6 +296,37 @@ function ErdWorkspace() {
     };
   }, [graph.data, layout.data]);
 
+  // VIEW 노드 : 테이블 배치가 끝난 뒤 그린다. 처음 보는 VIEW 는 지금 테이블들의 오른쪽에 세로로 쌓는다 (기존 VIEW 위치는 유지)
+  useEffect(() => {
+    if (!shownViews.length) {
+      setViewNodes([]);
+      return;
+    }
+    // 테이블 노드가 놓인 뒤에 자리를 정한다 (테이블이 아직 그려지지 않았으면 기다린다)
+    if (graph.data?.tables.length && !nodes.length) return;
+    const right = Math.max(-200, ...nodes.map((n) => n.position.x + NODE_WIDTH), ...[...viewPositions.current.values()].map((p) => p.x - 200)) + 200;
+    let top = Math.min(0, ...nodes.map((n) => n.position.y));
+    const built: ViewNodeType[] = shownViews.map((view) => {
+      const id = viewNodeId(view.id);
+      let position = viewPositions.current.get(id);
+      if (!position) {
+        position = { x: right, y: top };
+        viewPositions.current.set(id, position);
+      }
+      top = Math.max(top, position.y) + nodeHeight(view.columns.length) + 40;
+      return { id, type: 'view', position, data: { view, columns: view.columns } };
+    });
+    setViewNodes(built);
+    const requested = viewFocusRequest.current;
+    const target = requested ? built.find((n) => n.id === requested) : undefined;
+    if (target) {
+      viewFocusRequest.current = null;
+      setSelectedId(target.id);
+      // 처음 열 때 화면 맞춤(전체 보기)이 끝난 뒤에 옮긴다
+      setTimeout(() => void flow.setCenter(target.position.x + NODE_WIDTH / 2, target.position.y + nodeHeight(target.data.columns.length) / 2, { zoom: 1 }), 300);
+    }
+  }, [shownViews, nodes.length]);
+
   useEffect(() => {
     if (!pendingCount) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -271,13 +335,28 @@ function ErdWorkspace() {
   }, [pendingCount]);
 
   // 관계선 : 선택한 테이블에 걸린 관계는 굵기와 색으로 함께 강조한다 (논리 ERD 와 같다). 출처는 상세 패널의 관계 목록에 남는다
-  const edges = useMemo<RelationEdge[]>(() => {
+  const edges = useMemo<ErdEdge[]>(() => {
     if (!graph.data) return [];
-    return relationEdges(graph.data.columns, shownRelations, simple, (relation) => {
+    const relations: ErdEdge[] = relationEdges(graph.data.columns, shownRelations, simple, (relation) => {
       const highlighted = selectedRelation === relation.id || selectedId === String(relation.sourceTableId) || selectedId === String(relation.targetTableId);
       return { highlighted, stroke: highlighted ? 'var(--gh-accent)' : SOURCE_COLOR[relation.relationSource] };
     });
-  }, [graph.data, shownRelations, simple, selectedId, selectedRelation]);
+    // VIEW → 참조 객체 (내부 참조이고 상대가 화면에 있을 때만. 미확인 참조는 선이 없다)
+    const tableIds = new Set(graph.data.tables.map((t) => t.id));
+    const viewIds = new Set(shownViews.map((v) => v.id));
+    const references: ErdEdge[] = shownViews.flatMap((view) => view.references.flatMap((r) => {
+      const target = r.tableId != null && tableIds.has(r.tableId) ? String(r.tableId) : r.viewId != null && viewIds.has(r.viewId) ? viewNodeId(r.viewId) : null;
+      if (!target) return [];
+      const highlighted = selectedId === viewNodeId(view.id) || selectedId === target;
+      return [{
+        id: `vr${view.id}-${target}`, source: viewNodeId(view.id), sourceHandle: VIEW_HANDLE.out, target,
+        targetHandle: r.tableId != null ? TABLE_HANDLE.self : VIEW_HANDLE.in, type: 'smoothstep', zIndex: highlighted ? 1 : 0,
+        style: { stroke: VIEW_REF_COLOR, strokeDasharray: '2 4', strokeWidth: highlighted ? 2.5 : 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: VIEW_REF_COLOR }, data: { viewId: view.id },
+      }];
+    }));
+    return [...relations, ...references];
+  }, [graph.data, shownRelations, shownViews, simple, selectedId, selectedRelation]);
 
   const related = useMemo(() => {
     if (!selectedId) return null;
@@ -290,12 +369,19 @@ function ErdWorkspace() {
     return ids;
   }, [shownRelations, selectedId]);
 
-  const displayNodes = useMemo(() => nodes.map((n) => ({
+  const displayNodes = useMemo(() => [...nodes.map((n) => ({
     ...n,
     selected: n.id === selectedId,
     hidden: onlyRelated && !!related && !related.has(n.id),
     className: related?.has(n.id) && n.id !== selectedId ? 'erd-related' : undefined,
-  })), [nodes, selectedId, related, onlyRelated]);
+  })), ...viewNodes.map((n) => ({ ...n, selected: n.id === selectedId, hidden: onlyRelated && !!related }))], [nodes, viewNodes, selectedId, related, onlyRelated]);
+
+  // VIEW 노드의 변경(드래그)은 VIEW 노드 상태로, 나머지는 테이블 노드 상태로
+  const onAllNodesChange = (changes: NodeChange<TableNodeType | ViewNodeType>[]) => {
+    const isView = (change: NodeChange<TableNodeType | ViewNodeType>) => 'id' in change && isViewNodeId(change.id);
+    onNodesChange(changes.filter((change) => !isView(change)) as NodeChange<TableNodeType>[]);
+    onViewNodesChange(changes.filter(isView) as NodeChange<ViewNodeType>[]);
+  };
 
   const focus = (id: string) => {
     setSelectedId(id);
@@ -348,6 +434,7 @@ function ErdWorkspace() {
       const top = Math.min(...nodes.map((n) => n.position.y));
       const moved = nodes.map((n) => ({ ...n, position: { x: placed[n.id].x + left, y: placed[n.id].y + top } }));
       markPending(moved);
+      viewPositions.current.clear(); // VIEW 는 새 테이블 배치의 오른쪽에 다시 놓는다
       setNodes(moved);
       setMessage(t('자동 배치했습니다. [배치 저장] 을 눌러야 저장됩니다.'));
       requestAnimationFrame(() => void flow.fitView({ padding: 0.15, maxZoom: 1 }));
@@ -388,9 +475,10 @@ function ErdWorkspace() {
    * 새 테이블 : 보고 있는 화면 가운데에서 기존 노드(범위 밖에 저장된 위치 포함)와 겹치지 않는 자리에 두고 저장하지 않은 배치로 표시한다.
    * 지금 조회 범위(스키마·검색·페이지)에 들어오면 선택·포커스하고, 범위 밖이면 범위를 조용히 바꾸지 않고 물어본다.
    */
-  const placeNewTable = async (tableName: string) => {
-    const found = await api<{ data: Row[] }>(`/api/selectTable/data?page=0&size=20&sort=tableName,asc&searchColumn=tableName&searchQuery=${enc(tableName)}`);
-    const created = found.data.find((row) => row.tableName === tableName);
+  const placeNewTable = async (tableName: string, schemaId?: number | null) => {
+    // 같은 이름이 다른 스키마에도 있을 수 있어 등록한 스키마로 좁힌다
+    const found = await api<{ data: Row[] }>(`/api/selectTable/data?page=0&size=20&sort=tableName,asc&searchColumn=tableName&searchQuery=${enc(tableName)}${schemaId ? `&schemaId=${enc(schemaId)}` : ''}`);
+    const created = found.data.find((row) => row.tableName === tableName && (!schemaId || row.schemaId === schemaId));
     if (!created) return void refresh();
     const id = String(created.id);
     const rect = canvas.current?.getBoundingClientRect();
@@ -420,7 +508,7 @@ function ErdWorkspace() {
     dialog.open({
       title: t('테이블 등록'),
       content: ({ close }: DialogControls) => (
-        <TableForm type="C" schemas={(schemas.data ?? []) as unknown as TableSchema[]} onSaved={(saved) => { close(); void placeNewTable(saved.tableName); }} />
+        <TableForm type="C" schemas={(schemas.data ?? []) as unknown as TableSchema[]} onSaved={(saved) => { close(); void placeNewTable(saved.tableName, saved.schemaId); }} />
       ),
     });
   };
@@ -494,6 +582,7 @@ function ErdWorkspace() {
   };
 
   const selected = graph.data?.tables.find((t) => String(t.id) === selectedId);
+  const selectedView = shownViews.find((v) => viewNodeId(v.id) === selectedId);
   const relation = graph.data?.relations.find((r) => r.id === selectedRelation);
   const loading = layout.isFetching || graph.isFetching || arranging;
   const error = layout.error ?? graph.error;
@@ -548,6 +637,10 @@ function ErdWorkspace() {
           </span>
         )}
         <span>{t('· 관계 {0}개', shownRelations.length)}</span>
+        <label className="erd-view-toggle">
+          <input type="checkbox" checked={showViews} onChange={(e) => { setShowViews(e.target.checked); if (!e.target.checked && selectedView) setSelectedId(null); }} />
+          {showViews ? t('VIEW 표시 ({0})', shownViews.length) : t('VIEW 표시')}
+        </label>
         {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? t('한도(300개)까지만 표시') : t('일부만 표시 - 스키마·검색으로 범위를 줄이거나 다음 페이지로')}</Label>}
         {scope.kind === 'search' && (
           <span className="erd-pager">
@@ -570,15 +663,28 @@ function ErdWorkspace() {
             nodes={displayNodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onNodeDragStop={(_, __, dragged) => markPending(dragged)}
+            onNodesChange={onAllNodesChange}
+            onNodeDragStop={(_, __, dragged) => {
+              // 테이블만 배치 저장 대상이다. VIEW 노드는 이 화면에서만 위치를 기억한다
+              dragged.filter((n) => isViewNodeId(n.id)).forEach((n) => viewPositions.current.set(n.id, n.position));
+              markPending(dragged.filter((n) => !isViewNodeId(n.id)));
+            }}
             onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedRelation(null); }}
-            onEdgeClick={(_, edge) => { setSelectedRelation(edge.data?.relation.id ?? null); setSelectedId(null); }}
+            onEdgeClick={(_, edge) => {
+              if (edge.data && 'viewId' in edge.data) {
+                setSelectedRelation(null);
+                setSelectedId(viewNodeId(edge.data.viewId));
+                return;
+              }
+              setSelectedRelation(edge.data && 'relation' in edge.data ? edge.data.relation.id : null);
+              setSelectedId(null);
+            }}
             onPaneClick={() => { setSelectedId(null); setSelectedRelation(null); }}
             nodesDraggable={!arranging}
             // 편집 모드에서만 연결할 수 있다. 연결은 선을 만들지 않고 FK 등록 대화상자를 연다 (취소하거나 저장에 실패하면 아무것도 생기지 않는다)
             nodesConnectable={editing}
-            onConnect={(connection) => openRelationForm({ sourceTableId: Number(connection.source), targetTableId: Number(connection.target) })}
+            onConnect={(connection) => !isViewNodeId(connection.source) && !isViewNodeId(connection.target)
+              && openRelationForm({ sourceTableId: Number(connection.source), targetTableId: Number(connection.target) })}
             elementsSelectable={false}
             deleteKeyCode={null}
             onlyRenderVisibleElements
@@ -623,6 +729,12 @@ function ErdWorkspace() {
                 back: scope.kind === 'neighbors' ? scope.back : scope,
               })}
             />
+          ) : selectedView ? (
+            <ViewPanel view={selectedView} schemaName={schemaName.get(selectedView.schemaId) ?? ''}
+              onFocus={(id) => focus(id)}
+              visible={(id) => !!flow.getNode(id)}
+              onDdl={() => dialog.popup({ title: `DDL · ${selectedView.viewName}`, size: 'large', content: <TableDdlView ddlUrl={`/api/physical/view/${enc(selectedView.id)}/ddl`} /> })}
+              onManage={canView('view-manage') ? () => leave(viewManagePath(selectedView.id)) : undefined} />
           ) : relation ? (
             <RelationPanel relation={relation} onTable={(tableId) => focus(String(tableId))}
               outOfScope={!graph.data!.tables.some((t) => t.id === relation.sourceTableId) || !graph.data!.tables.some((t) => t.id === relation.targetTableId)}
@@ -634,6 +746,7 @@ function ErdWorkspace() {
           <div className="erd-legend">
             <span><i className="erd-line" />FK</span>
             <span><i className="erd-line dashed" />{t('논리 관계')}</span>
+            <span><i className="erd-line view-ref" />{t('VIEW 참조 (FK 아님, 직접 관리)')}</span>
             {Object.entries(SOURCE_LABEL).map(([source, label]) => (
               <span key={source}><i className="erd-swatch" style={{ background: SOURCE_COLOR[source as ErdRelation['relationSource']] }} />{label}</span>
             ))}
@@ -645,6 +758,49 @@ function ErdWorkspace() {
             })}>{t('오픈소스 고지')}</button>
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+/** 선택한 VIEW (M-15) : 읽기 전용. 정의·출력 컬럼·참조 객체 수정은 VIEW 관리에서 한다 */
+function ViewPanel({ view, schemaName, onFocus, visible, onDdl, onManage }: {
+  view: ErdView;
+  schemaName: string;
+  onFocus: (nodeId: string) => void;
+  visible: (nodeId: string) => boolean;
+  onDdl: () => void;
+  onManage?: () => void;
+}) {
+  return (
+    <div className="erd-view-panel">
+      <h3><Mono>{schemaName ? `${schemaName}.` : ''}{view.viewName}</Mono> <Label variant="done">VIEW</Label></h3>
+      <p className="erd-muted">{view.viewKorName || t('논리명 없음')}{view.isApproval ? '' : t(' · 승인 대기')}</p>
+      <h4>{t('출력 컬럼 ({0})', view.columns.length)}</h4>
+      {view.columns.length === 0 ? <p className="erd-muted">{t('출력 컬럼이 없습니다.')}</p> : (
+        <ol className="erd-view-list">{view.columns.map((c, i) => <li key={i}><Mono>{c.columnName}</Mono>{c.dataType ? ` · ${c.dataType}` : ''}</li>)}</ol>
+      )}
+      <h4>{t('참조 객체 ({0})', view.references.length)}</h4>
+      {view.references.length === 0 ? <p className="erd-muted">{t('참조 객체가 없습니다.')}</p> : (
+        <ul className="erd-view-list">
+          {view.references.map((r, i) => {
+            const nodeId = r.tableId != null ? String(r.tableId) : r.viewId != null ? viewNodeId(r.viewId) : null;
+            return (
+              <li key={i}>
+                [{referenceTypeLabel(r.referenceType)}] <Mono>{referenceName(r)}</Mono>{' '}
+                {!isInternal(r) ? <Label variant="attention">{t('미확인')}</Label>
+                  : nodeId && visible(nodeId) ? <button type="button" className="btn btn-sm" onClick={() => onFocus(nodeId)}>{t('이동')}</button>
+                  : <span className="erd-muted">{t('(조회 범위 밖)')}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="erd-muted">{t('참조 객체는 직접 관리하는 정보로, FK 관계가 아니며 정의 SQL 에서 확인한 것이 아닙니다. VIEW 는 ERD 에서 편집하지 않습니다.')}</p>
+      <div className="erd-detail-actions">
+        <button type="button" className="btn btn-sm" onClick={() => onFocus(viewNodeId(view.id))}>{t('가운데로')}</button>
+        <button type="button" className="btn btn-sm" onClick={onDdl}>{t('DDL 보기')}</button>
+        {onManage && <button type="button" className="btn btn-sm btn-primary" onClick={onManage}>{t('VIEW 관리에서 보기')}</button>}
       </div>
     </div>
   );

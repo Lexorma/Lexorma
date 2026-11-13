@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, type MenuId } from '../../hooks/useAuth';
 // 사이드바 아이콘은 Lucide (그 외 화면은 GitHub Octicons - @primer/octicons-react)
-import {Bell, BookOpen, ChevronDown, ClipboardCheck, Database, LayoutGrid, Menu, SlidersHorizontal, Workflow} from 'lucide-react';
+import {Bell, BookOpen, ChevronDown, ClipboardCheck, Database, LayoutGrid, Menu, ServerCog, SlidersHorizontal, Workflow} from 'lucide-react';
 import { isGroup, MENU, type MenuGroup } from './menu';
 import { t } from '../../lib/i18n';
 
@@ -12,6 +12,7 @@ const MENU_ICONS: Partial<Record<MenuId, ReactNode>> = {
   'data-dictionary': <BookOpen className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'logical-modeling': <Workflow className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'physical-modeling': <Database className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'source-management': <ServerCog className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'data-quality': <ClipboardCheck className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
 };
 

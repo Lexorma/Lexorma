@@ -1,5 +1,7 @@
 package com.lexorma.data.table.service;
 
+import com.lexorma.data.column.domain.entity.ColumnInfo;
+import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.domain.dto.TableDdlDto;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.dto.TableNameDto;
@@ -10,6 +12,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public interface TableDesignService {
     /** schemaId : 스키마별 조회 (없으면 전체) */
@@ -45,4 +49,13 @@ public interface TableDesignService {
      */
     /** defaultSchemaName : 기본 스키마 테이블에 붙일 스키마명 (비우면 붙이지 않는다) */
     TableDdlDto generateTableDdl(Long tableId, AccountDto accountDto, String defaultSchemaName);
+
+    /**
+     * DDL 생성용 : 이 테이블 컬럼의 참조 테이블명(적은 그대로, 대문자) → 참조 테이블의 PK 컬럼(정렬 순서). 이름은 이 테이블의 스키마 기준으로 정한다 (TableNameResolver).
+     * 통합 DDL Export(M-11)도 같은 기준을 쓴다.
+     * @param ambiguous 여러 스키마에 있어 정할 수 없는 참조 테이블명
+     */
+    record ReferencedKeys(Map<String, List<ColumnInfo>> pkColumns, Set<String> ambiguous) {}
+
+    ReferencedKeys referencedKeys(Long projectId, TableInfo table);
 }

@@ -4,7 +4,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { api, ApiError, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 
-interface TableDdl {
+export interface TableDdl {
   dbType: string;
   dbTypeLabel?: string;
   ddl: string;
@@ -14,7 +14,8 @@ interface TableDdl {
 }
 
 /** 테이블 DDL : 프로젝트 대상 DB(시스템 관리 > 프로젝트 관리) 기준으로 서버에서 생성한 DDL. ddlUrl 을 주면 그 DDL (예: 인덱스 하나) */
-export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: string }) {
+/** downloadName : 주면 [내보내기] 로 DDL 을 .sql 파일로 저장한다 (VIEW DDL 내보내기) */
+export function TableDdlView({ tableId, ddlUrl, downloadName }: { tableId?: number; ddlUrl?: string; downloadName?: string }) {
   const url = ddlUrl ?? `/api/selectTable/ddl/${enc(tableId)}`;
   const dialog = useDialog();
   const [copied, setCopied] = useState(false);
@@ -24,7 +25,7 @@ export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: s
   const [schemaName, setSchemaName] = useState('');
   const { data, error } = useQuery({
     queryKey: ['table-ddl', url, schemaName],
-    queryFn: () => api<TableDdl>(`${url}${schemaName ? `?defaultSchemaName=${enc(schemaName)}` : ''}`, { silent: true }),
+    queryFn: () => api<TableDdl>(`${url}${schemaName ? `${url.includes('?') ? '&' : '?'}defaultSchemaName=${enc(schemaName)}` : ''}`, { silent: true }),
     gcTime: 0,
     placeholderData: keepPreviousData,
   });
@@ -35,34 +36,12 @@ export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: s
   };
 
   const copy = async () => {
-    const text = data?.ddl ?? '';
-    const done = () => {
+    if (await copyText(data?.ddl ?? '')) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    };
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return done();
-      } catch {
-        // http(비보안) 환경 등 : 아래 방식으로 다시 시도
-      }
+    } else {
+      dialog.alert(t('복사하지 못했습니다. DDL 을 직접 선택해 복사해주세요.'));
     }
-    const temp = document.createElement('textarea');
-    temp.value = text;
-    temp.style.position = 'fixed';
-    temp.style.opacity = '0';
-    (document.querySelector('dialog[open]:last-of-type') ?? document.body).appendChild(temp);
-    temp.select();
-    let ok = false;
-    try {
-      ok = document.execCommand('copy');
-    } catch {
-      ok = false;
-    }
-    temp.remove();
-    if (ok) done();
-    else dialog.alert(t('복사하지 못했습니다. DDL 을 직접 선택해 복사해주세요.'));
   };
 
   const warnings = data?.warnings ?? [];
@@ -74,7 +53,10 @@ export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: s
           <span className="gh-label gh-label-accent">{data ? (data.dbTypeLabel ?? data.dbType ?? '-') : '-'}</span>
           <span className="gh-muted">{t('대상 DB 는 시스템 관리 > 프로젝트 관리에서 바꿀 수 있습니다.')}</span>
         </div>
-        <button type="button" className="btn btn-sm" disabled={!data} onClick={copy}>{copied ? t('복사됨') : t('복사')}</button>
+        <span className="table-ddl-actions">
+          {downloadName && <button type="button" className="btn btn-sm" disabled={!data?.ddl} onClick={() => data && downloadText(downloadName, data.ddl)}>{t('내보내기 (.sql)')}</button>}
+          <button type="button" className="btn btn-sm" disabled={!data} onClick={copy}>{copied ? t('복사됨') : t('복사')}</button>
+        </span>
       </div>
       <form className="table-ddl-schema" onSubmit={applySchema}>
         <label className="table-ddl-schema-check">
@@ -107,4 +89,42 @@ export function TableDdlView({ tableId, ddlUrl }: { tableId?: number; ddlUrl?: s
       </pre>
     </div>
   );
+}
+
+/** 클립보드 복사. http(비보안) 환경 등에서 Clipboard API 가 안 되면 textarea 선택 복사로 다시 시도한다 (통합 DDL 내보내기도 쓴다) */
+export async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // 아래 방식으로 다시 시도
+    }
+  }
+  const temp = document.createElement('textarea');
+  temp.value = text;
+  temp.style.position = 'fixed';
+  temp.style.opacity = '0';
+  (document.querySelector('dialog[open]:last-of-type') ?? document.body).appendChild(temp);
+  temp.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  temp.remove();
+  return ok;
+}
+
+/** 문자열을 파일로 저장한다 (브라우저 다운로드, 서버를 거치지 않는다) */
+export function downloadText(fileName: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/sql;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

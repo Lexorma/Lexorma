@@ -6,6 +6,13 @@ interface TableInfo {
   id: number;
   tableName: string;
   tableKorName?: string;
+  schemaName?: string | null;
+}
+
+/** 이름이 여러 스키마에 있으면 "스키마명.테이블명" 으로 적어야 정해진다 (테이블명은 스키마 안에서만 하나다) */
+export function refName(table: TableInfo, list: TableInfo[]) {
+  const duplicated = list.filter((other) => other.tableName === table.tableName).length > 1;
+  return duplicated && table.schemaName ? `${table.schemaName.toUpperCase()}.${table.tableName}` : table.tableName;
 }
 
 /**
@@ -14,6 +21,8 @@ interface TableInfo {
  *
  * - 목록은 제안일 뿐이라 직접 입력도 그대로 저장된다. (서버가 대문자로 맞춘다)
  * - 입력값이 승인된 테이블과 같으면 "선택됨", 없으면 DDL 에서 FK 가 만들어지지 않는다고 안내한다.
+ * - 같은 이름이 여러 스키마에 있으면 목록은 "스키마명.테이블명" 으로 보여 주고, 이름만 적으면 어느 것인지 고르라고 안내한다.
+ *   (스키마를 적지 않은 이름은 서버가 이 컬럼의 테이블과 같은 스키마를 먼저 찾는다)
  */
 export function RefTableLookup({ value, onChange, disabled, id, className = 'form-control gh-mono', placeholder, ariaLabel }: {
   value: string;
@@ -44,22 +53,26 @@ export function RefTableLookup({ value, onChange, disabled, id, className = 'for
   }, [value, disabled]);
 
   const name = value.trim().toUpperCase();
-  const matched = tables?.find((t) => t.tableName === name);
+  const options = (tables ?? []).map((table) => ({ table, value: refName(table, tables ?? []) }));
+  const matched = (options.find((o) => o.value === name) ?? options.find((o) => o.table.schemaName && `${o.table.schemaName.toUpperCase()}.${o.table.tableName}` === name))?.table ?? null;
+  const ambiguous = !matched && options.filter((o) => o.table.tableName === name).length > 1;
 
   return (
     <>
       <input type="text" id={id} className={className} list={listId} autoComplete="off" placeholder={placeholder} aria-label={ariaLabel}
         value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
       <datalist id={listId}>
-        {(tables ?? []).map((t) => <option key={t.id} value={t.tableName}>{t.tableKorName || ''}</option>)}
+        {options.map((o) => <option key={o.table.id} value={o.value}>{o.table.tableKorName || ''}</option>)}
       </datalist>
       {!disabled && (
         <div className="table-name-words ref-table-status" aria-live="polite">
           {name && tables && (matched ? (
             <span className="gh-label gh-label-success">
-              <span className="table-name-abbr">{matched.tableName}</span>
+              <span className="table-name-abbr">{name.includes('.') ? name : refName(matched, tables ?? [])}</span>
               <span>{matched.tableKorName ? t('{0} · 선택됨', matched.tableKorName) : t('선택됨')}</span>
             </span>
+          ) : ambiguous ? (
+            <p className="form-help">{t('여러 스키마에 같은 이름이 있습니다 · 목록에서 스키마명.테이블명을 선택하세요.')}</p>
           ) : (
             <p className="form-help">{tables.length ? t('후보 {0}건 · 목록에서 선택하세요.', tables.length) : t('승인된 테이블에 없습니다 · DDL 에서 FK 를 만들지 않습니다.')}</p>
           ))}

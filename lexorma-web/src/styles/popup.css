@@ -457,3 +457,10 @@ dialog.popup-dialog .popup-dialog-body {
     gap: 8px;
     margin-top: 16px;
 }
+
+/* DDL 내보내기·복사 버튼 묶음 */
+.table-ddl-actions {
+    display: inline-flex;
+    gap: 6px;
+    flex: none;
+}

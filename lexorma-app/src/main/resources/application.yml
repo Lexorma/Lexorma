@@ -68,6 +68,13 @@ server:
   # 리버스 프록시(nginx 등)의 X-Forwarded-Proto/For 헤더를 반영한다.
   # HTTPS 요청이면 세션 쿠키에 Secure가 자동으로 붙으므로 HTTP/HTTPS 이미지를 나눌 필요가 없다.
   forward-headers-strategy: native
+  # 응답 압축 (gzip, 요청에 Accept-Encoding: gzip 이 있을 때만) : JSON API(원본 ERD 3,000 테이블 ≈ 4.5MB)와 React 정적 파일.
+  # 4KB 보다 작은 응답(CSRF 토큰·로그인 결과 등 비밀값이 든 짧은 응답)은 압축하지 않는다. 엑셀(xlsx)·이미지는 이미 압축된 형식이라 목록에 없다.
+  # 측정·결정 근거 : docs/m4-foundation.md 3장
+  compression:
+    enabled: true
+    mime-types: application/json,application/problem+json,text/html,text/css,text/javascript,application/javascript,text/plain,text/markdown,image/svg+xml
+    min-response-size: 4KB
   servlet:
     session:
       cookie:

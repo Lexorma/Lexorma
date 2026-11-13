@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
@@ -37,6 +38,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -146,6 +148,30 @@ class SmokeTest {
                 .contains("\"projectName\":\"LEXORMA\"")
                 .contains("\"approvalAvailable\":true")
                 .doesNotContain("\":false"); // 모든 메뉴 true
+    }
+
+    @Test
+    @Order(1)
+    @DisplayName("응답 압축 (server.compression) : Accept-Encoding: gzip 이면 4KB 넘는 JSON 을 gzip 으로 보내고 풀면 압축하지 않은 응답과 같다. gzip 을 받지 않는 요청·CSRF 토큰(작은 응답)은 압축하지 않는다")
+    void responseCompression() throws Exception {
+        String path = "/api/selectTable/data?page=0&size=100";
+        HttpResponse<byte[]> gzip = client.send(HttpRequest.newBuilder(uri(path)).header("X-Requested-With", "XMLHttpRequest").header("Accept-Encoding", "gzip").GET().build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<String> plain = get(path, true); // JDK HttpClient 는 Accept-Encoding 을 보내지 않는다
+
+        assertThat(gzip.statusCode()).isEqualTo(200);
+        assertThat(gzip.headers().firstValue("Content-Encoding")).contains("gzip");
+        assertThat(gzip.headers().allValues("Vary").toString()).containsIgnoringCase("accept-encoding");
+        assertThat(plain.headers().firstValue("Content-Encoding")).isEmpty();
+        String unzipped = new String(new GZIPInputStream(new ByteArrayInputStream(gzip.body())).readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(unzipped).isEqualTo(plain.body());
+        assertThat(plain.body().getBytes(StandardCharsets.UTF_8).length).isGreaterThan(4096);
+        assertThat(gzip.body().length).isLessThan(plain.body().getBytes(StandardCharsets.UTF_8).length / 3);
+
+        HttpResponse<byte[]> csrf = client.send(HttpRequest.newBuilder(uri("/api/auth/csrf")).header("Accept-Encoding", "gzip").GET().build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(csrf.headers().firstValue("Content-Encoding")).isEmpty();
+        assertThat(new String(csrf.body(), StandardCharsets.UTF_8)).contains("\"token\"");
     }
 
     @Test

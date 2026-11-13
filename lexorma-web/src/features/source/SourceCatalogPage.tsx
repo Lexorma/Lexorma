@@ -179,7 +179,7 @@ function ChangeBadge({ changeType, versionOrder, order }: { changeType: string; 
   return type ? <Label variant={type.variant}>{type.label}</Label> : null;
 }
 
-function TableDetailView({ tableId, order, onOpenTable, onOpenOrder }: {
+export function TableDetailView({ tableId, order, onOpenTable, onOpenOrder }: {
   tableId: number;
   /** null 이면 현재 카탈로그 */
   order: number | null;

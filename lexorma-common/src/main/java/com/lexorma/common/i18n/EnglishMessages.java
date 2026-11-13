@@ -489,5 +489,23 @@ final class EnglishMessages {
         add("{0} : 참조 테이블 {1} 이(가) 여러 스키마에 있어 FK 를 만들지 않았습니다. 스키마명.테이블명으로 지정해주세요.", "{0}: the referenced table {1} exists in several schemas, so no FK was created. Specify it as schema.table.");
         add("스키마명 포함 {0} 이(가) 스키마 {1} 와(과) 같아 같은 이름의 객체가 겹칩니다 : {2}. 다른 스키마명을 쓰거나 비워주세요.", "The schema name to include, {0}, is the same as schema {1}, so objects with the same name collide: {2}. Use another schema name or leave it empty.");
         add("스키마명 포함 {0} 이(가) 스키마 {1} 와(과) 같아 기본 스키마의 객체가 그 스키마에 함께 만들어집니다.", "The schema name to include, {0}, is the same as schema {1}, so objects of the default schema are created in that schema too.");
+        // 원본 매핑 (M-4c, 2026-11-13)
+        add("VIEW 는 매핑할 수 없습니다. TABLE 만 매핑합니다.", "A VIEW cannot be mapped. Only TABLEs are mapped.");
+        add("가져오기 기준 연결을 먼저 정해주세요.", "Choose the import base connection first.");
+        add("기준 연결에 완료된 수집이 없어 매핑을 확정할 수 없습니다. 먼저 메타데이터를 수집해주세요.", "The base connection has no completed collection, so mappings cannot be confirmed. Collect its metadata first.");
+        add("다른 사용자가 같은 매핑을 바꾸었습니다. 화면을 새로 고친 뒤 다시 시도해주세요.", "Another user changed the same mapping. Refresh the page and try again.");
+        add("마지막으로 반영된 수집에 없는 원본 스키마입니다.", "The source schema is not in the last applied collection.");
+        add("마지막으로 반영된 수집에 없는 원본 테이블입니다.", "The source table is not in the last applied collection.");
+        add("매핑되지 않은 원본 스키마입니다.", "The source schema is not mapped.");
+        add("매핑을 찾을 수 없습니다.", "The mapping was not found.");
+        add("모델 스키마 {0} 은(는) 이미 원본 스키마 {1} 에 매핑되어 있습니다.", "Model schema {0} is already mapped to source schema {1}.");
+        add("모델 스키마를 찾을 수 없습니다.", "The model schema was not found.");
+        add("모델 테이블 {0} 은(는) 원본 스키마 {1} 에 매핑된 모델 스키마에 있지 않습니다.", "Model table {0} is not in the model schema mapped to source schema {1}.");
+        add("모델 테이블 {0} 은(는) 이미 원본 테이블 {1} 에 매핑되어 있습니다.", "Model table {0} is already mapped to source table {1}.");
+        add("모델 테이블을 찾을 수 없습니다.", "The model table was not found.");
+        add("원본 스키마 {0} 의 스키마 매핑을 먼저 확정해주세요.", "Confirm the schema mapping of source schema {0} first.");
+        add("원본 스키마와 모델 스키마를 골라주세요.", "Choose a source schema and a model schema.");
+        add("원본 테이블과 모델 테이블을 골라주세요.", "Choose a source table and a model table.");
+        add("지금 기준 연결의 매핑(스키마 {0}건, 테이블 {1}건)은 지우지 않고 그 연결의 매핑으로 남습니다. 확인 후 다시 요청해주세요.", "The mappings of the current base connection ({0} schemas, {1} tables) are not deleted and stay with that connection. Confirm and request again.");
     }
 }

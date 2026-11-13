@@ -76,6 +76,8 @@ export const MENU: MenuEntry[] = [
       { id: 'source-connection', label: t('연결 관리'), path: '/sourceConnection' },
       { id: 'source-collection', label: t('메타데이터 수집'), path: '/sourceCollection' },
       { id: 'source-catalog', label: t('원본 카탈로그'), path: '/sourceCatalog' },
+      { id: 'source-erd', label: t('원본 DB ERD'), path: '/sourceErd' },
+      { id: 'source-mapping', label: t('원본 매핑 관리'), path: '/sourceMapping' },
     ],
   },
   {

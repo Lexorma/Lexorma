@@ -93,6 +93,10 @@ public class MenuAuthorization {
             Map.entry("source-connection", "VIEWER"),
             Map.entry("source-collection", "VIEWER"),
             Map.entry("source-catalog", "VIEWER"),
+            // 원본 DB ERD (M-4b) : ERD 조회 API(/api/source/connections/{id}/snapshot/erd)가 VIEWER. 읽기 전용이라 관리 버튼이 없다
+            Map.entry("source-erd", "VIEWER"),
+            // 원본 매핑 관리 (M-4c) : 매핑 현황·목록 조회 API 가 VIEWER. 기준 연결·매핑 확정·해제 버튼은 source-manage(USER) + projectManageable
+            Map.entry("source-mapping", "VIEWER"),
             Map.entry("source-manage", "USER")
     );
 
@@ -120,7 +124,7 @@ public class MenuAuthorization {
             new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "view-manage", "physical-erd", "ddl-export"},
 
             "source-management",
-            new String[]{"source-connection", "source-collection", "source-catalog"}
+            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping"}
     );
 
     private final RoleHierarchy roleHierarchy;

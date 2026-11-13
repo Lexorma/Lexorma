@@ -50,6 +50,8 @@ import com.lexorma.data.version.domain.dto.ModelVersionDto.Create;
 import com.lexorma.data.version.service.ModelVersionService;
 import com.lexorma.data.view.domain.dto.ViewDto;
 import com.lexorma.data.view.service.PhysicalViewService;
+import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto;
+import com.lexorma.data.sourcemapping.service.SourceMappingService;
 import com.lexorma.operation.board.domain.entity.Board;
 import com.lexorma.operation.notice.repository.BoardCategoryRepository;
 import com.lexorma.operation.notice.repository.BoardRepository;
@@ -98,7 +100,8 @@ class ProjectDeletionIntegrationTest {
     private static final Set<String> PROJECT_TABLES = Set.of("TB_PRJ", "TB_PRJ_MBR", "TB_LOG", "TB_PST", "TB_STD_DMN", "TB_STD_WORD", "TB_STD_TRM", "TB_SCHM", "TB_TBL", "TB_COL",
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
-            "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND");
+            "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
+            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -116,6 +119,7 @@ class ProjectDeletionIntegrationTest {
     @Autowired SourceConnectionRepository sourceConnectionRepository;
     @Autowired SourceCatalogWriter catalogWriter;
     @Autowired SourceCollectionService collections;
+    @Autowired SourceMappingService sourceMappingService;
     @Autowired LogsService logsService;
     @Autowired ProjectManageService projectManageService;
     @Autowired TransactionTemplate tx;
@@ -381,6 +385,10 @@ class ProjectDeletionIntegrationTest {
                             List.of(new SourceCatalogSpec.Relation("fk_orders_user", null, null, Name.of("users"), "CASCADE", null,
                                     List.of(new SourceCatalogSpec.ColumnPair(Name.of("user_id"), Name.of("id")))))))))));
         }
+        // 원본 매핑 (M-4c) : 기준 연결, 스키마 매핑(public → 기본 스키마), TABLE 매핑(users → TB_ORD)
+        sourceMappingService.setBase(admin, new SourceMappingDto.BaseRequest(connection.getId(), null));
+        sourceMappingService.mapSchema(admin, new SourceMappingDto.SchemaRequest(sourceSchema.getId(), order.getSchema().getId()));
+        sourceMappingService.mapTable(admin, new SourceMappingDto.TableRequest(users.getId(), order.getId()));
         return new Filled(order);
     }
 

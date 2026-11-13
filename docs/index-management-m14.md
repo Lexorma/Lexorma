@@ -365,3 +365,14 @@ where u.IDX_SRC_CD = 'USER' and u.UNQ_YN = true and u.APRV_YN = true and u.CND_C
 남은 것 (완료 판단에 영향 없음) : 프론트엔드 테스트 러너가 없어 D-2·D-5 는 자동 테스트 대신 위 브라우저 검증으로 확인 (러너 도입은 별도 결정). 기존 공존 데이터 화면 확인은 §11 그대로 BLOCKED (H2 콘솔 CSRF, `IndexUniquePriorityIntegrationTest` 로 확인).
 
 **결과 : M-14 완료.**
+
+## 13. LEXORMA 예제 인덱스 등록 (2026-11-13, `V5__lexorma_index_seed.sql`)
+
+인덱스 관리 화면에서 Lexorma 자체 테이블의 인덱스도 보이도록, 프로젝트 LEXORMA(id 0)의 예제 물리 모델에 실제 스키마의 인덱스를 넣었다 (데이터만, 스키마 변경 없음, PostgreSQL·H2 같은 내용).
+
+- 대상 : V0·V3 의 `create [unique] index … on TB_…` 83개 (구성 컬럼 116개). 이름·컬럼·순서·UNIQUE 여부 그대로, 출처 `USER`, 승인 상태, 유형 없음(기본), 등록자 `SYSTEM`.
+- 넣지 않은 것 : PK, `alter table … add constraint … unique` 로 만든 UNIQUE 제약 4개(`UX_SRC_SCHM_02`·`UX_SRC_TBL_02`·`UX_SRC_CLCT_EXCN_04` 등 — 제약조건 관리 대상), `SPRING_SESSION` 인덱스(예제에 테이블이 없다).
+- 기존 DB 보호 : 같은 테이블에 같은 이름의 인덱스가 이미 있거나 테이블·구성 컬럼이 하나라도 없으면(프로젝트 LEXORMA 를 지웠거나 고친 경우) 그 인덱스는 건너뛴다. 기존 인덱스·컬럼의 `IDX_YN` 은 바꾸지 않는다.
+- 네이티브 SQL 이라 모델 변경 이력에는 행이 없고, V5 이전 모델 버전과 현재를 비교하면 인덱스 83개가 추가로 보인다 (V3 이관과 같다).
+- 검증 : `V0SeedMigrationTest` (마이그레이션 6개, 인덱스 83·컬럼 116, 임시 테이블 없음), `IndexMigrationV3Test` 의 V4 단계는 `target("4")` 로 고정.
+- 앞으로 `create index` 를 추가하는 마이그레이션은 같은 파일에 예제 인덱스도 넣는다.

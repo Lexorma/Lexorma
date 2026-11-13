@@ -71,8 +71,8 @@ class IndexMigrationV3Test {
             String allIndexes = "select i.IDX_SN || ':' || i.IDX_NM || ':' || i.UNQ_YN || ':' || coalesce(cast(i.APRV_YN as varchar(5)), '-') || ':' || i.IDX_SRC_CD || ':' || c.COL_SN || ':' || c.COL_ORD from "
                     + s + "TB_TBL_IDX i join " + s + "TB_TBL_IDX_COL c on c.IDX_SN = i.IDX_SN order by i.IDX_SN, c.COL_ORD";
             List<String> beforeV4 = jdbc.queryForList(allIndexes, String.class);
-            Flyway v4 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
-            assertThat(v4.migrate().migrationsExecuted).isPositive();
+            Flyway v4 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target("4").load();
+            assertThat(v4.migrate().migrationsExecuted).isEqualTo(1);
             assertThat(jdbc.queryForList(allIndexes, String.class)).isEqualTo(beforeV4).isNotEmpty();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where CND_CN is not null", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX_COL where EXPR_CN is not null or SORT_CD is not null or COL_SN is null", Integer.class)).isZero();

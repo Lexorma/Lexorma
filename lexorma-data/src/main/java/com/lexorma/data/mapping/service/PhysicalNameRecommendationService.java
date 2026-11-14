@@ -1,5 +1,7 @@
 package com.lexorma.data.mapping.service;
 
+import com.lexorma.data.schema.domain.entity.SchemaInfo;
+import com.lexorma.data.schema.repository.SchemaInfoRepository;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.common.i18n.Messages;
@@ -55,6 +57,7 @@ public class PhysicalNameRecommendationService {
     private final ModelMappingQueryRepository mappingQueryRepository;
     private final LogicalModelRepository modelRepository;
     private final TableDesignService tableDesignService;
+    private final SchemaInfoRepository schemaInfoRepository;
 
     // ------------------------------------------------------------------ 컬럼명 규칙 (정합성 비교와 공용)
 
@@ -177,10 +180,12 @@ public class PhysicalNameRecommendationService {
         Map<String, TableNameDto> names = tableDesignService.generateTableNames(entities.getContent().stream().map(ModelMappingDto.EntityRow::entityName).toList(), accountDto);
         List<NamedTable> tables = queryRepository.findTablesByName(projectId,
                 names.values().stream().filter(TableNameDto::valid).map(name -> upper(name.tableName())).collect(Collectors.toSet()));
-        return entities.map(entity -> tableRow(entity, names.get(entity.entityName()), tables));
+        // 테이블명은 스키마 안에서만 하나다 : 매핑된 테이블의 스키마(매핑이 없으면 새 테이블이 들어갈 기본 스키마)의 같은 이름만 충돌이다
+        Long defaultSchemaId = schemaInfoRepository.findFirstByProjectIdAndIsDefaultTrue(projectId).map(SchemaInfo::getId).orElse(null);
+        return entities.map(entity -> tableRow(entity, names.get(entity.entityName()), tables, entity.schemaId() != null ? entity.schemaId() : defaultSchemaId));
     }
 
-    static TableRow tableRow(ModelMappingDto.EntityRow e, TableNameDto name, List<NamedTable> tablesByName) {
+    static TableRow tableRow(ModelMappingDto.EntityRow e, TableNameDto name, List<NamedTable> tablesByName, Long schemaId) {
         Status status;
         String reason;
         if (!name.valid()) {
@@ -195,7 +200,7 @@ public class PhysicalNameRecommendationService {
             reason = Messages.get("현재 테이블명이 표준 단어로 만든 테이블명과 같습니다.");
         } else {
             NamedTable other = tablesByName.stream()
-                    .filter(table -> !table.tableId().equals(e.tableId()) && sameName(table.tableName(), name.tableName()))
+                    .filter(table -> !table.tableId().equals(e.tableId()) && java.util.Objects.equals(table.schemaId(), schemaId) && sameName(table.tableName(), name.tableName()))
                     .findFirst().orElse(null);
             if (other != null) {
                 status = Status.CONFLICT;

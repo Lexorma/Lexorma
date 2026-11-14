@@ -12,9 +12,15 @@ import com.lexorma.data.dictionary.domain.entity.StandardWord;
 import com.lexorma.data.dictionary.repository.StandardWordRepository;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.dto.TableNameDto;
+import com.lexorma.data.schema.service.ObjectNamespace;
+import com.lexorma.data.schema.domain.entity.SchemaInfo;
+import com.lexorma.data.physical.repository.TableRelationRepository;
+import jakarta.persistence.EntityManager;
 import com.lexorma.data.table.domain.entity.TableInfo;
+import com.lexorma.data.view.repository.PhysicalViewRepository;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,6 +40,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,8 +69,32 @@ class TableDesignServiceImplTest {
     @Mock
     EntityTableMappingRepository entityTableMappingRepository; // 기본 : findByTable_Id → Optional.empty (매핑 없음)
 
+    @Mock
+    ObjectNamespace objectNamespace; // 기본 : conflict → null (같은 이름 없음). 테이블·VIEW 이름 공간은 ViewManagementIntegrationTest
+
+    @Mock
+    PhysicalViewRepository viewRepository; // 기본 : 테이블을 참조하는 VIEW 없음
+
+    @Mock
+    TableRelationRepository relationRepository; // 기본 : 참조 테이블명에서 만든 관계 없음
+
+    @Mock
+    EntityManager entityManager;
+
+    /** 모든 테이블이 들어 있는 기본 스키마 */
+    private static final SchemaInfo SCHEMA = SchemaInfo.builder().id(1L).projectId(1L).schemaName(SchemaInfo.DEFAULT_NAME).isDefault(true).build();
+
     @InjectMocks
     TableDesignServiceImpl service;
+
+    /** 이름 공간 확인은 테이블 쪽만 : 그 스키마의 같은 이름 테이블 조회로 판단한다 (VIEW 와의 교차 중복·다른 스키마는 통합 테스트) */
+    @BeforeEach
+    void namespace() {
+        lenient().when(schemaService.resolveSchema(any(), any())).thenReturn(SCHEMA);
+        lenient().when(objectNamespace.conflict(any(), any(), any(), any())).thenAnswer(call -> tableInfoRepository
+                .findAllBySchema_IdAndTableName(call.getArgument(0), ((String) call.getArgument(1)).toUpperCase()).stream()
+                .anyMatch(t -> !java.util.Objects.equals(t.getId(), call.getArgument(2))) ? ObjectNamespace.Kind.TABLE : null);
+    }
 
     @AfterEach
     void tearDown() {
@@ -71,7 +102,7 @@ class TableDesignServiceImplTest {
     }
 
     private static TableInfo table(Long id, String name, boolean approved) {
-        return TableInfo.builder().id(id).projectId(1L).tableName(name).isApproval(approved).columns(new ArrayList<>()).build();
+        return TableInfo.builder().id(id).projectId(1L).schema(SCHEMA).tableName(name).isApproval(approved).columns(new ArrayList<>()).build();
     }
 
     private static TableInfoDto newTable(String name) {
@@ -198,7 +229,7 @@ class TableDesignServiceImplTest {
         void duplicate() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
             stubApprovedWords();
-            when(tableInfoRepository.findAllByTableNameAndProjectId("USE_HIST_MGMT", 1L)).thenReturn(List.of(table(1L, "USE_HIST_MGMT", true)));
+            when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "USE_HIST_MGMT")).thenReturn(List.of(table(1L, "USE_HIST_MGMT", true)));
 
             assertThatThrownBy(() -> service.saveTable(newKorTable("사용_내역_관리", "설명"), login))
                     .isInstanceOf(CustomException.class)
@@ -247,7 +278,8 @@ class TableDesignServiceImplTest {
                 .tableDescription("사용 내역").isMasterTable("N").sortOrder(1).build();
         stubApprovedWords();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("USE_HIST_MGMT", 1L)).thenReturn(List.of());
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "USE_HIST_MGMT")).thenReturn(List.of());
 
         service.updateTable(dto, login);
 
@@ -264,7 +296,8 @@ class TableDesignServiceImplTest {
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("USE_HIST_MGMT").tableKorName("")
                 .tableDescription("설명 변경").isMasterTable("N").sortOrder(1).build();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("USE_HIST_MGMT", 1L)).thenReturn(List.of(table));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "USE_HIST_MGMT")).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
 
@@ -279,7 +312,8 @@ class TableDesignServiceImplTest {
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("TB_USER").tableDescription("사용자").isMasterTable("N").sortOrder(2).build();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("TB_USER", 1L)).thenReturn(List.of(table));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "TB_USER")).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
 
@@ -294,11 +328,13 @@ class TableDesignServiceImplTest {
         TableInfo table = table(1L, "TB_USER", false);
         ColumnInfo own = ColumnInfo.builder().id(10L).tableName("TB_USER").build();
         table.getColumns().add(own);
-        ColumnInfo referencing = ColumnInfo.builder().id(20L).tableName("TB_ORDER").refTableName("TB_USER").build();
+        ColumnInfo referencing = ColumnInfo.builder().id(20L).tableName("TB_ORDER").tableInfo(table(2L, "TB_ORDER", false)).refTableName("TB_USER").build();
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("tb_member").tableDescription("회원").isMasterTable("N").sortOrder(1).build();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("TB_MEMBER", 1L)).thenReturn(List.of());
-        when(columnInfoRepository.findAllByProjectIdAndRefTableName(1L, "TB_USER")).thenReturn(List.of(referencing));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "TB_MEMBER")).thenReturn(List.of());
+        when(columnInfoRepository.findAllReferencing(1L, List.of("TB_USER", "DEFAULT.TB_USER"))).thenReturn(List.of(referencing));
+        when(tableInfoRepository.findAllByProjectIdAndTableNameIn(1L, List.of("TB_USER"))).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
 
@@ -314,11 +350,12 @@ class TableDesignServiceImplTest {
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("TB_USER").tableDescription("사용자").isMasterTable("N").sortOrder(1).build();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("TB_USER", 1L)).thenReturn(List.of(table));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "TB_USER")).thenReturn(List.of(table));
 
         service.updateTable(dto, login);
 
-        verify(columnInfoRepository, never()).findAllByProjectIdAndRefTableName(any(), any());
+        verify(columnInfoRepository, never()).findAllReferencing(any(), any());
     }
 
     @Test
@@ -328,7 +365,8 @@ class TableDesignServiceImplTest {
         TableInfo table = table(1L, "TB_USER", false);
         TableInfoDto dto = TableInfoDto.builder().id(1L).tableName("tb_member").tableDescription("회원").isMasterTable("Y").sortOrder(3).build();
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
-        when(tableInfoRepository.findAllByTableNameAndProjectId("TB_MEMBER", 1L)).thenReturn(List.of());
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+        when(tableInfoRepository.findAllBySchema_IdAndTableName(1L, "TB_MEMBER")).thenReturn(List.of());
 
         service.updateTable(dto, login);
 
@@ -350,6 +388,7 @@ class TableDesignServiceImplTest {
             TableInfo table = table(1L, "TB_USER", false);
             table.getColumns().add(new ColumnInfo());
             when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
+            lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
 
             assertThatThrownBy(() -> service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login))
                     .extracting("errorCode").isEqualTo(ErrorCode.COLUMN_DEPENDENCY_EXISTS);
@@ -370,6 +409,7 @@ class TableDesignServiceImplTest {
         void delete() {
             TableInfo table = table(1L, "TB_USER", false);
             when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
+            lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
 
             service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login);
 
@@ -382,6 +422,7 @@ class TableDesignServiceImplTest {
     void updateApprovedRejected() {
         TableInfo table = table(1L, "TB_USER", true);
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
 
         assertThatThrownBy(() -> service.updateTable(TableInfoDto.builder().id(1L).tableName("TB_MEMBER").tableDescription("회원").isMasterTable("N").build(),
                 AccountDto.builder().projectId(1L).build()))
@@ -392,7 +433,7 @@ class TableDesignServiceImplTest {
     @Test
     @DisplayName("로그인 프로젝트에 없는 테이블은 수정할 수 없다")
     void updateUnknownRejected() {
-        when(tableInfoRepository.findForUpdate(9L, 1L)).thenReturn(Optional.empty());
+        when(tableInfoRepository.findByIdAndProjectId(9L, 1L)).thenReturn(null); // 다른 프로젝트·없는 테이블 : 잠그기 전에 거절
 
         assertThatThrownBy(() -> service.updateTable(TableInfoDto.builder().id(9L).tableName("TB_MEMBER").isMasterTable("N").build(),
                 AccountDto.builder().projectId(1L).build()))
@@ -404,6 +445,7 @@ class TableDesignServiceImplTest {
     void approval() {
         TableInfo table = table(1L, "TB_USER", false);
         when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
+        lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
 
         service.updateTableIsApproval(true, SecurityTestSupport.loginAsAdmin(1L), List.of(TableInfoDto.builder().id(1L).build()));
 

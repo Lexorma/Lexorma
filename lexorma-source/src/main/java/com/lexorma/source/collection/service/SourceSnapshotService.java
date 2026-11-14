@@ -3,9 +3,14 @@ package com.lexorma.source.collection.service;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.security.domain.dto.AccountDto;
+import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec.Name;
 import com.lexorma.source.catalog.domain.entity.SourceTable;
+import com.lexorma.source.catalog.service.SourceCatalogRules;
+import com.lexorma.source.catalog.service.SourceIdentifiers;
+import com.lexorma.source.catalog.service.SourceIdentifiers.Kind;
 import com.lexorma.source.catalog.repository.SourceTableRepository;
 import com.lexorma.source.collection.domain.dto.SourceCollectionDto;
+import com.lexorma.source.collection.domain.dto.SourceErdDto;
 import com.lexorma.source.collection.domain.entity.SourceCollectionExecution;
 import com.lexorma.source.collection.domain.entity.SourceSchemaVersion;
 import com.lexorma.source.collection.domain.entity.SourceTableVersion;
@@ -16,6 +21,7 @@ import com.lexorma.source.collection.repository.SourceCollectionExecutionReposit
 import com.lexorma.source.collection.repository.SourceCollectionTargetRepository;
 import com.lexorma.source.collection.repository.SourceSchemaVersionRepository;
 import com.lexorma.source.collection.repository.SourceTableVersionRepository;
+import com.lexorma.source.connection.domain.entity.SourceConnection;
 import com.lexorma.source.connection.repository.SourceConnectionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -25,9 +31,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 수집 실행·변경 이력 조회와 과거 상태 재구성 (AI-1c, 읽기 전용). 로그인한 프로젝트의 연결만 본다.
@@ -121,7 +132,97 @@ public class SourceSnapshotService {
         return historyRepository.findAllByTableIdOrderByReflectedOrderAscIdAsc(tableId).stream().map(change -> SourceCollectionDto.Change.of(change, SourceCatalogCanonical::read)).toList();
     }
 
+    /**
+     * 원본 DB ERD (M-4b) : 반영 순서 R(없으면 마지막 반영)의 연결 전체 테이블·VIEW·컬럼·FK 를 한 번에 만든다.
+     * <ul>
+     *   <li>테이블마다 R 이하의 마지막 버전(REMOVED 제외)만 읽는다 : 그 시점에 없던 테이블·컬럼·FK 는 나오지 않고 최신 행을 섞지 않는다.
+     *       부분 수집 뒤에도 범위 밖 객체는 그 앞 버전이 그대로 유효하다 (catalogAt·tableAt 와 같은 규칙)</li>
+     *   <li>FK 의 참조 대상은 버전에 적힌 원본 이름을 연결의 비교 규칙으로 바꿔 (스키마 경로, 테이블 비교 이름)으로 찾는다 — 수집이 참조를 잇는 규칙과 같다.
+     *       그 시점의 카탈로그에 없으면 targetTableId 가 null 이다. 이름이 비슷하다고 관계를 만들지 않는다</li>
+     * </ul>
+     */
+    public SourceErdDto.Graph erd(AccountDto accountDto, Long connectionId, Integer order) {
+        SourceConnection connection = connectionRepository.findByIdAndProjectId(connectionId, accountDto.getProjectId())
+                .orElseThrow(() -> new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND));
+        String dbType = connection.getDbType().name();
+        String comparison = connection.getIdentifierComparison().name();
+        SourceCollectionExecution reflected = reflected(connectionId, order, null);
+        if (reflected == null) return new SourceErdDto.Graph(connectionId, dbType, comparison, null, null, null, List.of(), List.of(), List.of());
+        int at = reflected.getReflectedOrder();
+
+        // 스키마 : 이름은 버전 내용에서, 경로는 FK 대상을 찾는 데 쓴다
+        Map<Long, Map<?, ?>> schemaContent = new LinkedHashMap<>();
+        for (SourceSchemaVersion version : schemaVersionRepository.at(connectionId, at)) {
+            if (version.getChangeType() != SourceChangeType.REMOVED) schemaContent.put(version.getSchemaId(), (Map<?, ?>) SourceCatalogCanonical.read(version.getContent()));
+        }
+        List<SourceTableVersion> versions = tableVersionRepository.at(connectionId, at).stream()
+                .filter(version -> version.getChangeType() != SourceChangeType.REMOVED && schemaContent.containsKey(version.getSchemaId())).toList();
+        Map<String, Long> byPath = new HashMap<>();
+        versions.forEach(version -> byPath.put(version.getPathKey() + '\u0000' + version.getCompareName(), version.getTableId()));
+
+        List<SourceErdDto.Table> tables = new ArrayList<>(versions.size());
+        List<SourceErdDto.Relation> relations = new ArrayList<>();
+        Map<Long, int[]> counts = new HashMap<>();
+        for (SourceTableVersion version : versions) {
+            Map<?, ?> content = (Map<?, ?>) SourceCatalogCanonical.read(version.getContent());
+            Set<String> pk = new HashSet<>();
+            for (Map<?, ?> constraint : maps(content.get("constraints"))) {
+                if ("PRIMARY_KEY".equals(constraint.get("type"))) pk.addAll(strings(constraint.get("columns")));
+            }
+            Set<String> fk = new HashSet<>();
+            Map<String, String> displayName = new HashMap<>();
+            List<Map<?, ?>> columnContent = maps(content.get("columns"));
+            columnContent.forEach(column -> displayName.put((String) column.get("compareName"), (String) column.get("name")));
+
+            for (Map<?, ?> relation : maps(content.get("relations"))) {
+                String referencedCatalog = (String) relation.get("referencedCatalog");
+                String referencedSchema = (String) relation.get("referencedSchema");
+                String referencedTable = (String) relation.get("referencedTable");
+                String catalogCompare = referencedCatalog == null ? SourceIdentifiers.catalogOf(version.getPathKey())
+                        : SourceCatalogRules.compare(connection, Kind.NAMESPACE, Name.of(referencedCatalog));
+                String path = referencedCatalog == null && referencedSchema == null ? version.getPathKey()
+                        : SourceIdentifiers.pathKey(catalogCompare, SourceCatalogRules.compare(connection, Kind.NAMESPACE, Name.of(referencedSchema)));
+                Long target = byPath.get(path + '\u0000' + SourceCatalogRules.compare(connection, Kind.TABLE, Name.of(referencedTable)));
+                List<SourceErdDto.ColumnPair> pairs = new ArrayList<>();
+                for (Map<?, ?> pair : maps(relation.get("columns"))) {
+                    String own = (String) pair.get("column");
+                    String referenced = (String) pair.get("referencedColumn");
+                    fk.add(own);
+                    pairs.add(new SourceErdDto.ColumnPair(displayName.getOrDefault(own, own), own, referenced,
+                            SourceCatalogRules.compare(connection, Kind.COLUMN, Name.of(referenced))));
+                }
+                relations.add(new SourceErdDto.Relation(version.getTableId() + ":" + relation.get("key"), (String) relation.get("name"), version.getTableId(), target,
+                        referencedCatalog, referencedSchema, referencedTable, (String) relation.get("deleteRule"), (String) relation.get("updateRule"), pairs));
+            }
+            List<SourceErdDto.Column> columns = columnContent.stream().map(column -> {
+                String key = (String) column.get("compareName");
+                return new SourceErdDto.Column((String) column.get("name"), key, (String) column.get("dataType"), (Boolean) column.get("nullable"), pk.contains(key), fk.contains(key));
+            }).toList();
+            String type = (String) content.get("type");
+            tables.add(new SourceErdDto.Table(version.getTableId(), version.getSchemaId(), (String) content.get("name"), version.getCompareName(), type,
+                    (String) content.get("comment"), columns));
+            counts.computeIfAbsent(version.getSchemaId(), id -> new int[2])["VIEW".equals(type) ? 1 : 0]++;
+        }
+        List<SourceErdDto.Schema> schemas = schemaContent.entrySet().stream()
+                .map(entry -> new SourceErdDto.Schema(entry.getKey(), (String) entry.getValue().get("catalog"), (String) entry.getValue().get("schema"),
+                        counts.getOrDefault(entry.getKey(), new int[2])[0], counts.getOrDefault(entry.getKey(), new int[2])[1]))
+                .sorted(Comparator.comparing(SourceErdDto.Schema::catalogName, Comparator.nullsFirst(Comparator.<String>naturalOrder()))
+                        .thenComparing(SourceErdDto.Schema::schemaName, Comparator.nullsFirst(Comparator.<String>naturalOrder())))
+                .toList();
+        return new SourceErdDto.Graph(connectionId, dbType, comparison, at, reflected.getId(), reflected.getReflectedAt(), schemas, tables, relations);
+    }
+
     // ------------------------------------------------------------------ 내부
+
+    private static List<Map<?, ?>> maps(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        return list.stream().filter(Map.class::isInstance).<Map<?, ?>>map(Map.class::cast).toList();
+    }
+
+    private static List<String> strings(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        return list.stream().filter(String.class::isInstance).map(String.class::cast).toList();
+    }
 
     private SourceCollectionExecution reflected(Long connectionId, Integer order, LocalDateTime at) {
         if (order != null) {

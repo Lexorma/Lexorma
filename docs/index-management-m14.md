@@ -1,7 +1,7 @@
 # M-14 1차 — 인덱스 관리 구현 기록
 
 > 상태 : **M-14 1차·안정화·2차 구현 완료, 브라우저 E2E 조건부 통과** (11장 — Critical/High 결함 없음, Medium 1·Low 6 개선 사항과 BLOCKED 1건. 완료 처리는 사용자 결정 대기). 1차 당시의 2차 범위(표현식·부분 인덱스·정렬·INCLUDE)는 10장에서 구현했다 — [로드맵](data-modeling-roadmap.md#m-14-인덱스-관리-기존-인덱스-기능의-관리-화면-확장).
-> 마이그레이션 : `V3__index_management.sql`(1차), `V4__index_advanced.sql`(2차) — PostgreSQL·H2 같은 내용, 이미 적용된 파일은 고치지 않았다.
+> 마이그레이션 : `V3__index_management.sql`(1차), `V4__index_advanced.sql`(2차) — 2026-11-13 V0·V1 로 합쳤다 ([기록](schema-scoped-naming.md#6-v0v1-통합), `IX_TBL_01` → `UX_TBL_01`) — PostgreSQL·H2 같은 내용, 이미 적용된 파일은 고치지 않았다.
 
 ## 1. 구현 전 구조 (2026-11-13 코드 확인)
 

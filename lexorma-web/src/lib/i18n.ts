@@ -18,8 +18,6 @@ function detectLocale(): Locale {
 
 export const locale: Locale = detectLocale();
 
-if (typeof document !== 'undefined') document.documentElement.lang = locale;
-
 const dictionary: Record<string, string> | null = locale === 'en' ? en : null;
 
 const PLACEHOLDER = /\{(\d+)\}/g;
@@ -29,6 +27,12 @@ export function t(key: MessageKey, ...args: unknown[]): string {
   const text = dictionary?.[key] ?? key;
   if (!args.length) return text;
   return text.replace(PLACEHOLDER, (match, index) => (Number(index) < args.length ? String(args[Number(index)] ?? '') : match));
+}
+
+// 문서 언어와 브라우저 탭 제목 (index.html 의 'Lexorma' 는 React 로딩 전 기본값)
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = locale;
+  document.title = t('Lexorma - 데이터 모델링 플랫폼');
 }
 
 /** 같은 한국어를 문맥에 따라 다르게 번역할 때 : tc('버튼', '승인') → en.ts 의 '버튼|승인' */

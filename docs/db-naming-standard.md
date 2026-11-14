@@ -40,7 +40,7 @@
   자체 도메인은 공공데이터 공통표준이 아닌 Lexorma 자체 정의다. 배열은 기존 PostgreSQL·H2 모델을 유지하며 다른 DBMS의 배열 지원을 추가하지 않는다. 스키마(컬럼 타입·길이)를 바꾸면 예제 컬럼과 그 용어의 도메인도 함께 바꾼다.
 - 물리 모델 : DEFAULT 스키마에 이 문서의 테이블(한글명 = 표준 단어를 공백으로 이은 이름)·컬럼(표준 용어 연결, 설명 = 한글 용어). 외래 키는 컬럼의 참조 테이블명 + `REF_COLUMN` 관계.
 - 테이블 한글명을 표준 단어로 바꾸면 같은 테이블명이 나온다 (`ErdIntegrationTest.seededExample`).
-마이그레이션은 PostgreSQL·H2 양쪽의 `V0__init.sql`(스키마)·`V1__seed_data.sql`(예제)에 더해 AI-2b 부터 새 버전 파일(`V2__source_index_expression.sql` : 스키마 변경·COMMENT·예제를 한 파일에)로 관리한다. 스키마 변경 시 예제 모델도 함께 확인한다.
+마이그레이션은 PostgreSQL·H2 양쪽의 `V0__init.sql`(스키마·COMMENT)·`V1__seed_data.sql`(예제)로 관리한다 (2026-11-13 예전 V2~V6 을 합쳤다 — [기록](schema-scoped-naming.md#6-v0v1-통합)). 스키마 변경 시 예제 모델도 함께 확인한다.
 
 ## 2. 기관 표준단어 (공통표준에 없는 단어)
 

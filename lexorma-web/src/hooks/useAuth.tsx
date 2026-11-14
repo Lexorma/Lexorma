@@ -33,11 +33,21 @@ export type MenuId =
   | 'physical-erd'
   | 'column-manage'
   | 'index-manage'
+  | 'view-manage'
+  | 'ddl-export'
   | 'standardization-quality'
   | 'model-history'
   | 'model-version'
   /** 화면이 아니라 [버전 생성] 버튼 노출 여부 */
   | 'model-version-create'
+  | 'source-connection'
+  | 'source-collection'
+  | 'source-catalog'
+  | 'source-erd'
+  | 'source-mapping'
+  /** 화면이 아니라 원본 DB 연결 등록·수정·삭제·테스트, 수집 실행·취소 버튼 노출 여부 (projectManageable 과 함께 본다) */
+  | 'source-manage'
+  | 'source-management'
   | 'system-management'
   | 'operation-management'
   | 'logical-modeling'
@@ -61,6 +71,8 @@ export interface Me {
   user?: AuthUser;
   menus?: Partial<Record<MenuId, boolean>>;
   approvalAvailable?: boolean;
+  /** 이 프로젝트의 관리자 또는 ADMIN (서버의 ProjectAuthority.canManage) */
+  projectManageable?: boolean;
   code?: string;
 }
 
@@ -79,6 +91,8 @@ interface AuthContextValue {
   canView: (menuId: MenuId) => boolean;
   /** 승인 권한(ADMIN·MANAGER·프로젝트 관리자)이면서 변경 API 를 쓸 수 있는 역할(USER 이상)인지 */
   approvalAvailable: boolean;
+  /** 이 프로젝트의 관리자 또는 ADMIN 인지 (원본 DB 연결·수집 같은 프로젝트 설정). 역할 조건은 canView('…-manage') 로 따로 본다 */
+  projectManageable: boolean;
   /** 로그인 상태를 서버에서 다시 받는다 (로그인 직후, 이름 변경 후) */
   refresh: () => Promise<void>;
   /** 로그아웃 : 서버 세션 무효화 → 화면 상태 초기화 */
@@ -140,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       displayName: user ? (user.name?.trim() ? user.name : user.username) : '',
       canView: (menuId) => !!data?.menus?.[menuId],
       approvalAvailable: !!data?.approvalAvailable,
+      projectManageable: !!data?.projectManageable,
       refresh,
       logout,
       clear,

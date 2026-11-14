@@ -1,0 +1,80 @@
+/* VIEW 관리 (M-15) : 인덱스 관리(index_manage.css)와 같은 패턴 위에 VIEW 에만 필요한 배치만 둔다 */
+
+/* 목록 : 긴 이름·설명은 한 줄로 자르고 전체 값은 title 툴팁·상세에서 본다 */
+#viewManageGrid .view-cell {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* VIEW명 + 변경 요청 라벨 : 이름만 줄이고 라벨은 항상 보인다 */
+#viewManageGrid .view-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+#viewManageGrid .view-name-cell > .view-cell {
+    min-width: 0;
+}
+
+#viewManageGrid .view-name-cell > .gh-label {
+    flex: none;
+}
+
+#viewManageGrid > thead > tr > th {
+    white-space: nowrap;
+}
+
+/* 정의 SQL 입력 : 긴 SQL 은 입력 칸 안에서 스크롤 (줄바꿈하지 않아 들여쓰기가 보인다) */
+dialog .view-form .view-sql-input {
+    min-height: 220px;
+    resize: vertical;
+    white-space: pre;
+    overflow: auto;
+    tab-size: 4;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+dialog .view-form .view-form-note {
+    color: var(--gh-attention);
+}
+
+dialog .view-form .view-form-preview {
+    margin-top: 8px;
+}
+
+dialog .view-form .view-form-preview .table-ddl-code,
+.view-detail .view-sql {
+    max-height: 320px;
+    overflow: auto;
+}
+
+/* 출력 컬럼 표 : 입력 칸은 좁은 화면에서도 최소 폭을 둔다 (표 영역이 가로로 스크롤된다) */
+dialog .view-form .index-editor td .form-control {
+    min-width: 110px;
+}
+
+dialog .view-form .view-form-external {
+    margin-top: 8px;
+}
+
+dialog .view-form .view-form-external > summary {
+    cursor: pointer;
+    color: var(--gh-fg-muted);
+    font-size: 13px;
+}
+
+/* 상세 : 정의 SQL 복사 버튼은 제목 옆 */
+.view-detail h4 .view-copy {
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* 변경 요청 비교 : 여러 줄 값(SQL·컬럼 목록)은 줄바꿈 그대로 */
+.view-detail .view-diff-value {
+    white-space: pre-wrap;
+}

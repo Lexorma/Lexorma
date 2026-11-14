@@ -200,8 +200,9 @@ Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/m
 
 - Pending migrations are applied at startup; Hibernate only validates the schema.
 - Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
-- **Before the first official release**, the schema is kept in two files (`V0__init.sql`, `V1__seed_data.sql`) that are still edited as the model evolves. A database created by an earlier build may therefore have to be recreated after an update; this is not a safe way to change a database whose data must be kept.
-- **From the first official release on**, applied migration files are frozen and every change is added as a new versioned migration.
+- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the fixed baseline. Later changes are added as new incremental migrations (`V2__source_mapping.sql`, then `V3__…` and so on).
+- Applied migration files are never edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
+- Existing databases are upgraded in place by applying the pending migrations; existing data is kept, and an update does not require recreating the database.
 - Back up production databases before upgrading.
 
 ### Sessions

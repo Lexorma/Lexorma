@@ -296,15 +296,15 @@ class ReferenceSyncIntegrationTest {
         columns.add(columnRow("SYNC_P", "SYNCW0_SYNCW0", "", true));
         columnManageService.uploadColumnExcelFile(file(workbook(columns)), admin);
 
-        TableInfo p = tableInfoRepository.findByTableNameAndProjectId("SYNC_P", projectId);
-        TableInfo q = tableInfoRepository.findByTableNameAndProjectId("SYNC_Q", projectId);
+        TableInfo p = tableInfoRepository.findAllByTableNameAndProjectId("SYNC_P", projectId).get(0);
+        TableInfo q = tableInfoRepository.findAllByTableNameAndProjectId("SYNC_Q", projectId).get(0);
         assertThat(relationRepository.findAllByProjectIdAndTargetTable_Id(projectId, p.getId())).as("짝수 자식 → P (PK 는 마지막 행)").hasSize(children / 2)
                 .allSatisfy(r -> assertThat(r.getRelationSource()).isEqualTo(TableRelation.Source.REF_COLUMN));
         assertThat(relationRepository.findAllByProjectIdAndTargetTable_Id(projectId, q.getId())).as("홀수 자식 → Q (복합 PK 라 관계 없음)").isEmpty();
         assertThat(columnInfoRepository.findAllReferencing(projectId, List.of("SYNC_Q"))).as("약식 입력은 보존").hasSize(children / 2);
 
-        TableInfo evenChild = tableInfoRepository.findByTableNameAndProjectId("SYNC_C0", projectId);
-        TableInfo oddChild = tableInfoRepository.findByTableNameAndProjectId("SYNC_C1", projectId);
+        TableInfo evenChild = tableInfoRepository.findAllByTableNameAndProjectId("SYNC_C0", projectId).get(0);
+        TableInfo oddChild = tableInfoRepository.findAllByTableNameAndProjectId("SYNC_C1", projectId).get(0);
         assertThat(ddl(admin, evenChild)).contains("REFERENCES SYNC_P (SYNCW0_SYNCW0);");
         assertThat(ddl(admin, oddChild)).doesNotContain("REFERENCES");
         assertThat(model(admin, oddChild).unresolvedReferences()).hasSize(1);

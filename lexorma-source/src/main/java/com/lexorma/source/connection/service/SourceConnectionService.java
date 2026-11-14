@@ -9,6 +9,8 @@ import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.execution.ExecutionContextVerifier;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.core.project.guard.ProjectWriteGuard;
+import com.lexorma.core.source.SourceConnectionDeletedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.source.catalog.repository.SourceSchemaRepository;
 import com.lexorma.source.cleanup.SourceCatalogCleanup;
@@ -64,6 +66,7 @@ public class SourceConnectionService {
     private final SecretCipher secretCipher;
     private final SourceHostPolicy hostPolicy;
     private final ProjectWriteGuard projectWriteGuard;
+    private final ApplicationEventPublisher events;
 
     @Transactional(readOnly = true)
     public List<SourceConnectionDto.Response> list(AccountDto accountDto) {
@@ -136,6 +139,8 @@ public class SourceConnectionService {
         // 진행 중인 반영이 끝난 뒤에 지운다 (반영이 먼저 끝나면 그 결과까지 지우고, 지운 뒤의 반영은 연결이 없어 실패한다)
         projectWriteGuard.lock(projectId);
         repository.findForUpdate(id, projectId).orElseThrow(SourceConnectionService::notFound);
+        // 이 연결에 기대는 다른 모듈의 데이터(원본 매핑·기준 연결, lexorma-data)를 같은 트랜잭션에서 먼저 정리한다 (실패하면 삭제 전체가 롤백된다)
+        events.publishEvent(new SourceConnectionDeletedEvent(projectId, id));
         int rows = cleanup.deleteCatalog(id);
         repository.delete(repository.findByIdAndProjectId(id, projectId).orElseThrow(SourceConnectionService::notFound));
         repository.flush();

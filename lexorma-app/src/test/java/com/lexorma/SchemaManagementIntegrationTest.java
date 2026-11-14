@@ -97,7 +97,7 @@ class SchemaManagementIntegrationTest {
                 .as("ERD 스키마 조회는 ID 기준이라 이름을 바꿔도 같다").extracting(ErdDto.Table::tableName).containsExactly("TB_ORDER");
 
         // DDL "스키마명 포함" : 기본 스키마 테이블은 받은 이름을 붙이고, 다른 스키마 테이블은 자기 스키마명 그대로
-        TableInfo code = tableInfoRepository.findByTableNameAndProjectId("TB_CODE", projectId);
+        TableInfo code = tableInfoRepository.findAllByTableNameAndProjectId("TB_CODE", projectId).get(0);
         column(projectId, code, "CD");
         assertThat(tableDesignService.generateTableDdl(code.getId(), admin, null).ddl()).contains("CREATE TABLE TB_CODE (");
         assertThat(tableDesignService.generateTableDdl(code.getId(), admin, " public ").ddl())

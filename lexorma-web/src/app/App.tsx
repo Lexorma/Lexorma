@@ -24,6 +24,12 @@ import { SchemaManagePage } from '../features/schema/SchemaManagePage';
 import { TableManagePage } from '../features/table/TableManagePage';
 import { ColumnManagePage } from '../features/column/ColumnManagePage';
 import { IndexManagePage } from '../features/index/IndexManagePage';
+import { ViewManagePage } from '../features/view/ViewManagePage';
+import { DdlExportPage } from '../features/ddl/DdlExportPage';
+import { SourceCatalogPage } from '../features/source/SourceCatalogPage';
+import { SourceCollectionPage } from '../features/source/SourceCollectionPage';
+import { SourceConnectionPage } from '../features/source/SourceConnectionPage';
+import { SourceMappingPage } from '../features/source/SourceMappingPage';
 import { ModelHistoryPage } from '../features/history/ModelHistoryPage';
 import { ModelVersionPage } from '../features/version/ModelVersionPage';
 import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
@@ -31,6 +37,7 @@ import { t } from '../lib/i18n';
 
 const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
 const LogicalErdPage = lazy(() => import('../features/logical/LogicalErdPage'));
+const SourceErdPage = lazy(() => import('../features/source/SourceErdPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +116,13 @@ export function App() {
                 <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
                 <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />
                 <Route path="/indexManage" element={<RequireMenu menuId="index-manage"><IndexManagePage /></RequireMenu>} />
+                <Route path="/viewManage" element={<RequireMenu menuId="view-manage"><ViewManagePage /></RequireMenu>} />
+                <Route path="/ddlExport" element={<RequireMenu menuId="ddl-export"><DdlExportPage /></RequireMenu>} />
+                <Route path="/sourceConnection" element={<RequireMenu menuId="source-connection"><SourceConnectionPage /></RequireMenu>} />
+                <Route path="/sourceCollection" element={<RequireMenu menuId="source-collection"><SourceCollectionPage /></RequireMenu>} />
+                <Route path="/sourceCatalog" element={<RequireMenu menuId="source-catalog"><SourceCatalogPage /></RequireMenu>} />
+                <Route path="/sourceMapping" element={<RequireMenu menuId="source-mapping"><SourceMappingPage /></RequireMenu>} />
+                <Route path="/sourceErd" element={<RequireMenu menuId="source-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><SourceErdPage /></Suspense></RequireMenu>} />
                 <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
 
                 <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />

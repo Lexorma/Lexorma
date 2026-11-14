@@ -23,6 +23,9 @@ import com.lexorma.data.physical.domain.entity.TableRelation;
 import com.lexorma.data.physical.domain.entity.TableRelationColumn;
 import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.table.domain.entity.TableInfo;
+import com.lexorma.data.view.domain.entity.PhysicalView;
+import com.lexorma.data.view.domain.entity.PhysicalViewColumn;
+import com.lexorma.data.view.domain.entity.PhysicalViewReference;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -85,7 +88,10 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
      */
     private record Tracked(TargetType type, String nameField, String projectVia, List<String> fields) {}
 
-    /** 부모 객체의 일부로 기록하는 행 (관계의 컬럼 쌍, 인덱스·제약조건의 컬럼, 식별자의 구성 속성) : 부모 이력의 listKey 배열에 순서대로 들어간다 */
+    /**
+     * 부모 객체의 일부로 기록하는 행 (관계의 컬럼 쌍, 인덱스·제약조건의 컬럼, 식별자의 구성 속성, VIEW 의 출력 컬럼·참조 객체) : 부모 이력의 listKey 배열에 순서대로 들어간다.
+     * 부모 하나에 여러 종류가 있을 수 있다 (VIEW). orderField 가 Integer 가 아니면(참조 객체의 id) 그 순서로만 정렬한다
+     */
     private record Child(Class<?> parent, String parentProperty, String listKey, String orderField, List<String> fields) {}
 
     /** 이름 스냅샷 자리 : 커밋 직전에 한꺼번에 조회해 이름으로 바꾼다 (이벤트 안에서 프록시를 초기화하지 않는다) */
@@ -105,6 +111,9 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                     List.of("tableInfo", "indexName", "indexType", "isUnique", "condition", "indexSource", "derivedColumnId", APPROVAL))),
             Map.entry(TableConstraint.class, new Tracked(TargetType.PHYSICAL_CONSTRAINT, "constraintName", null,
                     List.of("tableInfo", "constraintName", "constraintType", "checkExpression", APPROVAL))),
+            // VIEW (M-15) : 정의 SQL 은 원문 그대로, 출력 컬럼·참조 객체는 자식 행 배열
+            Map.entry(PhysicalView.class, new Tracked(TargetType.PHYSICAL_VIEW, "viewName", null,
+                    List.of("schema", "viewName", "viewKorName", "viewDescription", "definition", APPROVAL))),
             // 논리 모델 (M-9 2차)
             Map.entry(LogicalModel.class, new Tracked(TargetType.LOGICAL_MODEL, "modelName", null,
                     List.of("modelName", "modelDescription"))),
@@ -127,12 +136,16 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             TableRelationColumn.class, new Child(TableRelation.class, "relation", "columns", "columnOrder", List.of("sourceColumn", "targetColumn", "columnOrder")),
             TableIndexColumn.class, new Child(TableIndex.class, "tableIndex", "columns", "columnOrder", List.of("column", "expression", "sort", "columnOrder")),
             TableConstraintColumn.class, new Child(TableConstraint.class, "tableConstraint", "columns", "columnOrder", List.of("column", "columnOrder")),
-            LogicalIdentifierAttribute.class, new Child(LogicalIdentifier.class, "identifier", "attributes", "sortOrder", List.of("attribute", "sortOrder")));
+            LogicalIdentifierAttribute.class, new Child(LogicalIdentifier.class, "identifier", "attributes", "sortOrder", List.of("attribute", "sortOrder")),
+            PhysicalViewColumn.class, new Child(PhysicalView.class, "view", "columns", "columnOrder",
+                    List.of("columnName", "columnKorName", "dataType", "columnOrder", "columnDescription")),
+            PhysicalViewReference.class, new Child(PhysicalView.class, "view", "references", "id",
+                    List.of("referenceType", "referencedTable", "referencedView", "schemaName", "objectName")));
 
     /** 이름 스냅샷을 남기는 연관 대상 → 이름 속성. 여기 없는 대상(매핑 등)은 ID 만 남는다 */
     private static final Map<Class<?>, String> NAME_FIELDS = Map.of(
             TableInfo.class, "tableName", ColumnInfo.class, "columnName", SchemaInfo.class, "schemaName", StandardTerm.class, "commonStandardTermName",
-            LogicalModel.class, "modelName", LogicalEntity.class, "entityName", LogicalAttribute.class, "attributeName");
+            LogicalModel.class, "modelName", LogicalEntity.class, "entityName", LogicalAttribute.class, "attributeName", PhysicalView.class, "viewName");
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -186,8 +199,9 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         if (child != null) {
             // 부모가 이 트랜잭션 전에 갖고 있던 행의 처음 값만 기억한다 (새로 생긴 행은 null)
             Entry parent = pending.entry(child.parent(), (Long) identifier(state[index(persister, child.parentProperty())]));
-            if (!parent.childBefore.containsKey((Long) id)) {
-                parent.childBefore.put((Long) id, oldState == null ? null : snapshot(persister, oldState, child.fields()));
+            Map<Long, Map<String, Object>> before = parent.childBefore.computeIfAbsent(entityClass, key -> new LinkedHashMap<>());
+            if (!before.containsKey((Long) id)) {
+                before.put((Long) id, oldState == null ? null : snapshot(persister, oldState, child.fields()));
             }
             return;
         }
@@ -360,8 +374,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         boolean beforeUnknown;
         Map<String, Object> before;
         Map<String, Object> after;
-        /** 자식 행 ID → 이 트랜잭션 전의 값 (없던 행은 null) */
-        final Map<Long, Map<String, Object>> childBefore = new LinkedHashMap<>();
+        /** 자식 행 종류 → 자식 행 ID → 이 트랜잭션 전의 값 (없던 행은 null) */
+        final Map<Class<?>, Map<Long, Map<String, Object>>> childBefore = new LinkedHashMap<>();
 
         Entry(Class<?> entityClass, Long id) {
             this.entityClass = entityClass;
@@ -392,12 +406,11 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             long started = System.nanoTime();
 
             // 1) 객체마다 변경 전·후 상태를 만든다
-            Map<String, Map<Long, Map<Long, Map<String, Object>>>> children = currentChildren();
+            Map<Class<?>, Map<Long, Map<Long, Map<String, Object>>>> children = currentChildren();
             List<Prepared> prepared = new ArrayList<>();
             for (Entry entry : List.copyOf(entries.values())) {
                 if (entry.created && entry.deleted) continue; // 이 트랜잭션 안에서 만들고 지웠다 : 남은 변경이 없다
                 Tracked tracked = TRACKED.get(entry.entityClass);
-                Child child = CHILDREN.values().stream().filter(c -> c.parent() == entry.entityClass).findFirst().orElse(null);
 
                 if (entry.before == null && entry.after == null && !entry.deleted) {
                     // 자식 행만 바뀌었다 : 부모의 값은 그대로이므로 현재 값을 전후에 같이 쓴다
@@ -409,9 +422,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                     entry.before = snapshot(persister, state, tracked.fields());
                     entry.after = snapshot(persister, state, tracked.fields());
                 }
-                Map<Long, Map<String, Object>> rows = children.getOrDefault(entry.entityClass.getSimpleName(), Map.of()).getOrDefault(entry.id, Map.of());
-                Map<String, Object> before = entry.created || entry.before == null ? null : withChildren(entry.before, child, child == null ? null : rowsBefore(entry, rows, child));
-                Map<String, Object> after = entry.deleted ? null : withChildren(entry.after, child, child == null ? null : new ArrayList<>(rows.values()));
+                Map<String, Object> before = entry.created || entry.before == null ? null : withChildren(entry.before, entry, children, true);
+                Map<String, Object> after = entry.deleted ? null : withChildren(entry.after, entry, children, false);
                 prepared.add(new Prepared(entry, tracked, before, after));
             }
 
@@ -464,15 +476,15 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             }
         }
 
-        /** 남아 있는 부모(관계·인덱스·제약조건·식별자)의 현재 자식 행 : 부모 엔티티 이름 → 부모 ID → 자식 행 ID → 값 (순서대로) */
-        private Map<String, Map<Long, Map<Long, Map<String, Object>>>> currentChildren() {
-            Map<String, Map<Long, Map<Long, Map<String, Object>>>> result = new LinkedHashMap<>();
+        /** 남아 있는 부모(관계·인덱스·제약조건·식별자·VIEW)의 현재 자식 행 : 자식 행 종류 → 부모 ID → 자식 행 ID → 값 (순서대로) */
+        private Map<Class<?>, Map<Long, Map<Long, Map<String, Object>>>> currentChildren() {
+            Map<Class<?>, Map<Long, Map<Long, Map<String, Object>>>> result = new LinkedHashMap<>();
             CHILDREN.forEach((childClass, child) -> {
                 List<Long> parentIds = entries.values().stream()
                         .filter(entry -> entry.entityClass == child.parent() && !entry.deleted).map(entry -> entry.id).toList();
                 if (parentIds.isEmpty()) return;
                 EntityPersister persister = persister(childClass);
-                Map<Long, Map<Long, Map<String, Object>>> byParent = result.computeIfAbsent(child.parent().getSimpleName(), key -> new LinkedHashMap<>());
+                Map<Long, Map<Long, Map<String, Object>>> byParent = result.computeIfAbsent(childClass, key -> new LinkedHashMap<>());
                 for (int from = 0; from < parentIds.size(); from += BATCH_SIZE) {
                     entityManager.createQuery("select c from " + childClass.getSimpleName() + " c where c." + child.parentProperty() + ".id in :ids order by c." + child.orderField() + ", c.id", childClass)
                             .setParameter("ids", parentIds.subList(from, Math.min(from + BATCH_SIZE, parentIds.size())))
@@ -488,24 +500,30 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         }
 
         /** 지금의 자식 행에서 이 트랜잭션의 자식 행 변경을 되돌려 변경 전 구성을 만든다 */
-        private List<Map<String, Object>> rowsBefore(Entry entry, Map<Long, Map<String, Object>> current, Child child) {
+        private List<Map<String, Object>> rowsBefore(Map<Long, Map<String, Object>> changed, Map<Long, Map<String, Object>> current, Child child) {
             List<Map<String, Object>> result = new ArrayList<>();
             current.forEach((childId, value) -> {
-                if (!entry.childBefore.containsKey(childId)) result.add(new LinkedHashMap<>(value)); // 그대로인 행
-                else if (entry.childBefore.get(childId) != null) result.add(entry.childBefore.get(childId)); // 바뀐 행의 이전 값 (null = 새로 생긴 행)
+                if (!changed.containsKey(childId)) result.add(new LinkedHashMap<>(value)); // 그대로인 행
+                else if (changed.get(childId) != null) result.add(changed.get(childId)); // 바뀐 행의 이전 값 (null = 새로 생긴 행)
             });
-            entry.childBefore.forEach((childId, value) -> {
+            changed.forEach((childId, value) -> {
                 if (!current.containsKey(childId) && value != null) result.add(value); // 지워진 행
             });
-            result.sort(Comparator.comparing(row -> (Integer) row.get(child.orderField()), Comparator.nullsLast(Comparator.naturalOrder())));
+            result.sort(Comparator.comparing(row -> row.get(child.orderField()) instanceof Integer order ? order : null, Comparator.nullsLast(Comparator.naturalOrder())));
             return result;
         }
 
-        private Map<String, Object> withChildren(Map<String, Object> values, Child child, List<Map<String, Object>> rows) {
-            if (child == null) return values;
-            Map<String, Object> result = new LinkedHashMap<>(values);
-            result.put(child.listKey(), rows);
-            return result;
+        /** 부모 값 + 자식 행 종류마다 배열 (변경 전 : 이 트랜잭션의 자식 행 변경을 되돌린 구성, 변경 후 : 지금 구성). 자식 행 종류가 없으면 그대로 */
+        private Map<String, Object> withChildren(Map<String, Object> values, Entry entry, Map<Class<?>, Map<Long, Map<Long, Map<String, Object>>>> children, boolean before) {
+            Map<String, Object> result = null;
+            for (Map.Entry<Class<?>, Child> type : CHILDREN.entrySet()) {
+                Child child = type.getValue();
+                if (child.parent() != entry.entityClass) continue;
+                if (result == null) result = new LinkedHashMap<>(values);
+                Map<Long, Map<String, Object>> rows = children.getOrDefault(type.getKey(), Map.of()).getOrDefault(entry.id, Map.of());
+                result.put(child.listKey(), before ? rowsBefore(entry.childBefore.getOrDefault(type.getKey(), Map.of()), rows, child) : new ArrayList<>(rows.values()));
+            }
+            return result == null ? values : result;
         }
 
         /** 이름 자리(Ref)를 대상 종류별 조회 한 번으로 이름으로 바꾼다. 이 트랜잭션에서 지워진 대상은 지워지기 전 이름, 그래도 없으면 null (ID 만 남는다) */

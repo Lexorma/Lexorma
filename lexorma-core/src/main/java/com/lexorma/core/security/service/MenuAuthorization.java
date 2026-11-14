@@ -71,7 +71,11 @@ public class MenuAuthorization {
             Map.entry("column-manage", "USER"),
             // 인덱스 관리 (M-14) : 목록·상세·DDL 조회 API 가 VIEWER. 등록·수정·삭제는 physical-model-edit, 승인·반려는 approvalAvailable
             Map.entry("index-manage", "VIEWER"),
+            // VIEW 관리 (M-15) : 목록·상세·DDL 조회가 VIEWER. 등록·수정·삭제는 physical-model-edit, 승인·반려는 approvalAvailable
+            Map.entry("view-manage", "VIEWER"),
             Map.entry("physical-erd", "VIEWER"),
+            // DDL 내보내기 (M-11) : 통합 DDL 조회 API 가 VIEWER (개별 DDL 보기와 같다). 생성만 하고 실행하지 않는다
+            Map.entry("ddl-export", "VIEWER"),
             // 화면 메뉴가 아니라 물리 모델 변경 버튼(스키마·테이블 관리의 등록·수정·삭제·엑셀, 물리 ERD 편집 모드) 노출용 : 물리 모델 변경 API 의 권한과 같다
             Map.entry("physical-model-edit", "USER"),
 
@@ -81,7 +85,19 @@ public class MenuAuthorization {
             Map.entry("model-history", "VIEWER"),
             // 모델 버전 (M-9 3차) : 화면(목록·과거 버전 조회·비교)은 VIEWER, [버전 생성] 버튼은 USER (버전 생성 API 의 권한과 같다)
             Map.entry("model-version", "VIEWER"),
-            Map.entry("model-version-create", "USER")
+            Map.entry("model-version-create", "USER"),
+
+            // 원본 DB 관리 (M-4a) : 연결·수집 이력·원본 카탈로그 조회 API 가 VIEWER.
+            // 화면 메뉴가 아니라 연결 등록·수정·삭제·테스트, 수집 실행·취소 버튼 노출용 : 그 API 의 역할(USER). 서버는 여기에 그 프로젝트의 관리자 또는 ADMIN 인지도
+            // 확인하고(ProjectAuthority.canManage), 화면도 /api/auth/me 의 projectManageable 을 함께 본다
+            Map.entry("source-connection", "VIEWER"),
+            Map.entry("source-collection", "VIEWER"),
+            Map.entry("source-catalog", "VIEWER"),
+            // 원본 DB ERD (M-4b) : ERD 조회 API(/api/source/connections/{id}/snapshot/erd)가 VIEWER. 읽기 전용이라 관리 버튼이 없다
+            Map.entry("source-erd", "VIEWER"),
+            // 원본 매핑 관리 (M-4c) : 매핑 현황·목록 조회 API 가 VIEWER. 기준 연결·매핑 확정·해제 버튼은 source-manage(USER) + projectManageable
+            Map.entry("source-mapping", "VIEWER"),
+            Map.entry("source-manage", "USER")
     );
 
     /**
@@ -105,7 +121,10 @@ public class MenuAuthorization {
             new String[]{"standardization-quality", "model-history", "model-version"},
 
             "physical-modeling",
-            new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "physical-erd"}
+            new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "view-manage", "physical-erd", "ddl-export"},
+
+            "source-management",
+            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping"}
     );
 
     private final RoleHierarchy roleHierarchy;

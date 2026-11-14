@@ -1,0 +1,656 @@
+/* 원본 DB 관리 (M-4a) : 연결 관리·메타데이터 수집·원본 카탈로그. 색은 Primer 토큰(--gh-*)만 써서 라이트·다크 모드를 그대로 따른다 */
+
+.source-flash {
+    margin-bottom: 12px;
+}
+
+.source-readonly {
+    margin: 0 0 12px;
+    font-size: 13px;
+}
+
+.source-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.source-empty {
+    padding: 32px 16px;
+    border: 1px dashed var(--gh-border);
+    border-radius: 6px;
+    text-align: center;
+}
+
+.source-empty p {
+    margin: 0 0 4px;
+}
+
+.source-card {
+    min-width: 0;
+    margin-bottom: 16px;
+    padding: 16px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas);
+}
+
+.source-card h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.source-card h4 {
+    margin: 16px 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.source-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------- 표 */
+.source-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+}
+
+.source-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.source-table th,
+.source-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gh-border-muted);
+    color: var(--gh-fg);
+    text-align: left;
+    vertical-align: top;
+}
+
+.source-table th {
+    background-color: var(--gh-canvas-subtle);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.source-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.source-table .text-end {
+    text-align: right;
+}
+
+.source-break {
+    overflow-wrap: anywhere;
+}
+
+.source-sub {
+    margin-top: 2px;
+    font-size: 12px;
+}
+
+.source-labels {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.source-error {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border: 1px solid var(--gh-danger);
+    border-radius: 6px;
+    background-color: var(--gh-danger-subtle);
+    color: var(--gh-fg);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.source-link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--gh-accent);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.source-link-button:hover {
+    text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------- 연결 등록·테스트 */
+.source-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+}
+
+.source-form-grid .form-group {
+    margin: 0;
+    min-width: 0;
+}
+
+.source-span-2 {
+    grid-column: 1 / -1;
+}
+
+.source-check label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+}
+
+.source-grow {
+    flex: 1;
+}
+
+.source-test {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.source-test-result {
+    width: 100%;
+    margin: 8px 0;
+    padding: 12px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+}
+
+.source-test-result.is-ok {
+    border-color: var(--gh-success);
+}
+
+.source-test-result.is-fail {
+    border-color: var(--gh-danger);
+}
+
+.source-dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+    font-size: 13px;
+}
+
+.source-dl dt {
+    color: var(--gh-fg-muted);
+    font-weight: 400;
+}
+
+.source-dl dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.source-dl-grid {
+    grid-template-columns: repeat(2, max-content minmax(0, 1fr));
+}
+
+/* ---------------------------------------------------------------- 수집 */
+.source-picker {
+    max-width: 420px;
+    margin-bottom: 12px;
+}
+
+.source-type-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.source-type-options label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+}
+
+.source-type-options .gh-muted {
+    font-size: 12px;
+}
+
+.source-partial {
+    margin-top: 12px;
+}
+
+.source-schema-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+}
+
+.source-schema-checks legend {
+    padding: 0 4px;
+    font-size: 12px;
+}
+
+.source-schema-checks label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 400;
+}
+
+.source-split {
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.source-split .source-card {
+    margin-bottom: 0;
+}
+
+.source-exec-list,
+.source-nav-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.source-exec-item,
+.source-nav-item {
+    display: flex;
+    width: 100%;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--gh-fg);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.source-exec-item {
+    flex-direction: column;
+    gap: 2px;
+}
+
+.source-nav-item {
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.source-exec-item:hover,
+.source-nav-item:hover {
+    background-color: var(--gh-hover);
+}
+
+.source-exec-item.is-active,
+.source-nav-item.is-active {
+    border-color: var(--gh-accent);
+    background-color: var(--gh-accent-subtle);
+}
+
+.source-exec-item .gh-muted {
+    font-size: 12px;
+}
+
+.source-exec-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.source-exec-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.source-exec-title h3 {
+    margin: 0;
+}
+
+.source-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.source-json summary {
+    color: var(--gh-accent);
+    cursor: pointer;
+}
+
+.source-json pre {
+    max-width: 480px;
+    max-height: 240px;
+    margin: 4px 0 8px;
+    padding: 8px;
+    overflow: auto;
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+    font-family: var(--gh-mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- 카탈로그 */
+.source-catalog-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 16px;
+}
+
+.source-catalog-bar .source-picker {
+    flex: 1 1 260px;
+}
+
+.source-browser {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) minmax(200px, 280px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.source-browser .source-card {
+    margin-bottom: 0;
+}
+
+.source-schema-pane .source-nav-list,
+.source-table-pane .source-nav-list {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.source-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.source-comment {
+    margin: 0 0 8px;
+    white-space: pre-wrap;
+}
+
+.source-detail .nav-tabs {
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.source-members {
+    margin: 0;
+    padding-left: 18px;
+}
+
+/* ---------------------------------------------------------------- 좁은 화면 */
+@media (max-width: 1199px) {
+    .source-browser {
+        grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+    }
+
+    .source-detail-pane {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 767px) {
+    .source-form-grid,
+    .source-split,
+    .source-browser {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .source-dl-grid {
+        grid-template-columns: max-content minmax(0, 1fr);
+    }
+
+    .source-schema-pane .source-nav-list,
+    .source-table-pane .source-nav-list {
+        max-height: 240px;
+    }
+
+    .source-picker {
+        max-width: none;
+    }
+}
+
+/* ---------------------------------------------------------------- 원본 DB ERD (M-4b) : 캔버스·노드 모양은 erd.css 를 그대로 쓰고 탐색 패널·상세만 둔다 */
+.source-erd-workspace {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    height: clamp(480px, calc(100vh - 340px), 1100px);
+    border: 1px solid var(--gh-border);
+    border-top: 0;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+}
+
+.source-erd-explorer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 10px;
+    overflow: hidden;
+    border-right: 1px solid var(--gh-border);
+    background: var(--gh-canvas);
+}
+
+.source-erd-explorer .form-help {
+    margin: 0;
+    font-size: 11px;
+}
+
+.source-erd-tree,
+.source-erd-tree ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.source-erd-tree {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    font-size: 13px;
+}
+
+.source-erd-tree ul {
+    margin: 2px 0 6px 22px;
+}
+
+.source-erd-schema {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    padding: 4px 0;
+    font-weight: 600;
+}
+
+.source-erd-schema .gh-muted {
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.source-erd-object {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: var(--gh-fg);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.source-erd-object span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.source-erd-object:hover {
+    background-color: var(--gh-hover);
+}
+
+.source-erd-object.is-active {
+    border-color: var(--gh-accent);
+    background-color: var(--gh-accent-subtle);
+}
+
+.source-erd-canvas {
+    height: 100%;
+}
+
+.source-erd-depth.form-control {
+    width: auto;
+    height: 24px;
+    padding: 0 24px 0 8px;
+    font-size: 12px;
+}
+
+/* 고른 테이블·관계와 FK 로 이어진 노드 */
+.erd-table.source-erd-related {
+    border-color: var(--gh-accent);
+}
+
+.source-erd-detail {
+    margin-top: 16px;
+}
+
+.source-erd-outside ul {
+    margin: 0 0 12px;
+    padding-left: 18px;
+    font-size: 13px;
+}
+
+.source-erd-outside h4 {
+    margin-top: 0;
+}
+
+@media (max-width: 767px) {
+    .source-erd-workspace {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+    }
+
+    .source-erd-explorer {
+        max-height: 260px;
+        border-right: 0;
+        border-bottom: 1px solid var(--gh-border);
+    }
+
+    .source-erd-canvas {
+        height: 60vh;
+        min-height: 360px;
+    }
+}
+
+/* ---------------------------------------------------------------- 원본 매핑 관리 (M-4c) */
+.source-mapping-base {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px 12px;
+}
+
+.source-mapping-base .source-picker {
+    flex: 1 1 280px;
+    margin-bottom: 0;
+}
+
+.source-mapping-status {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.source-mapping-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 200px) minmax(0, 200px) minmax(0, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.source-inline-select.form-control {
+    width: auto;
+    min-width: 140px;
+    max-width: 220px;
+    height: 28px;
+    padding: 0 24px 0 8px;
+    font-size: 12px;
+}
+
+.source-warn {
+    color: var(--gh-attention);
+}
+
+.source-picker-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.source-picker-list {
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.source-picker-list .source-nav-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+@media (max-width: 767px) {
+    .source-mapping-filter {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

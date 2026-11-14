@@ -409,7 +409,17 @@ public enum ErrorCode {
     /**
      * 연결 테스트를 너무 자주 요청했다.
      */
-    SOURCE_TEST_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "SOURCE_TEST_RATE_LIMITED");
+    SOURCE_TEST_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "SOURCE_TEST_RATE_LIMITED"),
+
+    /**
+     * 원본 매핑(M-4c)을 확정할 수 없다 : 기준 연결·반영된 수집이 없거나, 대상이 그 시점에 없거나, 스키마 매핑과 맞지 않는 요청.
+     */
+    SOURCE_MAPPING_INVALID(HttpStatus.BAD_REQUEST, "SOURCE_MAPPING_INVALID"),
+
+    /**
+     * 원본 매핑이 1:1 을 깨뜨린다 (이미 다른 원본에 매핑된 모델 스키마·테이블) 또는 확인이 필요한 변경 (기준 연결 변경으로 매핑이 남는다).
+     */
+    SOURCE_MAPPING_CONFLICT(HttpStatus.CONFLICT, "SOURCE_MAPPING_CONFLICT");
 
     private final HttpStatus httpStatus;
     private final String code;

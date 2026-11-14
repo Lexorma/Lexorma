@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { api, enc } from '../../lib/api';
 import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
-import { RefTableLookup } from './RefTableLookup';
+import { RefTableLookup, refName } from './RefTableLookup';
 import { searchTerms, type Term, type TermSearchType } from './terms';
 import { t } from '../../lib/i18n';
 
@@ -21,6 +21,7 @@ interface TableInfo {
   id: number;
   tableName: string;
   tableKorName?: string;
+  schemaName?: string | null;
 }
 
 type Message = { cls: string; text: string } | null;
@@ -126,7 +127,9 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
           return;
         }
         // 입력과 정확히 같은 테이블이 있거나 결과가 하나뿐이면 바로 선택
-        const auto = list.find((target) => target.tableName === keyword.toUpperCase()) ?? (list.length === 1 ? list[0] : null);
+        // 같은 이름이 여러 스키마에 있으면 자동으로 고르지 않는다 (테이블명은 스키마 안에서만 하나다)
+        const exact = list.filter((target) => target.tableName === keyword.toUpperCase());
+        const auto = exact.length === 1 ? exact[0] : list.length === 1 ? list[0] : null;
         if (auto) selectTable(auto);
         else setTableMessage({ cls: 'form-help', text: t('승인된 테이블 {0}건 · 목록에서 선택하세요.', list.length) });
       } finally {
@@ -291,7 +294,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
           value={tableKeyword} onChange={(e) => onTableKeyword(e.target.value)} />
         <select className="form-control lookup-select" id="tableSelect" size={4} hidden={tables.length === 0 || !tableKeyword.trim()} aria-label={t('테이블 선택')}
           value={table ? String(table.id) : ''} onChange={(e) => selectTable(tables.find((t) => String(t.id) === e.target.value) ?? null)}>
-          {tables.map((t) => <option key={t.id} value={t.id}>{t.tableKorName ? `${t.tableName} · ${t.tableKorName}` : t.tableName}</option>)}
+          {tables.map((t) => <option key={t.id} value={t.id}>{refName(t, tables)}{t.tableKorName ? ` · ${t.tableKorName}` : ''}</option>)}
         </select>
         <div id="tableLookupResult" className="table-name-words" aria-live="polite">
           {message(tableMessage)}

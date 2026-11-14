@@ -271,16 +271,16 @@ class IndexManagementIntegrationTest {
 
     // ------------------------------------------------------------------ 보조
 
-    // ------------------------------------------------------------------ V5 : LEXORMA 예제 인덱스
+    // ------------------------------------------------------------------ LEXORMA 예제 인덱스 (V1)
 
     @Test
-    @DisplayName("V5 예제 인덱스 : 화면이 보여 주는 DDL 이 Lexorma 의 실제 create index 문과 같다 (이름·테이블·UNIQUE·컬럼·순서)")
+    @DisplayName("예제 인덱스 : 화면이 보여 주는 DDL 이 Lexorma 의 실제 create index 문과 같다 (이름·테이블·UNIQUE·컬럼·순서)")
     void seededIndexDdlMatchesRealDefinition() {
         AccountDto admin = SecurityTestSupport.loginAsAdmin(0L);
-        var declared = LexormaIndexSeedV5Test.declaredIndexes("h2");
+        var declared = LexormaIndexSeedTest.declaredIndexes("h2");
         // 다른 테스트가 프로젝트 0 에 만든 인덱스와 섞이지 않게 초기 등록 행만 본다
         List<Long> ids = jdbc.queryForList("select IDX_SN from TB_TBL_IDX where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and RGTR_ID = 'SYSTEM'", Long.class);
-        assertThat(ids).hasSize(declared.size()).hasSize(83);
+        assertThat(ids).hasSize(declared.size()).hasSize(100);
         for (Long id : ids) {
             PhysicalModelDto.IndexDetail detail = physicalModelService.selectIndex(admin, id);
             String[] definition = declared.get(detail.index().indexName()).split("\\|"); // 테이블|UNIQUE 여부|컬럼,컬럼

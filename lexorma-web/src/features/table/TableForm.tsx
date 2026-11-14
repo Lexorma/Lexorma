@@ -34,7 +34,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
   row?: Row;
   schemas: Schema[];
   /** 저장한 테이블명 (등록은 표준 단어로 만든 이름 — 물리 ERD 가 새 테이블을 찾는 데 쓴다) */
-  onSaved: (saved: { tableName: string }) => void;
+  onSaved: (saved: { tableName: string; schemaId?: number | null }) => void;
 }) {
   const dialog = useDialog();
   const originalKorName = normalizeKorName(row.tableKorName);
@@ -117,7 +117,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
 
     dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : t('수정하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
-      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName }));
+      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName, schemaId: type === 'C' && selectedSchemaId ? Number(selectedSchemaId) : null }));
     });
   };
 

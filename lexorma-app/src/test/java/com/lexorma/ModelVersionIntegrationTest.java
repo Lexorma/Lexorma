@@ -101,7 +101,7 @@ class ModelVersionIntegrationTest {
         long historyBefore = historyRepository.count();
 
         Summary v1 = versions.create(admin, new Create("  v1.0  ", " 배포 전 모델 ")).getBody();
-        assertThat(v1).extracting(Summary::versionName, Summary::description, Summary::formatVersion, Summary::createdBy).containsExactly("v1.0", "배포 전 모델", 3, admin.getUsername());
+        assertThat(v1).extracting(Summary::versionName, Summary::description, Summary::formatVersion, Summary::createdBy).containsExactly("v1.0", "배포 전 모델", 4, admin.getUsername());
         assertThat(v1.createdAt()).isNotNull();
         assertThat(counts(v1)).containsEntry("SCHEMA", 1).containsEntry("PHYSICAL_TABLE", 2).containsEntry("PHYSICAL_COLUMN", 5).containsEntry("PHYSICAL_RELATION", 1)
                 .containsEntry("PHYSICAL_INDEX", 1).containsEntry("PHYSICAL_CONSTRAINT", 2).containsEntry("LOGICAL_MODEL", 1).containsEntry("LOGICAL_ENTITY", 2)

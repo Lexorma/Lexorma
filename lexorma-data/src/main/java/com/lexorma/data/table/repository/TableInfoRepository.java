@@ -23,6 +23,12 @@ public interface TableInfoRepository extends JpaRepository<TableInfo, Long>, Jpa
 
     List<TableInfo> findAllByTableNameAndProjectId(String tableName, Long projectId);
 
+    /** 스키마 이름 공간 확인 (이름은 대문자로 저장한다, UX_TBL_01) */
+    List<TableInfo> findAllBySchema_IdAndTableName(Long schemaId, String tableName);
+
+    /** 테이블 엑셀 업로드 : 그 스키마에서 청크의 테이블명을 한 번에 조회 */
+    List<TableInfo> findAllBySchema_IdAndTableNameIn(Long schemaId, Collection<String> tableNames);
+
     Page<TableInfo> findAllByProjectIdAndTableNameLike(Long projectId, String tableName, Pageable pageable);
 
     Page<TableInfo> findAllByProjectIdAndTableDescriptionLike(Long projectId, String tableDescription, Pageable pageable);
@@ -33,9 +39,7 @@ public interface TableInfoRepository extends JpaRepository<TableInfo, Long>, Jpa
 
     TableInfo findALlByProjectIdAndId(Long projectId, Long tableId);
 
-    TableInfo findByTableNameAndProjectId(String tableName, Long projectId);
-
-    /** 엑셀 업로드 : 청크의 테이블명을 한 번에 조회 */
+    /** 이름 후보 조회 (모든 스키마) : 참조 테이블명·컬럼 엑셀의 테이블명은 {@code TableNameResolver} 로 스키마를 가린다 */
     List<TableInfo> findAllByProjectIdAndTableNameIn(Long projectId, Collection<String> tableNames);
 
     /** 테이블 행 잠금 : 논리·물리 매핑 등록과 테이블·컬럼 삭제를 직렬화한다 (M-7) */

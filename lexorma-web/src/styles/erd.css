@@ -59,6 +59,8 @@
 .erd-table header { box-sizing: border-box; height: 52px; padding: 7px 10px; background: var(--gh-canvas-subtle); border-bottom: 1px solid var(--gh-border); border-radius: 6px 6px 0 0; }
 .erd-table header strong, .erd-table header span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .erd-table header strong { font-family: var(--gh-mono); font-size: 13px; }
+/* 같은 이름이 다른 스키마에도 보일 때 붙이는 스키마명 (테이블명은 스키마 안에서만 하나다) */
+.erd-table header .erd-schema-prefix { font-size: 11px; font-weight: 400; color: var(--gh-fg-muted); }
 .erd-table header span { color: var(--gh-fg-muted); font-size: 11px; }
 .erd-column { box-sizing: border-box; display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px 20px; gap: 4px; align-items: center; height: 24px; padding: 0 8px; border-bottom: 1px solid var(--gh-border-muted); }
 .erd-column b { color: var(--gh-accent); font-size: 10px; }
@@ -112,3 +114,15 @@ dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
 .erd-column[class*="erd-diff-"] { background: var(--erd-diff-subtle); }
 .erd-column[class*="erd-diff-"] span i { margin-right: 4px; color: var(--erd-diff); font-style: normal; font-weight: 700; }
 .erd-column.erd-diff-removed span { text-decoration: line-through; text-decoration-color: var(--gh-danger); }
+
+/* VIEW 노드 (M-15) : 테이블과 같은 모양, 점선 테두리와 VIEW 표시로 구분 (색만으로 구분하지 않는다) */
+.erd-table.erd-view { border-style: dashed; border-color: var(--gh-done); }
+.erd-table.erd-view > header { padding-right: 52px; background: var(--gh-done-subtle); }
+.erd-view-badge { position: absolute; top: 8px; right: 8px; padding: 0 6px; border: 1px solid var(--gh-done); border-radius: 10px; color: var(--gh-done); font-size: 10px; font-style: normal; font-weight: 600; line-height: 16px; }
+.erd-line.view-ref { border-top: 2px dotted var(--gh-done); }
+.erd-view-panel .erd-view-list { margin: 4px 0 8px; padding-left: 18px; }
+.erd-view-panel .erd-view-list li { overflow-wrap: anywhere; }
+.erd-view-panel h3 { display: flex; align-items: center; gap: 6px; margin: 8px 0 2px; font-size: 14px; overflow-wrap: anywhere; }
+.erd-view-panel h4 { margin: 10px 0 2px; font-size: 12px; }
+.erd-view-panel .erd-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.erd-view-toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }

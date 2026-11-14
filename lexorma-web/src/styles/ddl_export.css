@@ -1,0 +1,88 @@
+/* DDL 내보내기 (M-11) : DDL 표시는 테이블 DDL 대화상자(popup.css 의 table-ddl-*)와 같은 모양을 쓰고, 조건 영역·건수·오류만 둔다 */
+
+.ddl-export-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px 16px;
+    align-items: end;
+    margin-bottom: 16px;
+    padding: 16px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+}
+
+.ddl-export-options .form-group {
+    margin: 0;
+    min-width: 0;
+}
+
+.ddl-export-schema,
+.ddl-export-approved {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.ddl-export-approved .gh-muted {
+    font-size: 12px;
+}
+
+.ddl-export-submit {
+    display: flex;
+    justify-content: flex-end;
+    grid-column: 1 / -1;
+}
+
+.ddl-export-toolbar {
+    flex-wrap: wrap;
+}
+
+.ddl-export-count {
+    display: inline-flex;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.ddl-export-errors {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid #ff818266;
+    border-radius: 6px;
+    background-color: var(--gh-danger-subtle);
+    color: var(--gh-fg);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.ddl-export-errors ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+}
+
+.ddl-export-result .table-ddl-warnings,
+.ddl-export-result .table-ddl-pending {
+    overflow-wrap: anywhere;
+}
+
+.ddl-export-code {
+    max-height: 70vh;
+}
+
+.ddl-export-file {
+    margin: 8px 0 0;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+    .ddl-export-options {
+        grid-template-columns: 1fr;
+        padding: 12px;
+    }
+
+    .ddl-export-submit .btn {
+        width: 100%;
+    }
+}

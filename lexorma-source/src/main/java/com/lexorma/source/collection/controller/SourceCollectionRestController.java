@@ -4,6 +4,7 @@ import com.lexorma.common.utils.PageableUtil;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.source.catalog.service.SourceCatalogRules;
 import com.lexorma.source.collection.domain.dto.SourceCollectionDto;
+import com.lexorma.source.collection.domain.dto.SourceErdDto;
 import com.lexorma.source.collection.domain.enums.CollectionType;
 import com.lexorma.source.collection.service.SourceRefreshService;
 import com.lexorma.source.collection.service.SourceSnapshotService;
@@ -98,6 +99,14 @@ public class SourceCollectionRestController {
                                                                          @RequestParam(value = "order", required = false) Integer order,
                                                                          @RequestParam(value = "at", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime at) {
         return ResponseEntity.ok(snapshotService.tablesAt(accountDto, id, schemaId, order, at));
+    }
+
+    @Operation(summary = "원본 DB ERD 데이터 (M-4b)", description = "order 의 반영 순서(없으면 마지막 반영)에 확인해 둔 연결 전체의 스키마·테이블·VIEW·컬럼·FK 를 한 번에. "
+            + "그 시점의 테이블 버전만 읽는다. 실제 FK 만 있고 추정 관계는 없다. 반영된 수집이 없으면 reflectedOrder 가 null 이다.")
+    @GetMapping("/connections/{id}/snapshot/erd")
+    public ResponseEntity<SourceErdDto.Graph> erd(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id,
+                                                  @RequestParam(value = "order", required = false) Integer order) {
+        return ResponseEntity.ok(snapshotService.erd(accountDto, id, order));
     }
 
     @Operation(summary = "과거 시점의 테이블", description = "컬럼·제약조건·인덱스·관계를 담은 정규화한 내용. 그때 없던 테이블이면 404.")

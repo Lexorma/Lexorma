@@ -3,7 +3,7 @@ import { t } from '../../lib/i18n';
 
 /**
  * 메뉴 / 화면 경로 (예전 URL 그대로) - 노출 여부는 서버 MenuAuthorization(/api/auth/me 의 menus) 기준.
- * 1뎁스는 하위 메뉴가 있는 그룹이다 (하위 없이 화면으로 바로 가는 단일 메뉴도 둘 수 있다). 순서 : 운영 → 시스템 → 사전 → 논리 → 물리 → 품질.
+ * 1뎁스는 하위 메뉴가 있는 그룹이다 (하위 없이 화면으로 바로 가는 단일 메뉴도 둘 수 있다). 순서 : 운영 → 시스템 → 사전 → 논리 → 물리 → 원본 DB → 품질.
  */
 export interface MenuItem {
   id: MenuId;
@@ -63,7 +63,21 @@ export const MENU: MenuEntry[] = [
       { id: 'table-manage', label: t('테이블 관리'), path: '/tableManage' },
       { id: 'column-manage', label: t('컬럼 관리'), path: '/columnManage' },
       { id: 'index-manage', label: t('인덱스 관리'), path: '/indexManage' },
+      { id: 'view-manage', label: t('VIEW 관리'), path: '/viewManage' },
       { id: 'physical-erd', label: t('물리 ERD'), path: '/physicalErd' },
+      { id: 'ddl-export', label: t('DDL 내보내기'), path: '/ddlExport' },
+    ],
+  },
+  // 원본 DB 관리 (M-4a) : 외부 DB 에서 수집한 원본 카탈로그. 물리 모델과는 따로 저장된다
+  {
+    id: 'source-management',
+    label: t('원본 DB 관리'),
+    items: [
+      { id: 'source-connection', label: t('연결 관리'), path: '/sourceConnection' },
+      { id: 'source-collection', label: t('메타데이터 수집'), path: '/sourceCollection' },
+      { id: 'source-catalog', label: t('원본 카탈로그'), path: '/sourceCatalog' },
+      { id: 'source-erd', label: t('원본 DB ERD'), path: '/sourceErd' },
+      { id: 'source-mapping', label: t('원본 매핑 관리'), path: '/sourceMapping' },
     ],
   },
   {

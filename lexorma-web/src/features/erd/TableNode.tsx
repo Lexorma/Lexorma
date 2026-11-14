@@ -22,15 +22,15 @@ export function DiffMark({ change }: { change?: DiffKind }) {
 
 export const TableNode = memo(function TableNode({ data, selected, isConnectable }: NodeProps<TableNodeType>) {
   const simple = useSimpleNodes();
-  const { table, columns, diff } = data;
+  const { table, columns, diff, schemaPrefix } = data;
   const rows = columns.slice(0, MAX_ROWS);
   const rowTop = (i: number) => HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   return (
     <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}`} style={{ width: NODE_WIDTH, height: nodeHeight(columns.length) }}>
-      <header title={table.tableName}>
+      <header title={schemaPrefix ? `${schemaPrefix}.${table.tableName}` : table.tableName}>
         <DiffBadge diff={diff} />
-        <strong>{table.tableName}</strong>
+        <strong>{schemaPrefix && <small className="erd-schema-prefix">{schemaPrefix}.</small>}{table.tableName}</strong>
         <span>
           {diff?.caption ? `${diff.caption} · ` : ''}
           {table.tableKorName || t('논리명 없음')}

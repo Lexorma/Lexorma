@@ -44,9 +44,10 @@ public class ModelVersionService {
 
     /**
      * 모델 내용 JSON 의 형식 번호 (대상 종류 → [{id, name, state}]). 2 : 인덱스 state 에 indexSource·derivedColumnId (M-14 1차),
-     * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차). 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능)
+     * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차), 4 : 대상 종류 PHYSICAL_VIEW (M-15, state 에 columns·references).
+     * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW 가 없어 현재의 VIEW 는 모두 추가로 보인다
      */
-    static final int FORMAT_VERSION = 3;
+    static final int FORMAT_VERSION = 4;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -300,8 +301,8 @@ public class ModelVersionService {
             if (value.isArray()) {
                 List<JsonNode> rows = new ArrayList<>();
                 value.forEach(row -> rows.add(row.isObject() ? comparable(null, row) : row));
-                // UNIQUE·CHECK 제약조건의 컬럼은 순서에 뜻이 없다 (변경 이력과 같은 기준)
-                if ("PHYSICAL_CONSTRAINT".equals(type) && name.equals("columns")) {
+                // UNIQUE·CHECK 제약조건의 컬럼, VIEW 의 참조 객체는 순서에 뜻이 없다 (변경 이력과 같은 기준)
+                if ("PHYSICAL_CONSTRAINT".equals(type) && name.equals("columns") || "PHYSICAL_VIEW".equals(type) && name.equals("references")) {
                     rows.forEach(row -> { if (row instanceof ObjectNode object) object.remove("columnOrder"); });
                     rows.sort(Comparator.comparing(JsonNode::toString));
                 }

@@ -56,6 +56,12 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("standardization-quality")).isTrue();
         assertThat(menuAuth.canView("data-quality")).isTrue();
         assertThat(menuAuth.canView("model-history")).isTrue(); // 변경 이력은 조회 화면이라 VIEWER 부터
+        // 원본 DB 관리 (M-4a) : 연결·수집 이력·원본 카탈로그 조회는 VIEWER 부터, 관리 버튼은 USER 부터 (+ 프로젝트 관리자·ADMIN 은 서버가 확인)
+        assertThat(menuAuth.canView("source-management")).isTrue();
+        assertThat(menuAuth.canView("source-connection")).isTrue();
+        assertThat(menuAuth.canView("source-collection")).isTrue();
+        assertThat(menuAuth.canView("source-catalog")).isTrue();
+        assertThat(menuAuth.canView("source-manage")).isFalse();
         // 데이터 사전은 그룹이고 표준 도메인·단어·용어가 각각 화면이다
         assertThat(menuAuth.canView("standard-domain")).isTrue();
         assertThat(menuAuth.canView("standard-word")).isTrue();
@@ -112,6 +118,7 @@ class MenuAuthorizationTest {
         assertThat(menuAuth.canView("model-mapping")).isTrue();
         assertThat(menuAuth.canView("model-mapping-edit")).isTrue();
         assertThat(menuAuth.canView("physical-model-edit")).isTrue();
+        assertThat(menuAuth.canView("source-manage")).isTrue();
         assertThat(menuAuth.canView("system-log")).isFalse();
     }
 

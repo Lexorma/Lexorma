@@ -103,10 +103,11 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             // PK·고유값·인덱스 여부는 컬럼 속성이므로 컬럼 이력에만 남는다
             Map.entry(ColumnInfo.class, new Tracked(TargetType.PHYSICAL_COLUMN, "columnName", null,
                     List.of("tableInfo", "tableName", "columnName", "columnDesc", "sourceComment", "dataType", "maxLength", "precision", "scale", "isNullable", "defaultValue",
-                            "sortOrder", "isMasterData", "refTableName", "isRequired", "isSensitive", "isPk", "isUnique", "isIndex", "isEncrypted", "example",
+                            "identity", "sortOrder", "isMasterData", "refTableName", "isRequired", "isSensitive", "isPk", "isUnique", "isIndex", "isEncrypted", "example",
                             APPROVAL, "standardTerms"))),
             Map.entry(TableRelation.class, new Tracked(TargetType.PHYSICAL_RELATION, "relationName", null,
-                    List.of("sourceTable", "targetTable", "relationName", "relationType", "relationSource", "derivedColumnId", APPROVAL))),
+                    List.of("sourceTable", "targetTable", "relationName", "relationType", "relationSource", "derivedColumnId", "deleteRule", "updateRule",
+                            APPROVAL))),
             Map.entry(TableIndex.class, new Tracked(TargetType.PHYSICAL_INDEX, "indexName", null,
                     List.of("tableInfo", "indexName", "indexType", "isUnique", "condition", "indexSource", "derivedColumnId", APPROVAL))),
             Map.entry(TableConstraint.class, new Tracked(TargetType.PHYSICAL_CONSTRAINT, "constraintName", null,

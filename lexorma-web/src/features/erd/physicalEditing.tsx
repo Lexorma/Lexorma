@@ -5,7 +5,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { api } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
-import { columnType, type ErdColumn, type ErdRelation, type ErdTable } from './model';
+import { columnType, FK_RULES, fkRuleText, type ErdColumn, type ErdRelation, type ErdTable, type FkRule } from './model';
 
 /**
  * 물리 ERD 편집 (M-8 3차) 의 대화상자·패널. 저장은 모두 기존 물리 모델 API(/api/physical)다 — 테이블 관리·DDL 생성이 같은 데이터를 읽는다.
@@ -93,6 +93,8 @@ export function RelationForm({ tables, columns, schemaName, initial, onSaved }: 
   const [targetId, setTargetId] = useState(String(initial.targetTableId ?? ''));
   const [name, setName] = useState('');
   const [type, setType] = useState<'FK' | 'LOGICAL'>('FK');
+  const [deleteRule, setDeleteRule] = useState<FkRule>('NO_ACTION');
+  const [updateRule, setUpdateRule] = useState<FkRule>('NO_ACTION');
   const [pairs, setPairs] = useState<Pair[]>(() => defaultPairs(String(initial.targetTableId ?? '')));
 
   // 테이블이나 방향이 바뀌면 컬럼 쌍을 버리고 다시 고르게 한다 (다른 테이블의 컬럼이 남지 않게)
@@ -141,6 +143,7 @@ export function RelationForm({ tables, columns, schemaName, initial, onSaved }: 
         method: 'POST',
         body: {
           relationName: name.trim() || null, relationType: type, sourceTableId: Number(sourceId), targetTableId: Number(targetId),
+          deleteRule: type === 'FK' ? deleteRule : null, updateRule: type === 'FK' ? updateRule : null,
           columns: pairs.map((p) => ({ sourceColumnId: Number(p.source), targetColumnId: Number(p.target) })),
         },
       });
@@ -203,16 +206,39 @@ export function RelationForm({ tables, columns, schemaName, initial, onSaved }: 
           </select>
         </div>
       </div>
-      <p className="form-help">{t('컬럼의 참조 테이블명으로 이미 관계가 정해진 컬럼은 여기서 등록할 수 없습니다. 등록한 관계는 수정할 수 없고, 삭제한 뒤 다시 등록합니다.')}</p>
+      {type === 'FK' && <FkRuleFields idPrefix="relation" deleteRule={deleteRule} updateRule={updateRule} onDelete={setDeleteRule} onUpdate={setUpdateRule} />}
+      <p className="form-help">{t('컬럼의 참조 테이블명으로 이미 관계가 정해진 컬럼은 여기서 등록할 수 없습니다. 등록한 관계의 컬럼 구성은 수정할 수 없고 삭제한 뒤 다시 등록합니다. FK 규칙은 관계 패널에서 바꿀 수 있습니다.')}</p>
       <button type="submit" className="btn btn-primary">{t('외래키 저장')}</button>
     </form>
+  );
+}
+
+/** FK 삭제·수정 규칙 고르기 (ON DELETE · ON UPDATE). DBMS 가 지원하지 않는 규칙은 DDL 에서 빠지고 경고가 나온다 */
+function FkRuleFields({ idPrefix, deleteRule, updateRule, onDelete, onUpdate, disabled }: {
+  idPrefix: string; deleteRule: FkRule; updateRule: FkRule; onDelete: (rule: FkRule) => void; onUpdate: (rule: FkRule) => void; disabled?: boolean;
+}) {
+  return (
+    <div className="logical-form-pair">
+      <div className="form-group">
+        <label htmlFor={`${idPrefix}DeleteRule`}>{t('삭제 규칙 (ON DELETE)')}</label>
+        <select className="form-control" id={`${idPrefix}DeleteRule`} value={deleteRule} disabled={disabled} onChange={(e) => onDelete(e.target.value as FkRule)}>
+          {FK_RULES.map((r) => <option key={r} value={r}>{fkRuleText(r)}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label htmlFor={`${idPrefix}UpdateRule`}>{t('수정 규칙 (ON UPDATE)')}</label>
+        <select className="form-control" id={`${idPrefix}UpdateRule`} value={updateRule} disabled={disabled} onChange={(e) => onUpdate(e.target.value as FkRule)}>
+          {FK_RULES.map((r) => <option key={r} value={r}>{fkRuleText(r)}</option>)}
+        </select>
+      </div>
+    </div>
   );
 }
 
 // ------------------------------------------------------------------ 관계 패널
 
 /** 선택한 관계선의 상세. 편집 모드에서 삭제, 승인 권한자에게 승인·승인취소 */
-export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, onDelete }: {
+export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, onDelete, onRulesChanged }: {
   relation: ErdRelation;
   /** 상대 테이블이 조회 범위 밖인지 (선은 그리지 않는다) */
   outOfScope: boolean;
@@ -220,7 +246,17 @@ export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, on
   onApproval?: () => void;
   /** 편집 모드에서만 */
   onDelete?: () => void;
+  /** 편집 모드에서만 : FK 규칙을 바꾼 뒤 (참조 컬럼 관계도 바꿀 수 있다) */
+  onRulesChanged?: () => void;
 }) {
+  const dialog = useDialog();
+  const [deleteRule, setDeleteRule] = useState<FkRule>(r.deleteRule ?? 'NO_ACTION');
+  const [updateRule, setUpdateRule] = useState<FkRule>(r.updateRule ?? 'NO_ACTION');
+  const rulesChanged = deleteRule !== (r.deleteRule ?? 'NO_ACTION') || updateRule !== (r.updateRule ?? 'NO_ACTION');
+  const saveRules = () => dialog.confirm(t('FK 규칙을 저장하시겠습니까?'), async () => {
+    await api(`/api/physical/relation/${r.id}/rules`, { method: 'PUT', body: { deleteRule, updateRule } });
+    onRulesChanged?.();
+  });
   const derived = r.relationSource === 'REF_COLUMN';
   const blocked = derived ? t('컬럼의 참조 테이블명으로 만든 관계입니다. 컬럼 편집에서 참조 테이블을 비우면 없어집니다.') : r.isApproval ? APPROVED_NOTE : '';
   return (
@@ -252,12 +288,20 @@ export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, on
           </button>
         </li>
       </ul>
+      {r.relationType === 'FK' && (onRulesChanged && !r.isApproval ? (
+        <>
+          <FkRuleFields idPrefix={`rel${r.id}`} deleteRule={deleteRule} updateRule={updateRule} onDelete={setDeleteRule} onUpdate={setUpdateRule} />
+          {rulesChanged && <button type="button" className="btn btn-sm btn-primary" onClick={saveRules}>{t('FK 규칙 저장')}</button>}
+        </>
+      ) : (
+        <p className="erd-muted">{t('ON DELETE {0} · ON UPDATE {1}', fkRuleText(r.deleteRule), fkRuleText(r.updateRule))}</p>
+      ))}
       <h4>{t('컬럼 대응 {0}쌍', r.columns.length)}</h4>
       <ol className="erd-pairs">
         {r.columns.map((p, i) => <li key={i}><Mono>{r.sourceTableName}.{p.sourceColumnName}</Mono> → <Mono>{r.targetTableName}.{p.targetColumnName}</Mono></li>)}
       </ol>
       {outOfScope && <p className="erd-muted">{t('상대 테이블이 조회 범위 밖이라 선은 그리지 않습니다.')}</p>}
-      <p className="erd-muted">{t('관계는 수정할 수 없습니다. 바꾸려면 삭제한 뒤 다시 등록합니다.')}</p>
+      <p className="erd-muted">{t('관계의 컬럼 구성은 수정할 수 없습니다. 바꾸려면 삭제한 뒤 다시 등록합니다. FK 규칙은 편집 모드에서 바꿀 수 있습니다 (승인된 관계는 승인 취소 후).')}</p>
     </>
   );
 }

@@ -141,7 +141,7 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
   const items: [string, unknown, boolean?][] = [
     [t('스키마'), row.schemaName, true],
     [t('테이블명'), row.tableName, true],
-    [t('테이블 한글명'), row.tableKorName],
+    [t('테이블 코멘트'), row.tableKorName],
     [t('테이블 설명'), row.tableDescription],
     [t('마스터 테이블'), row.isMasterTable === 'Y' ? 'Y' : 'N'],
     [t('정렬 순서'), row.sortOrder],

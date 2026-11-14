@@ -90,15 +90,23 @@ public final class PostgresCompareRules {
     }
 
     /** 이름(인자)접미사 : timestamp(3) without time zone 처럼 인자가 가운데 있어도 된다 */
+    private static final Pattern ARRAY_SUFFIX = Pattern.compile("(?is).*\\sarray$");
     private static final Pattern TYPE_ARGS = Pattern.compile("^(.*?)\\s*\\(\\s*(\\d+)\\s*(?:,\\s*(-?\\d+)\\s*)?\\)\\s*(.*)$");
 
     public static PgType type(String raw) {
         if (raw == null || raw.isBlank()) return null;
         String text = raw.trim();
         int dims = 0;
-        while (text.endsWith("[]")) {
+        // 배열 : PostgreSQL 표기 bigint[] 와 SQL 표준 표기 BIGINT ARRAY (모델 DDL 이 쓰는 표기)는 같은 타입이다
+        while (true) {
+            if (text.endsWith("[]")) {
+                text = text.substring(0, text.length() - 2).trim();
+            } else if (ARRAY_SUFFIX.matcher(text).matches()) {
+                text = text.substring(0, text.length() - "array".length()).trim();
+            } else {
+                break;
+            }
             dims++;
-            text = text.substring(0, text.length() - 2).trim();
         }
         String lower = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
         Integer first = null;

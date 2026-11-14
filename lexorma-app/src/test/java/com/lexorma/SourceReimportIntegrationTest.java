@@ -121,8 +121,8 @@ class SourceReimportIntegrationTest {
         assertThat(items.get("FOREIGN_KEY:member_team_fk").dependsOn()).contains("COLUMN:team_id:ADD");
         // F-08 : 기존 UNIQUE 의 컬럼이 바뀌었다 : 교체가 필요해 가져오지 않는다 (조용히 빠지지 않는다)
         assertThat(items.get("UNIQUE:member_email_key")).isNotNull().extracting(Item::reason).isEqualTo(Reason.REPLACE_REQUIRED);
-        // F-13 : IDENTITY 컬럼은 만들지 않는다
-        assertThat(items.get("COLUMN:seq:ADD").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
+        // F-13 : IDENTITY 컬럼은 IDENTITY 속성으로 만든다 (V7 — 이전에는 만들지 않았다)
+        assertThat(items.get("COLUMN:seq:ADD")).extracting(Item::selectable, Item::excluded).containsExactly(true, List.of());
 
         // F-12 : 승인된 컬럼은 원본만 바뀌어도 바꾸지 않는다 (판정은 그대로 보여 준다)
         approveColumn(e, "EMAIL", true);

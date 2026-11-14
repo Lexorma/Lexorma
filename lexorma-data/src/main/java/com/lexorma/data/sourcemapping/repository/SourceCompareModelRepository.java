@@ -41,11 +41,11 @@ public class SourceCompareModelRepository {
 
         Map<Long, Object[]> tableHeads = new HashMap<>();
         chunks(ids, part -> {
-            for (Object[] row : list("select t.id, t.tableName, t.sourceComment, t.isApproval from TableInfo t where t.projectId = :projectId and t.id in :ids", projectId, part)) {
+            for (Object[] row : list("select t.id, t.tableName, t.sourceComment, t.isApproval, t.tableKorName from TableInfo t where t.projectId = :projectId and t.id in :ids", projectId, part)) {
                 tableHeads.put((Long) row[0], row);
             }
             for (Object[] row : list("select c.id, t.id, c.columnName, c.dataType, c.maxLength, c.precision, c.scale, c.isNullable, c.isRequired, c.isPk, c.isUnique,"
-                    + " c.defaultValue, c.sortOrder, c.sourceComment, c.isApproval from ColumnInfo c join c.tableInfo t where c.projectId = :projectId and t.id in :ids",
+                    + " c.defaultValue, c.sortOrder, c.sourceComment, c.isApproval, c.columnDesc, c.identity from ColumnInfo c join c.tableInfo t where c.projectId = :projectId and t.id in :ids",
                     projectId, part)) {
                 CompareModel.Column column = column(row);
                 columns.put(column.id(), column);
@@ -76,7 +76,7 @@ public class SourceCompareModelRepository {
 
             Map<Long, Object[]> relationHeads = new LinkedHashMap<>();
             Map<Long, List<Long[]>> pairs = new LinkedHashMap<>();
-            for (Object[] row : entityManager.createQuery("select r.id, s.id, tg.id, r.relationName, r.relationSource, sc.id, tc.id from TableRelation r join r.sourceTable s"
+            for (Object[] row : entityManager.createQuery("select r.id, s.id, tg.id, r.relationName, r.relationSource, sc.id, tc.id, r.deleteRule, r.updateRule from TableRelation r join r.sourceTable s"
                             + " join r.targetTable tg left join r.columns rc left join rc.sourceColumn sc left join rc.targetColumn tc where r.projectId = :projectId"
                             + " and r.relationType = :type and s.id in :ids order by r.id, rc.columnOrder", Object[].class)
                     .setParameter("projectId", projectId).setParameter("type", TableRelation.Type.FK).setParameter("ids", part).getResultList()) {
@@ -86,7 +86,8 @@ public class SourceCompareModelRepository {
             }
             relationHeads.forEach((id, row) -> relations.computeIfAbsent((Long) row[1], k -> new ArrayList<>())
                     .add(new CompareModel.Relation(id, (Long) row[1], (Long) row[2], (String) row[3], String.valueOf(row[4]),
-                            pairs.get(id).stream().map(p -> p[0]).toList(), pairs.get(id).stream().map(p -> p[1]).toList())));
+                            pairs.get(id).stream().map(p -> p[0]).toList(), pairs.get(id).stream().map(p -> p[1]).toList(),
+                            ruleSql(row[7]), ruleSql(row[8]))));
         });
 
         // FK 대상 컬럼 (다른 TABLE 의 컬럼)
@@ -95,7 +96,7 @@ public class SourceCompareModelRepository {
         if (!missing.isEmpty()) {
             chunks(List.copyOf(missing), part -> {
                 for (Object[] row : entityManager.createQuery("select c.id, t.id, c.columnName, c.dataType, c.maxLength, c.precision, c.scale, c.isNullable, c.isRequired,"
-                                + " c.isPk, c.isUnique, c.defaultValue, c.sortOrder, c.sourceComment, c.isApproval from ColumnInfo c join c.tableInfo t"
+                                + " c.isPk, c.isUnique, c.defaultValue, c.sortOrder, c.sourceComment, c.isApproval, c.columnDesc, c.identity from ColumnInfo c join c.tableInfo t"
                                 + " where c.projectId = :projectId and c.id in :ids", Object[].class)
                         .setParameter("projectId", projectId).setParameter("ids", part).getResultList()) {
                     CompareModel.Column column = column(row);
@@ -108,7 +109,7 @@ public class SourceCompareModelRepository {
         for (Long id : ids) {
             Object[] head = tableHeads.get(id);
             if (head == null) continue; // 없는 TABLE·다른 프로젝트
-            tables.put(id, new CompareModel.Table(id, (String) head[1], (String) head[2], Boolean.TRUE.equals(head[3]), List.copyOf(columnsByTable.getOrDefault(id, List.of())),
+            tables.put(id, new CompareModel.Table(id, (String) head[1], (String) head[2], (String) head[4], Boolean.TRUE.equals(head[3]), List.copyOf(columnsByTable.getOrDefault(id, List.of())),
                     List.copyOf(constraints.getOrDefault(id, List.of())), List.copyOf(indexes.getOrDefault(id, List.of())), List.copyOf(relations.getOrDefault(id, List.of()))));
         }
         return new Loaded(tables, columns);
@@ -136,8 +137,14 @@ public class SourceCompareModelRepository {
         for (int from = 0; from < ids.size(); from += IN_CHUNK) action.accept(ids.subList(from, Math.min(from + IN_CHUNK, ids.size())));
     }
 
+    /** 모델 규칙 → SQL 표기 (비면 NO ACTION) */
+    private static String ruleSql(Object rule) {
+        return rule instanceof TableRelation.Rule r ? r.sql() : TableRelation.Rule.NO_ACTION.sql();
+    }
+
     private static CompareModel.Column column(Object[] row) {
         return new CompareModel.Column((Long) row[0], (Long) row[1], (String) row[2], (String) row[3], (Integer) row[4], (BigDecimal) row[5], (Integer) row[6],
-                (Boolean) row[7], (Boolean) row[8], (Boolean) row[9], (Boolean) row[10], (String) row[11], (Integer) row[12], (String) row[13], Boolean.TRUE.equals(row[14]));
+                (Boolean) row[7], (Boolean) row[8], (Boolean) row[9], (Boolean) row[10], (String) row[11], (Integer) row[12], (String) row[13], (String) row[15],
+                Boolean.TRUE.equals(row[14]), row[16] == null ? null : row[16].toString());
     }
 }

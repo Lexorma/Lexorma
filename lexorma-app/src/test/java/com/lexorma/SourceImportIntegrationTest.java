@@ -103,7 +103,7 @@ class SourceImportIntegrationTest {
     }
 
     @Test
-    @DisplayName("대상 : 차이만 고를 수 있고, 판단 불가·이름 변경 후보·승인된 객체·교체가 필요한 것·순서는 이유와 함께 막는다. IDENTITY 는 빼는 속성으로 보인다")
+    @DisplayName("대상 : 차이만 고를 수 있고, 판단 불가·이름 변경 후보·승인된 객체·교체가 필요한 것·순서는 이유와 함께 막는다. IDENTITY 와 FK 규칙은 그대로 가져온다 (V7), 생성 컬럼은 빼는 속성으로 보인다")
     void candidates() {
         Env e = prepared("m4e-cand");
         Map<String, Item> customer = items(service.candidates(e.manager, null, null, key(e, "customer")));
@@ -117,9 +117,9 @@ class SourceImportIntegrationTest {
         assertThat(customer.get("COLUMN:email:ADD").selectable()).isTrue();
         assertThat(customer.get("COLUMN:email:COMMENT").dependsOn()).containsExactly("COLUMN:email:ADD");
         assertThat(customer.get("COLUMN:tags:ADD").after()).startsWith("integer[]");
-        // 모델이 표현하지 못하는 원본 속성 : 빼고 만들면 의미가 달라지므로 컬럼을 만들지 않는다 (속성은 보인다)
-        assertThat(customer.get("COLUMN:code:ADD").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
-        assertThat(customer.get("COLUMN:code:ADD").excluded()).containsExactly("GENERATED ALWAYS AS IDENTITY");
+        // IDENTITY 는 모델 속성으로 가져온다 (V7). 생성 컬럼은 모델이 표현하지 못해 만들지 않는다 (속성은 보인다)
+        assertThat(customer.get("COLUMN:code:ADD").selectable()).isTrue();
+        assertThat(customer.get("COLUMN:code:ADD").excluded()).isEmpty();
         assertThat(customer.get("COLUMN:total:ADD").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
         assertThat(customer.get("COLUMN:total:ADD").excluded()).singleElement().asString().startsWith("GENERATED ALWAYS AS (");
         // 기존 IDENTITY 컬럼 : 원본 COMMENT 는 IDENTITY 와 무관해 고를 수 있고, 자동 증가 차이는 칸이 없어 고를 수 없다
@@ -138,15 +138,14 @@ class SourceImportIntegrationTest {
         Map<String, Item> orders = items(service.candidates(e.manager, null, null, key(e, "orders")));
         assertThat(orders.get("CHECK:orders_status_check").reason()).isEqualTo(Reason.UNKNOWN);
         assertThat(orders.get("PRIMARY_KEY:orders_pkey").selectable()).isTrue();
-        assertThat(orders.get("FOREIGN_KEY:orders_customer_fk").excluded()).containsExactly("ON DELETE CASCADE");
-        assertThat(orders.get("FOREIGN_KEY:orders_customer_fk").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
+        // FK 삭제·수정 규칙은 관계에 그대로 가져온다 (V7) : 빼는 속성이 없다
+        assertThat(orders.get("FOREIGN_KEY:orders_customer_fk").excluded()).isEmpty();
+        assertThat(orders.get("FOREIGN_KEY:orders_customer_fk").reason()).isNotEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
         Map<String, Item> audit = items(service.candidates(e.manager, null, null, key(e, "audit_ref")));
-        assertThat(audit.get("FOREIGN_KEY:audit_set_null").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
-        assertThat(audit.get("FOREIGN_KEY:audit_set_null").excluded()).containsExactly("ON DELETE SET NULL");
-        assertThat(audit.get("FOREIGN_KEY:audit_set_default").excluded()).containsExactly("ON DELETE SET DEFAULT");
-        assertThat(audit.get("FOREIGN_KEY:audit_on_update").excluded()).containsExactly("ON UPDATE CASCADE");
-        assertThat(audit.get("FOREIGN_KEY:audit_on_update").selectable()).isFalse();
-        assertThat(audit.get("FOREIGN_KEY:audit_plain").selectable()).isTrue(); // NO ACTION 은 모델 DDL 과 같다
+        for (String id : List.of("FOREIGN_KEY:audit_set_null", "FOREIGN_KEY:audit_set_default", "FOREIGN_KEY:audit_on_update", "FOREIGN_KEY:audit_plain")) {
+            assertThat(audit.get(id).excluded()).as(id).isEmpty();
+            assertThat(audit.get(id).selectable()).as(id).isTrue();
+        }
 
         SourceImportDto.TableCandidates line = service.candidates(e.manager, null, null, key(e, "line_item"));
         assertThat(line.create()).isTrue();
@@ -173,10 +172,10 @@ class SourceImportIntegrationTest {
         rejected(() -> service.apply(e.manager, confirm(e, plan, Map.of("customer", List.of("UNIQUE:customer_email_key", "COLUMN:grade:DEFAULT", "COLUMN:nope:ADD")))),
                 ErrorCode.SOURCE_IMPORT_INVALID);
         // 화면에서 고를 수 없는 항목을 직접 보내도 계획·확정이 거절한다
-        Map<String, List<String>> blocked = Map.of("customer", List.of("COLUMN:code:ADD"), "orders", List.of("FOREIGN_KEY:orders_customer_fk"));
+        Map<String, List<String>> blocked = Map.of("customer", List.of("COLUMN:total:ADD"), "orders", List.of("CHECK:orders_status_check"));
         SourceImportDto.Plan blockedPlan = service.plan(e.manager, request(e, blocked));
         assertThat(blockedPlan.applicable()).isFalse();
-        assertThat(planItems(blockedPlan, "customer").get("COLUMN:code:ADD").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
+        assertThat(planItems(blockedPlan, "customer").get("COLUMN:total:ADD").reason()).isEqualTo(Reason.UNSUPPORTED_ATTRIBUTE);
         rejected(() -> service.apply(e.manager, confirm(e, blockedPlan, blocked)), ErrorCode.SOURCE_IMPORT_INVALID);
         // FK 대상의 키가 없으면 (orders PK 를 고르지 않음)
         SourceImportDto.Plan fk = service.plan(e.manager, request(e, Map.of("line_item", List.of("TABLE:CREATE", "COLUMN:order_id:ADD", "COLUMN:line_no:ADD",
@@ -190,7 +189,7 @@ class SourceImportIntegrationTest {
     void applySelected() {
         Env e = prepared("m4e-apply");
         Map<String, List<String>> selection = new LinkedHashMap<>();
-        selection.put("customer", List.of("COLUMN:name:TYPE", "COLUMN:amount:TYPE", "COLUMN:email:ADD", "COLUMN:email:COMMENT", "COLUMN:tags:ADD",
+        selection.put("customer", List.of("COLUMN:name:TYPE", "COLUMN:amount:TYPE", "COLUMN:email:ADD", "COLUMN:email:COMMENT", "COLUMN:tags:ADD", "COLUMN:code:ADD",
                 "COLUMN:note:COMMENT", "COLUMN:seq_no:COMMENT", "UNIQUE:customer_email_key", "CHECK:customer_amount_check", "INDEX:ix_customer_name_grade"));
         selection.put("orders", List.of("TABLE:COMMENT", "PRIMARY_KEY:orders_pkey"));
         selection.put("line_item", List.of("TABLE:CREATE", "TABLE:COMMENT", "COLUMN:order_id:ADD", "COLUMN:line_no:ADD", "PRIMARY_KEY:line_item_pkey",
@@ -199,7 +198,7 @@ class SourceImportIntegrationTest {
         SourceImportDto.Plan plan = service.plan(e.manager, request(e, selection));
         assertThat(plan.tables()).flatExtracting(SourceImportDto.PlanTable::items).filteredOn(i -> !i.selectable()).isEmpty();
         assertThat(plan.applicable()).isTrue();
-        assertThat(plan.counts()).isEqualTo(new SourceImportDto.Counts(2, 2, 7, 2, 6, 1, 5));
+        assertThat(plan.counts()).isEqualTo(new SourceImportDto.Counts(2, 2, 8, 2, 6, 1, 5)); // 추가 컬럼 8 = IDENTITY 컬럼 CODE 포함 (V7)
 
         SourceImportDto.Result result = service.apply(e.manager, confirm(e, plan, selection));
         Long pid = e.project.getId();
@@ -217,8 +216,11 @@ class SourceImportIntegrationTest {
         assertThat(value(email, "COL_EXPLN")).isNull();
         assertThat(value(email, "APRV_YN")).isEqualTo(false);
         assertThat(value(row("select DATA_TYPE_NM from TB_COL where PRJ_SN = ? and TBL_NM = 'CUSTOMER' and COL_NM = 'TAGS'", pid), "DATA_TYPE_NM")).isEqualTo("integer[]");
-        // IDENTITY·생성 컬럼은 만들지 않았다 (빼고 만들면 의미가 달라진다). 기존 IDENTITY 컬럼의 원본 COMMENT 만 반영 (IDENTITY 를 가져온 것이 아니다)
-        assertThat(jdbc.queryForObject("select count(*) from TB_COL where PRJ_SN = ? and TBL_NM = 'CUSTOMER' and COL_NM in ('CODE', 'TOTAL')", Integer.class, pid)).isZero();
+        // 새 IDENTITY 컬럼은 IDENTITY 로 만든다 (V7, 기본값 아님). 생성 컬럼은 만들지 않았다. 기존 IDENTITY 컬럼은 원본 COMMENT 만 반영 (IDENTITY 변경은 아직 가져오지 않는다)
+        Map<String, Object> code = row("select AUTO_CRT_MTHD_CD, BSC_VL from TB_COL where PRJ_SN = ? and TBL_NM = 'CUSTOMER' and COL_NM = 'CODE'", pid);
+        assertThat(value(code, "AUTO_CRT_MTHD_CD")).isEqualTo("ALWAYS");
+        assertThat(value(code, "BSC_VL")).isNull();
+        assertThat(jdbc.queryForObject("select count(*) from TB_COL where PRJ_SN = ? and TBL_NM = 'CUSTOMER' and COL_NM = 'TOTAL'", Integer.class, pid)).isZero();
         Map<String, Object> seq = row("select SRC_ANTN_CN, BSC_VL from TB_COL where PRJ_SN = ? and TBL_NM = 'CUSTOMER' and COL_NM = 'SEQ_NO'", pid);
         assertThat(value(seq, "SRC_ANTN_CN")).isEqualTo("순번");
         assertThat(value(seq, "BSC_VL")).isNull();
@@ -243,7 +245,9 @@ class SourceImportIntegrationTest {
                 Integer.class, pid)).isEqualTo(2);
         Map<String, SourceCompareDto.TableRow> rows = compareRows(e);
         assertThat(rows.get("line_item").mappingStatus()).isEqualTo(SourceMappingDto.Status.MAPPED);
-        assertThat(rows.get("line_item").status()).isEqualTo(CompareStatus.SAME);
+        // 가져오기는 원본 COMMENT 를 원본 COMMENT 칸에만 쓰고 업무 설명은 비워 둔다 → 원본 COMMENT ↔ 모델 설명 비교(2026-11-14)에서 TABLE COMMENT 차이 하나만 남는다
+        assertThat(rows.get("line_item").status()).isEqualTo(CompareStatus.MODIFIED);
+        assertThat(rows.get("line_item").differencesByKind()).containsExactly(Map.entry(SourceCompareDto.ObjectKind.TABLE, 1));
         assertThat(rows.get("line_note").status()).isEqualTo(CompareStatus.SAME);
         // 이력 : 모델 변경 이력(IMPORT, 변경 그룹 = 요청 식별자)과 실행 이력
         assertThat(jdbc.queryForList("select distinct CHG_SRC_CD from TB_MDL_CHG_HSTRY where PRJ_SN = ? and CHG_GROUP_ID = ?", String.class, pid, result.changeGroupId()))

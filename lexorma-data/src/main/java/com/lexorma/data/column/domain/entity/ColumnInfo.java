@@ -71,6 +71,36 @@ public class ColumnInfo extends BaseEntity {
     @Column(name = "BSC_VL")
     private String defaultValue;
 
+    /**
+     * 자동 생성 방법 (IDENTITY) : ALWAYS · BY_DEFAULT, null = 없음. 기본값·SERIAL 타입과 함께 쓰지 않는다.
+     * DDL : PostgreSQL·Oracle GENERATED … AS IDENTITY, MySQL·MariaDB AUTO_INCREMENT
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "AUTO_CRT_MTHD_CD", length = 20)
+    private Identity identity;
+
+    public enum Identity {
+        ALWAYS("ALWAYS"), BY_DEFAULT("BY DEFAULT");
+
+        private final String sql;
+
+        Identity(String sql) {
+            this.sql = sql;
+        }
+
+        public String sql() {
+            return sql;
+        }
+
+        /** "BY DEFAULT"·"by_default"·"ALWAYS". 비었거나 모르면 null */
+        public static Identity parse(String value) {
+            if (value == null || value.isBlank()) return null;
+            String key = value.trim().toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
+            for (Identity identity : values()) if (identity.name().equals(key)) return identity;
+            return null;
+        }
+    }
+
     /** 정렬 순서: 1 */
     @Column(name = "SORT_ORD")
     private Integer sortOrder;

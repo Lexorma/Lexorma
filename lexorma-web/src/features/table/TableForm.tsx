@@ -97,10 +97,10 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
     // 수정 시 저장된 한글명을 그대로 두면 서버에 보내지 않는다 (기존 테이블명/한글명 유지)
     const sendKorName = type === 'U' && isUnchanged(inputKorName) ? '' : inputKorName;
 
-    if (type === 'C' && !sendKorName) return dialog.alert(t('테이블 한글명은(는) 필수 입력 항목입니다.'));
+    if (type === 'C' && !sendKorName) return dialog.alert(t('테이블 코멘트은(는) 필수 입력 항목입니다.'));
     if (sendKorName) {
       if (state.pending || state.korName !== sendKorName) return dialog.alert(t('표준 단어를 조회하고 있습니다. 잠시 후 다시 시도해주세요.'));
-      if (!state.result?.valid) return dialog.alert(t('테이블 한글명에 승인된 표준 단어가 아닌 단어가 있습니다.'));
+      if (!state.result?.valid) return dialog.alert(t('테이블 코멘트에 승인된 표준 단어가 아닌 단어가 있습니다.'));
     }
     // 한글명 없이 수정하는 경우에는 설명을 직접 입력해야 한다. (한글명이 있으면 서버에서 채운다)
     if (!sendKorName && !String(description).trim()) return dialog.alert(t('테이블 설명은(는) 필수 입력 항목입니다.'));
@@ -136,7 +136,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
       </div>
 
       <div className="form-group">
-        <label htmlFor="tableKorName">{t('테이블 한글명')}</label>
+        <label htmlFor="tableKorName">{t('테이블 코멘트')}</label>
         <input type="text" className="form-control" id="tableKorName" placeholder={t('예) 사용_내역_관리')} autoComplete="off" required={type === 'C'} autoFocus
           value={korName} onChange={(e) => setKorName(e.target.value)} />
         <p className="table-name-help">

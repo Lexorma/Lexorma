@@ -41,7 +41,15 @@ export interface ErdRelation {
   targetTableName: string;
   columns: { sourceColumnId: number; sourceColumnName: string; targetColumnId: number; targetColumnName: string }[];
   isApproval: boolean | null;
+  /** FK 의 ON DELETE · ON UPDATE (V7). 비면 NO_ACTION */
+  deleteRule?: FkRule | null;
+  updateRule?: FkRule | null;
 }
+
+export type FkRule = 'NO_ACTION' | 'RESTRICT' | 'CASCADE' | 'SET_NULL' | 'SET_DEFAULT';
+export const FK_RULES: FkRule[] = ['NO_ACTION', 'RESTRICT', 'CASCADE', 'SET_NULL', 'SET_DEFAULT'];
+/** 규칙 표시 : SQL 표기 그대로 (NO ACTION 등) */
+export const fkRuleText = (rule: FkRule | null | undefined) => (rule ?? 'NO_ACTION').replace('_', ' ');
 
 export interface ErdGraph {
   tables: ErdTable[];

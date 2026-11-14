@@ -22,6 +22,9 @@ public interface PhysicalModelService {
 
     PhysicalModelDto.Relation saveRelation(AccountDto accountDto, PhysicalModelDto.Relation relation);
 
+    /** FK 의 삭제·수정 규칙만 바꾼다 (참조 컬럼 관계 포함, 승인된 관계는 거절) */
+    PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules);
+
     PhysicalModelDto.Index saveIndex(AccountDto accountDto, PhysicalModelDto.Index index);
 
     /** 인덱스 수정 : 미승인은 바로, 승인된 인덱스는 변경 요청 (승인 권한자는 즉시 승인) — M-14 D-20 */

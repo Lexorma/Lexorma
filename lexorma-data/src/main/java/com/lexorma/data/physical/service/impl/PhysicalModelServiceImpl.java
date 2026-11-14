@@ -132,12 +132,34 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .relationType(type)
                 .relationSource(TableRelation.Source.USER)
                 .isApproval(AuthUtil.isApprovalAvailable())
+                .deleteRule(type == TableRelation.Type.FK ? rule(request.deleteRule()) : null)
+                .updateRule(type == TableRelation.Type.FK ? rule(request.updateRule()) : null)
                 .build();
         for (int i = 0; i < pairs.size(); i++) {
             relation.getColumns().add(TableRelationColumn.builder().relation(relation)
                     .sourceColumn(sourceColumns.get(i)).targetColumn(targetColumns.get(i)).columnOrder(i + 1).build());
         }
         return PhysicalModelDto.Relation.fromEntity(relationRepository.save(relation));
+    }
+
+    @Override
+    @Transactional
+    public PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules) {
+        Long projectId = accountDto.getProjectId();
+        TableRelation relation = relationRepository.findByIdAndProjectId(relationId, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+        if (relation.getRelationType() != TableRelation.Type.FK) throw invalid("논리 관계에는 삭제·수정 규칙이 없습니다.");
+        rejectApproved(relation.getIsApproval());
+        relation.setDeleteRule(rule(rules == null ? null : rules.deleteRule()));
+        relation.setUpdateRule(rule(rules == null ? null : rules.updateRule()));
+        return PhysicalModelDto.Relation.fromEntity(relation);
+    }
+
+    /** 규칙 값 : 비었거나 NO_ACTION 이면 null (DDL 기본). 모르는 값은 거절 */
+    private static TableRelation.Rule rule(String value) {
+        if (value == null || value.isBlank()) return null;
+        TableRelation.Rule rule = TableRelation.Rule.parse(value);
+        if (rule == null) throw invalid("FK 규칙은 NO_ACTION · RESTRICT · CASCADE · SET_NULL · SET_DEFAULT 중 하나입니다.");
+        return rule == TableRelation.Rule.NO_ACTION ? null : rule;
     }
 
     /**
@@ -878,7 +900,11 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                                         Comparator.nullsLast(Comparator.naturalOrder()))
                                 .thenComparing(TableIndex::getId))
                         .toList(),
-                relations, targetUniqueKeys);
+                relations, targetUniqueKeys)
+                // 참조 컬럼(REF_COLUMN) 관계 : 컬럼의 참조 테이블로 만드는 FK 에 이 관계의 삭제·수정 규칙을 쓴다
+                .withReferenceRelations(relationRepository.findAllByProjectIdAndSourceTable_Id(projectId, table.getId()).stream()
+                        .filter(r -> r.getRelationSource() == TableRelation.Source.REF_COLUMN && r.getDerivedColumnId() != null)
+                        .collect(Collectors.toMap(TableRelation::getDerivedColumnId, r -> r, (a, b) -> a)));
     }
 
     // ------------------------------------------------------------------ 보조

@@ -50,7 +50,7 @@ const DETAIL_FLAGS: [string, string][] = [
 ];
 
 // 변경 여부 비교 / 저장에 쓰는 항목
-const FIELD_KEYS = ['columnDesc', 'dataType', 'maxLength', 'precision', 'scale', 'defaultValue', 'refTableName', 'example',
+const FIELD_KEYS = ['columnDesc', 'dataType', 'maxLength', 'precision', 'scale', 'defaultValue', 'identity', 'refTableName', 'example',
   'isPk', 'isNullable', 'isRequired', 'isUnique', 'isIndex', 'isMasterData', 'isSensitive', 'isEncrypted'];
 
 const NUMBER_KEYS = ['maxLength', 'precision', 'scale'];
@@ -958,6 +958,15 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                               onChange={(v) => setFieldValue(row, 'refTableName', v)} />
                           </div>
                           <label className="col-bulk-field"><span>{t('데이터 예시')}</span>{textInput(row, 'example', locked)}</label>
+                          {/* IDENTITY (V7) : 정수 타입에만, 기본값과 함께 쓰지 않는다 (서버가 검증) */}
+                          <label className="col-bulk-field"><span>IDENTITY</span>
+                            <select className="form-control" aria-label="identity" value={row.fields.identity ?? ''} disabled={locked}
+                              onChange={(e) => setFieldValue(row, 'identity', e.target.value || null)}>
+                              <option value="">{t('없음')}</option>
+                              <option value="BY_DEFAULT">BY DEFAULT</option>
+                              <option value="ALWAYS">ALWAYS</option>
+                            </select>
+                          </label>
                         </div>
                         <div className="col-bulk-flags">
                           {DETAIL_FLAGS.map(([key, label]) => {

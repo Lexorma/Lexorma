@@ -23,16 +23,16 @@ type AttributeResult = 'SAME' | 'DIFFERENT' | 'UNKNOWN' | 'NOT_COMPARED';
 type ObjectKind = 'TABLE' | 'COLUMN' | 'PRIMARY_KEY' | 'UNIQUE' | 'CHECK' | 'FOREIGN_KEY' | 'INDEX';
 type TableReason = 'COMPARED' | 'UNMAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'MODEL_NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT'
   | 'SOURCE_REMOVED' | 'MODEL_DELETED' | 'MODEL_ONLY' | 'UNSUPPORTED_DBMS';
-type Note = 'MODEL_HAS_NO_FIELD' | 'SOURCE_COMMENT' | 'GENERATED_NAME' | 'EXPRESSION' | 'UNSUPPORTED_TYPE' | 'DEFAULT_RULE' | 'SERIAL_DEFAULT' | 'UNRESOLVED_TARGET'
+type Note = 'MODEL_HAS_NO_FIELD' | 'DESCRIPTION' | 'KOR_NAME' | 'SOURCE_COMMENT' | 'GENERATED_NAME' | 'EXPRESSION' | 'UNSUPPORTED_TYPE' | 'DEFAULT_RULE' | 'SERIAL_DEFAULT' | 'UNRESOLVED_TARGET'
   | 'RELATIVE_ORDER' | 'NULLABLE_UNKNOWN';
 type WarningCode = 'MODEL_TYPE_CONVERTED' | 'MODEL_TYPE_MISSING' | 'CONSTRAINT_INDEX' | 'DUPLICATE_MODEL_NAME' | 'UNSUPPORTED_DBMS';
-type MappingStatus = 'UNMAPPED' | 'MAPPED' | 'RECHECK' | 'CONFLICT' | 'SOURCE_MISSING' | 'MODEL_MISSING';
+type MappingStatus = 'UNMAPPED' | 'MAPPED' | 'RECHECK' | 'CONFLICT' | 'SOURCE_MISSING' | 'MODEL_MISSING' | 'EXCLUDED';
 
 interface Summary {
   base: { id: number; name: string; dbType: string; enabled: boolean; collectable: boolean } | null;
   reflectedOrder: number | null; executionId: number | null; reflectedAt: string | null; comparable: boolean; notComparable: string | null;
   sourceTables: number; viewCount: number; mappedTables: number; comparedTables: number; sameTables: number; differentTables: number; unknownTables: number;
-  unmappedTables: number; modelOnlyTables: number; conflictTables: number; recheckTables: number; tables: Partial<Record<CompareStatus, number>>;
+  unmappedTables: number; modelOnlyTables: number; conflictTables: number; recheckTables: number; excludedTables: number; tables: Partial<Record<CompareStatus, number>>;
 }
 interface TableRow {
   key: string; sourceTableId: number | null; sourceSchemaId: number | null; sourceSchemaName: string | null; sourceTableName: string | null; sourceComment: string | null;
@@ -68,7 +68,7 @@ const RESULT: Record<AttributeResult, { label: string; variant: LabelVariant }> 
 };
 
 const MAPPING: Record<MappingStatus, string> = {
-  UNMAPPED: t('미매핑'), MAPPED: t('매핑됨'), RECHECK: t('재확인 필요'), CONFLICT: t('충돌'), SOURCE_MISSING: t('원본 없음'), MODEL_MISSING: t('모델 없음'),
+  UNMAPPED: t('미매핑'), MAPPED: t('매핑됨'), RECHECK: t('재확인 필요'), CONFLICT: t('충돌'), SOURCE_MISSING: t('원본 없음'), MODEL_MISSING: t('모델 없음'), EXCLUDED: t('매핑 예외'),
 };
 
 const REASON: Record<TableReason, string> = {
@@ -99,14 +99,16 @@ const KINDS = Object.keys(KIND) as ObjectKind[];
 
 const ATTRIBUTE: Record<string, string> = {
   dataType: t('타입'), length: t('길이'), precision: t('정밀도'), scale: t('소수 자릿수'), nullable: t('NULL 허용'), autoIncrement: t('자동 증가'),
-  default: t('기본값'), order: t('순서'), comment: t('원본 COMMENT'), columns: t('구성 컬럼'), name: t('이름'), expression: t('조건식'),
+  default: t('기본값'), order: t('순서'), description: t('COMMENT ↔ 모델 설명'), korName: t('COMMENT ↔ 모델 테이블 코멘트'), comment: t('원본 COMMENT 칸'), columns: t('구성 컬럼'), name: t('이름'), expression: t('조건식'),
   referencedTable: t('참조 TABLE'), referencedColumns: t('참조 컬럼'), deleteRule: t('삭제 규칙'), updateRule: t('갱신 규칙'), unique: t('고유'),
   indexType: t('인덱스 유형'), keys: t('검색 키'), include: 'INCLUDE', predicate: t('부분 조건'),
 };
 
 const NOTE: Record<Note, string> = {
   MODEL_HAS_NO_FIELD: t('모델에 이 속성 칸이 없습니다'),
-  SOURCE_COMMENT: t('원본 COMMENT 는 모델의 원본 COMMENT 칸과 비교합니다 (업무 설명과는 비교하지 않습니다)'),
+  DESCRIPTION: t('원본 COMMENT 를 모델 설명(DDL 의 COMMENT)과 비교합니다. 공백과 _ 는 같은 것으로 봅니다'),
+  KOR_NAME: t('원본 TABLE COMMENT 를 모델 테이블 코멘트(DDL 의 TABLE COMMENT)와 비교합니다. 공백과 _ 는 같은 것으로 봅니다'),
+  SOURCE_COMMENT: t('모델의 원본 COMMENT 칸(가져오기 대상)입니다. 차이는 비교 상태에 넣지 않고 가져오기에서 반영합니다'),
   GENERATED_NAME: t('모델은 이 이름을 저장하지 않고 DDL 을 만들 때 정합니다'),
   EXPRESSION: t('식이 달라 의미가 같은지 판단하지 않았습니다'),
   UNSUPPORTED_TYPE: t('별칭 규칙을 모르는 타입이라 표기만 비교했습니다'),
@@ -189,6 +191,7 @@ export function SourceComparePage() {
                   <Tile label={t('모델에만')} value={data.modelOnlyTables} />
                   <Tile label={t('충돌')} value={data.conflictTables} emphasis={data.conflictTables > 0} />
                   <Tile label={t('재확인 필요')} value={data.recheckTables} emphasis={data.recheckTables > 0} />
+                  <Tile label={t('매핑 예외 (비교 제외)')} value={data.excludedTables} />
                 </div>
               )}
               {data.reflectedOrder != null && (

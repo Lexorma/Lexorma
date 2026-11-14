@@ -92,7 +92,8 @@ import java.util.regex.Pattern;
  *   <li>확정 : 프로젝트 관리자·ADMIN (USER 역할 이상). 잠금 프로젝트(<b>배타</b>) → 원본 연결(공유) → 기준 연결 행 → 새 TABLE 스키마의 이름 공간 → 대상 TABLE 행 → 그 컬럼 행 순서로 잡은 뒤
  *       계획을 다시 만들어 미리보기의 planToken 과 같을 때만 반영한다 (수집·매핑·모델이 바뀌었으면 SOURCE_COMPARE_STALE). 반영 직전에 프로젝트 전체 모델 버전을 남기고
  *       (프로젝트 배타 잠금이라 그동안 다른 쓰기가 커밋되지 않아 한 시점의 상태다), 모델 변경·매핑·변경 이력·버전·실행 이력이 한 트랜잭션이다</li>
- *   <li>모델이 표현하지 못하는 원본 속성(IDENTITY·생성 컬럼·NO ACTION 이 아닌 FK 규칙·모델 기본값으로 같은 식을 만들 수 없는 DEFAULT)이 있는 객체는 만들지 않는다
+ *   <li>모델이 표현하지 못하는 원본 속성(생성 컬럼·모델 기본값으로 같은 식을 만들 수 없는 DEFAULT)이 있는 객체는 만들지 않는다.
+ *       IDENTITY 와 FK 삭제·수정 규칙은 V7 부터 모델 속성이라 새 컬럼·새 FK 에 그대로 가져온다 (기존 컬럼의 IDENTITY 변경은 아직 하지 않는다)
  *       (빼고 만들면 원본과 의미가 다르다). 기존 컬럼의 다른 속성(원본 COMMENT 등)은 그 속성과 무관하므로 고를 수 있다</li>
  * </ul>
  */
@@ -625,6 +626,7 @@ public class SourceImportService {
                     }
                 }
                 case RECHECK -> blocked = Reason.RECHECK;
+                case EXCLUDED -> blocked = Reason.EXCLUDED; // 매핑 예외 (M-4g) : 모델로 가져오지 않는다
                 case CONFLICT -> blocked = Reason.MAPPING_CONFLICT;
                 case SOURCE_MISSING -> blocked = Reason.SOURCE_REMOVED;
                 default -> blocked = Reason.MODEL_DELETED;
@@ -819,9 +821,9 @@ public class SourceImportService {
                 default -> {
                     SourceCatalogReader.ForeignKey fk = detail.foreignKeys().stream().filter(f -> object.sourceName().equals(f.name())).findFirst().orElseThrow();
                     dependencies = new ArrayList<>(columnDependencies(fk.columns()));
-                    if (fk.deleteRule() != null && !"NO ACTION".equals(fk.deleteRule())) excluded.add("ON DELETE " + fk.deleteRule());
-                    if (fk.updateRule() != null && !"NO ACTION".equals(fk.updateRule())) excluded.add("ON UPDATE " + fk.updateRule());
-                    // 모델 FK 는 규칙이 없다 (DDL 은 NO ACTION) : 다른 규칙을 빼고 만들면 삭제·갱신 동작이 달라진다
+                    // 삭제·수정 규칙은 관계에 그대로 가져온다 (V7). 모르는 규칙 표기만 뺀다
+                    if (fk.deleteRule() != null && TableRelation.Rule.parse(fk.deleteRule()) == null) excluded.add("ON DELETE " + fk.deleteRule());
+                    if (fk.updateRule() != null && TableRelation.Rule.parse(fk.updateRule()) == null) excluded.add("ON UPDATE " + fk.updateRule());
                     if (reason == null && !excluded.isEmpty()) reason = Reason.UNSUPPORTED_ATTRIBUTE;
                     Long target = work.mappedModelBySource.get(work.sourceByName.get(fk.referencedSchema() + "\u0000" + fk.referencedTable()));
                     Long targetSource = work.sourceByName.get(fk.referencedSchema() + "\u0000" + fk.referencedTable());
@@ -1039,7 +1041,7 @@ public class SourceImportService {
                             .columnName(candidates.get(prefix + "ADD").modelName()).dataType(converted.type.dataType()).maxLength(converted.type.maxLength())
                             .precision(converted.type.precision() == null ? null : java.math.BigDecimal.valueOf(converted.type.precision())).scale(converted.type.scale())
                             .isNullable(!Boolean.FALSE.equals(column.nullable())).isRequired(false).isPk(false).isUnique(false).isIndex(false)
-                            .defaultValue(converted.defaultValue).sortOrder(++next).isMasterData(false).isSensitive(false).isEncrypted(false).isApproval(false)
+                            .defaultValue(converted.defaultValue).identity(converted.identity).sortOrder(++next).isMasterData(false).isSensitive(false).isEncrypted(false).isApproval(false)
                             .sourceComment(chosen(prefix + "COMMENT") ? column.comment() : null).build();
                     entityManager.persist(created);
                     entity.getColumns().add(created);
@@ -1124,7 +1126,8 @@ public class SourceImportService {
                 if (planned != null) targetColumns.putAll(planned.columnEntities);
                 for (ColumnInfo column : target.getColumns()) targetColumns.putIfAbsent(work.fold(column.getColumnName()), column);
                 TableRelation relation = TableRelation.builder().projectId(work.projectId).sourceTable(entity).targetTable(target).relationName(candidates.get(id).modelName())
-                        .relationType(TableRelation.Type.FK).relationSource(TableRelation.Source.IMPORTED).isApproval(false).columns(new ArrayList<>()).build();
+                        .relationType(TableRelation.Type.FK).relationSource(TableRelation.Source.IMPORTED).isApproval(false).columns(new ArrayList<>())
+                        .deleteRule(importedRule(fk.deleteRule())).updateRule(importedRule(fk.updateRule())).build();
                 for (int i = 0; i < fk.columns().size(); i++) {
                     relation.getColumns().add(TableRelationColumn.builder().relation(relation).sourceColumn(columnEntities.get(fk.columns().get(i)))
                             .targetColumn(targetColumns.get(fk.referencedColumns().get(i))).columnOrder(i + 1).build());
@@ -1144,7 +1147,7 @@ public class SourceImportService {
     }
 
     /** 변환 결과 : type 이 null 이면 모델로 표현할 수 없다. excluded = 표현하지 못해 빼는 원본 속성 */
-    record Converted(ModelType type, String defaultValue, List<String> excluded) {
+    record Converted(ModelType type, String defaultValue, List<String> excluded, ColumnInfo.Identity identity) {
         String describe(Boolean nullable) {
             return type.text() + (Boolean.FALSE.equals(nullable) ? " NOT NULL" : "") + (defaultValue == null ? "" : " DEFAULT " + defaultValue);
         }
@@ -1179,8 +1182,11 @@ public class SourceImportService {
         List<String> excluded = new ArrayList<>();
         String defaultValue = null;
         String raw = column.defaultValue();
-        if (PostgresCompareRules.identity(raw) != null) {
-            excluded.add(raw.trim());
+        ColumnInfo.Identity identity = null;
+        PostgresCompareRules.AutoIncrement auto = PostgresCompareRules.identity(raw);
+        if (auto != null) {
+            // IDENTITY 는 모델 속성으로 가져온다 (V7) : 기본값이 아니다
+            identity = auto == PostgresCompareRules.AutoIncrement.IDENTITY_ALWAYS ? ColumnInfo.Identity.ALWAYS : ColumnInfo.Identity.BY_DEFAULT;
         } else if (PostgresCompareRules.generated(raw)) {
             excluded.add(raw.trim());
         } else if (raw != null) {
@@ -1192,7 +1198,13 @@ public class SourceImportService {
             }
             if (defaultValue == null) excluded.add("DEFAULT " + raw.trim());
         }
-        return new Converted(type, defaultValue, List.copyOf(excluded));
+        return new Converted(type, defaultValue, List.copyOf(excluded), identity);
+    }
+
+    /** 원본 FK 규칙 → 모델 규칙 (NO ACTION·비어 있음 = null) */
+    private static TableRelation.Rule importedRule(String rule) {
+        TableRelation.Rule parsed = TableRelation.Rule.parse(rule);
+        return parsed == TableRelation.Rule.NO_ACTION ? null : parsed;
     }
 
     /** 판정 값 표지 : 기준값 없음 / 원본 값을 모델로 바꿀 수 없음 (어떤 모델 값과도 같지 않다) */

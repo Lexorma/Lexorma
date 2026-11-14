@@ -189,14 +189,15 @@ public class SourceMappingService {
         return state(projectId, connectionId).schemaRows().stream().filter(r -> source.id().equals(r.sourceSchemaId())).findFirst().orElseThrow();
     }
 
-    /** 스키마 매핑 해제 : 그 원본 스키마의 TABLE 매핑도 함께 해제한다 (스키마 매핑 없이 남은 TABLE 매핑은 충돌이 된다) */
+    /** 스키마 매핑 해제 : 그 원본 스키마의 TABLE 매핑도 함께 해제한다 (스키마 매핑 없이 남은 TABLE 매핑은 충돌이 된다). 매핑 예외는 스키마 매핑과 무관해 남긴다 */
     @Transactional
     public Map<String, Object> unmapSchema(AccountDto accountDto, Long sourceSchemaId) {
         Long projectId = manage(accountDto);
         Long connectionId = lockBase(projectId);
         SourceSchemaMapping mapping = schemaMappingRepository.findByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId)
                 .orElseThrow(() -> invalid("매핑되지 않은 원본 스키마입니다."));
-        List<SourceTableMapping> tables = tableMappingRepository.findAllByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId);
+        List<SourceTableMapping> tables = tableMappingRepository.findAllByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId).stream()
+                .filter(m -> !m.isExclusion()).toList();
         tableMappingRepository.deleteAll(tables);
         schemaMappingRepository.delete(mapping);
         return Map.of("result", true, "releasedTables", tables.size());
@@ -217,6 +218,8 @@ public class SourceMappingService {
         SourceCatalogReader.Table source = state.sourceTables.get(request.sourceTableId());
         if (source == null) throw invalid("마지막으로 반영된 수집에 없는 원본 테이블입니다.");
         if (!"TABLE".equals(source.type())) throw invalid("VIEW 는 매핑할 수 없습니다. TABLE 만 매핑합니다.");
+        SourceTableMapping existing = state.tableMappingBySource.get(source.id());
+        if (existing != null && existing.isExclusion()) throw invalid("매핑 예외로 지정된 원본 테이블 {0} 은(는) 매핑할 수 없습니다. 예외를 먼저 취소해주세요.", source.name());
         SourceSchemaMapping schemaMapping = state.schemaMappingBySource.get(source.schemaId());
         if (schemaMapping == null || state.schemaStatus(schemaMapping) != Status.MAPPED) {
             throw invalid("원본 스키마 {0} 의 스키마 매핑을 먼저 확정해주세요.", state.sourceSchemas.get(source.schemaId()).schemaName());
@@ -249,8 +252,45 @@ public class SourceMappingService {
         Long projectId = manage(accountDto);
         Long connectionId = lockBase(projectId);
         SourceTableMapping mapping = tableMappingRepository.findByIdAndProjectId(mappingId, projectId)
-                .filter(m -> m.getConnectionId().equals(connectionId)).orElseThrow(() -> invalid("매핑을 찾을 수 없습니다."));
+                .filter(m -> m.getConnectionId().equals(connectionId) && !m.isExclusion()).orElseThrow(() -> invalid("매핑을 찾을 수 없습니다."));
         tableMappingRepository.delete(mapping);
+        return Map.of("result", true);
+    }
+
+    // ------------------------------------------------------------------ 매핑 예외 (M-4g)
+
+    /**
+     * 원본 TABLE 을 매핑 예외로 지정한다 (예 : flyway_schema_history 같은 시스템 테이블). 마지막 반영 시점에 있는 TABLE 이고 매핑 행이 없어야 한다 —
+     * 매핑된 TABLE(모델 없음 포함)은 먼저 해제해야 하고, 이미 예외면 거절한다. 스키마 매핑은 필요 없다. 원본 수집에는 영향이 없다.
+     * 매핑 변경과 같은 잠금(기준 연결 행 배타)과 원본당 유니크 인덱스로, 같은 원본이 매핑이면서 예외가 되는 일은 없다.
+     */
+    @Transactional
+    public SourceMappingDto.TableRow excludeTable(AccountDto accountDto, SourceMappingDto.ExclusionRequest request) {
+        Long projectId = manage(accountDto);
+        if (request == null || request.sourceTableId() == null) throw invalid("원본 테이블을 골라주세요.");
+        Long connectionId = lockBase(projectId);
+        State state = requireSnapshot(projectId, connectionId);
+        SourceCatalogReader.Table source = state.sourceTables.get(request.sourceTableId());
+        if (source == null) throw invalid("마지막으로 반영된 수집에 없는 원본 테이블입니다.");
+        if (!"TABLE".equals(source.type())) throw invalid("VIEW 는 매핑하지 않으므로 예외로 지정할 필요가 없습니다.");
+        SourceTableMapping existing = state.tableMappingBySource.get(source.id());
+        if (existing != null && existing.isExclusion()) throw invalid("원본 테이블 {0} 은(는) 이미 매핑 예외입니다.", source.name());
+        if (existing != null) throw invalid("매핑된 원본 테이블 {0} 은(는) 예외로 지정할 수 없습니다. 매핑을 먼저 해제해주세요.", source.name());
+        SourceTableMapping exclusion = SourceTableMapping.builder().projectId(projectId).connectionId(connectionId).sourceTableId(source.id())
+                .sourceSchemaId(source.schemaId()).pathKey(source.pathKey()).compareName(source.compareName()).creationCycle(source.creationCycle())
+                .reflectedOrder(state.snapshot.reflectedOrder()).tableId(null).excluded(true).build();
+        SourceTableMapping saved = save(() -> tableMappingRepository.saveAndFlush(exclusion));
+        return state(projectId, connectionId).tableRows().stream().filter(r -> saved.getId().equals(r.mappingId())).findFirst().orElseThrow();
+    }
+
+    /** 매핑 예외 취소 : 예외 행만 지운다 (미매핑으로 돌아간다. 모델 테이블·매핑을 만들지 않는다) */
+    @Transactional
+    public Map<String, Object> cancelExclusion(AccountDto accountDto, Long mappingId) {
+        Long projectId = manage(accountDto);
+        Long connectionId = lockBase(projectId);
+        SourceTableMapping exclusion = tableMappingRepository.findByIdAndProjectId(mappingId, projectId)
+                .filter(m -> m.getConnectionId().equals(connectionId) && m.isExclusion()).orElseThrow(() -> invalid("매핑 예외를 찾을 수 없습니다."));
+        tableMappingRepository.delete(exclusion);
         return Map.of("result", true);
     }
 
@@ -290,6 +330,24 @@ public class SourceMappingService {
         }
     }
 
+    /**
+     * 원본 스키마 행도 스키마 매핑도 없을 때(스키마 매핑 없이 예외로 둔 TABLE 의 스키마가 통째로 사라짐) 표시할 스키마 이름 : 확정 때 저장한 비교 경로
+     * ({@code <길이>:<카탈로그>/<길이>:<스키마>}, 원본 모듈 SourceIdentifiers.pathKey)의 스키마 비교 이름. 형식이 다르면 null
+     */
+    static String schemaOfPath(String pathKey) {
+        if (pathKey == null) return null;
+        try {
+            int colon = pathKey.indexOf(':');
+            int slash = colon + 1 + Integer.parseInt(pathKey.substring(0, colon));
+            if (pathKey.charAt(slash) != '/') return null;
+            int schemaColon = pathKey.indexOf(':', slash);
+            String schema = pathKey.substring(schemaColon + 1);
+            return schema.length() == Integer.parseInt(pathKey.substring(slash + 1, schemaColon)) ? schema : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private static CustomException concurrent() {
         return new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "다른 사용자가 같은 매핑을 바꾸었습니다. 화면을 새로 고친 뒤 다시 시도해주세요.");
     }
@@ -321,14 +379,16 @@ public class SourceMappingService {
         return value != null && value.toLowerCase(Locale.ROOT).contains(word);
     }
 
-    record ModelTable(Long id, String name, Long schemaId, String korName) {
+    /** description : 업무 설명(TBL_EXPLN) / sourceComment : 원본 COMMENT 칸(SRC_ANTN_CN). 한글명(논리명)은 COMMENT 가 아니다 */
+    record ModelTable(Long id, String name, Long schemaId, String korName, String description, String sourceComment) {
     }
 
     private State state(Long projectId, Long connectionId) {
         Optional<SourceCatalogReader.Snapshot> snapshot = reader.latest(projectId, connectionId);
         List<SchemaInfo> schemas = schemaInfoRepository.findAllByProjectIdOrderByIsDefaultDescSchemaNameAsc(projectId);
         Map<Long, ModelTable> tables = new HashMap<>();
-        for (Object[] row : tableMappingRepository.modelTables(projectId)) tables.put((Long) row[0], new ModelTable((Long) row[0], (String) row[1], (Long) row[2], (String) row[3]));
+        for (Object[] row : tableMappingRepository.modelTables(projectId)) tables.put((Long) row[0], new ModelTable((Long) row[0], (String) row[1], (Long) row[2], (String) row[3], (String) row[4],
+                (String) row[5]));
         return new State(snapshot.orElse(null), schemas, tables, schemaMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId),
                 tableMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId));
     }
@@ -461,13 +521,13 @@ public class SourceMappingService {
                     }
                 }
                 rows.add(new SourceMappingDto.TableRow(source.id(), source.schemaId(), schemaName, source.name(), source.comment(), null, null, null, null,
-                        null, null, null, Status.UNMAPPED, schemaReady ? null : Reason.SCHEMA_UNMAPPED, candidate));
+                        null, null, null, null, null, Status.UNMAPPED, schemaReady ? null : Reason.SCHEMA_UNMAPPED, candidate));
             }
             for (SourceTableMapping mapping : tableMappings) {
                 if (sourceTables.containsKey(mapping.getSourceTableId())) continue;
                 SourceSchemaMapping schemaMapping = schemaMappingBySource.get(mapping.getSourceSchemaId());
                 SourceCatalogReader.Schema schema = sourceSchemas.get(mapping.getSourceSchemaId());
-                rows.add(tableRow(mapping, null, schema != null ? schema.schemaName() : schemaMapping != null ? schemaMapping.getSourceSchemaName() : null));
+                rows.add(tableRow(mapping, null, schema != null ? schema.schemaName() : schemaMapping != null ? schemaMapping.getSourceSchemaName() : schemaOfPath(mapping.getPathKey())));
             }
             return rows;
         }
@@ -477,7 +537,11 @@ public class SourceMappingService {
             SchemaInfo modelSchema = model == null ? null : modelSchemaById.get(model.schemaId());
             Status status;
             Reason reason = null;
-            if (model == null) {
+            if (mapping.isExclusion()) {
+                // 예외는 원본 행에 붙는다 : 원본이 없어져도(REMOVED), 같은 이름으로 다시 생겨도(RECREATED) 예외로 남는다 — 이유는 안내용
+                status = Status.EXCLUDED;
+                reason = source == null ? Reason.REMOVED : source.creationCycle() != mapping.getCreationCycle() ? Reason.RECREATED : null;
+            } else if (model == null) {
                 status = Status.MODEL_MISSING;
                 reason = Reason.MODEL_DELETED;
             } else if (source == null) {
@@ -503,7 +567,8 @@ public class SourceMappingService {
             }
             return new SourceMappingDto.TableRow(mapping.getSourceTableId(), mapping.getSourceSchemaId(), schemaName, source != null ? source.name() : mapping.getCompareName(),
                     source != null ? source.comment() : null, mapping.getId(), model == null ? null : model.id(), model == null ? null : model.name(),
-                    model == null ? null : model.korName(), model == null ? null : model.schemaId(), modelSchema == null ? null : modelSchema.getSchemaName(),
+                    model == null ? null : model.korName(), model == null ? null : model.description(), model == null ? null : model.sourceComment(),
+                    model == null ? null : model.schemaId(), modelSchema == null ? null : modelSchema.getSchemaName(),
                     mapping.getReflectedOrder(), status, reason, null);
         }
 

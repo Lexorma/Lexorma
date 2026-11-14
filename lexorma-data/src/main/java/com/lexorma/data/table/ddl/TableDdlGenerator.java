@@ -52,20 +52,25 @@ public final class TableDdlGenerator {
      * @param targetUniqueKeys 관계 대상 테이블 ID → 그 테이블의 UNIQUE 제약·고유 인덱스 컬럼명 구성 (FK 가 참조할 수 있는 키인지 판단)
      * @param ambiguousRefTables 여러 스키마에 같은 이름이 있어 정할 수 없는 참조 테이블명 (컬럼에 적은 그대로, 대문자)
      */
+    /** @param referenceRelations 참조 컬럼(REF_COLUMN) 관계 : 만든 컬럼 ID → 관계 (컬럼의 참조 테이블로 만드는 FK 의 삭제·수정 규칙을 읽는다) */
     public record Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations,
-                         Map<Long, List<Set<String>>> targetUniqueKeys, Set<String> ambiguousRefTables) {
+                         Map<Long, List<Set<String>>> targetUniqueKeys, Set<String> ambiguousRefTables, Map<Long, TableRelation> referenceRelations) {
         public static final Extras NONE = new Extras(List.of(), List.of(), List.of());
 
         public Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations) {
-            this(constraints, indexes, relations, Map.of(), Set.of());
+            this(constraints, indexes, relations, Map.of(), Set.of(), Map.of());
         }
 
         public Extras(List<TableConstraint> constraints, List<TableIndex> indexes, List<TableRelation> relations, Map<Long, List<Set<String>>> targetUniqueKeys) {
-            this(constraints, indexes, relations, targetUniqueKeys, Set.of());
+            this(constraints, indexes, relations, targetUniqueKeys, Set.of(), Map.of());
         }
 
         public Extras withAmbiguousRefTables(Set<String> ambiguous) {
-            return new Extras(constraints, indexes, relations, targetUniqueKeys, ambiguous);
+            return new Extras(constraints, indexes, relations, targetUniqueKeys, ambiguous, referenceRelations);
+        }
+
+        public Extras withReferenceRelations(Map<Long, TableRelation> byColumn) {
+            return new Extras(constraints, indexes, relations, targetUniqueKeys, ambiguousRefTables, byColumn);
         }
     }
 
@@ -158,11 +163,27 @@ public final class TableDdlGenerator {
                     .append(pad(column.getColumnName(), nameWidth)).append(" ")
                     .append(mapType(db, column, warnings));
 
+            ColumnInfo.Identity identity = column.getIdentity();
+            if (identity != null && !isMySqlFamily(db)) {
+                // PostgreSQL·Oracle(12c+) : GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY (기본값과 함께 쓰지 않는다)
+                line.append(" GENERATED ").append(identity.sql()).append(" AS IDENTITY");
+            }
             if (notBlank(column.getDefaultValue())) {
-                line.append(" DEFAULT ").append(defaultLiteral(column.getDefaultValue()));
+                if (identity != null) {
+                    warnings.add(Messages.get("{0} : IDENTITY 컬럼이라 기본값({1})을 DDL 에 쓰지 않았습니다.", column.getColumnName(), column.getDefaultValue()));
+                } else {
+                    line.append(" DEFAULT ").append(defaultLiteral(column.getDefaultValue()));
+                }
             }
             if (isNotNull(column)) {
                 line.append(" NOT NULL");
+            }
+            if (identity != null && isMySqlFamily(db)) {
+                // MySQL·MariaDB : AUTO_INCREMENT (값을 직접 넣을 수 있어 BY DEFAULT 와 같다)
+                line.append(" AUTO_INCREMENT");
+                if (identity == ColumnInfo.Identity.ALWAYS) {
+                    warnings.add(Messages.get("{0} : {1} 은(는) GENERATED ALWAYS 가 없어 AUTO_INCREMENT(값을 직접 넣을 수 있음)로 만들었습니다.", column.getColumnName(), db.getLabel()));
+                }
             }
             if (isMySqlFamily(db) && notBlank(column.getColumnDesc())) {
                 line.append(" COMMENT ").append(quote(column.getColumnDesc()));
@@ -229,7 +250,8 @@ public final class TableDdlGenerator {
         }
 
         // 외래키 : 참조 테이블의 단일 PK 를 참조한다. 테이블 생성 순서와 관계없이 실행할 수 있도록 ALTER TABLE 로 따로 만든다.
-        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, extras.ambiguousRefTables(), warnings, defaultSchemaName);
+        List<String> foreignKeys = foreignKeys(db, tableName, qualifiedName, ordered, refPkColumns, extras.ambiguousRefTables(), extras.referenceRelations(), warnings,
+                defaultSchemaName);
         foreignKeys.addAll(relationForeignKeys(db, qualifiedName, extras.relations(), extras.targetUniqueKeys(), warnings, defaultSchemaName));
 
         // 주석 (PostgreSQL / Oracle)
@@ -366,7 +388,8 @@ public final class TableDdlGenerator {
      * - 참조 컬럼과 참조 PK 의 타입(대상 DB 타입으로 바꾼 값)이 다르면 FK 는 만들되 경고한다.
      */
     static List<String> foreignKeys(DbType db, String tableName, String qualifiedName, List<ColumnInfo> columns,
-                                    Map<String, List<ColumnInfo>> refPkColumns, Set<String> ambiguous, List<String> warnings, String defaultSchemaName) {
+                                    Map<String, List<ColumnInfo>> refPkColumns, Set<String> ambiguous, Map<Long, TableRelation> referenceRelations, List<String> warnings,
+                                    String defaultSchemaName) {
         List<String> statements = new ArrayList<>();
 
         for (ColumnInfo column : columns) {
@@ -389,9 +412,12 @@ public final class TableDdlGenerator {
             } else {
                 ColumnInfo refPk = pk.get(0);
                 String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo(), defaultSchemaName);
+                String fkName = "FK_" + tableName + "_" + column.getColumnName();
+                TableRelation reference = column.getId() == null || referenceRelations == null ? null : referenceRelations.get(column.getId());
                 statements.add("ALTER TABLE " + qualifiedName
-                        + " ADD CONSTRAINT " + constraintName(db, "FK_" + tableName + "_" + column.getColumnName())
-                        + " FOREIGN KEY (" + column.getColumnName() + ") REFERENCES " + refName + " (" + refPk.getColumnName() + ");");
+                        + " ADD CONSTRAINT " + constraintName(db, fkName)
+                        + " FOREIGN KEY (" + column.getColumnName() + ") REFERENCES " + refName + " (" + refPk.getColumnName() + ")"
+                        + (reference == null ? "" : ruleClauses(db, fkName, reference.getDeleteRule(), reference.getUpdateRule(), warnings)) + ";");
                 checkReferenceType(db, column, refTable, refPk, warnings);
             }
         }
@@ -426,12 +452,36 @@ public final class TableDdlGenerator {
             statements.add("ALTER TABLE " + qualifiedName
                     + " ADD CONSTRAINT " + constraintName(db, relation.getRelationName())
                     + " FOREIGN KEY (" + String.join(", ", sources.stream().map(ColumnInfo::getColumnName).toList()) + ") REFERENCES "
-                    + qualifiedName(target, defaultSchemaName) + " (" + String.join(", ", targets.stream().map(ColumnInfo::getColumnName).toList()) + ");");
+                    + qualifiedName(target, defaultSchemaName) + " (" + String.join(", ", targets.stream().map(ColumnInfo::getColumnName).toList()) + ")"
+                    + ruleClauses(db, relation.getRelationName(), relation.getDeleteRule(), relation.getUpdateRule(), warnings) + ";");
             for (int i = 0; i < sources.size(); i++) {
                 checkReferenceType(db, sources.get(i), target.getTableName(), targets.get(i), warnings);
             }
         }
         return statements;
+    }
+
+    /**
+     * FK 의 ON DELETE · ON UPDATE 절. NO ACTION(null)은 쓰지 않는다 (기본이라 DDL 이 지금과 같다).
+     * Oracle 은 ON DELETE CASCADE · SET NULL 만 있고 ON UPDATE 가 없다. MySQL·MariaDB 는 SET DEFAULT 를 받지 않는다 (InnoDB). 지원하지 않는 규칙은 빼고 경고한다
+     */
+    static String ruleClauses(DbType db, String relationName, TableRelation.Rule deleteRule, TableRelation.Rule updateRule, List<String> warnings) {
+        StringBuilder clauses = new StringBuilder();
+        for (Object[] clause : new Object[][]{{"ON DELETE", deleteRule}, {"ON UPDATE", updateRule}}) {
+            TableRelation.Rule rule = (TableRelation.Rule) clause[1];
+            if (rule == null || rule == TableRelation.Rule.NO_ACTION) continue;
+            boolean supported = switch (db) {
+                case ORACLE -> "ON DELETE".equals(clause[0]) && (rule == TableRelation.Rule.CASCADE || rule == TableRelation.Rule.SET_NULL);
+                case MYSQL, MARIADB -> rule != TableRelation.Rule.SET_DEFAULT;
+                default -> true;
+            };
+            if (supported) {
+                clauses.append(" ").append(clause[0]).append(" ").append(rule.sql());
+            } else {
+                warnings.add(Messages.get("{0} : {1} 은(는) {2} {3} 을(를) 지원하지 않아 DDL 에서 뺐습니다.", relationName, db.getLabel(), clause[0], rule.sql()));
+            }
+        }
+        return clauses.toString();
     }
 
     /**

@@ -57,7 +57,7 @@ public class SourceCompareService {
     public SourceCompareDto.Summary summary(AccountDto accountDto) {
         Comparison comparison = compare(accountDto.getProjectId(), null, null, null);
         if (comparison.state == null || comparison.state.connection == null) {
-            return new SourceCompareDto.Summary(null, null, null, null, false, "NO_BASE", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Map.of(), Map.of());
+            return new SourceCompareDto.Summary(null, null, null, null, false, "NO_BASE", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Map.of(), Map.of());
         }
         SourceCatalogReader.Snapshot snapshot = comparison.state.snapshot;
         List<SourceCompareDto.TableRow> rows = comparison.rows;
@@ -77,7 +77,7 @@ public class SourceCompareService {
         int views = (int) snapshot.tables().stream().filter(t -> !"TABLE".equals(t.type())).count();
         return new SourceCompareDto.Summary(SourceMappingService.connectionDto(comparison.state.connection), snapshot.reflectedOrder(), snapshot.executionId(),
                 snapshot.reflectedAt(), comparison.notComparable == null, comparison.notComparable, sourceTables, views, mapped, compared, same, different, unknown, unmapped,
-                modelOnly, conflicts, recheck, counts, reasons);
+                modelOnly, conflicts, recheck, comparison.excluded, counts, reasons);
     }
 
     /** TABLE 비교 목록 : 원본 TABLE(VIEW 제외, 매핑된 VIEW 는 충돌로) + 모델에만 있는 TABLE. 상태·원본 스키마·이름으로 거르고 쪽으로 나눈다 */
@@ -143,6 +143,8 @@ public class SourceCompareService {
         String notComparable;
         List<SourceCompareDto.TableRow> rows = List.of();
         Map<Long, SourceModelComparator.Result> results = new HashMap<>();
+        /** 매핑 예외 원본 TABLE 수 (비교 목록에는 없다) */
+        int excluded;
 
         boolean ready() {
             return state != null && state.connection != null && state.snapshot.reflectedOrder() != null;
@@ -187,6 +189,7 @@ public class SourceCompareService {
         if (!supported) comparison.notComparable = "UNSUPPORTED_DBMS";
 
         List<SourceMappingDto.TableRow> mappingRows = state.tableRows();
+        comparison.excluded = (int) mappingRows.stream().filter(r -> r.status() == Status.EXCLUDED).count();
         Map<Long, Long> mappedModelBySource = new HashMap<>();
         for (SourceMappingDto.TableRow row : mappingRows) {
             if (row.status() == Status.MAPPED) mappedModelBySource.put(row.sourceTableId(), row.tableId());
@@ -266,6 +269,8 @@ public class SourceCompareService {
         Map<Long, List<String>> views = modelRepository.viewNames(projectId);
         Set<Long> represented = new HashSet<>();
         for (SourceMappingDto.TableRow row : mappingRows) {
+            // 매핑 예외(M-4g)는 원본·모델 비교 대상이 아니다 (원본 수집·카탈로그 조회는 그대로). 요약에 건수만 보인다
+            if (row.status() == Status.EXCLUDED) continue;
             if (row.tableId() != null) represented.add(row.tableId());
             if (row.candidate() != null) represented.add(row.candidate().id());
             CompareStatus status;

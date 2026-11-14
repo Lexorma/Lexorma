@@ -67,12 +67,12 @@ public enum ErrorCode {
     TERM_WORD_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "TERM_WORD_COUNT_MISMATCH"),
 
     /**
-     * 테이블 한글명 중 승인된 표준 단어가 아닌 단어가 존재합니다.
+     * 테이블 코멘트 중 승인된 표준 단어가 아닌 단어가 존재합니다.
      */
     TABLE_WORD_NOT_STANDARD(HttpStatus.BAD_REQUEST, "TABLE_WORD_NOT_STANDARD"),
 
     /**
-     * 테이블 한글명을 입력해주세요.
+     * 테이블 코멘트를 입력해주세요.
      */
     TABLE_KOR_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "TABLE_KOR_NAME_REQUIRED"),
 

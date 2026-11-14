@@ -69,7 +69,7 @@
 | 자동 증가 | 원본 IDENTITY 절 / `nextval(…)` ↔ 모델 IDENTITY 절 / SERIAL 계열 / `nextval` 기본값 |
 | DEFAULT | 안전한 정규화(리터럴의 `::type`, 숫자 괄호·따옴표, 바깥 괄호, 따옴표 밖 대소문자·공백)를 한 뒤 같으면 SAME. 한쪽만 있으면 DIFFERENT, 둘 다 리터럴·키워드 하나면 DIFFERENT, 그 밖(함수·식 모양 차이)은 UNKNOWN. SERIAL 의 시퀀스 기본값은 SAME |
 | 순서 | 양쪽 모두에 있는 컬럼 사이의 **상대 순서** (원본 위치 번호의 빈 자리, 한쪽에만 있는 컬럼 영향 없음) |
-| 원본 COMMENT | 모델의 원본 COMMENT 칸(V3 `SRC_ANTN_CN`, M-4e)과 비교한다 (2026-11-14 변경 — 이전에는 표시만, NOT_COMPARED). 업무 설명과는 비교하지 않고 덮어쓰지 않는다. TABLE 의 원본 COMMENT 는 객체 `TABLE` 로 비교한다 |
+| 원본 COMMENT | **2026-11-14 사용자 결정 (비교와 가져오기 분리)** : 원본 COMMENT ↔ DDL 이 COMMENT 로 내보내는 모델 값 — 컬럼은 속성 `description`(업무 설명 `COL_EXPLN`), TABLE 은 속성 `korName`(테이블 코멘트 `TBL_KORN_NM` — 화면 이름 "테이블 코멘트", 예전 "테이블 한글명", 2026-11-14 추가 결정). 공백과 `_` 를 같게 보고 앞뒤·연속 공백을 무시해 비교하며(저장값·표시값은 원문), **비교 상태·차이 건수는 이것으로 정한다**. 속성 `comment` = 원본 COMMENT ↔ 모델의 원본 COMMENT 칸(V3 `SRC_ANTN_CN`) : 같으면 SAME, 다르면 NOT_COMPARED — 상태에 넣지 않고 가져오기(M-4e·M-4f)가 제안에 쓴다 (속성 이름은 M-4f 기준선 형식이라 그대로). 어느 쪽에든 값이 있을 때만 만든다. TABLE 의 COMMENT 는 객체 `TABLE` 로 비교한다. 표준 용어명은 COMMENT 가 아니다 |
 | 경고 | 모델 타입이 DDL 에서 다른 타입이 되는 경우(`REAL` → DOUBLE PRECISION, `DATETIME` → TIMESTAMP), 모델 타입 없음 |
 
 ### 4.3 제약조건·인덱스
@@ -168,7 +168,11 @@
 
 ## 11. 한계와 후속
 
+- **M-4g 반영 (2026-11-14)** : 매핑 예외 TABLE 은 비교 목록에서 빠지고 요약의 `excludedTables` 로만 센다 ([source-mapping-m4c.md](source-mapping-m4c.md) 13장).
+
 - **M-4e 반영 (2026-11-14)** : 원본 COMMENT 칸이 생겨 COMMENT 차이가 비교 결과(다름)에 들어간다. 가져오기는 이 비교 결과를 그대로 대상으로 쓴다 ([source-import-m4e.md](source-import-m4e.md)).
+- **FK 규칙·IDENTITY (V7, 2026-11-14)** : FK 삭제·수정 규칙은 모델 관계의 규칙(`DEL_RULE_CD`·`MDFCN_RULE_CD`)과 비교한다 (이전 : 모델에 칸이 없어 NO ACTION 이 아니면 판단 불가). 자동 증가는 모델 IDENTITY(`AUTO_CRT_MTHD_CD`)를 먼저 본다. 배열 타입은 `bigint[]` 와 `BIGINT ARRAY` 를 같게 본다 ([lexorma-example-sync.md](lexorma-example-sync.md)).
+- **COMMENT 기준 변경 (2026-11-14, 위 4.2 표)** : 비교 상태는 원본 COMMENT ↔ 모델 값(컬럼 업무 설명, TABLE 테이블 코멘트)으로 정한다. 가져오기 전에 모든 COMMENT 가 "다름" 으로 보이던 문제(모델의 원본 COMMENT 칸이 비어 있어서)가 없어진다. 대신 원본에 COMMENT 가 없고 모델에 설명·테이블 코멘트가 있거나, 가져오기로 원본 COMMENT 칸만 채우고 설명·테이블 코멘트는 비어 있으면 "다름" 이다.
 
 
 - **비교 정확성의 한계**

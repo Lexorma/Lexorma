@@ -117,6 +117,35 @@ public final class SourceModelComparator {
         return Objects.equals(source, model) ? AttributeResult.SAME : AttributeResult.DIFFERENT;
     }
 
+    /**
+     * COMMENT 두 가지 (2026-11-14 사용자 결정)
+     * <ul>
+     *   <li>DDL 의 COMMENT 와 비교 : 컬럼은 description(원본 COMMENT ↔ 모델 업무 설명 COL_EXPLN), TABLE 은 korName(원본 COMMENT ↔ 모델 테이블 코멘트 TBL_KORN_NM).
+     *       공백과 '_' 를 같은 것으로 보고(앞뒤 공백·연속 공백 무시) 비교한다. 비교 상태·차이 건수는 이것으로 정한다</li>
+     *   <li>comment : 원본 COMMENT ↔ 모델의 원본 COMMENT 칸(가져오기 대상, M-4e). 같으면 SAME, 다르면 NOT_COMPARED — 상태에는 넣지 않고 가져오기가 제안에 쓴다.
+     *       속성 이름(comment)은 M-4f 기준선 형식이라 바꾸지 않는다</li>
+     * </ul>
+     */
+    static List<AttributeDiff> commentAttributes(String sourceComment, String modelAttribute, String modelText, Note modelNote, String modelSourceComment) {
+        List<AttributeDiff> attributes = new ArrayList<>();
+        if (sourceComment != null || modelText != null) {
+            attributes.add(attribute(modelAttribute, sourceComment, modelText,
+                    Objects.equals(normalizeComment(sourceComment), normalizeComment(modelText)) ? AttributeResult.SAME : AttributeResult.DIFFERENT, modelNote));
+        }
+        if (sourceComment != null || modelSourceComment != null) {
+            attributes.add(attribute("comment", sourceComment, modelSourceComment,
+                    Objects.equals(sourceComment, modelSourceComment) ? AttributeResult.SAME : AttributeResult.NOT_COMPARED, Note.SOURCE_COMMENT));
+        }
+        return attributes;
+    }
+
+    /** COMMENT 비교용 정규화 : '_' → 공백, 연속 공백 하나로, 앞뒤 공백 제거, 빈 값은 null. 저장값은 바꾸지 않는다 */
+    static String normalizeComment(String value) {
+        if (value == null) return null;
+        String normalized = value.replace('_', ' ').strip().replaceAll("\\s+", " ");
+        return normalized.isEmpty() ? null : normalized;
+    }
+
     static CompareStatus status(List<AttributeDiff> attributes) {
         if (attributes.stream().anyMatch(a -> a.result() == AttributeResult.DIFFERENT)) return CompareStatus.MODIFIED;
         if (attributes.stream().anyMatch(a -> a.result() == AttributeResult.UNKNOWN)) return CompareStatus.UNKNOWN;
@@ -166,11 +195,10 @@ public final class SourceModelComparator {
 
         // ------------------------------------------------------------------ TABLE
 
-        /** TABLE 자체 : 원본 COMMENT (어느 쪽에든 값이 있을 때만) */
+        /** TABLE 자체 : 원본 COMMENT ↔ 모델 테이블 코멘트(상태를 정한다), 원본 COMMENT ↔ 원본 COMMENT 칸(가져오기 대상) — 어느 쪽에든 값이 있을 때만 */
         void table(String sourceName, String sourceComment) {
-            if (sourceComment == null && model.sourceComment() == null) return;
-            List<AttributeDiff> attributes = List.of(attribute("comment", sourceComment, model.sourceComment(), equal(sourceComment, model.sourceComment()),
-                    Note.SOURCE_COMMENT));
+            List<AttributeDiff> attributes = commentAttributes(sourceComment, "korName", model.korName(), Note.KOR_NAME, model.sourceComment());
+            if (attributes.isEmpty()) return;
             objects.add(new ObjectDiff(ObjectKind.TABLE, sourceName, model.name(), status(attributes), attributes, List.of(), false));
         }
 
@@ -268,9 +296,7 @@ public final class SourceModelComparator {
                 attributes.add(attribute("default", sourceDefault, literal, result, result == AttributeResult.UNKNOWN ? Note.EXPRESSION : null));
             }
             attributes.add(attribute("order", sourceRank, modelRank, equal(sourceRank, modelRank), Note.RELATIVE_ORDER));
-            if (s.comment() != null || m.sourceComment() != null) {
-                attributes.add(attribute("comment", s.comment(), m.sourceComment(), equal(s.comment(), m.sourceComment()), Note.SOURCE_COMMENT));
-            }
+            attributes.addAll(commentAttributes(s.comment(), "description", m.description(), Note.DESCRIPTION, m.sourceComment()));
             return new ObjectDiff(ObjectKind.COLUMN, s.name(), m.name(), status(attributes), attributes, List.of(), false);
         }
 
@@ -311,6 +337,8 @@ public final class SourceModelComparator {
         }
 
         static AutoIncrement modelAuto(CompareModel.Column m, PgType mt) {
+            if ("ALWAYS".equals(m.identity())) return AutoIncrement.IDENTITY_ALWAYS;
+            if ("BY_DEFAULT".equals(m.identity())) return AutoIncrement.IDENTITY_BY_DEFAULT;
             AutoIncrement identity = PostgresCompareRules.identity(m.defaultValue());
             if (identity != null) return identity;
             if ((mt != null && mt.serial()) || PostgresCompareRules.sequenceDefault(m.defaultValue())) return AutoIncrement.SEQUENCE;
@@ -515,16 +543,16 @@ public final class SourceModelComparator {
                     : attribute("referencedTable", sourceTarget, modelTarget, AttributeResult.UNKNOWN, Note.UNRESOLVED_TARGET));
             attributes.add(attribute("columns", s.columns(), m.columns(), equal(s.columns(), m.columns()), null));
             attributes.add(attribute("referencedColumns", s.referencedColumns(), m.referencedColumns(), equal(s.referencedColumns(), m.referencedColumns()), null));
-            attributes.add(rule("deleteRule", s.deleteRule()));
-            attributes.add(rule("updateRule", s.updateRule()));
+            attributes.add(rule("deleteRule", s.deleteRule(), m.relation().deleteRule()));
+            attributes.add(rule("updateRule", s.updateRule(), m.relation().updateRule()));
             return attributes;
         }
 
-        /** FK 규칙 : 모델에 칸이 없고 DDL 은 기본(NO ACTION) — 원본도 기본이면 같고, 아니면 판단할 수 없다 */
-        static AttributeDiff rule(String name, String sourceRule) {
-            String rule = ruleOrDefault(sourceRule);
-            return "NO ACTION".equals(rule) ? attribute(name, rule, "NO ACTION", AttributeResult.SAME, Note.DEFAULT_RULE)
-                    : attribute(name, rule, null, AttributeResult.UNKNOWN, Note.MODEL_HAS_NO_FIELD);
+        /** FK 규칙 : 원본 규칙 ↔ 모델 관계의 규칙 (V7 이전 모델·비어 있는 규칙은 NO ACTION — DDL 기본) */
+        static AttributeDiff rule(String name, String sourceRule, String modelRule) {
+            String source = ruleOrDefault(sourceRule);
+            String model = ruleOrDefault(modelRule);
+            return attribute(name, source, model, equal(source, model), "NO ACTION".equals(model) ? Note.DEFAULT_RULE : null);
         }
 
         List<AttributeDiff> sourceForeignKeyValues(SourceCatalogReader.ForeignKey s) {

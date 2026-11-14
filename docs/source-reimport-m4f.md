@@ -105,7 +105,7 @@ M-4e·T-07·T-09 정책 그대로 : 확정은 프로젝트 배타 → 원본 연
 | F-10 | 원본 TABLE 삭제 후 재생성 → `RECHECK` |
 | F-11 | 이름 변경 후보 → 자동 확정 없음 (M-4e 테스트) |
 | F-12 | 승인된 컬럼 → `APPROVED` (판정은 `SOURCE_CHANGED` 로 표시) |
-| F-13 | IDENTITY 새 컬럼 → `UNSUPPORTED_ATTRIBUTE` |
+| F-13 | IDENTITY 새 컬럼 → IDENTITY 로 만든다 (V7, 이전 `UNSUPPORTED_ATTRIBUTE`) |
 | F-14 | 일부만 고르면 나머지(NULL 허용 등)·모델에서 바꾼 값 그대로 |
 | F-15·F-16 | 반영 뒤 같은 항목은 비교에 없고, 다시 확정하면 400, 버전·실행 이력 늘지 않음 |
 | F-17 | 원본 'X'→'Y', 모델 'X'→'Z' → `BOTH_CHANGED`, 고를 수 없음 |

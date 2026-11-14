@@ -297,3 +297,32 @@
   - TABLE 목록은 요청마다 그 연결의 마지막 반영 스냅샷과 매핑 전체로 상태를 계산한 뒤 쪽으로 나눈다 (최대 500).
   - 모델 TABLE 고르기는 200개까지다.
 - **후속** : 상태 계산이 매 요청 모든 테이블 버전 JSON 을 읽는다(할당량의 대부분). 개선은 M-4d 의 할당량 개선과 함께 검토한다. 성능 개선은 구현하지 않았다.
+
+## 13. 매핑 예외 (M-4g, 2026-11-14)
+
+원본 DB 에는 모델로 관리할 필요가 없는 시스템성 테이블(`flyway_schema_history`, Liquibase `databasechangelog`, Spring Batch `BATCH_*`, Quartz `QRTZ_*`, `SPRING_SESSION` 등)이 있다. 이런 TABLE 을 매핑 화면에서 **예외**로 표시해 매핑 누락으로 보지 않는다. 원본 수집 정책이 아니라 매핑 정책이다.
+
+- **상태 전환** : 미매핑 → [예외 처리] → 예외 → [예외 취소] → 미매핑. 매핑된 TABLE 은 먼저 해제해야 예외로 만들 수 있고, 예외 TABLE 은 매핑할 수 없다. 자동 예외·추천·일괄 처리는 없다.
+- **저장 (V5 `V5__source_mapping_exclusion.sql`)** : `TB_SRC_TBL_MPNG.MPNG_EXCL_YN`(매핑 예외 여부, 기본 false). 예외 = 모델 테이블 없이(`TBL_SN` null) 남긴 매핑 행이다. 원본 TABLE 당 행이 하나뿐이라(`UX_SRC_TBL_MPNG_01`) 같은 원본이 매핑이면서 예외일 수 없다. 기존 행은 매핑(false) 그대로다. 예제(단어 `예외`/EXCL, 용어 `매핑_예외_여부`, 물리 컬럼·논리 속성·매핑)를 같은 마이그레이션에 넣었다.
+- **식별** : 매핑과 같은 원본 TABLE 행 ID 에 붙는다. 스키마가 다르면 다른 행이라 같은 이름이어도 섞이지 않는다.
+- **사용자 결정 (2026-11-14)**
+  - 원본에서 사라지면 예외를 지우지 않고 "매핑 예외 · 마지막 수집에서 원본이 사라졌습니다" 로 남긴다 (사용자가 예외 취소로 정리). 스키마가 통째로 사라지고 스키마 매핑도 없으면 저장한 비교 경로의 스키마 이름으로 보인다.
+  - 같은 이름으로 다시 생기면(생성 차수 변경) 예외를 유지하고 재생성 안내만 보인다 (매핑의 재확인과 다르다).
+  - 스키마 매핑과 무관하다 : 스키마가 매핑되지 않은 TABLE 도 예외로 둘 수 있고, 스키마 매핑을 해제해도 예외는 남는다 (TABLE 매핑만 함께 해제).
+  - 기준 연결을 바꾸면 매핑처럼 그 연결에 남고, 연결을 지우면 매핑과 함께 지워진다.
+- **API** : `PUT /api/sourceMapping/exclusions` (`{sourceTableId}`) · `DELETE /api/sourceMapping/exclusions/{mappingId}`. 권한·잠금(프로젝트 → 원본 연결 공유 → 기준 연결 행 배타)·오류(`SOURCE_MAPPING_INVALID`, 동시 저장 `SOURCE_MAPPING_CONFLICT`)는 TABLE 매핑과 같다. 기존 `DELETE /tables/{mappingId}`(매핑 해제)는 예외 행을 지우지 않는다.
+- **상태 `EXCLUDED`** : 매핑 화면의 상태별 건수에 따로 보이고 미매핑(누락) 건수에서 빠진다. 원본 TABLE 총수에는 들어간다. "다른 연결에 남은 매핑" 수에는 세지 않는다.
+- **다른 기능**
+  - 원본 수집·최신화·원본 카탈로그·원본 변경 이력 : 그대로 (예외 TABLE 도 수집한다).
+  - M-4d 비교 : 비교 목록에서 빠지고 요약에 `excludedTables` 건수만 보인다. 예외 TABLE 을 참조하는 FK 는 미매핑 대상과 같이 판단 불가다.
+  - M-4e·M-4f 가져오기 : 대상이 아니다 (`EXCLUDED` 로 거절, 비교 목록에 없어 고를 수도 없다).
+- **화면** : TABLE 매핑 표에서 미매핑 행에 [예외 처리], 예외 행에 [예외 취소]. 상태 "매핑 예외", 원본 없음이면 원본 링크 대신 이름만 보인다. 원본 매핑 관리 화면 안에서만 다루고 새 메뉴는 없다.
+- **검증** : `SourceMappingIntegrationTest.exclusions`·`concurrentExcludeAndMap` (H2·PostgreSQL), `SourceMappingServiceTest`, `V0SeedMigrationTest`·`LexormaIndexSeedTest`(마이그레이션 6개).
+
+## 14. COMMENT 표시 (2026-11-14)
+
+- TABLE 매핑 표는 COMMENT 를 출처별로 따로 보인다 (`SourceMappingDto.TableRow`) : 원본 COMMENT `sourceComment`(수집값, "원본 COMMENT : …"), 모델 업무 설명 `tableDescription`("모델 설명 : …"), 모델의 원본 COMMENT 칸 `tableSourceComment`("모델 원본 COMMENT 칸 : …", 가져온 값). 한쪽으로 다른 쪽을 채우지 않고 값이 없으면 줄을 보이지 않는다. 한글명(논리명)은 이름 아래에 그대로 보이며 COMMENT 로 쓰지 않는다. 미매핑·예외 행에는 모델 값이 없다.
+- 컬럼 단위 COMMENT 는 원본·모델 비교 화면의 TABLE 상세(속성 "COMMENT ↔ 모델 설명", TABLE 은 "COMMENT ↔ 모델 테이블 코멘트", "원본 COMMENT 칸")에서 본다. 비교 기준은 [source-compare-m4d.md](source-compare-m4d.md) 4.2.
+- 최신화는 원본 COMMENT 만 바꾸고 모델 값은 보존한다 (`SourceMappingIntegrationTest.commentsAreSeparate`).
+- [선택] 버튼의 영어는 문맥 키 `tc('버튼', '선택')` → "Select" (같은 한국어 `선택` 이 관계 참여·VIEW 입력칸에서는 "optional" 이다).
+

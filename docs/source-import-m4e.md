@@ -45,6 +45,7 @@
 ### 2.3 원본 COMMENT
 - `TB_TBL.SRC_ANTN_CN`·`TB_COL.SRC_ANTN_CN` (V3, nullable). 업무 설명(`TBL_EXPLN`·`COL_EXPLN`)·논리명은 바꾸지 않는다. 새 TABLE 의 논리명·설명도 비워 둔다.
 - 비교(M-4d)는 이제 원본 COMMENT 를 모델의 원본 COMMENT 칸과 비교한다 (TABLE 객체 `TABLE` 추가). 업무 설명과는 비교하지 않는다.
+- **2026-11-14 변경 (비교와 가져오기 분리)** : 비교 상태는 원본 COMMENT ↔ 모델 값(컬럼 `description` = 업무 설명, TABLE `korName` = 테이블 코멘트(TBL_KORN_NM), 공백·`_` 정규화)으로 정하고, 원본 COMMENT 칸과의 차이(`comment`)는 NOT_COMPARED 로 상태에 넣지 않는다. 가져오기는 그대로 `comment` 가 SAME 이 아니면 제안하고 `SRC_ANTN_CN` 에만 쓴다 (업무 설명은 바꾸지 않는다, M-4f 기준선 형식 그대로). 그래서 가져오기로 원본 COMMENT 칸만 채운 TABLE·컬럼은 테이블 코멘트·설명이 비어 있으면 비교에서 계속 "다름"으로 보인다.
 - 원본 COMMENT 가 없으면 기존 값을 지우지 않는다 (EMPTY_COMMENT). 지우는 동작은 만들지 않았다.
 - 변경 이력에 `sourceComment` 로 남는다 (업무 설명 `columnDesc`·`tableDescription` 과 다른 필드). 모델 버전 형식 5 (상태에 sourceComment).
 
@@ -318,3 +319,10 @@ PostgreSQL 18.6, TABLE 마다 컬럼 10개, 모두 매핑, 10% 는 컬럼 길이
 - **잠금** : 프로젝트 배타 → 원본 연결 공유 → 기준 연결 행 → 스키마 이름 공간 → TABLE → 컬럼, 프로젝트 이후 행 잠금은 NOWAIT (55P03·50200 만 409).
 - **판정 정보** (M-4f 가 더함, 응답에 필드 추가만) : `TableCandidates.lastImport`·`reflectedAt`, `Item.baseline`·`judgement`, 이유 `MODEL_EDITED`·`BOTH_CHANGED`·`REMOVED_IN_SOURCE`. 실행 이력 요약(`items`)과 IMPORT 이력이 다음 재가져오기의 기준값이므로, **요약의 TABLE `key`·`items` 형식과 IMPORT 이력의 출처·변경 그룹을 바꾸면 기준값을 잃는다**.
 
+## M-4g 반영 (2026-11-14)
+
+- 매핑 예외 TABLE 은 가져오기 대상이 아니다 : 비교 목록에 없고, 직접 요청해도 `EXCLUDED` 로 거절한다 ([source-mapping-m4c.md](source-mapping-m4c.md) 13장).
+
+## V7 반영 (2026-11-14)
+
+- 새 FK 는 원본의 삭제·수정 규칙을 그대로 가져오고(이전 : NO ACTION 이 아니면 `UNSUPPORTED_ATTRIBUTE`), 새 컬럼의 IDENTITY 는 모델 IDENTITY 로 가져온다(이전 : 만들지 않음). 기존 컬럼의 IDENTITY 변경은 아직 `NO_FIELD` ([lexorma-example-sync.md](lexorma-example-sync.md)).

@@ -46,7 +46,9 @@ public final class SourceCompareDto {
     /**
      * 속성 설명 코드 (화면이 문구로 바꾼다).
      * <ul>
-     *   <li>MODEL_HAS_NO_FIELD : 모델에 이 속성 칸이 없다 / SOURCE_COMMENT : 원본 COMMENT 는 모델의 원본 COMMENT 칸(V3)과 비교하고 업무 설명과는 비교하지 않는다</li>
+     *   <li>MODEL_HAS_NO_FIELD : 모델에 이 속성 칸이 없다 / DESCRIPTION : 원본 컬럼 COMMENT 를 모델 업무 설명과 비교한다 (공백·'_' 를 같게 본다)
+     *       / KOR_NAME : 원본 TABLE COMMENT 를 모델 테이블 코멘트(TBL_KORN_NM)와 비교한다 (같은 정규화)
+     *       / SOURCE_COMMENT : 모델의 원본 COMMENT 칸(V3, 가져오기 대상) — 차이는 상태에 넣지 않고 가져오기에서 반영한다</li>
      *   <li>GENERATED_NAME : 모델은 이 이름을 저장하지 않고 DDL 을 만들 때 정한다</li>
      *   <li>EXPRESSION : 식이 달라 의미가 같은지 판단하지 않았다 / UNSUPPORTED_TYPE : 별칭 규칙을 모르는 타입이라 원문만 비교했다</li>
      *   <li>DEFAULT_RULE : 모델에 FK 규칙 칸이 없고 DDL 은 기본(NO ACTION)이다 / SERIAL_DEFAULT : SERIAL 이 시퀀스 기본값을 만든다</li>
@@ -55,7 +57,7 @@ public final class SourceCompareDto {
      * </ul>
      */
     public enum Note {
-        MODEL_HAS_NO_FIELD, SOURCE_COMMENT, GENERATED_NAME, EXPRESSION, UNSUPPORTED_TYPE, DEFAULT_RULE, SERIAL_DEFAULT, UNRESOLVED_TARGET, RELATIVE_ORDER,
+        MODEL_HAS_NO_FIELD, DESCRIPTION, KOR_NAME, SOURCE_COMMENT, GENERATED_NAME, EXPRESSION, UNSUPPORTED_TYPE, DEFAULT_RULE, SERIAL_DEFAULT, UNRESOLVED_TARGET, RELATIVE_ORDER,
         NULLABLE_UNKNOWN
     }
 
@@ -80,7 +82,7 @@ public final class SourceCompareDto {
      */
     public record Summary(SourceMappingDto.Connection base, Integer reflectedOrder, Long executionId, LocalDateTime reflectedAt, boolean comparable,
                           String notComparable, int sourceTables, int viewCount, int mappedTables, int comparedTables, int sameTables, int differentTables,
-                          int unknownTables, int unmappedTables, int modelOnlyTables, int conflictTables, int recheckTables, Map<CompareStatus, Long> tables,
+                          int unknownTables, int unmappedTables, int modelOnlyTables, int conflictTables, int recheckTables, int excludedTables, Map<CompareStatus, Long> tables,
                           Map<TableReason, Long> reasons) {
     }
 

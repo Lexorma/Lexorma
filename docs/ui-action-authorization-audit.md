@@ -97,7 +97,7 @@
 | 연결 관리 | 등록·수정·삭제·연결 테스트 | USER + **그 프로젝트의 관리자 또는 ADMIN** (`verifyProjectManager`) | `source-manage`(USER) **그리고** `/api/auth/me` 의 `projectManageable` |
 | 메타데이터 수집 | 수집 실행·취소 | USER + 그 프로젝트의 관리자 또는 ADMIN | 위와 같다 |
 | 원본 매핑 관리 (M-4c) | 조회 (`GET /api/sourceMapping`, `/tables`, `/modelTables`) | VIEWER | 메뉴 `source-mapping` VIEWER |
-| 원본 매핑 관리 (M-4c) | 기준 연결 설정·해제, 스키마·TABLE 매핑 확정·해제 | USER + 그 프로젝트의 관리자 또는 ADMIN | `source-manage`(USER) **그리고** `projectManageable` |
+| 원본 매핑 관리 (M-4c·M-4g) | 기준 연결 설정·해제, 스키마·TABLE 매핑 확정·해제, TABLE 매핑 예외 등록·취소 (`PUT /api/sourceMapping/exclusions`, `DELETE /exclusions/{id}`) | USER + 그 프로젝트의 관리자 또는 ADMIN | `source-manage`(USER) **그리고** `projectManageable` |
 | 원본·모델 비교 (M-4d) | 조회 (`GET /api/sourceCompare`, `/tables`, `/table`, `/renameCandidates`) | VIEWER | 메뉴 `source-compare` VIEWER |
 | 원본 가져오기 (M-4e) | 대상·계획·이력 조회 (`GET /api/sourceImport/candidates`, `POST /plan`(읽기 전용), `GET /executions`) | VIEWER | 메뉴 `source-compare` VIEWER ([미리보기]) |
 | 원본 가져오기 (M-4e) | 확정 (`POST /api/sourceImport/apply`) | USER + 그 프로젝트의 관리자 또는 ADMIN | `source-manage`(USER) **그리고** `projectManageable` ([가져오기 확정]) |

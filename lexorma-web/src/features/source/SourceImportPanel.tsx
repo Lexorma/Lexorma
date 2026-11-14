@@ -16,7 +16,7 @@ import { Pager, useCanManageSource } from './shared';
  */
 type Kind = 'TABLE' | 'COLUMN' | 'PRIMARY_KEY' | 'UNIQUE' | 'CHECK' | 'FOREIGN_KEY' | 'INDEX';
 type Action = 'CREATE' | 'ADD' | 'UPDATE';
-type Reason = 'NOT_MAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT' | 'SOURCE_REMOVED' | 'MODEL_DELETED'
+type Reason = 'NOT_MAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'EXCLUDED' | 'NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT' | 'SOURCE_REMOVED' | 'MODEL_DELETED'
   | 'SAME' | 'UNKNOWN' | 'RENAME_CANDIDATE' | 'CONFLICT' | 'REPLACE_REQUIRED' | 'MODEL_ONLY' | 'UNSUPPORTED_ATTRIBUTE' | 'APPROVED' | 'TYPE_NOT_REPRESENTABLE' | 'DEFAULT_NOT_REPRESENTABLE'
   | 'INVALID_NAME' | 'QUOTED_NAME' | 'PK_NOT_NULL' | 'PK_EXISTS' | 'PK_ORDER' | 'ORDER_NOT_SUPPORTED' | 'NO_FIELD' | 'EMPTY_COMMENT' | 'UNSUPPORTED_INDEX_TYPE'
   | 'MISSING_DEPENDENCY' | 'UNRESOLVED_TARGET' | 'TARGET_NOT_KEY' | 'NOT_FOUND' | 'UNSUPPORTED_DBMS' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'REMOVED_IN_SOURCE';
@@ -51,6 +51,7 @@ const REASON: Record<Reason, string> = {
   NOT_MAPPED: t('유효한 매핑이 아닙니다'),
   MAPPING_CANDIDATE: t('같은 이름의 모델 TABLE 이 있습니다. 원본 매핑 관리에서 매핑을 확정하세요'),
   SCHEMA_UNMAPPED: t('원본 스키마 매핑이 없거나 유효하지 않습니다'),
+  EXCLUDED: t('매핑 예외로 지정된 원본 TABLE 입니다 (원본 매핑 관리에서 예외를 취소하면 가져올 수 있습니다)'),
   NAME_TAKEN: t('같은 이름의 모델 TABLE 이 이미 있습니다'),
   VIEW_NAME_TAKEN: t('같은 이름의 모델 VIEW 가 있습니다'),
   RECHECK: t('원본이 다시 생겨 매핑 재확인이 필요합니다'),

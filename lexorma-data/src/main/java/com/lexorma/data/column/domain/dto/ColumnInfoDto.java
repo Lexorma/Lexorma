@@ -57,6 +57,9 @@ public class ColumnInfoDto {
     /** 기본값 */
     private String defaultValue;
 
+    /** IDENTITY 자동 생성 방법 : ALWAYS · BY_DEFAULT (비면 없음) */
+    private String identity;
+
     /** 정렬 순서 */
     private Integer sortOrder;
 
@@ -111,6 +114,7 @@ public class ColumnInfoDto {
                 .scale(entity.getScale())
                 .isNullable(toYN(entity.getIsNullable()))
                 .defaultValue(entity.getDefaultValue())
+                .identity(entity.getIdentity() == null ? null : entity.getIdentity().name())
                 .sortOrder(entity.getSortOrder())
                 .isMasterData(toYN(entity.getIsMasterData()))
                 .refTableName(entity.getRefTableName())
@@ -139,6 +143,7 @@ public class ColumnInfoDto {
                 .scale(this.scale)
                 .isNullable(fromYN(this.isNullable))
                 .defaultValue(this.defaultValue)
+                .identity(ColumnInfo.Identity.parse(this.identity))
                 .sortOrder(this.sortOrder)
                 .isMasterData(fromYN(this.isMasterData))
                 .refTableName(this.refTableName)

@@ -12,9 +12,13 @@ public final class CompareModel {
     private CompareModel() {
     }
 
-    /** @param sourceComment 원본 COMMENT (가져온 값, V3). 업무 설명이 아니다 / approved : 승인 여부 (가져오기는 승인된 객체를 바꾸지 않는다) */
+    /**
+     * @param sourceComment 원본 COMMENT 칸 (가져온 값, V3 SRC_ANTN_CN — 가져오기 대상) / description : 업무 설명(COL_EXPLN, DDL 의 COMMENT) — 원본 COMMENT 와 비교한다
+     * @param approved      승인 여부 (가져오기는 승인된 객체를 바꾸지 않는다)
+     */
     public record Column(Long id, Long tableId, String name, String dataType, Integer maxLength, BigDecimal precision, Integer scale, Boolean nullable,
-                         Boolean required, Boolean pk, Boolean unique, String defaultValue, Integer sortOrder, String sourceComment, boolean approved) {
+                         Boolean required, Boolean pk, Boolean unique, String defaultValue, Integer sortOrder, String sourceComment, String description, boolean approved,
+                         String identity) {
     }
 
     /** UNIQUE(복합 포함)·CHECK (PK 는 컬럼의 pk, FK 는 Relation) */
@@ -29,15 +33,18 @@ public final class CompareModel {
     }
 
     /** FK 관계만 (LOGICAL 관계는 DDL 제약이 아니라 비교하지 않는다). source : USER · REF_COLUMN · IMPORTED · AI_APPROVED */
-    public record Relation(Long id, Long tableId, Long targetTableId, String name, String source, List<Long> columnIds, List<Long> targetColumnIds) {
+    /** deleteRule · updateRule : SQL 표기 (NO ACTION · RESTRICT · CASCADE · SET NULL · SET DEFAULT) */
+    public record Relation(Long id, Long tableId, Long targetTableId, String name, String source, List<Long> columnIds, List<Long> targetColumnIds,
+                           String deleteRule, String updateRule) {
     }
 
-    public record Table(Long id, String name, String sourceComment, boolean approved, List<Column> columns, List<Constraint> constraints, List<Index> indexes,
+    /** @param sourceComment 원본 COMMENT 칸 (SRC_ANTN_CN) / korName : 한글명 (TBL_KORN_NM, DDL 의 TABLE COMMENT) — 원본 TABLE COMMENT 와 비교한다 */
+    public record Table(Long id, String name, String sourceComment, String korName, boolean approved, List<Column> columns, List<Constraint> constraints, List<Index> indexes,
                         List<Relation> relations) {
 
         /** 아직 없는 모델 TABLE (가져오기로 새로 만들 때 원본을 이것과 비교하면 모든 객체가 원본에만 있다) */
         public static Table empty(String name) {
-            return new Table(null, name, null, false, List.of(), List.of(), List.of(), List.of());
+            return new Table(null, name, null, null, false, List.of(), List.of(), List.of(), List.of());
         }
     }
 }

@@ -134,10 +134,14 @@ class SourceCompareIntegrationTest {
         assertThat(attr(object(orders, ObjectKind.COLUMN, "note"), "order").result()).isEqualTo(AttributeResult.DIFFERENT);
         assertThat(attr(object(orders, ObjectKind.COLUMN, "created_at"), "order").result()).isEqualTo(AttributeResult.DIFFERENT);
         assertThat(attr(object(orders, ObjectKind.COLUMN, "amount"), "order").result()).isEqualTo(AttributeResult.SAME);
-        // 원본 COMMENT 는 모델의 원본 COMMENT 칸(V3)과 비교하고 업무 설명과는 비교하지 않는다 : 모델에 아직 없으면 다름
-        assertThat(attr(object(orders, ObjectKind.COLUMN, "note"), "comment").result()).isEqualTo(AttributeResult.DIFFERENT);
+        // 원본 COMMENT 는 모델 업무 설명과 비교해 상태를 정하고(description, 2026-11-14), 원본 COMMENT 칸(V3)과의 차이는 가져오기 대상으로만 둔다(comment, NOT_COMPARED)
+        assertThat(attr(object(orders, ObjectKind.COLUMN, "note"), "description")).extracting(SourceCompareDto.AttributeDiff::source, SourceCompareDto.AttributeDiff::model,
+                SourceCompareDto.AttributeDiff::result).containsExactly("메모", null, AttributeResult.DIFFERENT);
+        assertThat(attr(object(orders, ObjectKind.COLUMN, "note"), "comment").result()).isEqualTo(AttributeResult.NOT_COMPARED);
         assertThat(attr(object(orders, ObjectKind.COLUMN, "note"), "comment").model()).isNull();
-        assertThat(object(orders, ObjectKind.TABLE, "orders").status()).isEqualTo(CompareStatus.MODIFIED); // TABLE COMMENT '주문'
+        assertThat(object(orders, ObjectKind.TABLE, "orders").status()).isEqualTo(CompareStatus.MODIFIED); // TABLE COMMENT '주문' ↔ 한글명 없음
+        assertThat(attr(object(orders, ObjectKind.TABLE, "orders"), "korName")).extracting(SourceCompareDto.AttributeDiff::source, SourceCompareDto.AttributeDiff::model)
+                .containsExactly("주문", null);
         // 이름 변경 후보 : memo2 ↔ REMARK (하나씩) / region_code·zone_code ↔ AREA_CD (모호함)
         SourceCompareDto.ObjectDiff memo = object(orders, ObjectKind.COLUMN, "memo2");
         assertThat(memo.status()).isEqualTo(CompareStatus.RENAME_CANDIDATE);
@@ -163,12 +167,19 @@ class SourceCompareIntegrationTest {
         SourceCompareDto.ObjectDiff statusCheck = object(orders, ObjectKind.CHECK, "orders_status_check");
         assertThat(statusCheck.status()).isEqualTo(CompareStatus.UNKNOWN);
         assertThat(attr(statusCheck, "expression").note()).isEqualTo(SourceCompareDto.Note.EXPRESSION);
-        // FK : 이름으로 짝, 참조 대상은 매핑으로 같음, ON DELETE CASCADE 는 모델에 칸이 없어 UNKNOWN (SAME 이 아니다)
+        // FK : 이름으로 짝, 참조 대상은 매핑으로 같음. 삭제·수정 규칙은 모델 관계의 규칙과 비교한다 (V7) : 원본 CASCADE ↔ 모델 기본(NO ACTION) = 다름
         SourceCompareDto.ObjectDiff fk = object(orders, ObjectKind.FOREIGN_KEY, "orders_customer_fk");
         assertThat(attr(fk, "referencedTable").result()).isEqualTo(AttributeResult.SAME);
-        assertThat(attr(fk, "deleteRule").result()).isEqualTo(AttributeResult.UNKNOWN);
+        assertThat(attr(fk, "deleteRule")).extracting(SourceCompareDto.AttributeDiff::source, SourceCompareDto.AttributeDiff::model, SourceCompareDto.AttributeDiff::result)
+                .containsExactly("CASCADE", "NO ACTION", AttributeResult.DIFFERENT);
         assertThat(attr(fk, "updateRule").result()).isEqualTo(AttributeResult.SAME);
-        assertThat(fk.status()).isEqualTo(CompareStatus.UNKNOWN);
+        assertThat(fk.status()).isEqualTo(CompareStatus.MODIFIED);
+        // 모델 관계에 CASCADE 를 두면 같다
+        jdbc.update("update TB_TBL_REL set DEL_RULE_CD = 'CASCADE' where PRJ_SN = ? and REL_NM = 'ORDERS_CUSTOMER_FK'", e.project.getId());
+        SourceCompareDto.ObjectDiff cascaded = object(detail(e, "orders"), ObjectKind.FOREIGN_KEY, "orders_customer_fk");
+        assertThat(attr(cascaded, "deleteRule").result()).isEqualTo(AttributeResult.SAME);
+        assertThat(cascaded.status()).isEqualTo(CompareStatus.SAME);
+        jdbc.update("update TB_TBL_REL set DEL_RULE_CD = null where PRJ_SN = ? and REL_NM = 'ORDERS_CUSTOMER_FK'", e.project.getId());
         // 인덱스 : 이름으로 짝(정렬 포함 SAME), 이름만 다르고 구성이 같으면 후보
         assertThat(object(orders, ObjectKind.INDEX, "ix_orders_status").status()).isEqualTo(CompareStatus.SAME);
         assertThat(object(orders, ObjectKind.INDEX, "ix_orders_cust_created").status()).isEqualTo(CompareStatus.RENAME_CANDIDATE);
@@ -490,7 +501,8 @@ class SourceCompareIntegrationTest {
     }
 
     private TableInfo table(Env e, String name) {
-        TableInfo table = tableRepository.save(TableInfo.builder().projectId(e.project.getId()).tableName(name).tableKorName(name).tableDescription(name).isMasterTable(false)
+        // 한글명·업무 설명은 비워 둔다 : TABLE COMMENT ↔ 한글명, 컬럼 COMMENT ↔ 설명 비교(2026-11-14)가 이 시험의 다른 차이에 섞이지 않게 (따로 본다)
+        TableInfo table = tableRepository.save(TableInfo.builder().projectId(e.project.getId()).tableName(name).isMasterTable(false)
                 .sortOrder(1).isApproval(false).schema(schemaRepository.findById(e.defaultSchema.getId()).orElseThrow()).build());
         e.tables.put(name, table);
         return table;

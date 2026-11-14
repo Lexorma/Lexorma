@@ -30,6 +30,12 @@ class PostgresCompareRulesTest {
         assertThat(PostgresCompareRules.type("timestamp(3) without time zone")).isNotEqualTo(PostgresCompareRules.type("TIMESTAMP"));
         assertThat(PostgresCompareRules.type("integer[]").arrayDims()).isEqualTo(1);
         assertThat(PostgresCompareRules.type("integer[]").baseDisplay()).isNotEqualTo(PostgresCompareRules.type("integer").baseDisplay());
+        // 모델 DDL 의 SQL 표준 표기 (BIGINT ARRAY) 와 원본의 bigint[] 는 같은 타입
+        assertThat(PostgresCompareRules.type("BIGINT ARRAY").baseDisplay()).isEqualTo(PostgresCompareRules.type("bigint[]").baseDisplay());
+        assertThat(PostgresCompareRules.type("BIGINT ARRAY").known()).isTrue();
+        assertThat(PostgresCompareRules.type("varchar(20) array").baseDisplay()).isEqualTo(PostgresCompareRules.type("character varying(20)[]").baseDisplay());
+        assertThat(PostgresCompareRules.type("BIGINT ARRAY").baseDisplay()).isNotEqualTo(PostgresCompareRules.type("bigint").baseDisplay());
+        assertThat(PostgresCompareRules.type("array")).isNotNull();
         assertThat(PostgresCompareRules.type("BIGSERIAL").serial()).isTrue();
         assertThat(PostgresCompareRules.type("BIGSERIAL").base()).isEqualTo("BIGINT");
         assertThat(PostgresCompareRules.type("public.mood").known()).isFalse();

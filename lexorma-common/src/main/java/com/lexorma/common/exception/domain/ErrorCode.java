@@ -449,7 +449,32 @@ public enum ErrorCode {
     /**
      * 외부 연결 시도를 감사 기록에 남기지 못해 연결하지 않았다 (SEC-1 : 기록 없는 연결을 하지 않는다).
      */
-    EXTERNAL_CONNECTION_AUDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_CONNECTION_AUDIT_FAILED");
+    EXTERNAL_CONNECTION_AUDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_CONNECTION_AUDIT_FAILED"),
+
+    /**
+     * AI Provider(AI-3)를 찾을 수 없다.
+     */
+    AI_PROVIDER_NOT_FOUND(HttpStatus.NOT_FOUND, "AI_PROVIDER_NOT_FOUND"),
+
+    /**
+     * AI Provider 설정 값이 올바르지 않다 (이름·주소·모델 ID 등).
+     */
+    AI_PROVIDER_INVALID(HttpStatus.BAD_REQUEST, "AI_PROVIDER_INVALID"),
+
+    /**
+     * 비활성화된 AI Provider 로는 AI 를 호출하지 않는다.
+     */
+    AI_PROVIDER_DISABLED(HttpStatus.CONFLICT, "AI_PROVIDER_DISABLED"),
+
+    /**
+     * 지원하지 않는 AI Provider 유형 또는 기능이다.
+     */
+    AI_PROVIDER_UNSUPPORTED(HttpStatus.BAD_REQUEST, "AI_PROVIDER_UNSUPPORTED"),
+
+    /**
+     * AI 서버 호출에 실패했다 (연결 거부·시간 초과·모델 없음·서버 오류·응답 처리 실패).
+     */
+    AI_PROVIDER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_CALL_FAILED");
 
     private final HttpStatus httpStatus;
     private final String code;

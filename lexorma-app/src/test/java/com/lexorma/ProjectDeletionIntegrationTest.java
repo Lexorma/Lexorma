@@ -91,9 +91,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProjectDeletionIntegrationTest {
 
     /** 프로젝트와 무관한 공통 데이터 : 프로젝트를 지워도 건드리지 않는다 */
-    // 외부 연결 보안(SEC-1) 규칙·변경 이력·연결 감사는 시스템 단위라 프로젝트를 지워도 남는다
+    // 외부 연결 보안(SEC-1) 규칙·변경 이력·연결 감사와 AI Provider(AI-3)는 시스템 단위라 프로젝트를 지워도 남는다
     private static final Set<String> GLOBAL_TABLES = Set.of("TB_ACNT", "TB_ROLE", "TB_ACNT_ROLE", "TB_PST_CTGRY", "TB_EXTRL_CNTN_RULE", "TB_EXTRL_CNTN_RULE_HSTRY",
-            "TB_EXTRL_CNTN_HSTRY");
+            "TB_EXTRL_CNTN_HSTRY", "TB_AI_PRVDR");
 
     /**
      * 프로젝트 ID 컬럼(PRJ_SN)이 있는 테이블. 테이블을 더하면 이 목록과 삭제 처리(ProjectDataCleanup 등), 아래 준비 데이터에 함께 넣는다 :

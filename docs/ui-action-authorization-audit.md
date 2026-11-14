@@ -110,6 +110,7 @@
 | 화면 | 액션 | 서버 | 화면 |
 |---|---|---|---|
 | 외부 연결 보안 | 허용 규칙 조회·등록·수정·활성화·비활성화·삭제, 허용 규칙이 없는 등록 연결, 연결 시도 감사, 정책 변경 이력 (`/api/security/**`) | **ADMIN** (시스템 관리자. MANAGER·DBA·프로젝트 관리자는 403) | 메뉴 `connection-security` ADMIN |
+| AI Provider 관리 (AI-3) | Provider 목록·상세·유형, 등록·수정·활성화·비활성화·삭제, 연결 테스트, 모델 목록, 테스트 프롬프트 (`/api/ai/providers/**`) | **ADMIN** (시스템 관리자. MANAGER·DBA·프로젝트 관리자는 403) | 메뉴 `ai-provider` ADMIN |
 
 외부 연결 허용 규칙은 프로젝트가 아닌 시스템 보안 정책이다. 원본 DB 연결 테스트·수집은 기존 권한(USER + 프로젝트 관리자 또는 ADMIN)에 이 정책이 더해진다 (규칙이 없으면 연결하지 않는다). `ExternalConnectionSecurityIntegrationTest` 가 USER·MANAGER·DBA 의 거절을 본다.
 

@@ -8,6 +8,11 @@ dependencies {
     api 'org.springframework.boot:spring-boot-starter-session-jdbc'
     // 외부 HTTP 연결 (SEC-1 : AI Endpoint 등) : 검증한 IP 로만 접속하는 전송 구현. 버전은 Spring Boot BOM 이 정한다. 다른 모듈은 Spring 의 ClientHttpRequestFactory 로만 쓴다
     implementation 'org.apache.httpcomponents.client5:httpclient5'
+    // AI Provider (AI-3) : Spring AI 의 모델 모듈만 쓴다 (starter·autoconfigure 를 넣지 않는다 → 기본 ChatModel Bean·Ollama 접속 설정이 생기지 않는다).
+    // 모델 객체는 관리자가 등록한 Provider 로 요청 때마다 만들고, HTTP 는 위의 SEC-1 전송(ExternalHttpClients)으로만 나간다
+    // ChatClient(spring-ai-client-chat)는 AiProviderClients.call 의 공개 타입이라 api, Ollama 구현은 core 안에서만 쓰므로 implementation
+    implementation 'org.springframework.ai:spring-ai-ollama'
+    api 'org.springframework.ai:spring-ai-client-chat'
 
     // 다른 모듈 테스트에서 공용으로 쓰는 픽스처 (src/testFixtures)
     testFixturesApi 'org.mockito:mockito-core'

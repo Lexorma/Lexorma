@@ -46,13 +46,14 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Source databases | Re-import after a later collection | Each attribute is compared with the value last imported into the model: changes made only in the source can be chosen again, while attributes edited in the model after the import (or changed on both sides) are shown but never overwritten. Objects deleted in the source are reported and kept in the model |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 | Administration | External connection security | Outgoing connections to source databases (JDBC) and AI servers (HTTP) are allowed only to destinations an administrator has allowed (connection type, optional host, CIDR range, port); everything else is denied. The actual connection is pinned to the verified addresses, and every connection attempt and policy change is audited |
+| Administration | AI providers (optional) | An `ADMIN` registers the AI server Lexorma may call (Ollama for now) and checks it with a connection test, the server's model list and a test prompt. Calls go through Spring AI and only through the external connection security rules; nothing is set up or connected when no provider is registered |
 
 ### Planned (not implemented yet)
 
 | Area | Feature |
 |---|---|
 | Source databases | Synchronizing deletions and replacing changed constraints or indexes from the source; collection and comparison rules for DBMSs other than PostgreSQL |
-| AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
+| AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review; OpenAI-compatible providers (InfraMesh, vLLM) and streaming responses |
 
 ### Data Standardization Rules
 
@@ -191,7 +192,7 @@ The default database name and account are kept from the previous project name so
 
 ### Secret encryption key (optional)
 
-Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
+Credentials that Lexorma stores for external systems (external database connection passwords; AI providers store no credentials yet) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
 
 | Property | Environment variable | Description |
 |---|---|---|
@@ -208,7 +209,7 @@ Credentials that Lexorma stores for external systems (external database connecti
 
 ### External connection access
 
-Lexorma connects to source databases (and, later, AI servers) itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
+Lexorma connects to source databases and AI servers itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
 
 After upgrading, existing source connections stay blocked until a rule allows them; the same screen lists registered connections without a rule. Use a numeric address such as `127.0.0.1` instead of `localhost` when it resolves to both IPv4 and IPv6.
 
@@ -220,6 +221,16 @@ The operator can additionally cap source database connections with environment v
 | `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback ranges (CIDR, comma separated) that source connections may reach. Empty: no cap (an administrator rule is still required) |
 
 Storing a connection password requires the secret encryption key above.
+
+### AI providers (optional)
+
+AI is optional: with no provider registered Lexorma needs no AI settings, no Ollama, no API key and no secret key, and it never connects to an AI server on its own. To use a local Ollama:
+
+1. *System › External connection security*: add an `AI HTTP` rule, for example host `127.0.0.1`, range `127.0.0.1/32`, port `11434`.
+2. *System › AI provider management*: register type Ollama with the address `http://127.0.0.1:11434` (saving does not connect).
+3. *Check*: run the connection test, pick the default model from the server's model list and try a test prompt.
+
+In Docker, `127.0.0.1` is the Lexorma container itself: register the address of the host (for example `host.docker.internal` on Docker Desktop) or of the Ollama container, and allow the range it resolves to. Lexorma does not install Ollama or download models. Responses are returned in one piece (no streaming). Timeouts: `lexorma.ai.test-timeout-seconds` (connection test and model list, default 15), `lexorma.external.http.response-timeout-seconds` (calls, default 120).
 
 ### Database migrations
 

@@ -197,6 +197,35 @@ final class EnglishMessages {
         add("호스트 이름을 풀지 못했습니다", "The host name could not be resolved");
         add("호스트는 호스트명 또는 숫자 주소로 입력해주세요. 와일드카드는 쓸 수 없습니다.", "Enter the host as a host name or a numeric address. Wildcards cannot be used.");
 
+        // ---------------------------------------------------------------- AI Provider (AI-3)
+        add("AI 서버 응답 시간이 초과되었습니다.", "The AI server did not respond in time.");
+        add("AI 서버 주소 형식이 올바르지 않습니다.", "The AI server address is not valid.");
+        add("AI 서버 주소는 255자까지 입력할 수 있습니다.", "The AI server address can be up to 255 characters.");
+        add("AI 서버 주소는 http:// 또는 https:// 로 시작해야 합니다.", "The AI server address must start with http:// or https://.");
+        add("AI 서버 주소를 입력해주세요.", "Enter the AI server address.");
+        add("AI 서버 주소에 쿼리나 # 을 넣을 수 없습니다.", "The AI server address cannot contain a query or #.");
+        add("AI 서버 주소의 호스트가 올바르지 않습니다.", "The host of the AI server address is not valid.");
+        add("AI 서버가 다른 주소로 이동하라는 응답({0})을 보냈습니다. 리다이렉트는 따라가지 않으니 실제 주소를 등록하세요.", "The AI server responded with a redirect ({0}). Redirects are not followed, so register the actual address.");
+        add("AI 서버가 연결을 거부했습니다. 서버가 실행 중인지, 주소와 포트가 맞는지 확인하세요.", "The AI server refused the connection. Check that the server is running and that the address and port are correct.");
+        add("AI 서버가 오류로 응답했습니다 (HTTP {0}).", "The AI server responded with an error (HTTP {0}).");
+        add("AI 서버가 요청한 API 를 찾지 못했습니다 (404). 주소와 Provider 유형을 확인하세요.", "The AI server could not find the requested API (404). Check the address and the provider type.");
+        add("AI 서버에 그 모델이 없습니다. 모델 목록을 확인하거나 서버에서 모델을 내려받으세요.", "The AI server does not have that model. Check the model list or download the model on the server.");
+        add("AI 서버에 연결하지 못했습니다.", "Could not connect to the AI server.");
+        add("AI 서버와 TLS 연결을 맺지 못했습니다 (인증서·호스트명 확인).", "Could not establish a TLS connection with the AI server (check the certificate and host name).");
+        add("AI 서버의 응답을 처리하지 못했습니다.", "The response from the AI server could not be processed.");
+        add("Provider 유형을 선택해주세요.", "Select a provider type.");
+        add("Provider 이름은 100자까지 입력할 수 있습니다.", "The provider name can be up to 100 characters.");
+        add("Provider 이름을 입력해주세요.", "Enter the provider name.");
+        add("같은 이름의 Provider 가 이미 있습니다.", "A provider with the same name already exists.");
+        add("기본 모델이 없습니다. 모델을 지정하세요.", "There is no default model. Specify a model.");
+        add("모델 ID 형식이 올바르지 않습니다.", "The model ID format is not valid.");
+        add("이 Provider 는 모델 목록 조회를 지원하지 않습니다. 모델 ID 를 직접 입력하세요.", "This provider does not support listing models. Enter the model ID directly.");
+        add("이 Provider 는 연결 테스트를 지원하지 않습니다.", "This provider does not support connection tests.");
+        add("지원하지 않는 Provider 유형입니다: {0}", "Unsupported provider type: {0}");
+        add("이 Provider 에서 지원하지 않는 AI 기능입니다 (스트리밍 등).", "This AI feature is not supported by this provider (streaming and so on).");
+        add("프롬프트는 {0}자까지 입력할 수 있습니다.", "The prompt can be up to {0} characters.");
+        add("프롬프트를 입력해주세요.", "Enter a prompt.");
+
         // ---------------------------------------------------------------- 공지사항
         // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");

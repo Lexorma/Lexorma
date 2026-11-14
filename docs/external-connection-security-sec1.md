@@ -1,7 +1,7 @@
 # SEC-1 — 외부 연결 보안 정책 및 관리자 허용 목록
 
 > 상태 : **구현 (2026-11-14)**. 등록 : [AI 로드맵 SEC-1](ai-metadata-roadmap.md#sec-1-외부-연결-접근-정책-및-관리자-허용-목록-관리). 마이그레이션 V4 (`V4__external_connection_security.sql`).
-> AI Provider 연동·AI 채팅·Tool Calling 은 구현하지 않았다 (AI-3).
+> AI Provider 연동은 AI-3 에서 이 어댑터로 구현했다 ([ai-provider-ai3.md](ai-provider-ai3.md)). AI 채팅 서비스·Tool Calling 은 구현하지 않았다.
 
 ## 1. 목적과 적용 범위
 
@@ -10,7 +10,7 @@ Lexorma 가 외부 시스템에 연결할 때 **시스템 관리자가 허용한
 | 연결 유형 | 용도 | 상태 |
 |---|---|---|
 | `JDBC` | 원본 DB 메타데이터 조회 (연결 테스트·수집·재최신화) | 적용 |
-| `AI_HTTP` | Ollama·OpenAI 호환 서버 (AI-3) | 공통 계약·어댑터(`ExternalHttpClients`) 준비, 테스트 HTTP 서버로 검증. 실제 Provider 는 AI-3 |
+| `AI_HTTP` | Ollama·OpenAI 호환 서버 (AI-3) | 적용 (AI-3, 2026-11-14) : Spring AI Ollama 의 연결 테스트·모델 목록·Chat 이 이 어댑터의 요청 팩토리로만 나간다. 스트리밍(WebClient)은 보내지 않는다 — [ai-provider-ai3.md](ai-provider-ai3.md) |
 
 규칙은 유형마다 따로다 : JDBC 로 허용한 서버가 AI HTTP 에서 저절로 허용되지 않는다.
 
@@ -97,7 +97,7 @@ try (GuardedHttpTarget target = externalHttpClients.open(ConnectionType.AI_HTTP,
 - 전송 : Apache HttpClient 5 (Spring Boot BOM 버전, `lexorma-core` 의 implementation 의존성 — 다른 모듈은 Spring `ClientHttpRequestFactory` 로만 쓴다). Spring `HttpComponentsClientHttpRequestFactory` 위에 연결 결과 기록 인터셉터.
 - 이름 풀기(`DnsResolver`)는 판정 때 검증한 이름에 검증한 주소만 돌려준다 (다시 풀지 않는다). 다른 이름은 풀리지 않는다. 소켓은 `PinnedSocket` (다른 포트·주소 차단, 프록시 없음).
 - TLS : `DefaultClientTlsStrategy.createDefault()` (JVM 신뢰 저장소, 호스트명 검증, 원래 호스트명으로 SNI).
-- 리다이렉트를 따라가지 않는다 (3xx 를 그대로 돌려준다 — 따라갈지는 AI-3 이 새로 판정해 정한다). 경로 계획도 프록시 없음(`DefaultRoutePlanner`), 자동 재시도·쿠키·인증 캐시 없음, **요청마다 새 연결** (연결 재사용 안 함).
+- 리다이렉트를 따라가지 않는다 (3xx 를 그대로 돌려준다. AI-3 은 따라가지 않고 오류로 보여 준다 — 실제 주소를 등록한다). 경로 계획도 프록시 없음(`DefaultRoutePlanner`), 자동 재시도·쿠키·인증 캐시 없음, **요청마다 새 연결** (연결 재사용 안 함).
 - 스킴 http·https 만, 주소의 계정 정보 금지. 차단이면 `EXTERNAL_CONNECTION_BLOCKED`(사유).
 - 대상은 요청 한 번(또는 한 작업)마다 연다. 첫 응답·첫 실패를 시도 결과로 남긴다.
 - 운영자 환경 변수 상한(`LEXORMA_SOURCE_ALLOWED_HOSTS`·`LEXORMA_SOURCE_ALLOWED_NETWORKS`)은 원본 JDBC 전용이라 AI HTTP 에는 적용되지 않는다 — AI HTTP 는 관리자 규칙(+ 절대 차단)만 본다.

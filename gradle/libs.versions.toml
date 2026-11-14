@@ -8,6 +8,8 @@ querydsl = "7.7"
 springdoc = "3.2.0"
 modelmapper = "3.1.0"
 poi = "5.3.0"
+# Spring AI (AI-3) : 2.0.x 는 Spring Framework 7.0 · Jackson 3 기준 (Boot 4.1.2 와 같은 버전). Boot BOM 이 관리하지 않아 BOM 을 따로 가져온다
+spring-ai = "2.0.2"
 
 [libraries]
 querydsl-jpa = { module = "io.github.openfeign.querydsl:querydsl-jpa", version.ref = "querydsl" }
@@ -15,6 +17,7 @@ querydsl-apt = { module = "io.github.openfeign.querydsl:querydsl-apt", version.r
 springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 modelmapper = { module = "org.modelmapper:modelmapper", version.ref = "modelmapper" }
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

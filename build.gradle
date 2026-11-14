@@ -28,6 +28,7 @@ subprojects {
     dependencyManagement {
         imports {
             mavenBom SpringBootPlugin.BOM_COORDINATES
+            mavenBom libs.spring.ai.bom.get().toString()
         }
     }
 

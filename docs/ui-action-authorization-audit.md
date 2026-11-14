@@ -105,6 +105,14 @@
 
 전역 MANAGER 역할만으로는 다른 사람이 관리하는 프로젝트의 연결·수집을 바꿀 수 없다 (승인 권한 `approvalAvailable` 과 다른 기준). `SourceManagementUiIntegrationTest` 가 화면 값과 서버 거절을 함께 본다.
 
+### 외부 연결 보안 (SEC-1, 2026-11-14 추가)
+
+| 화면 | 액션 | 서버 | 화면 |
+|---|---|---|---|
+| 외부 연결 보안 | 허용 규칙 조회·등록·수정·활성화·비활성화·삭제, 허용 규칙이 없는 등록 연결, 연결 시도 감사, 정책 변경 이력 (`/api/security/**`) | **ADMIN** (시스템 관리자. MANAGER·DBA·프로젝트 관리자는 403) | 메뉴 `connection-security` ADMIN |
+
+외부 연결 허용 규칙은 프로젝트가 아닌 시스템 보안 정책이다. 원본 DB 연결 테스트·수집은 기존 권한(USER + 프로젝트 관리자 또는 ADMIN)에 이 정책이 더해진다 (규칙이 없으면 연결하지 않는다). `ExternalConnectionSecurityIntegrationTest` 가 USER·MANAGER·DBA 의 거절을 본다.
+
 ### 논리 모델·매핑·품질
 
 | 화면 | 액션 | 서버 | 수정 전 화면 | 수정 후 |

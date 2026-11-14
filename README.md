@@ -45,6 +45,7 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Source databases | Selective import | Preview a plan, then confirm only the chosen items: new tables (with their mapping), new columns, constraints and indexes, and chosen column attributes. Imported objects are unapproved, approved objects are never changed, nothing is deleted or renamed, and the model just before each import is saved as a model version. Source comments are stored separately from business descriptions |
 | Source databases | Re-import after a later collection | Each attribute is compared with the value last imported into the model: changes made only in the source can be chosen again, while attributes edited in the model after the import (or changed on both sides) are shown but never overwritten. Objects deleted in the source are reported and kept in the model |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
+| Administration | External connection security | Outgoing connections to source databases (JDBC) and AI servers (HTTP) are allowed only to destinations an administrator has allowed (connection type, optional host, CIDR range, port); everything else is denied. The actual connection is pinned to the verified addresses, and every connection attempt and policy change is audited |
 
 ### Planned (not implemented yet)
 
@@ -69,7 +70,7 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 
 | Role | Description | Main permissions |
 |---|---|---|
-| `ADMIN` | Administrator | User management, everything below |
+| `ADMIN` | Administrator | User management, external connection security, everything below |
 | `MANAGER` | Manager | Approval, announcements (as the manager of the project) |
 | `DBA` | Database administrator | Project management (own projects), system logs |
 | `USER` | Standard user | Create and change dictionary items and models |
@@ -128,7 +129,7 @@ The Java base package is `com.lexorma`.
 | Java (JDK) | 21 or later |
 | Node.js | 20.19 or later — needed to build the frontend, not at runtime |
 | PostgreSQL | 18 recommended; not required with the H2 profile |
-| Docker | Optional (Docker Compose v2) |
+| Docker | Optional (Docker Compose v2.23.1 or later for the bundled Compose file) |
 | Ports | Application `9940`, local PostgreSQL `15439` |
 
 Gradle does not need to be installed: the project includes the Gradle wrapper (`./gradlew`).
@@ -190,28 +191,35 @@ The default database name and account are kept from the previous project name so
 
 ### Secret encryption key (optional)
 
-Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
+Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
 
-| Variable | Description |
-|---|---|
-| `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
-| `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
+| Property | Environment variable | Description |
+|---|---|---|
+| `lexorma.secret.keys` | `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
+| `lexorma.secret.active-key-id` | `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
 
-- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error.
+- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error (`SECRET_KEY_NOT_CONFIGURED`).
 - A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
-- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted.
+- **Local development**: the `local` and `h2-local` profiles (the default profile is `local`) include a fixed development-only key, so no setup is needed. It is public in this repository: never use it for real data or production passwords. The `dev`, `docker` and `h2-docker` profiles have no key.
+- **Your own key**: set `LEXORMA_SECRET_KEYS` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) as environment variables; they take precedence over the development key. For Docker Compose set them in `docker/lexorma/.env` (see [Docker Compose](#postgresql--application-docker-compose)).
+- Precedence: command-line arguments > Java system properties > OS environment variables > the profile files inside the JAR (including the development key). A key mounted as a Docker secret and read through `spring.config.import=configtree:` is a config file too, so an environment variable with the same name wins over it. Set the key in one place only.
+- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted: `k2:<new key>,k1:<old key>` with `LEXORMA_SECRET_ACTIVE_KEY_ID=k2`. A running container keeps the old value; recreate it after changing the key.
 - If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
 
-### Source database access
+### External connection access
 
-Lexorma connects to source databases itself, so the reachable hosts are limited by the operator. Both settings are environment variables only.
+Lexorma connects to source databases (and, later, AI servers) itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
+
+After upgrading, existing source connections stay blocked until a rule allows them; the same screen lists registered connections without a rule. Use a numeric address such as `127.0.0.1` instead of `localhost` when it resolves to both IPv4 and IPv6.
+
+The operator can additionally cap source database connections with environment variables. They apply only when set, on top of the administrator rules:
 
 | Variable | Description |
 |---|---|
-| `LEXORMA_SOURCE_ALLOWED_HOSTS` | Host names or addresses that connections may use, separated by commas (`*.db.internal` allowed). Empty: no host restriction |
-| `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback address ranges (CIDR, comma separated) that may be reached. Empty: private and loopback addresses are refused. Link-local, cloud metadata and multicast addresses are always refused |
+| `LEXORMA_SOURCE_ALLOWED_HOSTS` | Host names or addresses that source connections may use, separated by commas (`*.db.internal` allowed). Empty: no cap |
+| `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback ranges (CIDR, comma separated) that source connections may reach. Empty: no cap (an administrator rule is still required) |
 
-The address is checked again right before each connection, including after DNS resolution. Storing a connection password requires the secret encryption key above.
+Storing a connection password requires the secret encryption key above.
 
 ### Database migrations
 
@@ -296,12 +304,19 @@ docker build -f Dockerfile-h2 -t lexorma/lexorma:h2-latest .
 
 ### PostgreSQL + application (Docker Compose)
 
+`docker/lexorma/docker-compose.yml` is the Compose file for running Lexorma. All environment-specific values — database name, account and password, data directories, ports, image and the optional encryption key — are read from `docker/lexorma/.env`, which you create from `.env.example`:
+
 ```bash
 cd docker/lexorma
-docker-compose -p lexorma up -d
+cp .env.example .env     # edit .env: at least POSTGRES_PASSWORD for a new installation
+docker compose -p lexorma up -d
 ```
 
-The bundled Compose files keep the database name, account and data directory of existing installations.
+- `.env` is ignored by Git. Without it `docker compose` stops with `Set … in .env (see .env.example)`.
+- The defaults in `.env.example` keep the database name, account and data directory (`../volume/lexorma`) of earlier versions of this Compose file, so an existing installation keeps its data.
+- **Encryption key (optional)**: needed only to store source database passwords. Leave `LEXORMA_SECRET_KEYS` empty to run without a key. To use one, set `LEXORMA_SECRET_KEYS=prod:<output of openssl rand -base64 32>` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) in `.env`, then recreate the application container: `docker compose -p lexorma up -d --force-recreate lexorma-app`. The key is passed as a Docker secret (`secrets.<name>.environment`, Docker Compose v2.23.1 or later), mounted at `/run/secrets/lexorma.secret.keys` and read with `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`; it is not an environment variable of the application container.
+- Do not add `LEXORMA_SECRET_KEYS` to the container's `environment`: it would take precedence over the secret.
+- `docker compose config` shows only the variable name of the secret source, not the key. The key is still in `.env` and in the environment of the shell running Compose; protect that host.
 
 ### New installation with `docker run`
 
@@ -329,6 +344,8 @@ docker run -d \
 ```
 
 > PostgreSQL 18 uses `/var/lib/postgresql` as the volume mount path.
+
+To store source database passwords, add an encryption key (optional): either `-e LEXORMA_SECRET_KEYS=prod:<key>` (visible in `docker inspect`), or mount a file you create yourself with `-v ./secrets/lexorma.secret.keys:/run/secrets/lexorma.secret.keys:ro -e SPRING_CONFIG_IMPORT=configtree:/run/secrets/` (one line `prod:<key>`, not in Git). `docker run` does not use Compose secrets.
 
 ### Standalone with H2
 

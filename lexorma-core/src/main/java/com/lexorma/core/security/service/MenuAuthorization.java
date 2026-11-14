@@ -41,6 +41,8 @@ public class MenuAuthorization {
             Map.entry("user-manage", "ADMIN"),
             Map.entry("project-manage", "DBA"),
             Map.entry("system-log", "DBA"),
+            // 외부 연결 보안 (SEC-1) : 허용 규칙·감사는 시스템 관리자만 (API 도 ADMIN)
+            Map.entry("connection-security", "ADMIN"),
 
             // 운영 관리
             Map.entry("notice", "NOT_APPROVE"),
@@ -108,7 +110,7 @@ public class MenuAuthorization {
      */
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
             "system-management",
-            new String[]{"user-manage", "project-manage", "system-log"},
+            new String[]{"user-manage", "project-manage", "system-log", "connection-security"},
 
             "operation-management",
             new String[]{"notice"},

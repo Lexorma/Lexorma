@@ -1,6 +1,9 @@
 package com.lexorma.source.connection.jdbc;
 
 import com.lexorma.common.exception.domain.ErrorCode;
+import com.lexorma.core.network.ConnectionPin;
+import com.lexorma.core.network.NetworkAddresses.Cidr;
+import com.lexorma.core.network.PinnedSocket;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -22,51 +25,52 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SourceAddressPolicyTest {
 
     @Test
-    @DisplayName("주소 정책 : 링크 로컬·메타데이터·멀티캐스트·미지정은 허용 목록에 있어도 막고, 루프백·사설은 허용 목록에 있을 때만, 공인 주소는 연다")
-    void addressPolicy() throws Exception {
-        List<SourceAddressPolicy.Network> none = List.of();
-        List<SourceAddressPolicy.Network> allowed = SourceAddressPolicy.Network.parseList("10.20.0.0/16, 127.0.0.1, 169.254.0.0/16, fd12:3456::/32");
-        for (String blocked : List.of("169.254.169.254", "169.254.1.1", "0.0.0.0", "0.1.2.3", "224.0.0.1", "255.255.255.255", "fe80::1", "fd00:ec2::254", "100.100.100.200", "::")) {
-            assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName(blocked), allowed)).as(blocked).isFalse();
-        }
-        for (String restricted : List.of("127.0.0.1", "10.20.1.1", "192.168.0.10", "172.16.5.5", "100.64.0.1", "::1", "fd12:3456::1", "::ffff:127.0.0.1")) {
-            assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName(restricted), none)).as(restricted).isFalse();
-        }
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("127.0.0.1"), allowed)).isTrue();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("::ffff:127.0.0.1"), allowed)).as("IPv4 매핑 주소는 IPv4 로 본다").isTrue();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("127.0.0.2"), allowed)).isFalse();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("10.20.255.1"), allowed)).isTrue();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("10.21.0.1"), allowed)).isFalse();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("fd12:3456:1::1"), allowed)).isTrue();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("8.8.8.8"), none)).isTrue();
-        assertThat(SourceAddressPolicy.isAllowed(InetAddress.getByName("2001:4860:4860::8888"), none)).isTrue();
-        // 허용 목록은 숫자 주소만 받는다 (이름을 풀지 않는다)
-        assertThatThrownBy(() -> SourceAddressPolicy.Network.parse("db.internal")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> SourceAddressPolicy.Network.parse("10.0.0.0/33")).isInstanceOf(IllegalStateException.class);
-        assertThat(new SourceAddressPolicy("10.0.0.0/8,::1").allowedNetworks()).isEqualTo("10.0.0.0/8,0:0:0:0:0:0:0:1/128");
-        assertThat(new SourceAddressPolicy("").isAllowed("127.0.0.1")).isFalse();
+    @DisplayName("운영자 상한 (SEC-1) : 설정했을 때만 사설·루프백에 더하는 상한이다 (비면 상한 없음). 숫자 대역만 받고 잘못된 값이면 시작하지 않는다")
+    void operatorCeiling() {
+        assertThat(new SourceAddressPolicy("").ceiling()).isEmpty();
+        assertThat(new SourceAddressPolicy("10.0.0.0/8, ::1").ceiling()).extracting(Cidr::toString).containsExactly("10.0.0.0/8", "::1/128");
+        assertThatThrownBy(() -> new SourceAddressPolicy("db.internal")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new SourceAddressPolicy("10.0.0.0/33")).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
-    @DisplayName("소켓 : 실제로 연결하는 주소를 연결 직전에 본다 (미리 확인한 이름이 다른 주소로 풀려도 막힌다). 허용된 주소는 그대로 연결한다")
+    @DisplayName("소켓 : 판정 결과(pin)가 없으면 어디에도 연결하지 않고, 판정한 주소·규칙 대역·포트·운영자 상한에 맞을 때만 연결한다 (DNS 가 다른 주소를 줘도 막힌다)")
     void guardedSocket() throws IOException {
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+        try (ServerSocket server = new ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"))) {
             int port = server.getLocalPort();
-            SourceGuardedSocketFactory blocked = new SourceGuardedSocketFactory(new Properties());
-            // 드라이버가 이미 푼 주소, 풀지 않은 이름 모두 연결하는 주소로 판단한다
-            assertThatThrownBy(() -> blocked.createSocket().connect(new InetSocketAddress("127.0.0.1", port), 1000))
-                    .isInstanceOf(SourceGuardedSocketFactory.BlockedAddressException.class);
-            assertThatThrownBy(() -> blocked.createSocket().connect(InetSocketAddress.createUnresolved("localhost", port), 1000))
-                    .isInstanceOf(SourceGuardedSocketFactory.BlockedAddressException.class);
-            assertThatThrownBy(() -> blocked.createSocket("127.0.0.1", port)).isInstanceOf(SourceGuardedSocketFactory.BlockedAddressException.class);
+            InetAddress loopback = InetAddress.getByName("127.0.0.1");
+            SourceGuardedSocketFactory none = new SourceGuardedSocketFactory(new Properties());
+            assertThatThrownBy(() -> none.createSocket().connect(new InetSocketAddress(loopback, port), 1000)).isInstanceOf(PinnedSocket.BlockedConnectionException.class);
+            assertThatThrownBy(() -> none.createSocket("127.0.0.1", port)).isInstanceOf(PinnedSocket.BlockedConnectionException.class);
 
-            Properties properties = new Properties();
-            properties.setProperty(SourceGuardedSocketFactory.ALLOWED_NETWORKS, "127.0.0.0/8");
-            try (Socket socket = new SourceGuardedSocketFactory(properties).createSocket()) {
-                socket.connect(new InetSocketAddress("127.0.0.1", port), 1000);
+            Properties allowed = properties(new ConnectionPin("localhost", port, List.of(loopback), Cidr.parse("127.0.0.0/8"), List.of()));
+            try (Socket socket = new SourceGuardedSocketFactory(allowed).createSocket()) {
+                socket.connect(new InetSocketAddress(loopback, port), 1000);
                 assertThat(socket.isConnected()).isTrue();
             }
+            // 풀리지 않은 이름은 다시 풀지 않고 판정한 주소로
+            try (Socket socket = new SourceGuardedSocketFactory(allowed).createSocket()) {
+                socket.connect(InetSocketAddress.createUnresolved("localhost", port), 1000);
+                assertThat(socket.getInetAddress()).isEqualTo(loopback);
+            }
+            // 판정 뒤 이름이 다른 주소로 풀렸다 (재바인딩) : 판정한 주소가 아니면 연결하지 않는다
+            Properties rebound = properties(new ConnectionPin("localhost", port, List.of(InetAddress.getByName("127.0.0.2")), Cidr.parse("127.0.0.0/8"), List.of()));
+            assertThatThrownBy(() -> new SourceGuardedSocketFactory(rebound).createSocket().connect(new InetSocketAddress(loopback, port), 1000))
+                    .isInstanceOf(PinnedSocket.BlockedConnectionException.class);
+            // 포트가 다르다 · 운영자 상한 밖의 루프백
+            Properties otherPort = properties(new ConnectionPin("localhost", port + 1, List.of(loopback), Cidr.parse("127.0.0.0/8"), List.of()));
+            assertThatThrownBy(() -> new SourceGuardedSocketFactory(otherPort).createSocket().connect(new InetSocketAddress(loopback, port), 1000))
+                    .isInstanceOf(PinnedSocket.BlockedConnectionException.class);
+            Properties ceiling = properties(new ConnectionPin("localhost", port, List.of(loopback), Cidr.parse("127.0.0.0/8"), List.of(Cidr.parse("10.0.0.0/8"))));
+            assertThatThrownBy(() -> new SourceGuardedSocketFactory(ceiling).createSocket().connect(new InetSocketAddress(loopback, port), 1000))
+                    .isInstanceOf(PinnedSocket.BlockedConnectionException.class);
         }
+    }
+
+    private static Properties properties(ConnectionPin pin) {
+        Properties properties = new Properties();
+        pin.writeTo(properties);
+        return properties;
     }
 
     @Test
@@ -82,7 +86,7 @@ class SourceAddressPolicyTest {
         assertThat(SourceJdbcErrors.classify(new SQLException("x", "08001", new ConnectException()), false)).isEqualTo(ErrorCode.SOURCE_CONNECT_FAILED);
         assertThat(SourceJdbcErrors.classify(new SQLException("x", "08001", new SSLHandshakeException("bad cert")), false)).isEqualTo(ErrorCode.SOURCE_TLS_FAILED);
         assertThat(SourceJdbcErrors.classify(new SQLException("The server does not support SSL.", "08004"), false)).isEqualTo(ErrorCode.SOURCE_TLS_FAILED);
-        assertThat(SourceJdbcErrors.classify(new SQLException("x", "08001", new SourceGuardedSocketFactory.BlockedAddressException()), false))
+        assertThat(SourceJdbcErrors.classify(new SQLException("x", "08001", new PinnedSocket.BlockedConnectionException()), false))
                 .isEqualTo(ErrorCode.SOURCE_HOST_NOT_ALLOWED);
         assertThat(SourceJdbcErrors.classify(new SQLException("x", "22P02"), true)).isEqualTo(ErrorCode.SOURCE_METADATA_FAILED);
         assertThat(SourceJdbcErrors.describe(new SQLException("password=secret", "28P01"))).isEqualTo("SQLException[28P01]").doesNotContain("secret");

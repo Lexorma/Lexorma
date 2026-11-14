@@ -174,7 +174,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 
 | 공통 작업 | 개발 영역 | 우선순위 | 선행 | 현재 상태 |
 |---|---|---|---|---|
-| SEC-1 | 외부 연결 접근 정책 및 관리자 허용 목록 관리 (원본 DB·AI Endpoint) | P1 — AI-3 착수 전 완료 권장 | 0, 2 (AI-2b 의 기존 주소 정책) | **미구현 (등록만, 2026-11-13)**. 원본 DB 의 환경 설정 기반 주소 검증은 AI-2b 에 구현됨 — [상세](#sec-1-외부-연결-접근-정책-및-관리자-허용-목록-관리) |
+| SEC-1 | 외부 연결 접근 정책 및 관리자 허용 목록 관리 (원본 DB·AI Endpoint) | P1 — AI-3 착수 전 완료 권장 | 0, 2 (AI-2b 의 기존 주소 정책) | **구현 (2026-11-14)** — 관리자 허용 규칙(기본 차단, JDBC·AI_HTTP), 실제 연결 고정(DNS 재바인딩), 연결·정책 감사, AI HTTP 어댑터 ([기록](external-connection-security-sec1.md)). AI-3 은 이 어댑터로만 HTTP 를 연다 — [상세](#sec-1-외부-연결-접근-정책-및-관리자-허용-목록-관리) |
 
 ```text
 0 ─┬─▶ 1 ─┬─▶ 2
@@ -205,7 +205,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 - **현재 구현 상태:** **결정 완료 (2026-11-12).** 결정 내용은 아래 "결정 (AI-0)" 과 [9장](#9-미확정-사항-종합). 결정을 코드로 옮긴 것이 AI-1a 다 ([1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리)).
 - **결정 (AI-0, 2026-11-12):**
   - **U-01 모듈 배치:** 처음 결정 : 새 Gradle 모듈 없이 `lexorma-data` 의 기능 패키지. **2026-11-12 AI-1b 보완에서 바꿨다** — 원본 DB 연결·수집·원본 카탈로그·내부 수집 도구는 새 모듈 **`lexorma-source`** 에 둔다 (`common ← core ← (system, operation, data, source) ← app`, data ↔ source 직접 의존 금지). 이유 : DBMS 별 JDBC 드라이버·수집·적재·스냅샷이 쌓이면 데이터 표준화·모델링과 외부 시스템 연동의 책임이 한 모듈에 섞인다. 도메인과 무관한 공통 부품(비밀값 암호화, 민감정보 마스킹·로그 본문 정책, 실행 컨텍스트, 프로젝트 권한 판정, 프로젝트 삭제 이벤트)은 `lexorma-core`. AI 기능(Provider·Tool Calling·데이터 사전 제안·품질 검사)을 어느 모듈에 둘지는 AI-3 에서 실제 의존성을 보고 정한다.
-  - **U-02 비밀값 암호화:** 환경변수 키 + AES-256-GCM (JDK 표준 기능, 의존성 추가 없음). `LEXORMA_SECRET_KEYS=키ID:Base64(32바이트)[,…]`, `LEXORMA_SECRET_ACTIVE_KEY_ID`(없으면 맨 앞). 암호문 `v1:<키ID>:<Base64(IV 12 + 암호문 + 태그 16)>`, 용도·프로젝트·소유 객체·필드를 AAD 로 묶는다. 키가 없으면 기동은 되고 쓰는 시점에 실패(`SECRET_KEY_NOT_CONFIGURED`), 키 설정이 틀리면 기동을 멈춘다. **키 분실:** 그 키로 만든 비밀값은 복구할 수 없다 → `SECRET_KEY_NOT_FOUND`, 비밀값만 다시 등록한다(연결·카탈로그는 유지). **키 교체:** 새 키를 추가해 활성으로 두고 옛 키를 남긴 채 다시 암호화(`SecretCipher.reencrypt`)한 뒤 옛 키를 뺀다 — 다시 암호화를 돌리는 관리 기능은 비밀값을 저장하는 테이블이 생기는 단계(AI-1b·AI-3)에서 만든다. 외부 Secret Store 는 쓰지 않는다.
+  - **U-02 비밀값 암호화:** 환경변수 키 + AES-256-GCM (JDK 표준 기능, 의존성 추가 없음). `LEXORMA_SECRET_KEYS=키ID:Base64(32바이트)[,…]`, `LEXORMA_SECRET_ACTIVE_KEY_ID`(없으면 맨 앞). 암호문 `v1:<키ID>:<Base64(IV 12 + 암호문 + 태그 16)>`, 용도·프로젝트·소유 객체·필드를 AAD 로 묶는다. 키가 없으면 기동은 되고 쓰는 시점에 실패(`SECRET_KEY_NOT_CONFIGURED`), 키 설정이 틀리면 기동을 멈춘다. 로컬 개발 프로필(`local`·`h2-local`)에만 개발 전용 고정 키가 있다 (운영 사용 금지). 자기 키는 환경변수, Docker Compose 는 `docker/lexorma/.env` 의 `LEXORMA_SECRET_KEYS`(비우면 키 없이 기동, 값이 있으면 Docker Secret + `optional:configtree:` 로 전달) 로 준다 (2026-11-14 : 잠시 필수화했다가 원복). **키 분실:** 그 키로 만든 비밀값은 복구할 수 없다 → `SECRET_KEY_NOT_FOUND`, 비밀값만 다시 등록한다(연결·카탈로그는 유지). **키 교체:** 새 키를 추가해 활성으로 두고 옛 키를 남긴 채 다시 암호화(`SecretCipher.reencrypt`)한 뒤 옛 키를 뺀다 — 다시 암호화를 돌리는 관리 기능은 비밀값을 저장하는 테이블이 생기는 단계(AI-1b·AI-3)에서 만든다. 외부 Secret Store 는 쓰지 않는다.
   - **U-04 설정 범위 (혼합):** 전역 AI Provider·Endpoint·사용 가능한 모델 = 시스템 **ADMIN**. 프로젝트의 AI 사용 여부·기본 모델·외부 DB 연결 = **그 프로젝트의 관리자(프로젝트의 관리자 계정) 또는 ADMIN** — 단 그 프로젝트에 접근할 수 있는(활성 프로젝트의 승인된 멤버) 경우에만 (`ProjectAuthority.Access#canManage`). 외부 DB 연결·수집 대상·실행 이력·AI 제안과 승인 결과는 프로젝트 소유 데이터다. **프로젝트별 역할 체계는 새로 만들지 않는다** (역할은 계정 단위 전역, 프로젝트 관리자는 한 명). 프로젝트별 AI 설정은 `TB_PRJ` 의 컬럼이 아니라 `lexorma-data` 의 별도 테이블로 둔다.
   - **U-07 MCP :** 처음에는 사용자가 운영하는 외부 MCP 서버(HTTP)로 수집한다고 정했으나 **2026-11-12 AI-1b 보완에서 바꿨다 — MCP 는 필수가 아닌 후속 선택 기능이다.** 수집은 Lexorma 내부 JDBC 도구로 한다(원칙 1·11·12). 바꾼 이유 : SI·공공·폐쇄망에서 수집을 위해 별도 MCP 서버를 설치·운영하게 하는 부담, 단일 JAR 배포와의 불일치. MCP 가 필요해지면 JDBC 를 대체하지 않는 선택 Connector 로 더하고, 그 전에는 MCP 전용 테이블·서버 설정·클라이언트를 만들지 않는다.
   - **감사·마스킹:** 인증 정보·원본 DB 연결·AI API 는 요청·응답 본문을 요청 로그에 남기지 않는다(호출 기록은 남긴다). 프롬프트·응답 본문을 따로 저장할지는 5단계(U-14)에서 정한다. 그 밖의 API 는 비밀 필드(password·passwd·pwd·token·secret·apiKey·authorization·credential·accessKey·secretKey·privateKey·connectionString)와 값 안의 비밀(JDBC URL·URI 의 인증 정보, Bearer·Basic 값)을 가린다.
@@ -353,7 +353,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 - **설계 시 고려사항:**
   - **구현 방식 결정 (U-10):** Spring `RestClient` 직접 구현 vs Spring AI. 비교 기준: Tool Calling 요구(4단계), 구조화 응답 검증, 의존성 크기, **Spring Boot 4.1 / Spring Framework 7 지원 여부**(Spring AI 버전 호환성은 도입 시점에 확인), 테스트 용이성. 결정 전에는 의존성을 추가하지 않는다.
   - URL 은 **Lexorma 백엔드 기준으로 접근 가능한 주소**여야 한다. Docker 컨테이너 안의 `localhost` 는 호스트의 Ollama 가 아니다 → 화면 안내·연결 테스트 메시지에 반영.
-  - **SSRF:** 사용자가 등록한 Endpoint 로 서버가 요청을 보내므로 등록 권한을 관리자(또는 지정 역할)로 제한하고, 스킴·포트·대상 범위 정책을 둔다. 사내 Private Endpoint 를 무조건 막는 것이 아니라 관리자 승인·허용 범위로 통제한다. **대상 범위 검증은 SEC-1 의 공통 접근 정책(적용 대상 `AI_ENDPOINT`, 실제 연결 주소 확인)을 쓰고 3단계에서 따로 만들지 않는다.**
+  - **SSRF:** 사용자가 등록한 Endpoint 로 서버가 요청을 보내므로 등록 권한을 관리자(또는 지정 역할)로 제한하고, 스킴·포트·대상 범위 정책을 둔다. 사내 Private Endpoint 를 무조건 막는 것이 아니라 관리자 승인·허용 범위로 통제한다. **대상 범위 검증은 SEC-1 의 공통 접근 정책(연결 유형 `AI_HTTP`, 실제 연결 주소 고정 — `ExternalHttpClients`)을 쓰고 3단계에서 따로 만들지 않는다.**
   - Ollama 가 없거나 꺼져 있어도 다른 기능은 영향이 없어야 한다(지연 연결, 기능 단위 비활성 표시).
   - **폐쇄망 운영:** Lexorma 는 인터넷(외부 API, 모델 다운로드)을 호출하지 않는다. 사내 Ollama 주소 등록, 설치·운영 요구사항(모델 크기, CPU/GPU·메모리, Tool Calling 지원 모델 목록)을 운영 문서로 정리한다.
   - **운영 지표(최소):** 호출 계층에서 요청 수, 모델별 응답 시간, 오류·타임아웃, Tool Calling 실패율을 기록할 수 있게 측정 지점을 둔다. 대시보드 구현은 범위 밖이며 지표 목록만 먼저 정의한다(U-22).
@@ -534,7 +534,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 - **목적 및 배경:** 사내 게이트웨이나 다른 추론 서버를 선택적으로 연결한다. Lexorma 는 InfraMesh 에 종속되지 않는다.
 - **현재 구현 상태:** 미구현.
 - **작업 범위:** 3단계 Provider 계약에 OpenAI 호환 어댑터 추가(vLLM·InfraMesh 는 OpenAI 호환 경로로 연결 검토), Provider 별 Tool Calling 지원 차이 처리, 외부 API 사용 시 전송 데이터 고지.
-- **설계 시 고려사항:** 외부(인터넷) Provider 를 쓰면 메타데이터가 외부로 나간다 → 프로젝트별 허용 여부·관리자 승인. DB 자격 증명·원본 DB 조회 권한은 어떤 Provider 에도 전달하지 않는다. 추가 Provider 의 Endpoint 도 SEC-1 의 같은 접근 정책(`AI_ENDPOINT`)을 거친다.
+- **설계 시 고려사항:** 외부(인터넷) Provider 를 쓰면 메타데이터가 외부로 나간다 → 프로젝트별 허용 여부·관리자 승인. DB 자격 증명·원본 DB 조회 권한은 어떤 Provider 에도 전달하지 않는다. 추가 Provider 의 Endpoint 도 SEC-1 의 같은 접근 정책(`AI_HTTP`, `ExternalHttpClients`)을 거친다.
 - **선행 작업 및 의존성:** 3단계, SEC-1.
 - **완료 조건:** Provider 를 바꿔도 4~10단계 기능이 같은 계약으로 동작하고, Ollama 단독 운영(오프라인)도 계속 가능하다.
 - **테스트 및 검증 시나리오:** Provider 별 가짜 서버로 동일 시나리오 실행, 외부 Provider 비허용 프로젝트에서 호출 차단.
@@ -571,6 +571,8 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### SEC-1. 외부 연결 접근 정책 및 관리자 허용 목록 관리
 
 공통 보안 작업이다 (단계 번호 체계 밖, 2026-11-13 등록). AI-2b 원본 DB 연결, 3단계 Ollama Endpoint, 11단계 추가 Provider 에 함께 적용한다.
+
+> **구현 (2026-11-14, [기록](external-connection-security-sec1.md))** : 시스템 관리자(ADMIN)의 허용 규칙(`TB_EXTRL_CNTN_RULE`, 연결 유형 `JDBC`·`AI_HTTP` — 아래 작업 범위의 `DATABASE`·`AI_ENDPOINT` 를 이 이름으로 정했다, 호스트(선택)·CIDR·포트)으로 **기본 차단**, 한 규칙이 모든 조건을 만족해야 허용. 절대 차단(링크 로컬·메타데이터·IPv4 를 품은 IPv6 등)은 규칙으로도 열리지 않는다. 판정 때 푼 주소에 실제 소켓을 고정한다(`PinnedSocket`, 프록시 없음 — JDBC·HTTP 공통). 연결 시도 감사(`TB_EXTRL_CNTN_HSTRY`)와 정책 변경 이력(`TB_EXTRL_CNTN_RULE_HSTRY`), 관리자 화면(시스템 관리 › 외부 연결 보안). 환경 설정(`LEXORMA_SOURCE_ALLOWED_HOSTS`·`_NETWORKS`)은 설정했을 때만 원본 DB 연결의 운영자 상한(AND)이다 — 비면 상한 없음 (이전에는 비면 사설·루프백 차단). 기존 연결용 규칙은 자동으로 만들지 않는다 (화면이 규칙 없는 등록 연결을 알려 준다). **AI-3 은 `ExternalHttpClients` 가 주는 요청 팩토리로 Spring RestClient 를 만든다 — 별도 HTTP 클라이언트를 만들지 않는다.** 아래는 등록 당시(2026-11-13)의 기록이다.
 
 - **목적 및 배경:** Lexorma 관리자가 원본 DB 와 AI Endpoint 에 대해 허용할 네트워크 대상을 통제한다. 기존 연결 보안 검증을 하나의 일관된 정책으로 관리한다.
 - **현재 구현 상태 — 구현된 것 (AI-2b, [기록 3.1](source-postgresql-collection-ai2b.md#31-접속-대상-lexormasourceallowed-networks))**

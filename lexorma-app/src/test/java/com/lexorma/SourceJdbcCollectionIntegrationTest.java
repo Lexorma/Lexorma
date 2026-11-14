@@ -347,7 +347,7 @@ class SourceJdbcCollectionIntegrationTest extends SourceJdbcTestSupport {
     }
 
     @Test
-    @DisplayName("접속 대상 정책 : 링크 로컬(메타데이터)·허용하지 않은 사설 주소는 접속하지 않는다. 드라이버의 실제 소켓도 같은 정책이다 (미리 확인을 건너뛰어도 막힌다)")
+    @DisplayName("접속 대상 정책 (SEC-1) : 링크 로컬(메타데이터)·규칙 없는 사설 주소는 접속하지 않는다. 드라이버의 실제 소켓도 판정 결과에 고정된다 (판정이 없거나 DNS 가 다른 주소를 주면 막힌다)")
     void addressPolicy() throws Exception {
         Env e = env(null);
         for (String host : List.of("169.254.169.254", "10.255.255.1", "0.0.0.0")) {
@@ -355,14 +355,22 @@ class SourceJdbcCollectionIntegrationTest extends SourceJdbcTestSupport {
             assertThat(connectionApi.testDraft(e.managerDto(), null, request).getBody()).as(host).extracting(SourceConnectionDto.TestResult::connected,
                     SourceConnectionDto.TestResult::errorCode).containsExactly(false, "SOURCE_HOST_NOT_ALLOWED");
         }
-        // 드라이버가 실제로 쓰는 소켓 : 허용 대역 없이 루프백으로 직접 접속하면 소켓이 막는다 (DNS 가 바뀌어 사전 확인과 다른 주소가 되어도 같다)
+        // 드라이버가 실제로 쓰는 소켓 : 판정 결과 없이 직접 접속하면 소켓이 막는다
         java.net.URI uri = java.net.URI.create(ADMIN_URL.substring("jdbc:".length()));
-        Properties properties = SourceJdbcSettings.connectionProperties(DbType.POSTGRESQL, USER, PASSWORD, 5, 5, "");
+        String url = "jdbc:postgresql://" + uri.getHost() + ":" + uri.getPort() + "/postgres";
+        Properties properties = SourceJdbcSettings.connectionProperties(DbType.POSTGRESQL, USER, PASSWORD, 5, 5, null);
         assertThat(properties.getProperty("socketFactory")).isEqualTo(SourceGuardedSocketFactory.class.getName());
-        assertThatThrownBy(() -> java.sql.DriverManager.getConnection("jdbc:postgresql://localhost:" + uri.getPort() + "/postgres", properties))
-                .isInstanceOf(SQLException.class).hasRootCauseInstanceOf(SourceGuardedSocketFactory.BlockedAddressException.class);
-        properties.setProperty(SourceGuardedSocketFactory.ALLOWED_NETWORKS, "127.0.0.0/8,::1/128");
-        try (Connection connection = java.sql.DriverManager.getConnection("jdbc:postgresql://localhost:" + uri.getPort() + "/postgres", properties)) {
+        assertThatThrownBy(() -> java.sql.DriverManager.getConnection(url, properties))
+                .isInstanceOf(SQLException.class).hasRootCauseInstanceOf(com.lexorma.core.network.PinnedSocket.BlockedConnectionException.class);
+        java.net.InetAddress address = java.net.InetAddress.getByName(uri.getHost());
+        // 판정 뒤 DNS 가 다른 주소를 준 상황 : 판정한 주소(127.0.0.2)가 아니면 연결하지 않는다
+        Properties rebound = SourceJdbcSettings.connectionProperties(DbType.POSTGRESQL, USER, PASSWORD, 5, 5, new com.lexorma.core.network.ConnectionPin(
+                uri.getHost(), uri.getPort(), List.of(java.net.InetAddress.getByName("127.0.0.2")), com.lexorma.core.network.NetworkAddresses.Cidr.parse("127.0.0.0/8"), List.of()));
+        assertThatThrownBy(() -> java.sql.DriverManager.getConnection(url, rebound))
+                .isInstanceOf(SQLException.class).hasRootCauseInstanceOf(com.lexorma.core.network.PinnedSocket.BlockedConnectionException.class);
+        Properties pinned = SourceJdbcSettings.connectionProperties(DbType.POSTGRESQL, USER, PASSWORD, 5, 5, new com.lexorma.core.network.ConnectionPin(
+                uri.getHost(), uri.getPort(), List.of(address), com.lexorma.core.network.NetworkAddresses.Cidr.parse(address.getHostAddress() + "/32"), List.of()));
+        try (Connection connection = java.sql.DriverManager.getConnection(url, pinned)) {
             assertThat(connection.isValid(2)).isTrue();
         }
     }

@@ -165,6 +165,38 @@ final class EnglishMessages {
         add("{0} : 최대 길이가 없어 {1} 로 생성했습니다.", "{0}: generated as {1} because no max length is set.");
         add("길이 없는 VARCHAR", "VARCHAR without a length");
 
+        // ---------------------------------------------------------------- 외부 연결 보안 (SEC-1)
+        add("http 또는 https 주소만 연결할 수 있습니다.", "Only http or https addresses can be connected.");
+        add("같은 연결 유형·호스트·대역·포트의 규칙이 이미 있습니다.", "A rule with the same connection type, host, range and port already exists.");
+        add("관리자가 허용한 규칙이 없습니다", "No rule allowed by an administrator");
+        add("너무 넓은 대역입니다. IPv4 는 /8, IPv6 는 /16 보다 좁게 정해주세요.", "The range is too wide. Use a prefix of at least /8 for IPv4 and /16 for IPv6.");
+        add("설명은 1000자까지 입력할 수 있습니다.", "The description can be up to 1000 characters.");
+        add("숫자 주소 호스트는 허용 대역 안이어야 합니다.", "A numeric host address must be inside the allowed range.");
+        add("연결 시점의 목적지가 확인한 주소와 다릅니다", "The destination at connection time differs from the verified address");
+        add("연결 유형은 JDBC 또는 AI_HTTP 입니다.", "The connection type must be JDBC or AI_HTTP.");
+        add("연결하지 못했습니다", "Could not connect");
+        add("요청이 비어 있습니다.", "The request is empty.");
+        add("운영자가 정한 범위 밖의 사설·루프백 주소입니다", "A private or loopback address outside the range set by the operator");
+        add("호스트가 여러 주소로 해석되었지만 그 주소를 모두 담는 허용 규칙이 없습니다. localhost 처럼 IPv4·IPv6 로 함께 해석되는 이름이면 127.0.0.1 또는 ::1 같은 명시적인 IP 주소를 사용하세요.", "The host resolved to several addresses, but no allow rule covers all of them. For names that resolve to both IPv4 and IPv6, such as localhost, use an explicit IP address such as 127.0.0.1 or ::1.");
+        add("호스트가 IPv4와 IPv6 주소로 동시에 해석되어 현재 허용 규칙과 일치하지 않습니다. localhost 대신 127.0.0.1 또는 ::1과 같은 명시적인 IP 주소를 사용하세요.", "The host resolved to both IPv4 and IPv6 addresses, so it does not match the current allow rules. Use an explicit IP address such as 127.0.0.1 or ::1 instead of localhost.");
+        add("정책을 확인하지 못했습니다", "The policy could not be checked");
+        add("주소에 계정 정보를 넣을 수 없습니다.", "The address cannot contain account information.");
+        add("주소에 호스트가 없습니다.", "The address has no host.");
+        add("클라우드 메타데이터 이름은 항상 차단됩니다", "Cloud metadata host names are always blocked");
+        add("클라우드 메타데이터 이름은 허용할 수 없습니다.", "Cloud metadata host names cannot be allowed.");
+        add("포트는 1~65535 사이로 입력해주세요.", "Enter a port between 1 and 65535.");
+        add("항상 차단되는 대역(링크 로컬·클라우드 메타데이터·멀티캐스트·미지정 등)은 허용할 수 없습니다.", "Ranges that are always blocked (link-local, cloud metadata, multicast, unspecified and so on) cannot be allowed.");
+        add("항상 차단되는 주소는 허용할 수 없습니다.", "Addresses that are always blocked cannot be allowed.");
+        add("항상 차단되는 주소입니다 (링크 로컬·메타데이터·멀티캐스트·미지정 등)", "An address that is always blocked (link-local, metadata, multicast, unspecified and so on)");
+        add("허용 대역 밖의 주소입니다", "The address is outside the allowed range");
+        add("허용 대역(CIDR)을 입력해주세요.", "Enter the allowed range (CIDR).");
+        add("허용 대역은 10.10.0.0/16 · 127.0.0.1/32 · fd12::/48 처럼 숫자 주소와 접두 길이로 입력해주세요.", "Enter the allowed range as a numeric address and prefix length, such as 10.10.0.0/16, 127.0.0.1/32 or fd12::/48.");
+        add("허용하지 않은 포트입니다", "The port is not allowed");
+        add("허용하지 않은 호스트입니다", "The host is not allowed");
+        add("호스트 또는 포트 형식이 올바르지 않습니다", "The host or port format is not valid");
+        add("호스트 이름을 풀지 못했습니다", "The host name could not be resolved");
+        add("호스트는 호스트명 또는 숫자 주소로 입력해주세요. 와일드카드는 쓸 수 없습니다.", "Enter the host as a host name or a numeric address. Wildcards cannot be used.");
+
         // ---------------------------------------------------------------- 공지사항
         // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");

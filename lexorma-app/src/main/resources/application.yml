@@ -49,12 +49,16 @@ spring:
 # 키는 이 파일에 적지 않고 환경변수로 준다. 없으면 그 기능만 쓸 수 없고 애플리케이션은 그대로 뜬다.
 #   LEXORMA_SECRET_KEYS=k1:<Base64 32바이트>[,k2:...]      (예: k1:$(openssl rand -base64 32))
 #   LEXORMA_SECRET_ACTIVE_KEY_ID=k1                        (새로 암호화할 때 쓰는 키. 없으면 맨 앞의 키)
+# local · h2-local 프로필에는 개발 전용 고정 키가 있다 (application-local.yml · application-h2-local.yml, 운영에 쓰지 않는다).
+# Docker Compose 는 docker/lexorma/.env 의 LEXORMA_SECRET_KEYS (Docker Secret 으로 전달)
 
-# 원본 DB 연결 (lexorma-source) : 연결을 등록하고 내부 도구가 접속할 수 있는 호스트 범위 (운영자 정책 - SourceHostPolicy)
-# 비우면 제한하지 않는다. 예: LEXORMA_SOURCE_ALLOWED_HOSTS=db1.internal,*.db.internal,10.20.30.40
+# 외부 연결 (SEC-1) : 원본 DB(JDBC)·AI HTTP 연결은 시스템 관리자의 허용 규칙(화면 : 시스템 관리 › 외부 연결 보안)이 있어야 열린다 (기본 차단).
+# 링크 로컬·클라우드 메타데이터·멀티캐스트·미지정 등은 규칙으로도 열리지 않는다. 아래 두 값은 원본 DB 연결의 운영자 상한이다 (설정했을 때만 규칙에 더해 적용, 비면 상한 없음).
+# 원본 DB 호스트 이름 범위 (SourceHostPolicy). 예: LEXORMA_SOURCE_ALLOWED_HOSTS=db1.internal,*.db.internal,10.20.30.40
 #   lexorma.source.allowed-hosts=
-# 접속할 수 있는 사설·루프백 주소 대역 (CIDR, 쉼표). 비우면 사설·루프백으로는 접속하지 않는다. 링크 로컬·클라우드 메타데이터·멀티캐스트는 항상 막는다
+# 사설·루프백 주소의 상한 (CIDR, 쉼표). 설정하면 사설·루프백 주소는 관리자 규칙과 이 대역 둘 다에 맞아야 한다
 #   LEXORMA_SOURCE_ALLOWED_NETWORKS=10.20.0.0/16,192.168.1.10
+# 외부 HTTP 연결 시간 (AI HTTP) : lexorma.external.http.connect-timeout-seconds=10 / response-timeout-seconds=120
 # 수집 실행 제한 (기본값) : 접속 10초, 조회 30초, 수집 전체 10분, 작업 스레드 2·대기열 10, 연결 테스트 계정당 1분 10번 — docs/source-postgresql-collection-ai2b.md 10장
 #   lexorma.source.jdbc.connect-timeout-seconds=10 / query-timeout-seconds=30, lexorma.source.collection.timeout=PT10M / workers=2 / queue-capacity=10
 

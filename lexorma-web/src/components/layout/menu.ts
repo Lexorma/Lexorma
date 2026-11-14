@@ -35,6 +35,7 @@ export const MENU: MenuEntry[] = [
       { id: 'user-manage', label: t('사용자 관리'), path: '/userManage' },
       { id: 'project-manage', label: t('프로젝트 관리'), path: '/projectManage' },
       { id: 'system-log', label: t('시스템 로그'), path: '/systemLog' },
+      { id: 'connection-security', label: t('외부 연결 보안'), path: '/connectionSecurity' },
     ],
   },
   {

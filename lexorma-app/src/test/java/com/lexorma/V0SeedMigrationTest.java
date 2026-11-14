@@ -29,13 +29,13 @@ class V0SeedMigrationTest {
         try {
             // V0 (스키마·COMMENT : 예전 V2~V6 의 스키마 변경 포함) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑,
             // 예전 V2~V6 의 예제 — 원본 인덱스 표현식, M-14 인덱스 출처·고급 인덱스, Lexorma 자체 인덱스, M-15 VIEW 모델). 2026-11-13 에 V0·V1 로 합쳤다
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             var jdbc = new JdbcTemplate(dataSource);
-            // V0·V2·V3 의 create index 102개(컬럼 145개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
+            // V0·V2·V3·V4 의 create index 106개(컬럼 151개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.
             String idx = "\"" + schema + "\".TB_TBL_IDX";
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(102);
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(145);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(106);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(151);
             assertThat(jdbc.queryForObject("select count(*) from INFORMATION_SCHEMA.TABLES where upper(TABLE_NAME) = 'TMP_IDX_SEED'", Integer.class)).isZero();
             // 초기 데이터에 예전 프로젝트 이름이 없다
             assertThat(oldNames(jdbc, "\"" + schema + "\".")).isZero();

@@ -7,6 +7,12 @@ import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.execution.ExecutionContextVerifier;
 import com.lexorma.core.execution.ExecutionType;
 import com.lexorma.core.execution.VerifiedExecution;
+import com.lexorma.core.network.ConnectionDecision;
+import com.lexorma.core.network.ConnectionType;
+import com.lexorma.core.network.PinnedSocket;
+import com.lexorma.core.network.domain.dto.ExternalConnectionDto.Reason;
+import com.lexorma.core.network.domain.dto.ExternalConnectionDto.Result;
+import com.lexorma.core.network.service.ExternalConnectionGuard;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.source.connection.domain.entity.SourceConnection;
 import com.lexorma.source.connection.jdbc.SourceAddressPolicy;
@@ -14,6 +20,7 @@ import com.lexorma.source.connection.jdbc.SourceHostPolicy;
 import com.lexorma.source.connection.jdbc.SourceJdbcSettings;
 import com.lexorma.source.connection.repository.SourceConnectionRepository;
 import com.lexorma.source.connection.service.SourceConnectionService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -31,18 +38,20 @@ import java.util.function.Supplier;
  *   <li><b>실행 컨텍스트 재검증</b> (DB) — 프로젝트가 있고 활성인지, 요청자가 지금도 그 프로젝트의 관리자 또는 ADMIN 인지.
  *       세션 없이 도는 비동기 작업도 같다. 정기 배치(요청자 없음)는 프로젝트 상태만 본다</li>
  *   <li><b>연결</b> — 컨텍스트의 프로젝트에 속한 연결만 찾는다 (다른 프로젝트의 연결은 ID 를 알아도 없다). 사용 중지된 연결로는 실행하지 않는다</li>
- *   <li><b>접속 범위</b> — 운영자가 정한 호스트 범위를 실행 시점에 다시 본다 (등록한 뒤 정책이 바뀌었을 수 있다)</li>
+ *   <li><b>접속 범위</b> — 운영자가 정한 호스트 범위(상한)를 실행 시점에 다시 본다 (등록한 뒤 정책이 바뀌었을 수 있다)</li>
  *   <li><b>도구</b> — 이름과 DBMS 로 등록된 도구를 찾는다. 없으면(미지원 DBMS 포함) 실행하지 않는다</li>
  * </ol>
  * 그 뒤에 접속 정보를 담은 {@link SourceToolContext} 를 만들어 도구에 넘긴다. JDBC URL 은 저장된 항목으로 여기서 만든다.
  * <p>
  * <b>원본 DB 접속 (AI-2b)</b> : {@link #session} 하나가 JDBC 연결 하나다 (Lexorma 의 DataSource·JPA·트랜잭션과 무관, 풀 없음). 도구가 처음 조회할 때
- * 드라이버(DBMS 마다 정해진 것)로 직접 연다 — 접속 직전에 이름이 풀리는 주소를 {@link SourceAddressPolicy} 로 보고, 실제 소켓도 연결하는 주소를 다시 본다.
+ * 드라이버(DBMS 마다 정해진 것)로 직접 연다 — 접속 직전에 외부 연결 정책(SEC-1 : 관리자 JDBC 허용 규칙, 기본 차단 + 운영자 상한 {@link SourceAddressPolicy})으로 판정해
+ * 연결 시도를 남기고, 실제 소켓을 판정한 주소·규칙에 고정한다 (DNS 재바인딩 방어). 결과(연결됨·실패·연결 시점 차단)도 남긴다.
  * 연결은 읽기 전용·REPEATABLE READ 이고 세션이 끝나면 되돌리고 닫는다.
  * <p>
  * LLM 이 필요 없다 : 사용자의 최신화 요청, 비동기 작업, 정기 배치가 이 실행기를 직접 부른다.
  * AI 의 Tool Calling 이 이 실행기를 부르게 하지 않는다 — 원본 DB 에 접속하는 도구는 AI 에 공개하지 않는다.
  */
+@Slf4j
 @Service
 public class SourceToolExecutor {
 
@@ -52,11 +61,12 @@ public class SourceToolExecutor {
     private final SecretCipher secretCipher;
     private final SourceHostPolicy hostPolicy;
     private final SourceAddressPolicy addressPolicy;
+    private final ExternalConnectionGuard guard;
     private final int connectTimeoutSeconds;
     private final int queryTimeoutSeconds;
 
     public SourceToolExecutor(SourceToolRegistry registry, ExecutionContextVerifier verifier, SourceConnectionRepository connectionRepository, SecretCipher secretCipher,
-                              SourceHostPolicy hostPolicy, SourceAddressPolicy addressPolicy,
+                              SourceHostPolicy hostPolicy, SourceAddressPolicy addressPolicy, ExternalConnectionGuard guard,
                               @Value("${lexorma.source.jdbc.connect-timeout-seconds:" + SourceToolContext.CONNECT_TIMEOUT_SECONDS + "}") int connectTimeoutSeconds,
                               @Value("${lexorma.source.jdbc.query-timeout-seconds:" + SourceToolContext.QUERY_TIMEOUT_SECONDS + "}") int queryTimeoutSeconds) {
         this.registry = registry;
@@ -65,6 +75,7 @@ public class SourceToolExecutor {
         this.secretCipher = secretCipher;
         this.hostPolicy = hostPolicy;
         this.addressPolicy = addressPolicy;
+        this.guard = guard;
         this.connectTimeoutSeconds = connectTimeoutSeconds;
         this.queryTimeoutSeconds = queryTimeoutSeconds;
     }
@@ -112,7 +123,7 @@ public class SourceToolExecutor {
         DbType dbType = connection.getDbType();
         Map<String, String> options = SourceConnectionService.options(connection);
         String url = SourceJdbcSettings.jdbcUrl(dbType, connection.getHost(), connection.getPort(), connection.getDatabaseName(), connection.getDatabaseNameType(), options);
-        SourceToolSession session = new SourceToolSession(registry, dbType, () -> connect(connection, url, password), queryTimeoutSeconds);
+        SourceToolSession session = new SourceToolSession(registry, dbType, () -> connect(execution, connection, url, password), queryTimeoutSeconds);
         session.bind(new SourceToolContext(execution, connection.getId(), dbType, connection.getIdentifierComparison(), SourceJdbcSettings.driverClassName(dbType), url,
                 connection.getUsername(), options, password, session));
         try (session) {
@@ -120,21 +131,36 @@ public class SourceToolExecutor {
         }
     }
 
-    /** 실제 접속 : 드라이버·주소 정책을 확인하고 연결을 읽기 전용·REPEATABLE READ 로 둔다 */
-    private Connection connect(SourceConnection connection, String url, Supplier<String> password) throws SQLException {
+    /**
+     * 실제 접속 : 드라이버를 확인하고, 외부 연결 정책(SEC-1)으로 판정해 시도를 남긴 뒤 판정한 목적지에 고정해 연결한다. 연결은 읽기 전용·REPEATABLE READ 로 둔다.
+     * 차단이면 연결하지 않는다 (SOURCE_HOST_NOT_ALLOWED + 사유). 연결 결과를 기록하지 못하면 연 연결을 닫는다 (기록 없는 연결을 쓰지 않는다).
+     */
+    private Connection connect(VerifiedExecution execution, SourceConnection connection, String url, Supplier<String> password) throws SQLException {
         DbType dbType = connection.getDbType();
         if (dbType != DbType.POSTGRESQL || !SourceJdbcSettings.isDriverAvailable(dbType)) throw new CustomException(ErrorCode.SOURCE_DRIVER_NOT_AVAILABLE);
-        if (!addressPolicy.isAllowed(connection.getHost())) throw new CustomException(ErrorCode.SOURCE_HOST_NOT_ALLOWED);
         Driver driver;
         try {
             driver = (Driver) Class.forName(SourceJdbcSettings.driverClassName(dbType)).getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
             throw new CustomException(ErrorCode.SOURCE_DRIVER_NOT_AVAILABLE);
         }
-        Connection jdbc = driver.connect(url, SourceJdbcSettings.connectionProperties(dbType, connection.getUsername(), password.get(), connectTimeoutSeconds,
-                queryTimeoutSeconds, addressPolicy.allowedNetworks()));
-        if (jdbc == null) throw new CustomException(ErrorCode.SOURCE_DRIVER_NOT_AVAILABLE);
+        ConnectionDecision decision = guard.authorize(ConnectionType.JDBC, connection.getHost(), connection.getPort(), addressPolicy.ceiling(), execution.context());
+        if (!decision.allowed()) throw new CustomException(ErrorCode.SOURCE_HOST_NOT_ALLOWED, "{0}", ExternalConnectionGuard.reasonText(decision));
+        Connection jdbc;
         try {
+            jdbc = driver.connect(url, SourceJdbcSettings.connectionProperties(dbType, connection.getUsername(), password.get(), connectTimeoutSeconds,
+                    queryTimeoutSeconds, decision.pin()));
+        } catch (SQLException | RuntimeException e) {
+            boolean blocked = PinnedSocket.isBlocked(e);
+            failed(decision, blocked ? Result.BLOCKED : Result.FAILED, blocked ? Reason.TARGET_CHANGED : Reason.CONNECT_FAILED);
+            throw e;
+        }
+        if (jdbc == null) {
+            failed(decision, Result.FAILED, Reason.CONNECT_FAILED);
+            throw new CustomException(ErrorCode.SOURCE_DRIVER_NOT_AVAILABLE);
+        }
+        try {
+            guard.finish(decision, Result.CONNECTED, null);
             jdbc.setAutoCommit(false);
             jdbc.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             jdbc.setReadOnly(true);
@@ -142,6 +168,15 @@ public class SourceToolExecutor {
         } catch (SQLException | RuntimeException e) {
             jdbc.close();
             throw e;
+        }
+    }
+
+    /** 실패 결과 기록 : 이미 실패한 연결이라 기록이 안 되면 로그만 남기고 원래 오류를 알린다 */
+    private void failed(ConnectionDecision decision, Result result, Reason reason) {
+        try {
+            guard.finish(decision, result, reason);
+        } catch (RuntimeException e) {
+            log.error("외부 연결 실패 결과를 기록하지 못했습니다 ({})", e.getClass().getSimpleName());
         }
     }
 }

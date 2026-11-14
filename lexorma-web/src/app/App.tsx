@@ -17,6 +17,7 @@ import { HelpPage } from '../features/help/HelpPage';
 import { UserManagePage } from '../features/system/UserManagePage';
 import { ProjectManagePage } from '../features/system/ProjectManagePage';
 import { SystemLogPage } from '../features/system/SystemLogPage';
+import { ConnectionSecurityPage } from '../features/system/ConnectionSecurityPage';
 import { LogicalModelPage } from '../features/logical/LogicalModelPage';
 import { ModelMappingPage } from '../features/mapping/ModelMappingPage';
 import { DictionaryPage, DictionaryRedirect } from '../features/dictionary/DataDictionaryPage';
@@ -104,6 +105,7 @@ export function App() {
                 <Route path="/userManage" element={<RequireMenu menuId="user-manage"><UserManagePage /></RequireMenu>} />
                 <Route path="/projectManage" element={<RequireMenu menuId="project-manage"><ProjectManagePage /></RequireMenu>} />
                 <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
+                <Route path="/connectionSecurity" element={<RequireMenu menuId="connection-security"><ConnectionSecurityPage /></RequireMenu>} />
                 <Route path="/standardDomain" element={<RequireMenu menuId="standard-domain"><DictionaryPage key="standardDomains" table="standardDomains" /></RequireMenu>} />
                 <Route path="/standardWord" element={<RequireMenu menuId="standard-word"><DictionaryPage key="standardWords" table="standardWords" /></RequireMenu>} />
                 <Route path="/standardTerm" element={<RequireMenu menuId="standard-term"><DictionaryPage key="standardTerms" table="standardTerms" /></RequireMenu>} />

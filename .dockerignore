@@ -9,3 +9,6 @@
 **/*.tsbuildinfo
 docker/volume
 data
+# 로컬 비밀 설정 (암호화 키) : 이미지에 넣지 않는다
+**/.env
+**/.env.*

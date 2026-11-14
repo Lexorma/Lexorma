@@ -26,3 +26,11 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+
+# 비밀값 암호화 키 : 로컬 개발 전용 고정 키 (local · h2-local 프로필에만 있다, Git 에 포함).
+# 공개된 키라 실제 운영 데이터·운영 비밀번호에 쓰지 않는다. 다른 프로필(dev · docker · h2-docker)에는 적용되지 않는다.
+# 자기 키를 쓰려면 LEXORMA_SECRET_KEYS (/ LEXORMA_SECRET_ACTIVE_KEY_ID) 환경변수로 덮어쓴다 (환경변수가 이 값보다 우선).
+# 활성 키ID 는 일부러 두지 않는다 (목록의 맨 앞 키) — 환경변수로 키 목록만 바꿔도 그 키가 활성이 된다
+lexorma:
+  secret:
+    keys: "local:bGV4b3JtYS1sb2NhbC1kZXYta2V5LW5vdC1zZWNyZXQ="

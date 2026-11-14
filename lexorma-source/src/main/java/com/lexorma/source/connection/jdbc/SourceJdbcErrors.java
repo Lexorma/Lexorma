@@ -1,6 +1,7 @@
 package com.lexorma.source.connection.jdbc;
 
 import com.lexorma.common.exception.domain.ErrorCode;
+import com.lexorma.core.network.PinnedSocket;
 
 import javax.net.ssl.SSLException;
 import java.net.SocketTimeoutException;
@@ -21,7 +22,7 @@ public final class SourceJdbcErrors {
      * @param connected 접속이 끝난 뒤(조회 중)의 오류인지 : 같은 네트워크 시간 초과라도 접속 중이면 접속 시간 초과, 조회 중이면 조회 시간 초과다
      */
     public static ErrorCode classify(Throwable error, boolean connected) {
-        if (has(error, SourceGuardedSocketFactory.BlockedAddressException.class)) return ErrorCode.SOURCE_HOST_NOT_ALLOWED;
+        if (PinnedSocket.isBlocked(error)) return ErrorCode.SOURCE_HOST_NOT_ALLOWED;
         String state = error instanceof SQLException sql && sql.getSQLState() != null ? sql.getSQLState() : "";
         switch (state) {
             case "28000", "28P01":

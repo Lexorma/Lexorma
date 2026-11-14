@@ -1,19 +1,28 @@
+# Lexorma — PostgreSQL + application (Docker Compose)
+#
+# Every environment-specific value (database account, data directories, ports, encryption key) is read from
+# the .env file next to this file. Create it once before the first start:
+#   cp .env.example .env      # then edit .env
+#   docker compose -p lexorma up -d
+# .env is ignored by Git. Never put real passwords or keys in this file.
+
 services:
   lexorma-postgres:
     image: postgres:18.6
     restart: always
     environment:
-      POSTGRES_PASSWORD: lexorma
-      POSTGRES_DB: lexorma
-      POSTGRES_USER: lexorma
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env (see .env.example)}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
     ports:
-      - 15439:5432
+      - ${POSTGRES_PORT:-15439}:5432
     volumes:
-      - ../volume/lexorma:/var/lib/postgresql
+      # PostgreSQL 18 keeps its data under /var/lib/postgresql
+      - ${POSTGRES_DATA_DIR:?Set POSTGRES_DATA_DIR in .env (see .env.example)}:/var/lib/postgresql
     container_name: lexorma-postgres
-    # 처음 기동(데이터 디렉토리 초기화)이 끝나기 전에 앱이 접속하다 종료되지 않도록 준비된 뒤에 앱을 띄운다
+    # Start the application only after the database has finished its first initialization
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lexorma -d lexorma"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 3s
       timeout: 3s
       retries: 40
@@ -21,21 +30,36 @@ services:
       - lexorma-network
 
   lexorma-app:
-    image: lexorma/lexorma
+    image: ${LEXORMA_IMAGE:-lexorma/lexorma}
     container_name: lexorma-app
     depends_on:
       lexorma-postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://lexorma-postgres:5432/lexorma?charSet=UTF-8&reWriteBatchedInserts=true
-      SPRING_DATASOURCE_USERNAME: lexorma
-      SPRING_DATASOURCE_PASSWORD: lexorma
+      SPRING_DATASOURCE_URL: jdbc:postgresql://lexorma-postgres:5432/${POSTGRES_DB}?charSet=UTF-8&reWriteBatchedInserts=true
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # Optional secret encryption key (needed only to store source database passwords).
+      # The key list comes from the lexorma_secret_keys secret below and is read from /run/secrets/lexorma.secret.keys.
+      # When LEXORMA_SECRET_KEYS is empty no secret file is mounted and Lexorma starts without a key ("optional:").
+      # Do not add LEXORMA_SECRET_KEYS to this environment list: an environment variable would take precedence over the secret.
+      SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+      LEXORMA_SECRET_ACTIVE_KEY_ID: ${LEXORMA_SECRET_ACTIVE_KEY_ID:-}
+    secrets:
+      - source: lexorma_secret_keys
+        target: lexorma.secret.keys
     volumes:
-      - ../volume/h2:/data
+      - ${LEXORMA_DATA_DIR:?Set LEXORMA_DATA_DIR in .env (see .env.example)}:/data
     ports:
-      - 9940:9940
+      - ${LEXORMA_PORT:-9940}:9940
     networks:
       - lexorma-network
+
+# The secret's source is the LEXORMA_SECRET_KEYS variable of the shell or .env that runs docker compose
+# (requires Docker Compose v2.23.1 or later). Leave it empty in .env to run without an encryption key.
+secrets:
+  lexorma_secret_keys:
+    environment: LEXORMA_SECRET_KEYS
 
 networks:
   lexorma-network:

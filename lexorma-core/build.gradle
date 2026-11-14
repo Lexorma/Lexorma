@@ -6,6 +6,8 @@ dependencies {
     api libs.modelmapper
     // HTTP 세션을 DB(SPRING_SESSION)에 저장 : 재시작/컨테이너 재생성 후에도 로그인 유지 (테이블은 Flyway 가 생성)
     api 'org.springframework.boot:spring-boot-starter-session-jdbc'
+    // 외부 HTTP 연결 (SEC-1 : AI Endpoint 등) : 검증한 IP 로만 접속하는 전송 구현. 버전은 Spring Boot BOM 이 정한다. 다른 모듈은 Spring 의 ClientHttpRequestFactory 로만 쓴다
+    implementation 'org.apache.httpcomponents.client5:httpclient5'
 
     // 다른 모듈 테스트에서 공용으로 쓰는 픽스처 (src/testFixtures)
     testFixturesApi 'org.mockito:mockito-core'

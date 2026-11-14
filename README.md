@@ -229,6 +229,7 @@ AI is optional: with no provider registered Lexorma needs no AI settings, no Oll
 1. *System › External connection security*: add an `AI HTTP` rule, for example host `127.0.0.1`, range `127.0.0.1/32`, port `11434`.
 2. *System › AI provider management*: register type Ollama with the address `http://127.0.0.1:11434` (saving does not connect).
 3. *Check*: run the connection test, pick the default model from the server's model list and try a test prompt.
+4. *Set as default*: AI features use the **system default provider** and its default model. Registering a provider does not make it the default; only an enabled provider with a default model can be set. A disabled default stays selected but is not called, and Lexorma never switches to another provider on its own. Clear the default (or set another one) before deleting that provider.
 
 In Docker, `127.0.0.1` is the Lexorma container itself: register the address of the host (for example `host.docker.internal` on Docker Desktop) or of the Ollama container, and allow the range it resolves to. Lexorma does not install Ollama or download models. Responses are returned in one piece (no streaming). Timeouts: `lexorma.ai.test-timeout-seconds` (connection test and model list, default 15), `lexorma.external.http.response-timeout-seconds` (calls, default 120).
 

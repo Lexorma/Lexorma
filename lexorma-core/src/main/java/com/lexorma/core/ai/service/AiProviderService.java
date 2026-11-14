@@ -5,8 +5,10 @@ import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.ai.AiProviderType;
 import com.lexorma.core.ai.domain.dto.AiProviderDto;
 import com.lexorma.core.ai.domain.entity.AiProvider;
+import com.lexorma.core.ai.domain.entity.AiSetting;
 import com.lexorma.core.ai.provider.AiProviderAdapter;
 import com.lexorma.core.ai.repository.AiProviderRepository;
+import com.lexorma.core.ai.repository.AiSettingRepository;
 import com.lexorma.core.network.NetworkAddresses;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +31,12 @@ import java.util.Map;
 public class AiProviderService {
 
     private final AiProviderRepository providers;
+    private final AiSettingRepository settings;
     private final Map<AiProviderType, AiProviderAdapter> adapters = new EnumMap<>(AiProviderType.class);
 
-    public AiProviderService(AiProviderRepository providers, List<AiProviderAdapter> adapters) {
+    public AiProviderService(AiProviderRepository providers, AiSettingRepository settings, List<AiProviderAdapter> adapters) {
         this.providers = providers;
+        this.settings = settings;
         adapters.forEach(adapter -> this.adapters.put(adapter.type(), adapter));
     }
 
@@ -66,14 +70,26 @@ public class AiProviderService {
         return dto(providers.saveAndFlush(provider));
     }
 
+    /**
+     * 삭제. 시스템 기본 Provider 로 지정돼 있으면 {@link ErrorCode#AI_PROVIDER_IN_USE} — 먼저 해제하거나 다른 Provider 를 기본으로 지정한다.
+     * 설정 행을 먼저 배타로 잡는다 (기본 지정과 같은 순서 : 설정 → Provider). FK_AI_STNG_01 이 DB 에서도 막는다
+     */
     @Transactional
     public void delete(Long id) {
-        providers.delete(find(id));
+        AiSetting setting = settings.lockSystem().orElse(null);
+        AiProvider provider = find(id);
+        if (setting != null && provider.getId().equals(setting.getDefaultProviderId())) throw new CustomException(ErrorCode.AI_PROVIDER_IN_USE);
+        providers.delete(provider);
+        providers.flush();
     }
 
     AiProvider find(Long id) {
         if (id == null) throw new CustomException(ErrorCode.AI_PROVIDER_NOT_FOUND);
         return providers.findById(id).orElseThrow(() -> new CustomException(ErrorCode.AI_PROVIDER_NOT_FOUND));
+    }
+
+    boolean supports(AiProviderType type) {
+        return type != null && adapters.containsKey(type);
     }
 
     AiProviderAdapter adapter(AiProviderType type) {

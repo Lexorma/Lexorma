@@ -56,12 +56,14 @@ public class AiProviderClients {
     private static final Pattern STATUS = Pattern.compile("^(\\d{3}) - ");
 
     private final AiProviderService providers;
+    private final AiDefaultProviderService defaults;
     private final ExternalHttpClients http;
     private final int testTimeoutSeconds;
 
-    public AiProviderClients(AiProviderService providers, ExternalHttpClients http,
+    public AiProviderClients(AiProviderService providers, AiDefaultProviderService defaults, ExternalHttpClients http,
                              @Value("${lexorma.ai.test-timeout-seconds:15}") int testTimeoutSeconds) {
         this.providers = providers;
+        this.defaults = defaults;
         this.http = http;
         this.testTimeoutSeconds = testTimeoutSeconds;
     }
@@ -151,6 +153,15 @@ public class AiProviderClients {
      * 모델 호출 : SEC-1 대상은 첫 HTTP 요청 때 연다 ({@link LazyTarget}). 스트리밍처럼 SEC-1 전송으로 보낼 수 없는 요청은 HTTP 요청을 만들지 않으므로
      * 판정·연결 시도 기록(ALLOWED) 자체가 생기지 않는다 — 지원하지 않는 기능이 외부 연결로 기록되지 않는다.
      */
+    /**
+     * 시스템 기본 Provider 로 {@link #call} 한다 (업무 AI 기능의 기본 경로). 모델은 그 Provider 의 기본 모델이다.
+     * 기본 Provider 가 없거나 쓸 수 없으면 {@link AiDefaultProviderService#resolve} 의 오류 — 다른 Provider 로 바꿔 부르지 않는다
+     */
+    public <T> T callDefault(ExecutionContext context, Function<ChatClient, T> work) {
+        AiProviderDto.DefaultTarget target = defaults.resolve();
+        return call(target.providerId(), target.model(), context, work);
+    }
+
     private <T> T run(AiProvider provider, String model, ExecutionContext context, Function<ChatClient, T> work) throws IOException {
         AiProviderAdapter adapter = providers.adapter(provider.getType());
         try (LazyTarget target = new LazyTarget(provider, context)) {

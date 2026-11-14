@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, ListChecks, MessageSquare, Plug, Plus, Stethoscope } from 'lucide-react';
+import { Bot, ListChecks, MessageSquare, Plug, Plus, Star, Stethoscope } from 'lucide-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -23,6 +23,8 @@ interface Provider {
 }
 interface ProviderRequest { name: string; type: ProviderType; baseUrl: string; defaultModel: string | null; enabled: boolean; description: string | null }
 interface TypeInfo { type: ProviderType; defaultBaseUrl: string; modelListSupported: boolean }
+type DefaultStatus = 'READY' | 'NOT_CONFIGURED' | 'DISABLED' | 'MODEL_MISSING' | 'UNSUPPORTED';
+interface DefaultProvider { status: DefaultStatus; provider: Provider | null; updatedBy: string | null; updatedAt: string | null }
 interface CallError { failure: Failure; blockReason: string | null; status: number | null; message: string }
 interface Model { name: string; size: number | null; family: string | null; parameterSize: string | null; quantization: string | null; modifiedAt: string | null }
 interface ConnectionTest { success: boolean; elapsedMillis: number; modelCount: number | null; defaultModelPresent: boolean | null; error: CallError | null }
@@ -60,6 +62,10 @@ export function AiProviderPage() {
   const [toggling, setToggling] = useState<number | null>(null);
   const providers = useQuery({ queryKey: [KEY, 'list'], queryFn: () => api<Provider[]>('/api/ai/providers') });
   const types = useQuery({ queryKey: [KEY, 'types'], queryFn: () => api<TypeInfo[]>('/api/ai/providers/types') });
+  // 시스템 기본 Provider : 업무 AI 기능이 쓸 Provider 하나 (관리자가 명시적으로 정한다, 없어도 된다)
+  const systemDefault = useQuery({ queryKey: [KEY, 'default'], queryFn: () => api<DefaultProvider>('/api/ai/default-provider') });
+  const [defaultBusy, setDefaultBusy] = useState(false);
+  const defaultId = systemDefault.data?.provider?.id ?? null;
 
   const openForm = (provider?: Provider) => {
     dialog.open({
@@ -86,7 +92,23 @@ export function AiProviderPage() {
       setToggling(null);
     }
   };
+  const changeDefault = async (p: Provider | null) => {
+    setDefaultBusy(true);
+    try {
+      await api('/api/ai/default-provider', p ? { method: 'PUT', body: { providerId: p.id } } : { method: 'DELETE' });
+      await reload();
+    } finally {
+      setDefaultBusy(false);
+    }
+  };
+  // 기본으로 지정할 수 없는 이유 (서버도 같은 조건으로 거부한다)
+  const defaultBlocker = (p: Provider) => (!p.enabled ? t('비활성화된 Provider 는 기본으로 지정할 수 없습니다.')
+    : !p.defaultModel ? t('기본 모델이 없는 Provider 는 기본으로 지정할 수 없습니다. Provider 의 기본 모델을 먼저 정하세요.') : null);
   const remove = (p: Provider) => {
+    if (p.id === defaultId) {
+      dialog.alert(t('시스템 기본 AI Provider 로 지정된 Provider 라 삭제할 수 없습니다. 기본 지정을 해제하거나 다른 Provider 를 기본으로 지정한 뒤 삭제하세요.'));
+      return;
+    }
     dialog.confirm(t('{0} Provider 를 삭제하시겠습니까? 다음 AI 호출부터 이 Provider 를 쓸 수 없습니다.', p.name), async () => {
       await api(`/api/ai/providers/${enc(p.id)}`, { method: 'DELETE' });
       await reload();
@@ -107,6 +129,8 @@ export function AiProviderPage() {
         </span>
       </div>
 
+      {systemDefault.data && <DefaultNotice value={systemDefault.data} hasProviders={list.length > 0} />}
+
       <section className="source-card" aria-label={t('AI Provider')}>
         <h3 className="source-title-icon"><Bot size={16} aria-hidden="true" /> {t('AI Provider')}</h3>
         <div className="source-toolbar">
@@ -120,7 +144,7 @@ export function AiProviderPage() {
             <div className="source-table-wrap">
               <table className="source-table">
                 <thead>
-                  <tr><th>{t('이름')}</th><th>{t('유형')}</th><th>{t('AI 서버 주소')}</th><th>{t('기본 모델')}</th><th>{t('상태')}</th><th>{t('수정')}</th><th>{t('작업')}</th></tr>
+                  <tr><th>{t('이름')}</th><th>{t('유형')}</th><th>{t('AI 서버 주소')}</th><th>{t('기본 모델')}</th><th>{t('상태')}</th><th>{t('시스템 기본')}</th><th>{t('수정')}</th><th>{t('작업')}</th></tr>
                 </thead>
                 <tbody>
                   {list.map((p) => (
@@ -133,6 +157,11 @@ export function AiProviderPage() {
                       <td className="gh-mono source-break">{p.baseUrl}</td>
                       <td className="gh-mono source-break">{p.defaultModel ?? <span className="gh-muted">-</span>}</td>
                       <td><Label variant={p.enabled ? 'success' : ''} dot>{p.enabled ? t('활성') : t('비활성')}</Label></td>
+                      <td>
+                        {p.id === defaultId
+                          ? <Label variant={systemDefault.data?.status === 'READY' ? 'accent' : 'attention'}><Star size={12} aria-hidden="true" /> {t('기본')}</Label>
+                          : <span className="gh-muted">-</span>}
+                      </td>
                       <td className="source-sub">
                         <div>{p.updatedBy ?? p.createdBy ?? '-'}</div>
                         <div className="gh-muted">{formatDateTime(p.updatedAt ?? p.createdAt ?? '')}</div>
@@ -140,6 +169,10 @@ export function AiProviderPage() {
                       <td>
                         <div className="source-actions">
                           <button type="button" className="btn btn-sm" onClick={() => openTools(p)}><Stethoscope size={14} aria-hidden="true" /> {t('점검')}</button>
+                          {p.id === defaultId
+                            ? <button type="button" className="btn btn-sm" disabled={defaultBusy} onClick={() => void changeDefault(null)}>{t('기본 해제')}</button>
+                            : <button type="button" className="btn btn-sm" disabled={defaultBusy || defaultBlocker(p) !== null} title={defaultBlocker(p) ?? undefined}
+                              onClick={() => void changeDefault(p)}>{defaultId == null ? t('기본으로 지정') : t('기본으로 변경')}</button>}
                           <button type="button" className="btn btn-sm" disabled={toggling === p.id} onClick={() => void toggle(p)}>{p.enabled ? t('비활성화') : t('활성화')}</button>
                           <button type="button" className="btn btn-sm" onClick={() => openForm(p)}>{t('수정')}</button>
                           <button type="button" className="btn btn-sm btn-danger" onClick={() => remove(p)}>{t('삭제')}</button>
@@ -154,6 +187,29 @@ export function AiProviderPage() {
       </section>
     </>
   );
+}
+
+/** 시스템 기본 Provider 안내 : 쓸 수 없는 상태면 그 이유. 자동으로 다른 Provider 로 바꾸지 않는다 */
+function DefaultNotice({ value, hasProviders }: { value: DefaultProvider; hasProviders: boolean }) {
+  const p = value.provider;
+  if (value.status === 'READY' && p) {
+    return (
+      <p className="form-help" role="status">
+        <Star size={12} aria-hidden="true" /> {t('시스템 기본 AI Provider : {0} · 모델 {1}', p.name, p.defaultModel ?? '-')}
+      </p>
+    );
+  }
+  if (value.status === 'NOT_CONFIGURED') {
+    return hasProviders
+      ? <div className="gh-flash source-flash" role="note">{t('시스템 기본 AI Provider 가 지정되지 않았습니다. 업무 AI 기능을 쓰려면 활성이고 기본 모델이 있는 Provider 하나를 기본으로 지정하세요.')}</div>
+      : null;
+  }
+  const message = value.status === 'DISABLED'
+    ? t('현재 기본 AI Provider({0})가 비활성화되어 있습니다. AI 기능을 사용하려면 Provider 를 활성화하거나 다른 Provider 를 기본으로 지정하세요.', p?.name ?? '-')
+    : value.status === 'MODEL_MISSING'
+      ? t('현재 기본 AI Provider({0})에 기본 모델이 없습니다. AI 기능을 사용하려면 기본 모델을 정하거나 다른 Provider 를 기본으로 지정하세요.', p?.name ?? '-')
+      : t('현재 기본 AI Provider({0})의 유형을 지원하지 않습니다. 다른 Provider 를 기본으로 지정하세요.', p?.name ?? '-');
+  return <div role="alert" className="source-error">{message}</div>;
 }
 
 /** 실패 안내 : 분류 + 서버 문구. SEC-1 차단이면 허용 규칙 화면으로 안내한다 */

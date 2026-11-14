@@ -1,6 +1,7 @@
 # AI-3 — Spring AI 기반 AI Provider 관리 · Ollama 연동
 
 > 상태 : **완료 (2026-11-14, 후속 안정화 포함 — 12장)**. 등록 : [AI 로드맵 3단계](ai-metadata-roadmap.md#3단계-ollama-연결-및-provider-추상화). 마이그레이션 V8 (`V8__ai_provider.sql`).
+> 후속 : **시스템 기본 AI Provider** (V9, 13장).
 > 실제 업무 AI 기능(데이터 사전 생성·품질 점검·관계 추정·Tool Calling·MCP)·스트리밍·OpenAI 호환 Provider 는 구현하지 않았다.
 
 ## 1. 결정 요약
@@ -176,3 +177,26 @@
 | 실제 Ollama (`gemma4:e4b`, 새 jar) | 차단 → 허용 → 연결 테스트 → 모델 목록 → 기본 모델 → 프롬프트 3회 → 없는 모델(영어) 정상, 감사는 시도마다 한 행, 실행 중 JDK HttpClient 스레드 0 |
 
 남은 제약 : 스트리밍 미지원 (5장), 브라우저 화면 미확인 (라이트·다크·모바일은 사용자 확인 필요).
+
+## 13. 시스템 기본 AI Provider (AI-3 후속, V9)
+
+업무 AI 기능(사전 초안·품질 검사·관계 추정·Tool Calling 등)이 쓸 Provider 를 관리자가 **명시적으로 하나** 정한다. 로드맵에 따로 번호를 두지 않고 3단계의 후속으로 기록한다.
+
+| 정책 | 내용 |
+|---|---|
+| 개수 | 최대 1개. 미지정 허용 (Provider 가 없어도, 있어도) |
+| 지정 | ADMIN 이 명시적으로만. 첫 등록·연결 테스트 성공·모델 목록·활성화로 자동 지정하지 않는다. 같은 Provider 재지정은 그대로 성공 |
+| 지정 조건 | 있음 · 활성 · 기본 모델 있음 · 지원하는 유형. **AI 서버 연결·SEC-1 허용 규칙은 보지 않는다** (서버가 꺼져 있어도 지정된다. 연결은 호출 때 확인) |
+| 모델 | 그 Provider 의 기본 모델 (AI-3 설정 그대로, 따로 저장하지 않는다). 바꾸면 다음 요청부터. 지워지면 호출 실패 (`AI_DEFAULT_PROVIDER_MODEL_MISSING`) — 다른 모델을 고르지 않는다 |
+| 비활성화 | 기본 Provider 도 비활성화할 수 있다 (긴급 차단). 지정은 남고 호출만 막힌다 (`AI_PROVIDER_DISABLED`). 다른 Provider 로 바꾸지 않는다. 다시 켜면 재지정 없이 쓴다. 화면은 경고를 보인다 |
+| 삭제 | 기본 Provider 는 지울 수 없다 (`AI_PROVIDER_IN_USE`, DB `FK_AI_STNG_01` 도 막는다). 해제하거나 다른 Provider 를 지정한 뒤 지운다 |
+| 장애 전환 | 하지 않는다 (자동 선택·우선순위·부하 분산 없음) |
+| 반영 | 캐시 없음. 지정·변경·해제가 다음 요청부터 (재시작 불필요) |
+
+- **저장 (`TB_AI_STNG`, V9)** : 시스템 설정 테이블이 없어 AI 설정 전용 단일 행 테이블을 만들었다. `AI_STNG_SN` = 1 (`CK_AI_STNG_01`), `BSC_AI_PRVDR_SN` → `TB_AI_PRVDR` (`FK_AI_STNG_01`, NO ACTION, NULL = 미지정). 행이 하나라 기본이 둘이 될 수 없고, Provider 마다 `기본 여부` 를 두고 여러 행을 고치는 방식의 정합성 문제가 없다. 행은 마이그레이션이 미지정으로 넣는다 — 업그레이드 때 기존 Provider 가 있어도 미지정.
+- **동시성** : 지정·해제·Provider 삭제는 설정 행을 `SELECT … FOR UPDATE` 로 먼저 잡는다 (순서 : 설정 → Provider). 지정은 Provider 행도 잡고 다시 읽어 그 사이의 비활성화·수정과 차례를 지킨다. 비활성화·수정은 Provider 행만 바꾸므로 순환 대기가 없다. 결과 : 동시 지정은 마지막 것이 남고, 지정·삭제는 하나만 성공(다른 쪽 `AI_PROVIDER_IN_USE` 또는 `AI_PROVIDER_NOT_FOUND`), 지정·비활성화는 순서에 따라 "지정 + 비활성 경고" 또는 지정 거부. 실패한 요청은 롤백된다.
+- **서비스** : `AiDefaultProviderService` — `get`(상태 `READY`·`NOT_CONFIGURED`·`DISABLED`·`MODEL_MISSING`·`UNSUPPORTED`)·`set`·`clear`·`resolve`(업무 기능용 : Provider ID·유형·주소·모델 검증 결과). `AiProviderClients.callDefault(context, chatClient -> …)` 가 resolve 한 Provider·모델로 AI-3 의 `call` 을 부른다 (SEC-1·지연 연결·스트리밍 차단 그대로). 유형에 따른 분기가 없다 — OpenAI 호환 유형을 더해도 그대로 쓴다.
+- **API (ADMIN)** : `GET /api/ai/default-provider` (미지정이면 `status = NOT_CONFIGURED`, `provider = null`) · `PUT {providerId}` · `DELETE`. 업무 기능은 API 가 아니라 서비스를 쓴다. 메뉴 권한은 `ai-provider` 그대로.
+- **화면** : AI Provider 관리 목록에 "시스템 기본" 열, 행마다 "기본으로 지정/변경"·"기본 해제" (비활성·기본 모델 없음이면 버튼을 막고 이유를 보인다), 상태 안내(미지정·비활성·모델 없음), 기본 Provider 삭제 시 안내, 요청 중 중복 클릭 방지.
+- **확장** : 프로젝트별 Provider (U-04 의 프로젝트 부분)는 만들지 않았다. 더할 때는 "프로젝트 지정 → 없으면 시스템 기본" 순서로 `resolve` 앞에 한 단계를 두면 된다 (설정 행·API 는 그대로). API Key 가 필요한 유형도 같은 정책을 쓴다 (인증 정보는 그 유형을 더할 때).
+- **테스트** : `AiDefaultProviderIntegrationTest` (H2·PostgreSQL) — 정책(미지정·자동 지정 없음·지정·변경·멱등·해제·지정 조건), 관리 과정의 외부 연결 없음(시도 기록·서버 요청·허용 규칙 변화 0), `callDefault`(변경·모델 변경 즉시 반영, 비활성 시 지정 유지·호출 차단·다른 Provider 로 안 바꿈, 재활성, 모델 삭제 시 실패), 삭제(서비스·FK·CHECK), 동시성(지정 대 지정 15회·지정 대 해제 15회·지정 대 삭제 8회·지정 대 비활성화 8회 — 매번 행 하나·참조 무결성), 업그레이드(V8 에 Provider 가 있어도 V9 뒤 미지정), 권한(비 ADMIN 403).

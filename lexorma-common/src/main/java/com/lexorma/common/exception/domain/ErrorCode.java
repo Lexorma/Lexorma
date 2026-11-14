@@ -474,7 +474,22 @@ public enum ErrorCode {
     /**
      * AI 서버 호출에 실패했다 (연결 거부·시간 초과·모델 없음·서버 오류·응답 처리 실패).
      */
-    AI_PROVIDER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_CALL_FAILED");
+    AI_PROVIDER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_CALL_FAILED"),
+
+    /**
+     * 시스템 기본 AI Provider 가 지정되지 않았다 : 기본 Provider 를 쓰는 AI 기능만 쓸 수 없다.
+     */
+    AI_DEFAULT_PROVIDER_NOT_CONFIGURED(HttpStatus.CONFLICT, "AI_DEFAULT_PROVIDER_NOT_CONFIGURED"),
+
+    /**
+     * 시스템 기본 AI Provider 에 기본 모델이 없다 (지정할 수 없고, 지정된 뒤 지워졌으면 호출하지 않는다).
+     */
+    AI_DEFAULT_PROVIDER_MODEL_MISSING(HttpStatus.CONFLICT, "AI_DEFAULT_PROVIDER_MODEL_MISSING"),
+
+    /**
+     * 시스템 기본 AI Provider 로 지정된 Provider 라 삭제할 수 없다.
+     */
+    AI_PROVIDER_IN_USE(HttpStatus.CONFLICT, "AI_PROVIDER_IN_USE");
 
     private final HttpStatus httpStatus;
     private final String code;

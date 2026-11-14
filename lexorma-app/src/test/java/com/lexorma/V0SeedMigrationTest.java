@@ -29,7 +29,7 @@ class V0SeedMigrationTest {
         try {
             // V0 (스키마·COMMENT : 예전 V2~V6 의 스키마 변경 포함) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑,
             // 예전 V2~V6 의 예제 — 원본 인덱스 표현식, M-14 인덱스 출처·고급 인덱스, Lexorma 자체 인덱스, M-15 VIEW 모델). 2026-11-13 에 V0·V1 로 합쳤다
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(9);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(10);
             var jdbc = new JdbcTemplate(dataSource);
             // V0·V2·V3·V4·V8 의 create index 107개(컬럼 152개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.

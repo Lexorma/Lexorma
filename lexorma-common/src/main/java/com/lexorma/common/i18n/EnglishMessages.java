@@ -222,6 +222,9 @@ final class EnglishMessages {
         add("이 Provider 는 모델 목록 조회를 지원하지 않습니다. 모델 ID 를 직접 입력하세요.", "This provider does not support listing models. Enter the model ID directly.");
         add("이 Provider 는 연결 테스트를 지원하지 않습니다.", "This provider does not support connection tests.");
         add("지원하지 않는 Provider 유형입니다: {0}", "Unsupported provider type: {0}");
+        add("기본으로 지정할 Provider 를 선택해주세요.", "Select the provider to set as the default.");
+        add("비활성화된 Provider 는 기본으로 지정할 수 없습니다.", "A disabled provider cannot be set as the default.");
+        add("기본 모델이 없는 Provider 는 기본으로 지정할 수 없습니다. Provider 의 기본 모델을 먼저 정하세요.", "A provider without a default model cannot be set as the default. Set the provider's default model first.");
         add("이 Provider 에서 지원하지 않는 AI 기능입니다 (스트리밍 등).", "This AI feature is not supported by this provider (streaming and so on).");
         add("프롬프트는 {0}자까지 입력할 수 있습니다.", "The prompt can be up to {0} characters.");
         add("프롬프트를 입력해주세요.", "Enter a prompt.");

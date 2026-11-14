@@ -61,6 +61,24 @@ public final class AiProviderDto {
     public record PromptRequest(String prompt, String model) {
     }
 
+    /**
+     * 시스템 기본 Provider 상태. READY : 쓸 수 있다 · NOT_CONFIGURED : 미지정 · DISABLED : 지정됐지만 비활성 (다시 활성화하면 그대로 쓴다) ·
+     * MODEL_MISSING : 지정됐지만 기본 모델이 없다 · UNSUPPORTED : 지원하지 않는 유형. 연결 가능 여부(SEC-1·서버 상태)는 보지 않는다 (호출 때 확인)
+     */
+    public enum DefaultStatus { READY, NOT_CONFIGURED, DISABLED, MODEL_MISSING, UNSUPPORTED }
+
+    /** 시스템 기본 Provider (관리자 화면) : provider 는 미지정이면 null */
+    public record DefaultProvider(DefaultStatus status, Provider provider, String updatedBy, LocalDateTime updatedAt) {
+    }
+
+    /** 기본 Provider 지정·변경 */
+    public record DefaultProviderRequest(Long providerId) {
+    }
+
+    /** 업무 AI 기능이 쓸 기본 Provider (검증한 값) : 모델은 그 Provider 의 기본 모델 */
+    public record DefaultTarget(Long providerId, AiProviderType type, String baseUrl, String model, boolean enabled) {
+    }
+
     public record PromptResult(boolean success, String model, String content, long elapsedMillis, Integer promptTokens, Integer completionTokens, Error error) {
     }
 }

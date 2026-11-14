@@ -146,6 +146,7 @@ class AiProviderIntegrationTest {
     @Autowired ExternalConnectionSecurityIntegrationTest.FakeResolver dns;
     @Autowired ApplicationContext context;
     @Autowired AiProviderService service;
+    @Autowired com.lexorma.core.ai.service.AiDefaultProviderService defaults;
     @Autowired AiProviderClients clients;
     @Autowired AiProviderRestController api;
     @Autowired ExternalConnectionRuleService rules;
@@ -171,6 +172,7 @@ class AiProviderIntegrationTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        defaults.clear(); // 기본 Provider 로 지정된 Provider 는 지울 수 없다
         for (Long id : createdProviders) {
             try {
                 service.delete(id);

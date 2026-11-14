@@ -98,6 +98,9 @@
 | 메타데이터 수집 | 수집 실행·취소 | USER + 그 프로젝트의 관리자 또는 ADMIN | 위와 같다 |
 | 원본 매핑 관리 (M-4c) | 조회 (`GET /api/sourceMapping`, `/tables`, `/modelTables`) | VIEWER | 메뉴 `source-mapping` VIEWER |
 | 원본 매핑 관리 (M-4c) | 기준 연결 설정·해제, 스키마·TABLE 매핑 확정·해제 | USER + 그 프로젝트의 관리자 또는 ADMIN | `source-manage`(USER) **그리고** `projectManageable` |
+| 원본·모델 비교 (M-4d) | 조회 (`GET /api/sourceCompare`, `/tables`, `/table`, `/renameCandidates`) | VIEWER | 메뉴 `source-compare` VIEWER |
+| 원본 가져오기 (M-4e) | 대상·계획·이력 조회 (`GET /api/sourceImport/candidates`, `POST /plan`(읽기 전용), `GET /executions`) | VIEWER | 메뉴 `source-compare` VIEWER ([미리보기]) |
+| 원본 가져오기 (M-4e) | 확정 (`POST /api/sourceImport/apply`) | USER + 그 프로젝트의 관리자 또는 ADMIN | `source-manage`(USER) **그리고** `projectManageable` ([가져오기 확정]) |
 | 원본 DB ERD (M-4b) | 조회 (`GET /api/source/connections/{id}/snapshot/erd`, 상세는 카탈로그 API) | VIEWER | 메뉴 `source-erd` VIEWER. 읽기 전용이라 관리 버튼이 없다 |
 
 전역 MANAGER 역할만으로는 다른 사람이 관리하는 프로젝트의 연결·수집을 바꿀 수 없다 (승인 권한 `approvalAvailable` 과 다른 기준). `SourceManagementUiIntegrationTest` 가 화면 값과 서버 거절을 함께 본다.

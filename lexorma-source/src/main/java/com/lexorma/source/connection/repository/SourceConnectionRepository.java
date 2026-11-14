@@ -20,6 +20,11 @@ public interface SourceConnectionRepository extends JpaRepository<SourceConnecti
     @Query("select c from SourceConnection c where c.id = :id and c.projectId = :projectId")
     Optional<SourceConnection> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
 
+    /** 연결 행 공유 잠금 : 연결에 기대는 다른 모듈의 저장(원본 매핑)이 연결 삭제와 겹치지 않게 한다 (SourceCatalogReader.lockConnection) */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select c from SourceConnection c where c.id = :id and c.projectId = :projectId")
+    Optional<SourceConnection> findForShare(@Param("id") Long id, @Param("projectId") Long projectId);
+
     List<SourceConnection> findAllByProjectIdOrderByNameAscIdAsc(Long projectId);
 
     boolean existsByProjectIdAndNameIgnoreCase(Long projectId, String name);

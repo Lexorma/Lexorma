@@ -48,7 +48,7 @@ export const ACTIONS: [string, string][] = [
   ['REVOKE', t('승인취소')],
 ];
 
-const SOURCES: Record<string, string> = { USER: t('사용자'), AUTO_SYNC: t('자동 동기화') };
+const SOURCES: Record<string, string> = { USER: t('사용자'), AUTO_SYNC: t('자동 동기화'), IMPORT: t('원본 가져오기') };
 
 /** 모르는 코드는 그대로 보여 준다 (나중에 대상·작업이 늘어도 화면이 깨지지 않는다) */
 export const targetTypeLabel = (code: string) => TARGET_TYPES.find(([value]) => value === code)?.[1] ?? code;
@@ -62,7 +62,7 @@ export const ACTION_VARIANT: Record<string, 'accent' | 'success' | 'attention' |
 /** 이력 JSON 의 필드 이름 → 화면 이름. 여기 없는 필드(예전·나중의 필드)는 원본 키로 보여 준다 */
 const FIELD_LABELS: Record<string, string> = {
   tableName: t('테이블명'), tableKorName: t('테이블 한글명'), tableDescription: t('테이블 설명'), isMasterTable: t('마스터 테이블'), sortOrder: t('정렬 순서'),
-  isApproval: t('승인 여부'), schema: t('스키마'), tableInfo: t('테이블'), columnName: t('컬럼명'), columnDesc: t('컬럼 설명'), dataType: t('데이터 타입'),
+  isApproval: t('승인 여부'), schema: t('스키마'), tableInfo: t('테이블'), columnName: t('컬럼명'), columnDesc: t('컬럼 설명'), sourceComment: t('원본 COMMENT'), dataType: t('데이터 타입'),
   maxLength: t('최대 길이'), precision: t('정밀도'), scale: t('소수 자릿수'), isNullable: t('NULL 허용'), defaultValue: t('기본값'), isMasterData: t('마스터 데이터'),
   refTableName: t('참조 테이블명'), isRequired: t('필수'), isSensitive: t('민감 정보'), isPk: 'PK', isUnique: t('고유값'), isIndex: t('인덱스'), isEncrypted: t('암호화'),
   example: t('데이터 예시'), standardTerms: t('표준 용어'), standardTerm: t('표준 용어'), sourceTable: t('원본 테이블'), targetTable: t('대상 테이블'), relationName: t('관계명'),

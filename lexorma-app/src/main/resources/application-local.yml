@@ -1,5 +1,11 @@
 # 로컬 개발 : docker/docker-compose.yml 의 Postgres (localhost:15439)
 spring:
+  # DevTools 자동 재시작 끔 (로컬 프로필만) : IDE 에서 앱을 띄워 둔 채 Gradle 빌드·테스트를 하면 build/resources 가 바뀌어 재시작되고,
+  # 그때 Flyway 가 새 마이그레이션을 개발 DB 에 바로 적용했다 (2026-11-14 V3). 새 마이그레이션은 앱을 직접 다시 띄울 때만 적용된다 — 절차는 README "Database migrations".
+  # IDE 의 HotSwap(클래스 다시 읽기)은 그대로 쓸 수 있다. 다시 켜려면 실행 설정에 --spring.devtools.restart.enabled=true
+  devtools:
+    restart:
+      enabled: false
   datasource:
     url: jdbc:postgresql://localhost:15439/lexorma?charSet=UTF-8&reWriteBatchedInserts=true
     username: lexorma

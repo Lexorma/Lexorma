@@ -615,7 +615,8 @@ public final class TableDdlGenerator {
 
     // ------------------------------------------------------------------ 보조
 
-    private static boolean isNotNull(ColumnInfo column) {
+    /** DDL 에서 NOT NULL 이 되는지 : PK·필수·NULL 불허. 원본 비교(M-4d)도 같은 기준을 쓴다 */
+    public static boolean isNotNull(ColumnInfo column) {
         return Boolean.TRUE.equals(column.getIsPk())
                 || Boolean.TRUE.equals(column.getIsRequired())
                 || Boolean.FALSE.equals(column.getIsNullable());
@@ -624,7 +625,7 @@ public final class TableDdlGenerator {
     /**
      * 기본값 : 숫자·키워드·함수 호출·이미 따옴표로 감싼 값은 그대로, 나머지는 문자열로 감싼다.
      */
-    static String defaultLiteral(String value) {
+    public static String defaultLiteral(String value) {
         String v = value.trim();
         if (NUMERIC_DEFAULT.matcher(v).matches()
                 || RAW_DEFAULTS.contains(v.toUpperCase(Locale.ROOT))

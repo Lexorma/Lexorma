@@ -97,6 +97,8 @@ public class MenuAuthorization {
             Map.entry("source-erd", "VIEWER"),
             // 원본 매핑 관리 (M-4c) : 매핑 현황·목록 조회 API 가 VIEWER. 기준 연결·매핑 확정·해제 버튼은 source-manage(USER) + projectManageable
             Map.entry("source-mapping", "VIEWER"),
+            // 원본·모델 비교 (M-4d) : 조회 API(/api/sourceCompare)만 있고 VIEWER. 변경·가져오기 버튼이 없다
+            Map.entry("source-compare", "VIEWER"),
             Map.entry("source-manage", "USER")
     );
 
@@ -124,7 +126,7 @@ public class MenuAuthorization {
             new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "view-manage", "physical-erd", "ddl-export"},
 
             "source-management",
-            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping"}
+            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping", "source-compare"}
     );
 
     private final RoleHierarchy roleHierarchy;

@@ -419,7 +419,17 @@ public enum ErrorCode {
     /**
      * 원본 매핑이 1:1 을 깨뜨린다 (이미 다른 원본에 매핑된 모델 스키마·테이블) 또는 확인이 필요한 변경 (기준 연결 변경으로 매핑이 남는다).
      */
-    SOURCE_MAPPING_CONFLICT(HttpStatus.CONFLICT, "SOURCE_MAPPING_CONFLICT");
+    SOURCE_MAPPING_CONFLICT(HttpStatus.CONFLICT, "SOURCE_MAPPING_CONFLICT"),
+
+    /**
+     * 원본 비교(M-4d) 요청이 앞서 받은 비교 기준(기준 연결·반영 순서)과 다르다 : 그 사이 기준 연결이 바뀌었거나 새 수집이 반영되었다 (다른 시점의 결과를 섞지 않는다).
+     */
+    SOURCE_COMPARE_STALE(HttpStatus.CONFLICT, "SOURCE_COMPARE_STALE"),
+
+    /**
+     * 원본 메타데이터 가져오기(M-4e) 요청을 처리할 수 없다 : 고른 항목이 없거나, 적용할 수 없는 항목이 있거나, 미리보기 없이 확정했다.
+     */
+    SOURCE_IMPORT_INVALID(HttpStatus.BAD_REQUEST, "SOURCE_IMPORT_INVALID");
 
     private final HttpStatus httpStatus;
     private final String code;

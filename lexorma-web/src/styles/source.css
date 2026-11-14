@@ -654,3 +654,117 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* ---------------------------------------------------------------- 원본·모델 비교 (M-4d) */
+.source-title-icon {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.source-title-action {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.source-compare-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin: 12px 0 8px;
+}
+
+.source-compare-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--gh-border-muted);
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+}
+
+.source-compare-tile strong {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--gh-fg);
+}
+
+.source-compare-tile.is-emphasis strong {
+    color: var(--gh-attention);
+}
+
+.source-compare-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.source-compare-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.source-compare-warnings {
+    margin: 0;
+    padding: 8px 12px;
+    list-style: none;
+    border: 1px solid var(--gh-border-muted);
+    border-radius: 6px;
+    color: var(--gh-attention);
+    background-color: var(--gh-canvas-subtle);
+}
+
+.source-compare-warnings li + li {
+    margin-top: 4px;
+}
+
+.source-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: normal;
+}
+
+.source-compare-objects tbody.source-compare-object {
+    border-top: 2px solid var(--gh-border);
+}
+
+.source-compare-objects tbody.is-same td {
+    color: var(--gh-fg-muted);
+}
+
+.source-compare-objects td:first-child {
+    min-width: 200px;
+    vertical-align: top;
+}
+
+/* ---------------------------------------------------------------- 원본 가져오기 (M-4e) */
+.source-import {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gh-border);
+}
+
+.source-import-blocked {
+    margin: 8px 0;
+}
+
+.source-import-blocked ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+.source-import-plan {
+    margin-top: 12px;
+}
+
+.source-import-ok {
+    color: var(--gh-success);
+}

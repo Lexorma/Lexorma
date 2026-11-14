@@ -45,6 +45,7 @@ export type MenuId =
   | 'source-catalog'
   | 'source-erd'
   | 'source-mapping'
+  | 'source-compare'
   /** 화면이 아니라 원본 DB 연결 등록·수정·삭제·테스트, 수집 실행·취소 버튼 노출 여부 (projectManageable 과 함께 본다) */
   | 'source-manage'
   | 'source-management'

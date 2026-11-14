@@ -14,6 +14,10 @@ public interface ProjectSourceConnectionRepository extends JpaRepository<Project
 
     Optional<ProjectSourceConnection> findByProjectId(Long projectId);
 
+    /** 기준 연결 ID 만 읽는다 (엔티티를 영속성 컨텍스트에 올리지 않아 뒤의 잠금 조회가 최신 행을 돌려준다) */
+    @Query("select p.connectionId from ProjectSourceConnection p where p.projectId = :projectId")
+    Optional<Long> findConnectionId(@Param("projectId") Long projectId);
+
     /** 매핑 변경의 직렬화 : 프로젝트의 기준 연결 행을 배타 잠금으로 읽는다 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from ProjectSourceConnection p where p.projectId = :projectId")

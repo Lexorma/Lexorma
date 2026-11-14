@@ -43,6 +43,10 @@ public class ColumnInfo extends BaseEntity {
     @Column(name = "COL_EXPLN")
     private String columnDesc;
 
+    /** 원본 COMMENT (M-4e 가져오기, V3). 원본 DB 에서 가져온 설명이며 업무 설명(columnDesc)과 따로 둔다 */
+    @Column(name = "SRC_ANTN_CN", columnDefinition = "TEXT")
+    private String sourceComment;
+
     /** 데이터 타입: VARCHAR2 */
     @Column(name = "DATA_TYPE_NM")
     private String dataType;

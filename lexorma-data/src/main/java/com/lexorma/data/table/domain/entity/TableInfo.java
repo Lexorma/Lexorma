@@ -39,6 +39,10 @@ public class TableInfo extends BaseEntity {
     @Column(name = "TBL_EXPLN")
     private String tableDescription;
 
+    /** 원본 COMMENT (M-4e 가져오기, V3). 원본 DB 에서 가져온 설명이며 업무 설명(tableDescription)과 따로 둔다 */
+    @Column(name = "SRC_ANTN_CN", columnDefinition = "TEXT")
+    private String sourceComment;
+
     /** 테이블 한글명: 사용 내역 관리 (표준 단어 기준 테이블명 생성에 사용한 단어) */
     @Column(name = "TBL_KORN_NM")
     private String tableKorName;

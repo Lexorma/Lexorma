@@ -171,6 +171,154 @@ final class EnglishMessages {
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
 
+                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, ERD로 구조와 관계를 확인하며, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
+
+                ## 주요 기능
+
+                ### 1. 데이터 사전
+
+                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치)으로 표준 준수 여부를 확인합니다.
+
+                ### 2. 논리 모델
+
+                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
+
+                ### 3. 테이블 및 컬럼
+
+                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다.
+
+                ### 4. 논리·물리 ERD
+
+                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 드래그로 관계를 연결하고, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다.
+
+                ### 5. 논리·물리 매핑
+
+                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 정합성을 진단합니다.
+
+                ### 6. DDL 내보내기
+
+                PostgreSQL(기본)·Oracle·MySQL·MariaDB용 DDL을 테이블 단위로, 또는 프로젝트·스키마 단위의 통합 스크립트(스키마 → 테이블 → 인덱스 → FK → VIEW)로 생성합니다.
+
+                ### 7. 변경 이력과 모델 버전
+
+                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다.
+
+                ### 8. 원본 DB 연결과 가져오기
+
+                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 가져오기 직전의 모델은 모델 버전으로 자동 보존됩니다.
+
+                ### 9. 프로젝트
+
+                프로젝트별로 데이터 사전과 모델을 구분하고, 프로젝트 멤버·관리자, 테이블 접두사와 대상 DBMS를 관리합니다.
+
+                ### 10. 사용자 및 권한
+
+                역할과 프로젝트 접근 권한에 따라 이용 가능한 메뉴와 기능을 구분합니다. 신규 가입자는 관리자의 권한 부여가 필요합니다.
+
+                ## 이용 안내
+
+                - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
+                - 기본 프로젝트 `LEXORMA`에서 Lexorma 자체 스키마를 예제로 담은 데이터 사전, 논리·물리 모델과 ERD를 확인해 보세요.
+                - 원본 DB 정보는 모든 사용자가 조회할 수 있고, 연결·수집·매핑·가져오기는 프로젝트 관리자 또는 ADMIN만 실행할 수 있습니다. 원본 DB에는 조회만 하며 원본 구조를 바꾸지 않습니다.
+                - 원본 DB 연결 비밀번호를 저장하려면 서버에 암호화 키(`LEXORMA_SECRET_KEYS`)가 설정되어 있어야 합니다.
+                - 일부 기능은 사용자 역할과 프로젝트 권한에 따라 이용이 제한됩니다.
+                - 데이터와 메타데이터를 변경하기 전에 해당 프로젝트의 운영 정책을 확인해 주세요.
+                - 기능과 화면 구성은 업데이트 과정에서 변경될 수 있습니다.
+
+                ## 문의 및 오류 신고
+
+                | 용도 | 링크 |
+                |------|------|
+                | 프로젝트 저장소 및 이용 문서 | https://github.com/Lexorma/Lexorma |
+                | 오류 신고·기능 제안·프로젝트 관련 문의 (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
+
+                > 오류를 신고할 때에는 사용 환경과 재현 순서, 기대한 결과와 실제 결과를 함께 알려 주세요. 비밀번호와 개인정보 등 민감한 정보는 포함하지 마세요.
+                > 설치 환경의 계정·권한·운영 정책에 관한 문의는 해당 환경의 관리자에게 확인해 주세요.
+
+                ## 안내 사항
+
+                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 메타데이터 분석 등)은 저장소의 문서를 확인해 주세요.
+                서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
+
+                감사합니다.
+                **Lexorma**""", """
+                Hello, and thank you for using **Lexorma**.
+
+                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
+
+                ## Key features
+
+                ### 1. Data dictionary
+
+                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches) show how well the model follows the standard.
+
+                ### 2. Logical model
+
+                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Physical names are recommended from the standard dictionary.
+
+                ### 3. Tables and columns
+
+                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled.
+
+                ### 4. Logical and physical ERD
+
+                View and edit the logical and physical models directly in ERDs. Connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts.
+
+                ### 5. Logical ↔ physical mapping
+
+                Manage entity ↔ table and attribute ↔ column mappings and check their consistency.
+
+                ### 6. DDL export
+
+                Generate DDL for PostgreSQL (default), Oracle, MySQL and MariaDB, per table or as one combined script for a project or schema (schemas → tables → indexes → foreign keys → views).
+
+                ### 7. Change history and model versions
+
+                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs.
+
+                ### 8. Source database connections and import
+
+                Connect to a live database (PostgreSQL for now), collect its structure read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. The model just before each import is kept automatically as a model version.
+
+                ### 9. Projects
+
+                Keep the data dictionary and models separate per project, and manage project members, managers, the table prefix and the target DBMS.
+
+                ### 10. Users and permissions
+
+                Available menus and features depend on your role and project access. New users need an administrator to grant them a role.
+
+                ## Getting started
+
+                - On your first login, change the initial password and choose a project you can access.
+                - Explore the default project `LEXORMA`, whose example data dictionary, logical and physical models and ERDs describe Lexorma's own schema.
+                - Every user can view source database information; connecting, collecting, mapping and importing are limited to the project manager or ADMIN. Lexorma only reads from source databases and never changes their structure.
+                - Storing a source database password requires an encryption key (`LEXORMA_SECRET_KEYS`) configured on the server.
+                - Some features are restricted by your role and project permissions.
+                - Check the operating policy of your project before changing data or metadata.
+                - Features and screens may change as Lexorma is updated.
+
+                ## Questions and bug reports
+
+                | Purpose | Link |
+                |------|------|
+                | Project repository and documentation | https://github.com/Lexorma/Lexorma |
+                | Bug reports, feature requests and project questions (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
+
+                > When reporting a bug, include your environment, the steps to reproduce it, and the expected and actual results. Do not include passwords, personal data or other sensitive information.
+                > For questions about accounts, permissions or policies of your installation, contact its administrator.
+
+                ## About
+
+                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted metadata analysis and more).
+                Any problems or suggestions you share while using the service help the project grow.
+
+                Thank you.
+                **Lexorma**""");
+        // 2026-11-14 이전 V1 로 만든 DB 의 안내 공지 본문 (V1 은 다시 실행되지 않아 그 DB 에는 이전 본문이 남는다)
+        add("""
+                안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
+
                 Lexorma는 데이터베이스 모델링과 데이터 표준화, 메타데이터 관리를 지원하는 오픈소스 데이터 관리 플랫폼입니다. 데이터 사전과 테이블·컬럼 정보를 관리하고, 물리 모델의 구조와 관계를 시각적으로 확인할 수 있습니다.
 
                 ## 주요 기능
@@ -507,5 +655,23 @@ final class EnglishMessages {
         add("원본 스키마와 모델 스키마를 골라주세요.", "Choose a source schema and a model schema.");
         add("원본 테이블과 모델 테이블을 골라주세요.", "Choose a source table and a model table.");
         add("지금 기준 연결의 매핑(스키마 {0}건, 테이블 {1}건)은 지우지 않고 그 연결의 매핑으로 남습니다. 확인 후 다시 요청해주세요.", "The mappings of the current base connection ({0} schemas, {1} tables) are not deleted and stay with that connection. Confirm and request again.");
+        // 원본 비교 (M-4d, 2026-11-14)
+        add("비교할 TABLE 을 골라주세요.", "Choose a TABLE to compare.");
+        add("비교할 수 있는 기준 연결·수집이 없습니다.", "There is no base connection or collection to compare.");
+        add("비교 대상에 없는 TABLE 입니다.", "The TABLE is not in the comparison.");
+        add("알 수 없는 값입니다 : {0}", "Unknown value: {0}");
+        add("기준 연결이 바뀌었거나 새 수집이 반영되었습니다. 비교 화면을 새로 고쳐주세요.", "The base connection changed or a new collection was applied. Refresh the comparison page.");
+        // 원본 가져오기 (M-4e, 2026-11-14)
+        add("미리보기에서 받은 계획으로 확정해주세요.", "Confirm the plan received from the preview.");
+        add("이미 적용된 가져오기입니다. 비교 결과를 새로 고쳐주세요.", "This import has already been applied. Refresh the comparison.");
+        add("적용할 수 없는 항목이 있습니다. 미리보기에서 확인해주세요.", "Some items cannot be applied. Check them in the preview.");
+        add("가져올 항목을 골라주세요.", "Choose the items to import.");
+        add("가져오기 이력을 찾을 수 없습니다.", "The import history was not found.");
+        add("다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.", "Another user is changing the same model. Refresh the comparison in a moment and confirm again.");
+        add("원본 가져오기 직전 상태 (기준 연결 #{0}, 반영 순서 {1}, 요청 {2})", "State just before a source import (base connection #{0}, reflected order {1}, request {2})");
+        add("가져올 TABLE 을 골라주세요.", "Choose the TABLEs to import.");
+        add("한 번에 {0}개 TABLE 까지 가져올 수 있습니다.", "Up to {0} TABLEs can be imported at once.");
+        add("기준 연결에 완료된 수집이 없어 가져올 수 없습니다. 먼저 메타데이터를 수집해주세요.", "The base connection has no completed collection, so nothing can be imported. Collect its metadata first.");
+        add("기준 연결·수집 또는 모델이 미리보기 이후 바뀌었습니다. 비교 결과를 새로 고친 뒤 다시 미리보기 해주세요.", "The base connection, collection or model changed after the preview. Refresh the comparison and preview again.");
     }
 }

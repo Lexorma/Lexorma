@@ -78,6 +78,7 @@ export const MENU: MenuEntry[] = [
       { id: 'source-catalog', label: t('원본 카탈로그'), path: '/sourceCatalog' },
       { id: 'source-erd', label: t('원본 DB ERD'), path: '/sourceErd' },
       { id: 'source-mapping', label: t('원본 매핑 관리'), path: '/sourceMapping' },
+      { id: 'source-compare', label: t('원본·모델 비교'), path: '/sourceCompare' },
     ],
   },
   {

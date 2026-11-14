@@ -45,8 +45,9 @@ import java.util.stream.Collectors;
  *   <li>스키마·TABLE 모두 연결 안에서 1:1. 후보(같은 이름·PostgreSQL public → DEFAULT)는 제안만 하고, 사용자가 확정해야 저장한다 — 자동 매핑 없음</li>
  *   <li>원본은 core 의 읽기 전용 계약(SourceCatalogReader)으로 마지막 반영 시점만 읽는다. 원본 DB·물리 모델은 바꾸지 않는다</li>
  *   <li>상태(재확인·충돌·원본 없음·모델 없음)는 저장하지 않고 매번 계산한다</li>
- *   <li>변경은 그 프로젝트의 관리자 또는 ADMIN (지금의 DB 기준). 프로젝트 행(공유) → 기준 연결 행(배타) 순서로 잠가 프로젝트 안에서 한 번에 하나씩 처리하고,
- *       1:1 은 DB 유니크 인덱스로도 막는다</li>
+ *   <li>변경은 그 프로젝트의 관리자 또는 ADMIN (지금의 DB 기준). 프로젝트 행(공유) → 원본 연결 행(공유) → 기준 연결 행(배타) 순서로 잠가 프로젝트 안에서 한 번에 하나씩 처리하고,
+ *       1:1 은 DB 유니크 인덱스로도 막는다. 원본 연결 행 잠금은 연결 삭제(프로젝트 → 연결 행 배타 → 매핑 정리)와 같은 순서라, 삭제와 겹친 저장은
+ *       삭제를 기다리게 하거나(삭제가 방금 저장한 것까지 지운다) 삭제 뒤에 거절된다 — 지운 연결을 가리키는 매핑·기준 지정이 남지 않는다</li>
  * </ul>
  */
 @Service
@@ -132,7 +133,8 @@ public class SourceMappingService {
     public SourceMappingDto.Overview setBase(AccountDto accountDto, SourceMappingDto.BaseRequest request) {
         Long projectId = manage(accountDto);
         Long target = request == null ? null : request.connectionId();
-        if (target != null && reader.connection(projectId, target).isEmpty()) throw new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
+        // 새 기준 연결을 공유 잠금으로 잡고 확인한다 : 그 연결의 삭제와 겹치면 삭제가 끝난 뒤 거절되거나, 삭제가 이 지정까지 지운다 (지금 기준 연결은 잠그지 않는다 : 지워지면 기준 지정도 함께 지워진다)
+        if (target != null && !reader.lockConnection(projectId, target)) throw new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
         Optional<ProjectSourceConnection> current = baseRepository.findForUpdate(projectId);
         Long currentId = current.map(ProjectSourceConnection::getConnectionId).orElse(null);
         if (Objects.equals(currentId, target)) return overview(accountDto);
@@ -261,9 +263,16 @@ public class SourceMappingService {
         return projectId;
     }
 
-    /** 기준 연결 행을 배타 잠금으로 잡는다 (매핑 변경을 프로젝트 안에서 한 번에 하나씩) */
-    private Long lockBase(Long projectId) {
-        return baseRepository.findForUpdate(projectId).map(ProjectSourceConnection::getConnectionId).orElseThrow(() -> invalid("가져오기 기준 연결을 먼저 정해주세요."));
+    /**
+     * 기준 연결의 원본 연결 행(공유) → 기준 연결 행(배타) 순서로 잠근다 (매핑 변경을 프로젝트 안에서 한 번에 하나씩, 그 연결의 삭제와는 겹치지 않게).
+     * 잠금 사이에 기준이 바뀌었으면 SOURCE_MAPPING_CONFLICT : 다른 연결의 원본을 바뀐 기준 연결로 저장하지 않는다.
+     */
+    Long lockBase(Long projectId) {
+        Long connectionId = baseRepository.findConnectionId(projectId).orElseThrow(() -> invalid("가져오기 기준 연결을 먼저 정해주세요."));
+        if (!reader.lockConnection(projectId, connectionId)) throw new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
+        Long locked = baseRepository.findForUpdate(projectId).map(ProjectSourceConnection::getConnectionId).orElseThrow(() -> invalid("가져오기 기준 연결을 먼저 정해주세요."));
+        if (!locked.equals(connectionId)) throw concurrent();
+        return connectionId;
     }
 
     private State requireSnapshot(Long projectId, Long connectionId) {
@@ -298,7 +307,7 @@ public class SourceMappingService {
                 .map(e -> new SourceMappingDto.Preserved(e.getKey(), names.get(e.getKey()), e.getValue()[0], e.getValue()[1])).toList();
     }
 
-    private static SourceMappingDto.Connection connectionDto(SourceCatalogReader.Connection c) {
+    static SourceMappingDto.Connection connectionDto(SourceCatalogReader.Connection c) {
         return new SourceMappingDto.Connection(c.id(), c.name(), c.dbType(), c.enabled(), c.collectable());
     }
 
@@ -312,7 +321,7 @@ public class SourceMappingService {
         return value != null && value.toLowerCase(Locale.ROOT).contains(word);
     }
 
-    private record ModelTable(Long id, String name, Long schemaId, String korName) {
+    record ModelTable(Long id, String name, Long schemaId, String korName) {
     }
 
     private State state(Long projectId, Long connectionId) {
@@ -324,8 +333,16 @@ public class SourceMappingService {
                 tableMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId));
     }
 
+    /**
+     * 원본 비교(M-4d, SourceCompareService) : 지금 기준 연결의 매핑 상태 계산 결과 (매핑 화면과 같은 계산). 기준 연결이 없으면 null.
+     * 읽기만 하고 잠그지 않는다 (연결 행 잠금 lockConnection 은 쓰기 경로만 쓴다).
+     */
+    State basis(Long projectId) {
+        return baseRepository.findByProjectId(projectId).map(b -> state(projectId, b.getConnectionId())).orElse(null);
+    }
+
     /** 한 번의 조회에 필요한 원본(마지막 반영)·모델·매핑을 모아 상태와 후보를 계산한다 */
-    private final class State {
+    final class State {
 
         final SourceCatalogReader.Connection connection;
         final SourceCatalogReader.Snapshot snapshot;

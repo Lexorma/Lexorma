@@ -101,7 +101,7 @@ class ProjectDeletionIntegrationTest {
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
-            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG");
+            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -389,6 +389,9 @@ class ProjectDeletionIntegrationTest {
         sourceMappingService.setBase(admin, new SourceMappingDto.BaseRequest(connection.getId(), null));
         sourceMappingService.mapSchema(admin, new SourceMappingDto.SchemaRequest(sourceSchema.getId(), order.getSchema().getId()));
         sourceMappingService.mapTable(admin, new SourceMappingDto.TableRequest(users.getId(), order.getId()));
+        // 원본 가져오기 실행 이력 (M-4e)
+        jdbc.update("insert into TB_SRC_IMPRT_EXCN(SRC_IMPRT_EXCN_SN, PRJ_SN, SRC_CNTN_SN, RFLT_ORD, CHG_GROUP_ID) values (?, ?, ?, 1, ?)",
+                900_000_000L + projectId, projectId, connection.getId(), "deletion-" + projectId);
         return new Filled(order);
     }
 

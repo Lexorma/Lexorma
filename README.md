@@ -11,11 +11,12 @@
 
 ## 1. Introduction
 
-Lexorma is an open-source web application for data standardization and metadata management. On top of a standard data dictionary (words, domains and terms) it supports logical and physical data modeling, schema management, ERDs and analysis of database structures.
+Lexorma is an open-source web application for data standardization and metadata management. On top of a standard data dictionary (words, domains and terms) it supports logical and physical data modeling, schema management, ERDs, change tracking, and reading the structure of existing databases into the model.
 
 - **Consistency** — table and column names are built from approved standard words and terms.
 - **One model, several views** — the same model is edited in management screens and in ERDs, and exported as DBMS-specific DDL.
-- **Traceability** — approvals, logical ↔ physical mappings and a change history show how the model got to its current state.
+- **Traceability** — approvals, logical ↔ physical mappings, a change history and named model versions show how the model got to its current state.
+- **Existing databases** — the structure of a live database is collected read-only, compared with the model, and only the changes you choose are imported.
 
 ---
 
@@ -30,19 +31,25 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Data standards | Standardization quality | Diagnoses columns without a term, column names that differ from the term abbreviation, and domain vs. column type/length mismatches |
 | Logical modeling | Models, entities, attributes, identifiers, relationships | Managed in a list screen and in the logical ERD, with approval of entities and relationships |
 | Physical modeling | Schemas, tables, columns | Table and column management, bulk column editing, reusable common column sets, Excel import |
-| Physical modeling | Relations, indexes, constraints | Composite foreign keys, indexes, UNIQUE and CHECK constraints, with foreign key target and type validation |
-| ERD | Logical and physical ERD | View and edit mode, drag to connect, per-user layout |
+| Physical modeling | Relations, indexes, constraints | Composite foreign keys, indexes, UNIQUE and CHECK constraints, with foreign key target and type validation. PostgreSQL index expressions, partial conditions, sort order / NULLS ordering and INCLUDE columns |
+| Physical modeling | Views | Views as model objects with their definition, output columns and referenced tables and views, approval and DDL |
+| ERD | Logical and physical ERD | View and edit mode, drag to connect, auto layout, per-user layout |
 | Mapping | Logical ↔ physical mapping | Entity ↔ table and attribute ↔ column mappings with consistency diagnostics |
 | DDL | DDL generation | `CREATE TABLE`, keys, indexes, comments and foreign keys for PostgreSQL (default), Oracle, MySQL and MariaDB, with warnings for incomplete definitions |
+| DDL | Combined DDL export | One script per project or schema (schemas → tables → indexes → foreign keys → views), in design mode or approved objects only, with warnings for references outside the scope |
 | History | Model change history | Who changed what and when for the physical model, the logical model and the mappings, with before/after comparison and grouping of changes made in one operation |
-| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values) |
+| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values), as a list or as before/after ERDs |
+| Source databases | Connections and collection | Connections to existing databases (passwords encrypted, host and network allow-lists). Metadata collection over JDBC for PostgreSQL, read-only; each completed collection is kept as a point-in-time source catalog with its change history |
+| Source databases | Source ERD | Read-only ERD of a collected point in time, drawn from the actual foreign keys |
+| Source databases | Mapping and comparison | Map source schemas and tables to the model, then compare source and model table by table (columns, keys, constraints, indexes, comments; PostgreSQL rules) |
+| Source databases | Selective import | Preview a plan, then confirm only the chosen items: new tables (with their mapping), new columns, constraints and indexes, and chosen column attributes. Imported objects are unapproved, approved objects are never changed, nothing is deleted or renamed, and the model just before each import is saved as a model version. Source comments are stored separately from business descriptions |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 
 ### Planned (not implemented yet)
 
 | Area | Feature |
 |---|---|
-| Reverse engineering | Importing the structure of an existing database into the physical model and ERD |
+| Source databases | Refreshing the model from a later collection (re-import of changed objects); collection and comparison rules for DBMSs other than PostgreSQL |
 | AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
 
 ### Data Standardization Rules
@@ -65,10 +72,10 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 | `MANAGER` | Manager | Approval, announcements (as the manager of the project) |
 | `DBA` | Database administrator | Project management (own projects), system logs |
 | `USER` | Standard user | Create and change dictionary items and models |
-| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history and model versions |
+| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history, model versions and source database information |
 | `NOT_APPROVE` | Unapproved user | Dashboard and announcements only |
 
-Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Newly registered users start as `NOT_APPROVE`.
+Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Managing source databases (connections, collection, mappings and imports) requires the `USER` role and being the manager of the current project, or `ADMIN`. Newly registered users start as `NOT_APPROVE`.
 
 ---
 
@@ -102,8 +109,8 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-core` | Authentication, login, project tenancy, request logging |
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
-| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history, model versions |
-| `lexorma-source` | External source database connection settings and the source metadata catalog, stored separately from the physical model. Metadata collection (planned) runs inside Lexorma over JDBC — no separate collector or MCP server is required |
+| `lexorma-data` | Data dictionary, tables, columns, views, physical and logical models, mappings, ERD, DDL, change history, model versions, and source ↔ model mapping, comparison and import |
+| `lexorma-source` | Source database connections, metadata collection and the source metadata catalog with its versions and change history, stored separately from the physical model. Collection runs inside Lexorma over JDBC — no separate collector or MCP server is required |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |
 
@@ -194,16 +201,30 @@ Credentials that Lexorma stores for external systems (external database connecti
 - To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted.
 - If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
 
+### Source database access
+
+Lexorma connects to source databases itself, so the reachable hosts are limited by the operator. Both settings are environment variables only.
+
+| Variable | Description |
+|---|---|
+| `LEXORMA_SOURCE_ALLOWED_HOSTS` | Host names or addresses that connections may use, separated by commas (`*.db.internal` allowed). Empty: no host restriction |
+| `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback address ranges (CIDR, comma separated) that may be reached. Empty: private and loopback addresses are refused. Link-local, cloud metadata and multicast addresses are always refused |
+
+The address is checked again right before each connection, including after DNS resolution. Storing a connection password requires the secret encryption key above.
+
 ### Database migrations
 
 Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/migration/{postgresql,h2}`).
 
 - Pending migrations are applied at startup; Hibernate only validates the schema.
 - Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
-- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the fixed baseline. Later changes are added as new incremental migrations (`V2__source_mapping.sql`, then `V3__…` and so on).
-- Applied migration files are never edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
+- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the fixed baseline. Later changes are added as new incremental migrations (`V2__source_mapping.sql`, `V3__source_import.sql`, then `V4__…` and so on).
+- Applied migration files are not edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
+- Exception (2026-11-14): the default welcome announcement in `V1__seed_data.sql` was rewritten to describe the current features. A database created before this change stops at startup with a checksum mismatch for version 1. The change touches only that announcement's seed text, so it is safe to accept: run `flyway repair` (Flyway CLI) against that database once, or back it up and create it again. Such a database keeps its earlier announcement text (system announcements cannot be edited on the screen); a database created again gets the new text.
 - Existing databases are upgraded in place by applying the pending migrations; existing data is kept, and an update does not require recreating the database.
 - Back up production databases before upgrading.
+- In the `local` profile, Spring Boot DevTools automatic restart is turned off (`spring.devtools.restart.enabled: false` in `application-local.yml`). Otherwise a Gradle build or test run while the application is running from the IDE copies new migration files into `build/resources` and the restart applies them to the local database without notice. New migrations are applied to the local database only when you start the application yourself.
+- Before starting the application against a local database that has data you want to keep, check new migration files on a copy first (for example `pg_dump` into a scratch database and start the application against it with `SPRING_DATASOURCE_URL`). To turn automatic restart back on for a session, add `--spring.devtools.restart.enabled=true` to the run configuration.
 
 ### Sessions
 

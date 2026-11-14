@@ -12,7 +12,7 @@ import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
 import { TermCreateForm } from './TermCreateForm';
 import { DICTIONARY_PATHS, standardDomainsColumns, standardWordsColumns, standardTermsColumns } from './columns';
-import { t } from '../../lib/i18n';
+import { locale, t } from '../../lib/i18n';
 
 const DB_DATA_TYPES = [
   'VARCHAR', 'CHAR', 'TEXT', 'CLOB',
@@ -110,13 +110,16 @@ export function DictionaryPage({ table }: { table: DictionaryTable }) {
       title: t('템플릿 다운로드'),
       content: ({ close }: DialogControls) => (
         <div className="gh-action-list">
-          <button type="button" id="download-data-portal" onClick={() => download('/api/downloadTemplate/dataPortal', t('공통표준용어.xlsx')).then(close)}>
-            <DownloadIcon />
-            <div>
-              <strong>{t('공통표준용어 다운로드')}</strong>
-              <span>{t('공공데이터포털의 공통표준용어 파일을 내려받습니다.')}</span>
-            </div>
-          </button>
+          {/* 공통표준용어는 한국 공공데이터포털 자료라 한국어 화면에서만 보인다 */}
+          {locale === 'ko' && (
+            <button type="button" id="download-data-portal" onClick={() => download('/api/downloadTemplate/dataPortal', t('공통표준용어.xlsx')).then(close)}>
+              <DownloadIcon />
+              <div>
+                <strong>{t('공통표준용어 다운로드')}</strong>
+                <span>{t('공공데이터포털의 공통표준용어 파일을 내려받습니다.')}</span>
+              </div>
+            </button>
+          )}
           <button type="button" id="download-template" onClick={() => download('/api/downloadTemplate/template', t('데이터사전 템플릿.xlsx')).then(close)}>
             <DownloadIcon />
             <div>

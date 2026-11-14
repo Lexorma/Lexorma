@@ -21,6 +21,11 @@ public interface SourceTableVersionRepository extends JpaRepository<SourceTableV
             + " from SourceTableVersion v2 where v2.tableId = v.tableId and v2.reflectedOrder <= :order) order by v.pathKey, v.compareName")
     List<SourceTableVersion> at(@Param("connectionId") Long connectionId, @Param("order") Integer order);
 
+    /** 반영 순서 R 의 고른 테이블들 : 테이블마다 R 이하의 마지막 버전 (REMOVED 포함, 부르는 쪽이 거른다) */
+    @Query("select v from SourceTableVersion v where v.connectionId = :connectionId and v.tableId in :tableIds and v.reflectedOrder = (select max(v2.reflectedOrder)"
+            + " from SourceTableVersion v2 where v2.tableId = v.tableId and v2.reflectedOrder <= :order)")
+    List<SourceTableVersion> atTables(@Param("connectionId") Long connectionId, @Param("tableIds") Collection<Long> tableIds, @Param("order") Integer order);
+
     Optional<SourceTableVersion> findFirstByTableIdAndReflectedOrderLessThanEqualOrderByReflectedOrderDesc(Long tableId, Integer order);
 
     List<SourceTableVersion> findAllByTableIdOrderByReflectedOrderAsc(Long tableId);

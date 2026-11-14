@@ -7,6 +7,8 @@ export type MenuId =
   | 'user-manage'
   | 'project-manage'
   | 'system-log'
+  /** 외부 연결 보안 (SEC-1) : 시스템 관리자(ADMIN)만 */
+  | 'connection-security'
   | 'notice'
   /** 화면이 아니라 공지 등록·수정·삭제 버튼 노출 여부 (현재 프로젝트의 관리자인지는 /api/selectNotice/permission) */
   | 'notice-edit'
@@ -45,6 +47,7 @@ export type MenuId =
   | 'source-catalog'
   | 'source-erd'
   | 'source-mapping'
+  | 'source-compare'
   /** 화면이 아니라 원본 DB 연결 등록·수정·삭제·테스트, 수집 실행·취소 버튼 노출 여부 (projectManageable 과 함께 본다) */
   | 'source-manage'
   | 'source-management'

@@ -19,10 +19,14 @@ import com.lexorma.source.tool.SourceToolRegistry;
 import com.lexorma.source.tool.SourceTools;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +44,9 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class SourceCatalogReaderService implements SourceCatalogReader {
 
+    /** IN 목록 한 번의 크기 */
+    private static final int IN_CHUNK = 1000;
+
     private final SourceConnectionRepository connectionRepository;
     private final SourceCollectionExecutionRepository executionRepository;
     private final SourceSchemaVersionRepository schemaVersionRepository;
@@ -50,6 +57,13 @@ public class SourceCatalogReaderService implements SourceCatalogReader {
     public Optional<Connection> connection(Long projectId, Long connectionId) {
         if (projectId == null || connectionId == null) return Optional.empty();
         return connectionRepository.findByIdAndProjectId(connectionId, projectId).map(this::toContract);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean lockConnection(Long projectId, Long connectionId) {
+        if (projectId == null || connectionId == null) return false;
+        return connectionRepository.findForShare(connectionId, projectId).isPresent();
     }
 
     @Override
@@ -88,10 +102,77 @@ public class SourceCatalogReaderService implements SourceCatalogReader {
     }
 
     @Override
+    public Map<Long, TableDetail> tableDetails(Long projectId, Long connectionId, int reflectedOrder, Collection<Long> tableIds) {
+        if (projectId == null || connectionId == null || tableIds == null || tableIds.isEmpty()) return Map.of();
+        if (connectionRepository.findByIdAndProjectId(connectionId, projectId).isEmpty()) return Map.of();
+        Map<Long, TableDetail> details = new LinkedHashMap<>();
+        List<Long> ids = List.copyOf(new LinkedHashSet<>(tableIds));
+        for (int from = 0; from < ids.size(); from += IN_CHUNK) {
+            for (SourceTableVersion version : tableVersionRepository.atTables(connectionId, ids.subList(from, Math.min(from + IN_CHUNK, ids.size())), reflectedOrder)) {
+                if (version.getChangeType() == SourceChangeType.REMOVED) continue;
+                details.put(version.getTableId(), detail(version.getTableId(), (Map<?, ?>) SourceCatalogCanonical.read(version.getContent())));
+            }
+        }
+        return details;
+    }
+
+    @Override
     public String compareName(Connection connection, NameKind kind, String unquotedName) {
         if (unquotedName == null) return null;
-        return SourceIdentifiers.compareName(DbType.valueOf(connection.dbType()), IdentifierComparison.valueOf(connection.identifierComparison()),
-                kind == NameKind.SCHEMA ? Kind.NAMESPACE : Kind.TABLE, unquotedName, false);
+        Kind identifierKind = switch (kind) {
+            case SCHEMA -> Kind.NAMESPACE;
+            case TABLE -> Kind.TABLE;
+            case COLUMN -> Kind.COLUMN;
+        };
+        return SourceIdentifiers.compareName(DbType.valueOf(connection.dbType()), IdentifierComparison.valueOf(connection.identifierComparison()), identifierKind,
+                unquotedName, false);
+    }
+
+    /** 버전 내용(SourceCatalogCanonical.Table 의 JSON)을 계약의 값으로 옮긴다 */
+    private static TableDetail detail(Long tableId, Map<?, ?> content) {
+        List<Column> columns = new ArrayList<>();
+        for (Object item : list(content.get("columns"))) {
+            Map<?, ?> c = (Map<?, ?>) item;
+            columns.add(new Column((String) c.get("name"), (String) c.get("compareName"), integer(c.get("ordinal")), (String) c.get("dataType"), integer(c.get("maxLength")),
+                    (String) c.get("precision"), integer(c.get("scale")), (Boolean) c.get("nullable"), (String) c.get("defaultValue"), (String) c.get("comment")));
+        }
+        List<Constraint> constraints = new ArrayList<>();
+        for (Object item : list(content.get("constraints"))) {
+            Map<?, ?> c = (Map<?, ?>) item;
+            constraints.add(new Constraint((String) c.get("name"), (String) c.get("type"), (String) c.get("checkExpression"), strings(c.get("columns"))));
+        }
+        List<Index> indexes = new ArrayList<>();
+        for (Object item : list(content.get("indexes"))) {
+            Map<?, ?> i = (Map<?, ?>) item;
+            indexes.add(new Index((String) i.get("name"), (String) i.get("indexType"), Boolean.TRUE.equals(i.get("unique")), strings(i.get("columns")),
+                    i.get("expressions") == null ? null : strings(i.get("expressions")), i.get("sorts") == null ? null : strings(i.get("sorts")), (String) i.get("predicate")));
+        }
+        List<ForeignKey> foreignKeys = new ArrayList<>();
+        for (Object item : list(content.get("relations"))) {
+            Map<?, ?> r = (Map<?, ?>) item;
+            List<String> own = new ArrayList<>();
+            List<String> referenced = new ArrayList<>();
+            for (Object pair : list(r.get("columns"))) {
+                own.add((String) ((Map<?, ?>) pair).get("column"));
+                referenced.add((String) ((Map<?, ?>) pair).get("referencedColumn"));
+            }
+            foreignKeys.add(new ForeignKey((String) r.get("name"), (String) r.get("referencedCatalog"), (String) r.get("referencedSchema"), (String) r.get("referencedTable"),
+                    (String) r.get("deleteRule"), (String) r.get("updateRule"), List.copyOf(own), List.copyOf(referenced)));
+        }
+        return new TableDetail(tableId, List.copyOf(columns), List.copyOf(constraints), List.copyOf(indexes), List.copyOf(foreignKeys));
+    }
+
+    private static List<?> list(Object value) {
+        return value instanceof List<?> l ? l : List.of();
+    }
+
+    /** null 요소를 그대로 둔다 (표현식 인덱스의 컬럼 자리) */
+    private static List<String> strings(Object value) {
+        return java.util.Collections.unmodifiableList(new ArrayList<>(list(value).stream().map(v -> (String) v).toList()));
+    }
+
+    private static Integer integer(Object value) {
+        return value instanceof Number n ? n.intValue() : null;
     }
 
     private Connection toContract(SourceConnection connection) {

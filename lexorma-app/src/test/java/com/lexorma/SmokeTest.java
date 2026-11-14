@@ -336,7 +336,7 @@ class SmokeTest {
         var english = mapper.readTree(client.send(HttpRequest.newBuilder(uri("/api/selectNotice/view/1"))
                 .header("Accept-Language", "en").GET().build(), HttpResponse.BodyHandlers.ofString()).body());
         assertThat(english.path("title").asString()).isEqualTo("[Notice] Welcome to Lexorma");
-        assertThat(english.path("content").asString()).contains("Physical ERD", "Getting started", "Questions and bug reports");
+        assertThat(english.path("content").asString()).contains("Logical and physical ERD", "Getting started", "Questions and bug reports", "Source database connections and import");
         HttpResponse<String> update = client.send(HttpRequest.newBuilder(uri("/api/saveNotice"))
                 .header("Content-Type", "application/json")
                 .header("X-XSRF-TOKEN", csrfToken())

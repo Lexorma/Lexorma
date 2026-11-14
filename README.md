@@ -11,11 +11,12 @@
 
 ## 1. Introduction
 
-Lexorma is an open-source web application for data standardization and metadata management. On top of a standard data dictionary (words, domains and terms) it supports logical and physical data modeling, schema management, ERDs and analysis of database structures.
+Lexorma is an open-source web application for data standardization and metadata management. On top of a standard data dictionary (words, domains and terms) it supports logical and physical data modeling, schema management, ERDs, change tracking, and reading the structure of existing databases into the model.
 
 - **Consistency** — table and column names are built from approved standard words and terms.
 - **One model, several views** — the same model is edited in management screens and in ERDs, and exported as DBMS-specific DDL.
-- **Traceability** — approvals, logical ↔ physical mappings and a change history show how the model got to its current state.
+- **Traceability** — approvals, logical ↔ physical mappings, a change history and named model versions show how the model got to its current state.
+- **Existing databases** — the structure of a live database is collected read-only, compared with the model, and only the changes you choose are imported.
 
 ---
 
@@ -30,19 +31,27 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Data standards | Standardization quality | Diagnoses columns without a term, column names that differ from the term abbreviation, and domain vs. column type/length mismatches |
 | Logical modeling | Models, entities, attributes, identifiers, relationships | Managed in a list screen and in the logical ERD, with approval of entities and relationships |
 | Physical modeling | Schemas, tables, columns | Table and column management, bulk column editing, reusable common column sets, Excel import |
-| Physical modeling | Relations, indexes, constraints | Composite foreign keys, indexes, UNIQUE and CHECK constraints, with foreign key target and type validation |
-| ERD | Logical and physical ERD | View and edit mode, drag to connect, per-user layout |
+| Physical modeling | Relations, indexes, constraints | Composite foreign keys, indexes, UNIQUE and CHECK constraints, with foreign key target and type validation. PostgreSQL index expressions, partial conditions, sort order / NULLS ordering and INCLUDE columns |
+| Physical modeling | Views | Views as model objects with their definition, output columns and referenced tables and views, approval and DDL |
+| ERD | Logical and physical ERD | View and edit mode, drag to connect, auto layout, per-user layout |
 | Mapping | Logical ↔ physical mapping | Entity ↔ table and attribute ↔ column mappings with consistency diagnostics |
 | DDL | DDL generation | `CREATE TABLE`, keys, indexes, comments and foreign keys for PostgreSQL (default), Oracle, MySQL and MariaDB, with warnings for incomplete definitions |
+| DDL | Combined DDL export | One script per project or schema (schemas → tables → indexes → foreign keys → views), in design mode or approved objects only, with warnings for references outside the scope |
 | History | Model change history | Who changed what and when for the physical model, the logical model and the mappings, with before/after comparison and grouping of changes made in one operation |
-| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values) |
+| History | Model versions | Named, immutable snapshots of the whole project model created on request; browse a saved version, and compare two versions or a version with the current model (added / removed / modified objects with before/after values), as a list or as before/after ERDs |
+| Source databases | Connections and collection | Connections to existing databases (passwords encrypted, host and network allow-lists). Metadata collection over JDBC for PostgreSQL, read-only; each completed collection is kept as a point-in-time source catalog with its change history |
+| Source databases | Source ERD | Read-only ERD of a collected point in time, drawn from the actual foreign keys |
+| Source databases | Mapping and comparison | Map source schemas and tables to the model, then compare source and model table by table (columns, keys, constraints, indexes, comments; PostgreSQL rules) |
+| Source databases | Selective import | Preview a plan, then confirm only the chosen items: new tables (with their mapping), new columns, constraints and indexes, and chosen column attributes. Imported objects are unapproved, approved objects are never changed, nothing is deleted or renamed, and the model just before each import is saved as a model version. Source comments are stored separately from business descriptions |
+| Source databases | Re-import after a later collection | Each attribute is compared with the value last imported into the model: changes made only in the source can be chosen again, while attributes edited in the model after the import (or changed on both sides) are shown but never overwritten. Objects deleted in the source are reported and kept in the model |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
+| Administration | External connection security | Outgoing connections to source databases (JDBC) and AI servers (HTTP) are allowed only to destinations an administrator has allowed (connection type, optional host, CIDR range, port); everything else is denied. The actual connection is pinned to the verified addresses, and every connection attempt and policy change is audited |
 
 ### Planned (not implemented yet)
 
 | Area | Feature |
 |---|---|
-| Reverse engineering | Importing the structure of an existing database into the physical model and ERD |
+| Source databases | Synchronizing deletions and replacing changed constraints or indexes from the source; collection and comparison rules for DBMSs other than PostgreSQL |
 | AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
 
 ### Data Standardization Rules
@@ -61,14 +70,14 @@ ADMIN > MANAGER > DBA > USER > VIEWER > NOT_APPROVE
 
 | Role | Description | Main permissions |
 |---|---|---|
-| `ADMIN` | Administrator | User management, everything below |
+| `ADMIN` | Administrator | User management, external connection security, everything below |
 | `MANAGER` | Manager | Approval, announcements (as the manager of the project) |
 | `DBA` | Database administrator | Project management (own projects), system logs |
 | `USER` | Standard user | Create and change dictionary items and models |
-| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history and model versions |
+| `VIEWER` | Read-only user | View dictionaries, models, ERDs, mappings, the change history, model versions and source database information |
 | `NOT_APPROVE` | Unapproved user | Dashboard and announcements only |
 
-Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Newly registered users start as `NOT_APPROVE`.
+Approval and cancellation of approval require approval rights: the `ADMIN` or `MANAGER` role, or being the manager of the current project. Managing source databases (connections, collection, mappings and imports) requires the `USER` role and being the manager of the current project, or `ADMIN`. Newly registered users start as `NOT_APPROVE`.
 
 ---
 
@@ -102,8 +111,8 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-core` | Authentication, login, project tenancy, request logging |
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
-| `lexorma-data` | Data dictionary, tables, columns, physical and logical models, mappings, ERD, DDL, change history, model versions |
-| `lexorma-source` | External source database connection settings and the source metadata catalog, stored separately from the physical model. Metadata collection (planned) runs inside Lexorma over JDBC — no separate collector or MCP server is required |
+| `lexorma-data` | Data dictionary, tables, columns, views, physical and logical models, mappings, ERD, DDL, change history, model versions, and source ↔ model mapping, comparison and import |
+| `lexorma-source` | Source database connections, metadata collection and the source metadata catalog with its versions and change history, stored separately from the physical model. Collection runs inside Lexorma over JDBC — no separate collector or MCP server is required |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |
 
@@ -120,7 +129,7 @@ The Java base package is `com.lexorma`.
 | Java (JDK) | 21 or later |
 | Node.js | 20.19 or later — needed to build the frontend, not at runtime |
 | PostgreSQL | 18 recommended; not required with the H2 profile |
-| Docker | Optional (Docker Compose v2) |
+| Docker | Optional (Docker Compose v2.23.1 or later for the bundled Compose file) |
 | Ports | Application `9940`, local PostgreSQL `15439` |
 
 Gradle does not need to be installed: the project includes the Gradle wrapper (`./gradlew`).
@@ -182,17 +191,35 @@ The default database name and account are kept from the previous project name so
 
 ### Secret encryption key (optional)
 
-Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is read from the environment and is never stored in the database.
+Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
+
+| Property | Environment variable | Description |
+|---|---|---|
+| `lexorma.secret.keys` | `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
+| `lexorma.secret.active-key-id` | `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
+
+- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error (`SECRET_KEY_NOT_CONFIGURED`).
+- A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
+- **Local development**: the `local` and `h2-local` profiles (the default profile is `local`) include a fixed development-only key, so no setup is needed. It is public in this repository: never use it for real data or production passwords. The `dev`, `docker` and `h2-docker` profiles have no key.
+- **Your own key**: set `LEXORMA_SECRET_KEYS` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) as environment variables; they take precedence over the development key. For Docker Compose set them in `docker/lexorma/.env` (see [Docker Compose](#postgresql--application-docker-compose)).
+- Precedence: command-line arguments > Java system properties > OS environment variables > the profile files inside the JAR (including the development key). A key mounted as a Docker secret and read through `spring.config.import=configtree:` is a config file too, so an environment variable with the same name wins over it. Set the key in one place only.
+- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted: `k2:<new key>,k1:<old key>` with `LEXORMA_SECRET_ACTIVE_KEY_ID=k2`. A running container keeps the old value; recreate it after changing the key.
+- If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
+
+### External connection access
+
+Lexorma connects to source databases (and, later, AI servers) itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
+
+After upgrading, existing source connections stay blocked until a rule allows them; the same screen lists registered connections without a rule. Use a numeric address such as `127.0.0.1` instead of `localhost` when it resolves to both IPv4 and IPv6.
+
+The operator can additionally cap source database connections with environment variables. They apply only when set, on top of the administrator rules:
 
 | Variable | Description |
 |---|---|
-| `LEXORMA_SECRET_KEYS` | One or more keys as `<keyId>:<Base64 of 32 random bytes>`, separated by commas — for example `k1:$(openssl rand -base64 32)` |
-| `LEXORMA_SECRET_ACTIVE_KEY_ID` | Key used for new encryption. Defaults to the first key in the list |
+| `LEXORMA_SOURCE_ALLOWED_HOSTS` | Host names or addresses that source connections may use, separated by commas (`*.db.internal` allowed). Empty: no cap |
+| `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback ranges (CIDR, comma separated) that source connections may reach. Empty: no cap (an administrator rule is still required) |
 
-- Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error.
-- A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
-- To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted.
-- If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
+Storing a connection password requires the secret encryption key above.
 
 ### Database migrations
 
@@ -200,10 +227,13 @@ Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/m
 
 - Pending migrations are applied at startup; Hibernate only validates the schema.
 - Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
-- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the fixed baseline. Later changes are added as new incremental migrations (`V2__source_mapping.sql`, then `V3__…` and so on).
-- Applied migration files are never edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
+- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the fixed baseline. Later changes are added as new incremental migrations (`V2__source_mapping.sql`, `V3__source_import.sql`, then `V4__…` and so on).
+- Applied migration files are not edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
+- Exception (2026-11-14): the default welcome announcement in `V1__seed_data.sql` was rewritten to describe the current features. A database created before this change stops at startup with a checksum mismatch for version 1. The change touches only that announcement's seed text, so it is safe to accept: run `flyway repair` (Flyway CLI) against that database once, or back it up and create it again. Such a database keeps its earlier announcement text (system announcements cannot be edited on the screen); a database created again gets the new text.
 - Existing databases are upgraded in place by applying the pending migrations; existing data is kept, and an update does not require recreating the database.
 - Back up production databases before upgrading.
+- In the `local` profile, Spring Boot DevTools automatic restart is turned off (`spring.devtools.restart.enabled: false` in `application-local.yml`). Otherwise a Gradle build or test run while the application is running from the IDE copies new migration files into `build/resources` and the restart applies them to the local database without notice. New migrations are applied to the local database only when you start the application yourself.
+- Before starting the application against a local database that has data you want to keep, check new migration files on a copy first (for example `pg_dump` into a scratch database and start the application against it with `SPRING_DATASOURCE_URL`). To turn automatic restart back on for a session, add `--spring.devtools.restart.enabled=true` to the run configuration.
 
 ### Sessions
 
@@ -274,12 +304,19 @@ docker build -f Dockerfile-h2 -t lexorma/lexorma:h2-latest .
 
 ### PostgreSQL + application (Docker Compose)
 
+`docker/lexorma/docker-compose.yml` is the Compose file for running Lexorma. All environment-specific values — database name, account and password, data directories, ports, image and the optional encryption key — are read from `docker/lexorma/.env`, which you create from `.env.example`:
+
 ```bash
 cd docker/lexorma
-docker-compose -p lexorma up -d
+cp .env.example .env     # edit .env: at least POSTGRES_PASSWORD for a new installation
+docker compose -p lexorma up -d
 ```
 
-The bundled Compose files keep the database name, account and data directory of existing installations.
+- `.env` is ignored by Git. Without it `docker compose` stops with `Set … in .env (see .env.example)`.
+- The defaults in `.env.example` keep the database name, account and data directory (`../volume/lexorma`) of earlier versions of this Compose file, so an existing installation keeps its data.
+- **Encryption key (optional)**: needed only to store source database passwords. Leave `LEXORMA_SECRET_KEYS` empty to run without a key. To use one, set `LEXORMA_SECRET_KEYS=prod:<output of openssl rand -base64 32>` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) in `.env`, then recreate the application container: `docker compose -p lexorma up -d --force-recreate lexorma-app`. The key is passed as a Docker secret (`secrets.<name>.environment`, Docker Compose v2.23.1 or later), mounted at `/run/secrets/lexorma.secret.keys` and read with `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`; it is not an environment variable of the application container.
+- Do not add `LEXORMA_SECRET_KEYS` to the container's `environment`: it would take precedence over the secret.
+- `docker compose config` shows only the variable name of the secret source, not the key. The key is still in `.env` and in the environment of the shell running Compose; protect that host.
 
 ### New installation with `docker run`
 
@@ -307,6 +344,8 @@ docker run -d \
 ```
 
 > PostgreSQL 18 uses `/var/lib/postgresql` as the volume mount path.
+
+To store source database passwords, add an encryption key (optional): either `-e LEXORMA_SECRET_KEYS=prod:<key>` (visible in `docker inspect`), or mount a file you create yourself with `-v ./secrets/lexorma.secret.keys:/run/secrets/lexorma.secret.keys:ro -e SPRING_CONFIG_IMPORT=configtree:/run/secrets/` (one line `prod:<key>`, not in Git). `docker run` does not use Compose secrets.
 
 ### Standalone with H2
 

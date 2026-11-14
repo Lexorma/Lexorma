@@ -92,4 +92,18 @@ public class SourceMappingRestController {
     public ResponseEntity<Map<String, Object>> unmapTable(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("mappingId") Long mappingId) {
         return ResponseEntity.ok(service.unmapTable(accountDto, mappingId));
     }
+
+    @Operation(summary = "TABLE 매핑 예외 등록", description = "미매핑 원본 TABLE 을 매핑하지 않을 대상(예 : flyway_schema_history)으로 지정한다. 원본 수집에는 영향이 없다 (M-4g).")
+    @PutMapping("/exclusions")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<SourceMappingDto.TableRow> excludeTable(@AuthenticationPrincipal AccountDto accountDto, @RequestBody SourceMappingDto.ExclusionRequest request) {
+        return ResponseEntity.ok(service.excludeTable(accountDto, request));
+    }
+
+    @Operation(summary = "TABLE 매핑 예외 취소", description = "미매핑으로 돌아간다. 모델 TABLE·매핑을 만들지 않는다 (M-4g).")
+    @DeleteMapping("/exclusions/{mappingId}")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<Map<String, Object>> cancelExclusion(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("mappingId") Long mappingId) {
+        return ResponseEntity.ok(service.cancelExclusion(accountDto, mappingId));
+    }
 }

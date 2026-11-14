@@ -17,7 +17,8 @@ public final class SourceMappingDto {
      * MODEL_MISSING 모델 객체가 지워짐 → SOURCE_MISSING 마지막 반영 시점에 원본이 없음(삭제 표시) → RECHECK 같은 이름으로 다시 생긴 원본(생성 차수가 다름) →
      * CONFLICT 스키마 매핑과 맞지 않음·원본이 TABLE 이 아님 → MAPPED. 매핑이 없으면 UNMAPPED.
      */
-    public enum Status { UNMAPPED, MAPPED, RECHECK, CONFLICT, SOURCE_MISSING, MODEL_MISSING }
+    /** EXCLUDED : 매핑 예외 (M-4g) — 매핑 누락이 아니다. 이유 REMOVED(원본 없음)·RECREATED(재생성, 예외는 유지)를 함께 표시할 수 있다 */
+    public enum Status { UNMAPPED, MAPPED, RECHECK, CONFLICT, SOURCE_MISSING, MODEL_MISSING, EXCLUDED }
 
     /**
      * 상태의 이유 (화면이 문구로 바꾼다).
@@ -56,9 +57,13 @@ public final class SourceMappingDto {
      *
      * @param candidate 매핑이 없고 스키마 매핑이 유효할 때만 : 매핑된 모델 스키마에서 이름이 원본 DBMS 규칙으로 같은 테이블. 제안일 뿐 저장하지 않는다
      */
+    /**
+     * sourceComment : 원본 TABLE 의 COMMENT (수집값) / tableDescription : 매핑된 모델 TABLE 의 업무 설명 / tableSourceComment : 모델의 원본 COMMENT 칸 (가져온 값).
+     * 한쪽 값을 다른 쪽으로 채우지 않는다 (없으면 null). 예외·미매핑 행에는 모델 값이 없다
+     */
     public record TableRow(Long sourceTableId, Long sourceSchemaId, String sourceSchemaName, String sourceTableName, String sourceComment, Long mappingId,
-                           Long tableId, String tableName, String tableKorName, Long schemaId, String schemaName, Integer confirmedOrder, Status status, Reason reason,
-                           Candidate candidate) {
+                           Long tableId, String tableName, String tableKorName, String tableDescription, String tableSourceComment, Long schemaId, String schemaName,
+                           Integer confirmedOrder, Status status, Reason reason, Candidate candidate) {
     }
 
     /**
@@ -88,5 +93,9 @@ public final class SourceMappingDto {
     }
 
     public record TableRequest(Long sourceTableId, Long tableId) {
+    }
+
+    /** 매핑 예외 등록 (M-4g) */
+    public record ExclusionRequest(Long sourceTableId) {
     }
 }

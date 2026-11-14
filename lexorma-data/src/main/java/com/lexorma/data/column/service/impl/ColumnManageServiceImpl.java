@@ -131,6 +131,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName() + "." + columnInfoDto.getColumnName());
         }
 
+        String identityProblem = identityProblem(columnInfoDto.getIdentity(), columnInfoDto.getDataType(), columnInfoDto.getScale(), columnInfoDto.getDefaultValue());
+        if (identityProblem != null) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "{0} : {1}", columnInfoDto.getColumnName(), identityProblem);
         ColumnInfo columnInfo = columnInfoDto.toEntity();
         rejectAmbiguousReferences(projectId, tableInfo, java.util.Collections.singleton(columnInfo.getRefTableName()));
         columnInfo.setTableInfo(tableInfo);
@@ -701,6 +703,23 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 || (row.getPrecision() != null && row.getPrecision().signum() < 0)) {
             errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), Messages.get("{0} : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다.", columnName)));
         }
+        String identityProblem = identityProblem(row.getIdentity(), row.getDataType(), row.getScale(), row.getDefaultValue());
+        if (identityProblem != null) errors.add(new ColumnBulkSaveDto.RowError(row.getKey(), columnName + " : " + identityProblem));
+    }
+
+    private static final java.util.Set<String> IDENTITY_TYPES = java.util.Set.of("SMALLINT", "INT", "INTEGER", "BIGINT", "NUMBER", "NUMERIC", "DECIMAL");
+
+    /**
+     * IDENTITY 검증 : 정수 타입(SMALLINT·INTEGER·BIGINT, 소수 자릿수 없는 NUMBER·NUMERIC·DECIMAL)만, 기본값과 함께 쓰지 않는다
+     * (SERIAL 타입은 이미 자동 증가라 함께 쓰지 않는다). 문제가 없으면 null
+     */
+    static String identityProblem(String identity, String dataType, Integer scale, String defaultValue) {
+        if (identity == null || identity.isBlank()) return null;
+        if (ColumnInfo.Identity.parse(identity) == null) return Messages.get("IDENTITY 는 ALWAYS 또는 BY_DEFAULT 입니다.");
+        String type = dataType == null ? "" : dataType.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!IDENTITY_TYPES.contains(type) || (scale != null && scale > 0)) return Messages.get("IDENTITY 는 정수 타입(SMALLINT·INTEGER·BIGINT 등)에만 쓸 수 있습니다.");
+        if (defaultValue != null && !defaultValue.isBlank()) return Messages.get("IDENTITY 컬럼에는 기본값을 쓸 수 없습니다.");
+        return null;
     }
 
     /**
@@ -717,6 +736,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         column.setPrecision(row.getPrecision());
         column.setScale(row.getScale());
         column.setDefaultValue(trimToNull(row.getDefaultValue()));
+        column.setIdentity(ColumnInfo.Identity.parse(row.getIdentity()));
         column.setRefTableName(row.getRefTableName() == null || row.getRefTableName().isBlank() ? null : row.getRefTableName().trim().toUpperCase());
         column.setExample(trimToNull(row.getExample()));
         column.setIsPk(pk);
@@ -735,7 +755,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private static List<Object> snapshot(ColumnInfo c) {
         return java.util.Arrays.asList(c.getColumnDesc(), c.getDataType(), c.getMaxLength(),
                 c.getPrecision() == null ? null : c.getPrecision().stripTrailingZeros(),
-                c.getScale(), c.getDefaultValue(), c.getRefTableName(), c.getExample(), c.getIsPk(), c.getIsNullable(),
+                c.getScale(), c.getDefaultValue(), c.getIdentity(), c.getRefTableName(), c.getExample(), c.getIsPk(), c.getIsNullable(),
                 c.getIsRequired(), c.getIsUnique(), c.getIsIndex(), c.getIsMasterData(), c.getIsSensitive(), c.getIsEncrypted(),
                 c.getSortOrder());
     }

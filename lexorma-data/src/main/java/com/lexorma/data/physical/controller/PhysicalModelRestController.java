@@ -42,6 +42,14 @@ public class PhysicalModelRestController {
         return ResponseEntity.ok(physicalModelService.saveRelation(accountDto, relation));
     }
 
+    @Operation(summary = "관계 FK 규칙 변경", description = "FK 의 ON DELETE · ON UPDATE 규칙 (NO_ACTION · RESTRICT · CASCADE · SET_NULL · SET_DEFAULT). 참조 컬럼 관계도 바꿀 수 있다. 승인된 관계는 승인 취소 후")
+    @PreAuthorize("hasRole('USER')")
+    @PutMapping("/relation/{id}/rules")
+    public ResponseEntity<PhysicalModelDto.Relation> updateRelationRules(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id,
+                                                                         @RequestBody PhysicalModelDto.RelationRules rules) {
+        return ResponseEntity.ok(physicalModelService.updateRelationRules(accountDto, id, rules));
+    }
+
     @Operation(summary = "인덱스 등록", description = "컬럼 순서대로 (복합 인덱스 가능), isUnique 로 고유 인덱스")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/index")

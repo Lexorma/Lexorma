@@ -280,7 +280,7 @@ class IndexManagementIntegrationTest {
         var declared = LexormaIndexSeedTest.declaredIndexes("h2");
         // 다른 테스트가 프로젝트 0 에 만든 인덱스와 섞이지 않게 초기 등록 행만 본다
         List<Long> ids = jdbc.queryForList("select IDX_SN from TB_TBL_IDX where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and RGTR_ID = 'SYSTEM'", Long.class);
-        assertThat(ids).hasSize(declared.size()).hasSize(100);
+        assertThat(ids).hasSize(declared.size()).hasSize(106);
         for (Long id : ids) {
             PhysicalModelDto.IndexDetail detail = physicalModelService.selectIndex(admin, id);
             String[] definition = declared.get(detail.index().indexName()).split("\\|"); // 테이블|UNIQUE 여부|컬럼,컬럼

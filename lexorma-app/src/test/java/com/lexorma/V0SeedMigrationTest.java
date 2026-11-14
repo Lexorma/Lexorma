@@ -29,13 +29,13 @@ class V0SeedMigrationTest {
         try {
             // V0 (스키마·COMMENT : 예전 V2~V6 의 스키마 변경 포함) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑,
             // 예전 V2~V6 의 예제 — 원본 인덱스 표현식, M-14 인덱스 출처·고급 인덱스, Lexorma 자체 인덱스, M-15 VIEW 모델). 2026-11-13 에 V0·V1 로 합쳤다
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(8);
             var jdbc = new JdbcTemplate(dataSource);
-            // V0·V2 의 create index 100개(컬럼 143개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
+            // V0·V2·V3·V4 의 create index 106개(컬럼 151개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.
             String idx = "\"" + schema + "\".TB_TBL_IDX";
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(100);
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(143);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(106);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(151);
             assertThat(jdbc.queryForObject("select count(*) from INFORMATION_SCHEMA.TABLES where upper(TABLE_NAME) = 'TMP_IDX_SEED'", Integer.class)).isZero();
             // 초기 데이터에 예전 프로젝트 이름이 없다
             assertThat(oldNames(jdbc, "\"" + schema + "\".")).isZero();
@@ -75,6 +75,32 @@ class V0SeedMigrationTest {
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0", Integer.class)).isPositive();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ATRB", Integer.class))
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0", Integer.class));
+            // 예제는 실제 스키마와 같다 (2026-11-14, V6) : FK·UNIQUE·CHECK 제약 이름이 예제의 관계·제약조건과 같고, 기본값이 있는 컬럼이 같다.
+            // 테이블·컬럼을 더할 때 FK·UNIQUE·CHECK·DEFAULT 도 같은 마이그레이션에서 예제에 넣어야 이 검사를 통과한다 (값까지는 원본·모델 비교가 본다)
+            String constraints = "select upper(TABLE_NAME) || '.' || upper(CONSTRAINT_NAME) from INFORMATION_SCHEMA.TABLE_CONSTRAINTS where TABLE_SCHEMA = ? and CONSTRAINT_TYPE = ?"
+                    + " and upper(TABLE_NAME) like 'TB\\_%' escape '\\' and (upper(CONSTRAINT_NAME) like 'FK\\_%' escape '\\' or upper(CONSTRAINT_NAME) like 'UX\\_%' escape '\\'"
+                    + " or upper(CONSTRAINT_NAME) like 'CK\\_%' escape '\\')";
+            assertThat(new java.util.TreeSet<>(jdbc.queryForList(constraints, String.class, schema, "FOREIGN KEY")))
+                    .isEqualTo(new java.util.TreeSet<>(jdbc.queryForList("select t.TBL_NM || '.' || upper(r.REL_NM) from " + s + "TB_TBL_REL r join " + s
+                            + "TB_TBL t on t.TBL_SN = r.ORGNL_TBL_SN where r.PRJ_SN = 0 and r.REL_TYPE_CD = 'FK'", String.class))).isNotEmpty();
+            java.util.Set<String> keys = new java.util.TreeSet<>(jdbc.queryForList(constraints, String.class, schema, "UNIQUE"));
+            keys.addAll(jdbc.queryForList(constraints, String.class, schema, "CHECK"));
+            assertThat(keys).isEqualTo(new java.util.TreeSet<>(jdbc.queryForList("select t.TBL_NM || '.' || upper(k.CNSTRT_NM) from " + s + "TB_TBL_CNSTRT k join " + s
+                    + "TB_TBL t on t.TBL_SN = k.TBL_SN where k.PRJ_SN = 0", String.class))).isNotEmpty();
+            assertThat(new java.util.TreeSet<>(jdbc.queryForList("select upper(TABLE_NAME) || '.' || upper(COLUMN_NAME) from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = ?"
+                    + " and upper(TABLE_NAME) like 'TB\\_%' escape '\\' and COLUMN_DEFAULT is not null and IS_IDENTITY <> 'YES'", String.class, schema)))
+                    .isEqualTo(new java.util.TreeSet<>(jdbc.queryForList("select TBL_NM || '.' || COL_NM from " + s + "TB_COL where PRJ_SN = 0 and BSC_VL is not null", String.class)));
+            // FK 삭제·수정 규칙과 IDENTITY 도 예제와 같다 (V7)
+            assertThat(new java.util.TreeSet<>(jdbc.queryForList("select upper(tc.TABLE_NAME) || '.' || upper(rc.CONSTRAINT_NAME) || ':' || rc.DELETE_RULE || ':' || rc.UPDATE_RULE"
+                    + " from INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc join INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc on tc.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA"
+                    + " and tc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME where rc.CONSTRAINT_SCHEMA = ? and upper(tc.TABLE_NAME) like 'TB\\_%' escape '\\'", String.class, schema)))
+                    .isEqualTo(new java.util.TreeSet<>(jdbc.queryForList("select t.TBL_NM || '.' || upper(r.REL_NM) || ':' || replace(coalesce(r.DEL_RULE_CD, 'NO_ACTION'), '_', ' ')"
+                            + " || ':' || replace(coalesce(r.MDFCN_RULE_CD, 'NO_ACTION'), '_', ' ') from " + s + "TB_TBL_REL r join " + s
+                            + "TB_TBL t on t.TBL_SN = r.ORGNL_TBL_SN where r.PRJ_SN = 0 and r.REL_TYPE_CD = 'FK'", String.class)));
+            assertThat(new java.util.TreeSet<>(jdbc.queryForList("select upper(TABLE_NAME) || '.' || upper(COLUMN_NAME) || ':' || IDENTITY_GENERATION from INFORMATION_SCHEMA.COLUMNS"
+                    + " where TABLE_SCHEMA = ? and upper(TABLE_NAME) like 'TB\\_%' escape '\\' and IS_IDENTITY = 'YES'", String.class, schema)))
+                    .isEqualTo(new java.util.TreeSet<>(jdbc.queryForList("select TBL_NM || '.' || COL_NM || ':' || replace(AUTO_CRT_MTHD_CD, '_', ' ') from " + s
+                            + "TB_COL where PRJ_SN = 0 and AUTO_CRT_MTHD_CD is not null", String.class))).isNotEmpty();
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_REL", Integer.class))
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_REL where PRJ_SN = 0", Integer.class));
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_IDNTFR_ATRB", Integer.class))
@@ -103,6 +129,7 @@ class V0SeedMigrationTest {
                     .contains("데이터 사전", "테이블 및 컬럼", "물리 ERD", "프로젝트", "사용자 및 권한",
                             "이용 안내", "문의 및 오류 신고", "https://github.com/Lexorma/Lexorma/issues", "MIT 라이선스")
                     .contains("## 주요 기능", "### 1. 데이터 사전", "| 용도 | 링크 |")
+                    .contains("논리 모델", "논리·물리 매핑", "DDL 내보내기", "변경 이력과 모델 버전", "원본 DB 연결과 가져오기", "LEXORMA_SECRET_KEYS")
                     // 영어판(EnglishMessages)의 키와 한 글자도 다르지 않아야 영어 화면에 영어로 나온다.
                     .matches(Messages::hasEnglish)
                     .doesNotContain("<a", "mailto:");

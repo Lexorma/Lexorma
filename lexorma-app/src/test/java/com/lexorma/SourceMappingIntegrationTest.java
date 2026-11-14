@@ -16,8 +16,12 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.schema.repository.SchemaInfoRepository;
 import com.lexorma.data.sourcemapping.controller.SourceMappingRestController;
+import com.lexorma.data.sourcemapping.domain.dto.SourceCompareDto;
+import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Status;
+import com.lexorma.data.sourcemapping.service.SourceCompareService;
+import com.lexorma.data.sourcemapping.service.SourceImportService;
 import com.lexorma.data.sourcemapping.service.SourceMappingService;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
@@ -30,6 +34,7 @@ import com.lexorma.source.collection.domain.dto.SourceCollectionSpec.Namespace;
 import com.lexorma.source.collection.service.SourceCollectionService;
 import com.lexorma.source.connection.controller.SourceConnectionRestController;
 import com.lexorma.source.connection.domain.dto.SourceConnectionDto;
+import com.lexorma.source.connection.service.SourceConnectionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,22 +57,26 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 원본 DB 스키마·TABLE 매핑 (M-4c) : 기준 연결, 1:1, 후보와 확정의 분리, 상태 계산(재확인·충돌·원본 없음·모델 없음), 원본·모델 삭제, PARTIAL 수집,
- * 동시 확정, 권한·프로젝트 격리, 물리 모델을 바꾸지 않음. 원본 DB 에 접속하지 않고 수집 결과(SourceCollectionSpec)를 직접 넘긴다.
+ * 동시 확정, 권한·프로젝트 격리, 물리 모델을 바꾸지 않음. 매핑 예외(M-4g). 원본 DB 에 접속하지 않고 수집 결과(SourceCollectionSpec)를 직접 넘긴다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 class SourceMappingIntegrationTest {
 
     @Autowired SourceMappingService service;
+    @Autowired SourceCompareService compare;
+    @Autowired SourceImportService imports;
     @Autowired SourceMappingRestController api;
     @Autowired SourceCollectionService collections;
     @Autowired SourceConnectionRestController connectionApi;
+    @Autowired SourceConnectionService connectionService;
     @Autowired SchemaInfoRepository schemaRepository;
     @Autowired TableInfoRepository tableRepository;
     @Autowired ProjectRepository projectRepository;
@@ -278,6 +287,144 @@ class SourceMappingIntegrationTest {
     }
 
     @Test
+    @DisplayName("연결 삭제 ↔ 매핑 확정 (T-01) : 확정·기준 지정이 먼저 잠그면 연결 삭제가 그 커밋을 기다렸다가 방금 저장한 매핑·기준 지정까지 지운다. 고아 매핑이 남지 않는다")
+    void deleteWaitsForConfirm() throws Exception {
+        Env e = env("m4c-del-after");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(service.overview(e.manager), "public").sourceSchemaId(), e.defaultSchema.getId()));
+        Long user = e.sourceTableId("public", "tb_user");
+
+        // 확정 트랜잭션이 저장(flush)까지 마치고 커밋 전에 멈춘 사이에 연결을 지운다
+        Object[] confirmed = heldThenRun(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())),
+                () -> connectionService.delete(e.manager, e.connection));
+        assertThat(confirmed[0]).isInstanceOf(SourceMappingDto.TableRow.class);
+        assertThat(confirmed[1]).isInstanceOf(Integer.class); // 삭제도 성공한다 (확정이 커밋된 뒤에)
+        assertNoOrphans(e);
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isZero();
+
+        // 기준 연결 지정이 먼저면 : 연결 삭제가 그 지정까지 지운다 (지운 연결을 기준으로 가리키는 프로젝트가 남지 않는다)
+        Env b = env("m4c-del-base");
+        Long second = connectionService.create(b.manager, new SourceConnectionDto.Request("두 번째", "POSTGRESQL", "db2.internal", null, "app", null, "reader", null, null,
+                null, null, null)).id();
+        service.setBase(b.manager, new SourceMappingDto.BaseRequest(second, null));
+        Object[] based = heldThenRun(() -> service.setBase(b.manager, new SourceMappingDto.BaseRequest(b.connection, true)),
+                () -> connectionService.delete(b.manager, b.connection));
+        assertThat(based[0]).isInstanceOf(SourceMappingDto.Overview.class);
+        assertThat(based[1]).isInstanceOf(Integer.class);
+        assertNoOrphans(b);
+        assertThat(service.overview(b.manager).base()).isNull();
+    }
+
+    @Test
+    @DisplayName("연결 삭제 ↔ 매핑 확정 (T-02) : 연결 삭제가 먼저 잠그면 확정·기준 지정은 그 커밋을 기다렸다가 거절된다 (지운 연결로 매핑이 생기지 않는다)")
+    void confirmWaitsForDelete() throws Exception {
+        Env e = env("m4c-del-before");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(service.overview(e.manager), "public").sourceSchemaId(), e.defaultSchema.getId()));
+        Long user = e.sourceTableId("public", "tb_user");
+
+        Object[] results = heldThenRun(() -> connectionService.delete(e.manager, e.connection),
+                () -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())));
+        assertThat(results[0]).isInstanceOf(Integer.class);
+        assertRejected(results[1], ErrorCode.SOURCE_CONNECTION_NOT_FOUND, ErrorCode.SOURCE_MAPPING_INVALID);
+        assertNoOrphans(e);
+
+        Env b = env("m4c-del-before-base");
+        Object[] based = heldThenRun(() -> connectionService.delete(b.manager, b.connection),
+                () -> service.setBase(b.manager, new SourceMappingDto.BaseRequest(b.connection, null)));
+        assertRejected(based[1], ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
+        assertNoOrphans(b);
+        assertThat(count("TB_PRJ_SRC_CNTN", b)).isZero();
+    }
+
+    @Test
+    @DisplayName("연결 삭제 순서 (T-03·T-04·T-05) : 확정 후 삭제는 매핑까지 지우고, 삭제 후 확정·기준 지정은 거절되며, 삭제가 실패(롤백)하면 연결·매핑·기준 지정이 모두 남는다")
+    void deletionOrderAndRollback() {
+        Env e = env("m4c-del-order");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        mapAll(e);
+        Long user = e.sourceTableId("public", "tb_user");
+
+        // T-05 : 같은 트랜잭션의 뒤 작업이 실패하면 매핑 정리도 함께 되돌아간다
+        assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
+            connectionService.delete(e.manager, e.connection);
+            throw new IllegalStateException("삭제 뒤 실패");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_CNTN where SRC_CNTN_SN = ?", Integer.class, e.connection)).isEqualTo(1);
+        assertThat(count("TB_SRC_SCHM_MPNG", e)).isEqualTo(2);
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isEqualTo(3);
+        assertThat(count("TB_PRJ_SRC_CNTN", e)).isEqualTo(1);
+
+        // T-03 : 확정한 뒤 삭제하면 매핑·기준 지정까지 지운다
+        connectionService.delete(e.manager, e.connection);
+        assertThat(count("TB_SRC_SCHM_MPNG", e)).isZero();
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isZero();
+        assertThat(count("TB_PRJ_SRC_CNTN", e)).isZero();
+        // T-04 : 지운 연결로는 확정·기준 지정이 안 된다
+        rejected(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())), ErrorCode.SOURCE_MAPPING_INVALID);
+        rejected(() -> service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null)), ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
+        assertNoOrphans(e);
+    }
+
+    @Test
+    @DisplayName("기준 연결 변경 ↔ TABLE 확정 (T-07) : 어느 쪽이 먼저든 다른 연결의 원본이 섞이지 않는다 (확정은 그 연결의 매핑으로 남거나 거절된다)")
+    void baseChangeWhileConfirming() throws Exception {
+        Env e = env("m4c-base-race");
+        Long second = connectionService.create(e.manager, new SourceConnectionDto.Request("두 번째", "POSTGRESQL", "db2.internal", null, "app", null, "reader", null, null,
+                null, null, null)).id();
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(service.overview(e.manager), "public").sourceSchemaId(), e.defaultSchema.getId()));
+        Long user = e.sourceTableId("public", "tb_user");
+        Long orders = e.sourceTableId("public", "orders");
+
+        // 확정이 먼저 : 기준 변경이 기다렸다가 바꾼다. 확정한 매핑은 첫 연결의 매핑으로 남는다
+        Object[] first = heldThenRun(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())),
+                () -> service.setBase(e.manager, new SourceMappingDto.BaseRequest(second, true)));
+        assertThat(first[0]).isInstanceOf(SourceMappingDto.TableRow.class);
+        assertThat(((SourceMappingDto.Overview) first[1]).base().id()).isEqualTo(second);
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_TBL_MPNG where PRJ_SN = ? and SRC_CNTN_SN = ?", Integer.class, e.project.getId(), e.connection))
+                .isEqualTo(1);
+
+        // 기준 변경이 먼저 : 첫 연결의 원본으로 하던 확정은 거절된다 (바뀐 기준 연결에 첫 연결의 원본이 매핑되지 않는다)
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        Object[] second2 = heldThenRun(() -> service.setBase(e.manager, new SourceMappingDto.BaseRequest(second, true)),
+                () -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(orders, e.table("DEFAULT", "TB_ORDER_X").getId())));
+        assertThat(second2[0]).isInstanceOf(SourceMappingDto.Overview.class);
+        assertRejected(second2[1], ErrorCode.SOURCE_MAPPING_CONFLICT, ErrorCode.SOURCE_MAPPING_INVALID);
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_TBL_MPNG where PRJ_SN = ? and SRC_CNTN_SN = ?", Integer.class, e.project.getId(), second)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_TBL_MPNG where PRJ_SN = ?", Integer.class, e.project.getId())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("스키마 매핑 해제 ↔ TABLE 확정 (T-08) : 해제가 먼저면 확정이 거절되고, 확정이 먼저면 해제가 방금 확정한 TABLE 매핑까지 함께 해제한다")
+    void unmapSchemaWhileConfirming() throws Exception {
+        Env e = env("m4c-unmap-race");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        Long publicSchema = schemaRow(service.overview(e.manager), "public").sourceSchemaId();
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(publicSchema, e.defaultSchema.getId()));
+        Long user = e.sourceTableId("public", "tb_user");
+
+        Object[] unmapFirst = heldThenRun(() -> service.unmapSchema(e.manager, publicSchema),
+                () -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())));
+        assertThat(unmapFirst[0]).isInstanceOf(Map.class);
+        assertRejected(unmapFirst[1], ErrorCode.SOURCE_MAPPING_INVALID);
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isZero();
+
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(publicSchema, e.defaultSchema.getId()));
+        Object[] confirmFirst = heldThenRun(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(user, e.table("DEFAULT", "TB_USER").getId())),
+                () -> service.unmapSchema(e.manager, publicSchema));
+        assertThat(confirmFirst[0]).isInstanceOf(SourceMappingDto.TableRow.class);
+        assertThat(((Map<?, ?>) confirmFirst[1]).get("releasedTables")).isEqualTo(1);
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isZero();
+        assertThat(count("TB_SRC_SCHM_MPNG", e)).isZero();
+    }
+
+    @Test
     @DisplayName("권한 : 조회는 VIEWER 이상, 변경은 프로젝트 관리자(USER 역할 포함)·ADMIN 만. 관리자가 아닌 MANAGER·USER 는 거절, VIEWER 는 역할에서 거절. 다른 프로젝트의 매핑 ID 는 없는 것과 같다")
     void permissions() {
         Env e = env("m4c-auth");
@@ -319,6 +466,153 @@ class SourceMappingIntegrationTest {
     // ------------------------------------------------------------------ 예제
 
     /** public : tb_user, orders, v_user(VIEW). archive : tb_user. audit : log (모델에 같은 이름의 스키마가 없다) */
+    @Test
+    @DisplayName("매핑 예외 (M-4g) : 미매핑 TABLE 만 예외(스키마 매핑 무관), 매핑·VIEW·중복은 거절, 예외는 매핑·해제 불가. 누락 건수에서 빠지고 원본은 계속 수집되며, 최신화·삭제·재생성·스키마 해제 뒤에도 남는다. 취소하면 미매핑으로 돌아가 다시 매핑된다")
+    void exclusions() {
+        Env e = env("m4g-excl");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        SourceMappingDto.Overview overview = service.overview(e.manager);
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(overview, "public").sourceSchemaId(), e.defaultSchema.getId()));
+        Map<String, SourceMappingDto.TableRow> rows = tables(e);
+        service.mapTable(e.manager, new SourceMappingDto.TableRequest(rows.get("public.tb_user").sourceTableId(), e.table("DEFAULT", "TB_USER").getId()));
+        long unmappedBefore = service.tables(e.manager, null, null, null, 0, 500).counts().getOrDefault(Status.UNMAPPED, 0L);
+
+        // 1 · 13 : 미매핑 TABLE 예외 (스키마 매핑이 없어도 된다). 다른 스키마의 같은 이름(archive.tb_user)은 public.tb_user 와 섞이지 않는다
+        SourceMappingDto.TableRow log = service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(rows.get("audit.log").sourceTableId()));
+        assertThat(log).extracting(SourceMappingDto.TableRow::status, SourceMappingDto.TableRow::tableId).containsExactly(Status.EXCLUDED, null);
+        assertThat(log.mappingId()).isNotNull();
+        service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(rows.get("archive.tb_user").sourceTableId()));
+        rows = tables(e);
+        assertThat(rows.get("archive.tb_user").status()).isEqualTo(Status.EXCLUDED);
+        assertThat(rows.get("public.tb_user").status()).isEqualTo(Status.MAPPED);
+        // 8 : 누락(미매핑) 건수에서 빠지고 예외로 따로 센다. 원본 TABLE 총수는 그대로
+        SourceMappingDto.TablePage page = service.tables(e.manager, null, null, null, 0, 500);
+        assertThat(page.counts().getOrDefault(Status.UNMAPPED, 0L)).isEqualTo(unmappedBefore - 2);
+        assertThat(page.counts().get(Status.EXCLUDED)).isEqualTo(2);
+        assertThat(page.total()).isEqualTo(4);
+        assertThat(service.overview(e.manager).tableCounts().get(Status.EXCLUDED)).isEqualTo(2);
+
+        // 3 · 5 · VIEW : 매핑된 TABLE, 이미 예외인 TABLE, VIEW 는 예외로 지정할 수 없다
+        Long user = rows.get("public.tb_user").sourceTableId();
+        Long logId = rows.get("audit.log").sourceTableId();
+        rejected(() -> service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(user)), ErrorCode.SOURCE_MAPPING_INVALID);
+        rejected(() -> service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(logId)), ErrorCode.SOURCE_MAPPING_INVALID);
+        rejected(() -> service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(e.sourceTableId("public", "v_user"))), ErrorCode.SOURCE_MAPPING_INVALID);
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_TBL_MPNG where PRJ_SN = ? and SRC_TBL_SN = ?", Integer.class, e.project.getId(), logId)).isEqualTo(1);
+        // 4 : 예외 TABLE 은 매핑할 수 없고, 예외 행은 매핑 해제로 지워지지 않는다 (예외 취소만)
+        Long orders = rows.get("public.orders").sourceTableId();
+        SourceMappingDto.TableRow excludedOrders = service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(orders));
+        rejected(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(orders, e.table("DEFAULT", "TB_ORDER_X").getId())), ErrorCode.SOURCE_MAPPING_INVALID);
+        rejected(() -> service.unmapTable(e.manager, excludedOrders.mappingId()), ErrorCode.SOURCE_MAPPING_INVALID);
+        rejected(() -> service.cancelExclusion(e.manager, tables(e).get("public.tb_user").mappingId()), ErrorCode.SOURCE_MAPPING_INVALID);
+
+        // 6 · 7 : 최신화(FULL)에서 예외 TABLE 도 수집되고(컬럼 추가가 반영된다) 예외는 그대로
+        Map<String, List<SourceCollectionSpec.Table>> changed = catalog(true, true);
+        changed.put("audit", List.of(table("log", SourceTableType.TABLE, "message")));
+        collect(e, SourceCollectionSpec.Request.full(), changed);
+        assertThat(tables(e).get("audit.log").status()).isEqualTo(Status.EXCLUDED);
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_COL where SRC_TBL_SN = ?", Integer.class, logId)).isEqualTo(2);
+        // 원본에서 사라지면 '예외 · 원본 없음', 같은 이름으로 다시 생기면 예외 유지 (재생성 안내)
+        Map<String, List<SourceCollectionSpec.Table>> withoutLog = catalog(true, true);
+        withoutLog.remove("audit");
+        collect(e, SourceCollectionSpec.Request.full(), withoutLog);
+        assertThat(tables(e).get("audit.log")).extracting(SourceMappingDto.TableRow::status, SourceMappingDto.TableRow::reason)
+                .containsExactly(Status.EXCLUDED, SourceMappingDto.Reason.REMOVED);
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        assertThat(tables(e).get("audit.log")).extracting(SourceMappingDto.TableRow::status, SourceMappingDto.TableRow::reason)
+                .containsExactly(Status.EXCLUDED, SourceMappingDto.Reason.RECREATED);
+
+        // 스키마 매핑 해제는 TABLE 매핑만 함께 해제하고 예외는 남긴다
+        Map<String, Object> released = service.unmapSchema(e.manager, schemaRow(service.overview(e.manager), "public").sourceSchemaId());
+        assertThat(released).containsEntry("releasedTables", 1);
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.EXCLUDED);
+
+        // 2 · 9 · 10 : 예외 취소 → 미매핑(누락 건수에 다시 포함) → 정상 매핑. 모델 테이블·매핑을 만들지 않는다
+        long modelTables = count("TB_TBL", e);
+        assertThat(service.cancelExclusion(e.manager, tables(e).get("public.orders").mappingId())).containsEntry("result", true);
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.UNMAPPED);
+        assertThat(service.tables(e.manager, null, null, null, 0, 500).counts().get(Status.UNMAPPED)).isGreaterThanOrEqualTo(1);
+        assertThat(count("TB_TBL", e)).isEqualTo(modelTables);
+        rejected(() -> service.cancelExclusion(e.manager, excludedOrders.mappingId()), ErrorCode.SOURCE_MAPPING_INVALID);
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(service.overview(e.manager), "public").sourceSchemaId(), e.defaultSchema.getId()));
+        assertThat(service.mapTable(e.manager, new SourceMappingDto.TableRequest(orders, e.table("DEFAULT", "TB_ORDER_X").getId())).status()).isEqualTo(Status.MAPPED);
+
+        // 비교(M-4d) : 예외 TABLE 은 비교 목록에 없고 요약에 건수만, 가져오기(M-4e) 대상도 아니다
+        SourceCompareDto.Summary summary = compare.summary(e.manager);
+        assertThat(summary.excludedTables()).isEqualTo(2);
+        assertThat(summary.sourceTables()).isEqualTo(4);
+        assertThat(compare.tables(e.manager, null, null, null, null, null, 0, 500).rows()).extracting(SourceCompareDto.TableRow::sourceTableId)
+                .doesNotContain(logId, rows.get("archive.tb_user").sourceTableId());
+        SourceImportDto.TableCandidates excludedImport = imports.candidates(e.manager, summary.base().id(), summary.reflectedOrder(), "S" + logId);
+        assertThat(excludedImport.tableReason()).isEqualTo(SourceImportDto.Reason.EXCLUDED);
+        assertThat(excludedImport.create()).isFalse();
+
+        // 11 : 저장된 상태다 (새로 읽어도 같다). 연결을 지우면 예외 행도 함께 지워진다
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_TBL_MPNG where PRJ_SN = ? and MPNG_EXCL_YN = true and TBL_SN is null", Integer.class, e.project.getId()))
+                .isEqualTo(2);
+        connectionService.delete(e.manager, e.connection);
+        assertThat(count("TB_SRC_TBL_MPNG", e)).isZero();
+    }
+
+    @Test
+    @DisplayName("매핑 예외 동시 요청 (M-4g, 12) : 같은 원본 TABLE 을 동시에 매핑·예외 처리해도 한쪽만 성공하고, 매핑이면서 예외인 행은 생기지 않는다")
+    void concurrentExcludeAndMap() throws Exception {
+        Env e = env("m4g-race");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(schemaRow(service.overview(e.manager), "public").sourceSchemaId(), e.defaultSchema.getId()));
+        Long orders = tables(e).get("public.orders").sourceTableId();
+        for (int round = 0; round < 3; round++) {
+            List<Object> results = race(List.of(
+                    () -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(orders, e.table("DEFAULT", "TB_ORDER_X").getId())),
+                    () -> service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(orders))));
+            assertThat(results).filteredOn(r -> r instanceof SourceMappingDto.TableRow).hasSize(1);
+            assertThat(results).filteredOn(r -> r instanceof CustomException).hasSize(1);
+            assertThat(jdbc.queryForList("select coalesce(cast(TBL_SN as varchar(30)), '-') || ':' || cast(MPNG_EXCL_YN as varchar(10)) from TB_SRC_TBL_MPNG where PRJ_SN = ? and SRC_TBL_SN = ?",
+                    String.class, e.project.getId(), orders)).hasSize(1).allSatisfy(v -> assertThat(v).matches("(?i)(\\d+:false|-:true)"));
+            jdbc.update("delete from TB_SRC_TBL_MPNG where PRJ_SN = ? and SRC_TBL_SN = ?", e.project.getId(), orders);
+        }
+    }
+
+    @Test
+    @DisplayName("COMMENT 표시 : 원본 TABLE COMMENT(수집값)·모델 설명·모델 원본 COMMENT 칸을 각자의 칸에서 따로 준다 (한쪽으로 다른 쪽을 채우지 않음, 한글명은 COMMENT 가 아님). 최신화는 원본 값만 바꾸고 모델 값은 보존, 예외 행에는 모델 값이 없다")
+    void commentsAreSeparate() {
+        Env e = env("m4g-comment");
+        service.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        Map<String, List<SourceCollectionSpec.Table>> withComment = catalog(true, true);
+        withComment.put("public", List.of(commented("tb_user", "사용자"), table("orders", SourceTableType.TABLE), table("v_user", SourceTableType.VIEW)));
+        collect(e, SourceCollectionSpec.Request.full(), withComment);
+        tx.executeWithoutResult(st -> {
+            TableInfo user = tableRepository.findById(e.table("DEFAULT", "TB_USER").getId()).orElseThrow();
+            user.setTableDescription("사용자 정보");
+            user.setSourceComment("예전 원본 COMMENT");
+        });
+        mapAll(e);
+        SourceMappingDto.TableRow user = tables(e).get("public.tb_user");
+        assertThat(user).extracting(SourceMappingDto.TableRow::sourceComment, SourceMappingDto.TableRow::tableKorName, SourceMappingDto.TableRow::tableDescription,
+                SourceMappingDto.TableRow::tableSourceComment).containsExactly("사용자", "TB_USER", "사용자 정보", "예전 원본 COMMENT");
+        // 원본 COMMENT 가 없으면 원본 칸은 비고, 모델 설명은 그대로 (서로 대신하지 않는다)
+        assertThat(tables(e).get("public.orders")).extracting(SourceMappingDto.TableRow::sourceComment, SourceMappingDto.TableRow::tableDescription,
+                SourceMappingDto.TableRow::tableSourceComment).containsExactly(null, "TB_ORDER_X", null);
+        // 최신화 : 원본 COMMENT 만 바뀌고 모델 설명·원본 COMMENT 칸은 그대로
+        withComment.put("public", List.of(commented("tb_user", "사용자 계정"), table("orders", SourceTableType.TABLE), table("v_user", SourceTableType.VIEW)));
+        collect(e, SourceCollectionSpec.Request.full(), withComment);
+        assertThat(tables(e).get("public.tb_user")).extracting(SourceMappingDto.TableRow::sourceComment, SourceMappingDto.TableRow::tableDescription,
+                SourceMappingDto.TableRow::tableSourceComment).containsExactly("사용자 계정", "사용자 정보", "예전 원본 COMMENT");
+        // 해제·예외 : 모델 값이 없다 (원본 COMMENT 는 계속 보인다)
+        service.unmapTable(e.manager, tables(e).get("public.tb_user").mappingId());
+        service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(tables(e).get("public.tb_user").sourceTableId()));
+        assertThat(tables(e).get("public.tb_user")).extracting(SourceMappingDto.TableRow::status, SourceMappingDto.TableRow::sourceComment,
+                SourceMappingDto.TableRow::tableDescription, SourceMappingDto.TableRow::tableSourceComment).containsExactly(Status.EXCLUDED, "사용자 계정", null, null);
+    }
+
+    private static SourceCollectionSpec.Table commented(String name, String comment) {
+        SourceCollectionSpec.Table plain = table(name, SourceTableType.TABLE);
+        return new SourceCollectionSpec.Table(new SourceCatalogSpec.Table(Name.of(name), SourceTableType.TABLE, comment), plain.columns(), plain.constraints(),
+                plain.indexes(), plain.relations());
+    }
+
     private static Map<String, List<SourceCollectionSpec.Table>> catalog(boolean withPublicUser, boolean withArchive) {
         Map<String, List<SourceCollectionSpec.Table>> schemas = new LinkedHashMap<>();
         List<SourceCollectionSpec.Table> publicTables = new ArrayList<>();
@@ -331,9 +625,11 @@ class SourceMappingIntegrationTest {
         return schemas;
     }
 
-    private static SourceCollectionSpec.Table table(String name, SourceTableType type) {
+    private static SourceCollectionSpec.Table table(String name, SourceTableType type, String... extraColumns) {
+        List<SourceCatalogSpec.Column> columns = new ArrayList<>(List.of(new SourceCatalogSpec.Column(Name.of("id"), 1, "bigint", null, null, null, false, null, null)));
+        for (String column : extraColumns) columns.add(new SourceCatalogSpec.Column(Name.of(column), columns.size() + 1, "text", null, null, null, true, null, null));
         return new SourceCollectionSpec.Table(new SourceCatalogSpec.Table(Name.of(name), type, null),
-                List.of(new SourceCatalogSpec.Column(Name.of("id"), 1, "bigint", null, null, null, false, null, null)),
+                columns,
                 type == SourceTableType.TABLE ? List.of(new SourceCatalogSpec.Constraint(name + "_pkey", SourceConstraintType.PRIMARY_KEY, null, List.of(Name.of("id")))) : List.of(),
                 List.of(), List.of());
     }
@@ -460,6 +756,93 @@ class SourceMappingIntegrationTest {
             return results;
         } finally {
             pool.shutdownNow();
+        }
+    }
+
+    /**
+     * first 를 한 트랜잭션에서 실행하고 커밋 전에 멈춘 사이에 then 을 시작한다. then 이 DB 잠금을 기다리기 시작한 것을 확인한 뒤(잠금 대기가 없으면 실패)
+     * first 를 커밋시키고 두 결과(또는 예외)를 돌려준다. Thread.sleep 으로 순서를 짐작하지 않고 DB 가 알려 주는 잠금 대기로 순서를 정한다.
+     */
+    private Object[] heldThenRun(Callable<Object> first, Callable<Object> then) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            Future<Object> holder = pool.submit(caught(() -> tx.execute(s -> {
+                Object result;
+                try {
+                    result = first.call();
+                } catch (Exception ex) {
+                    throw new IllegalStateException(ex);
+                }
+                held.countDown();
+                await(release);
+                return result;
+            })));
+            await(held);
+            Future<Object> waiter = pool.submit(caught(then));
+            try {
+                awaitLockWait(waiter);
+            } finally {
+                release.countDown();
+            }
+            return new Object[]{holder.get(30, TimeUnit.SECONDS), waiter.get(30, TimeUnit.SECONDS)};
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    /** waiter 가 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다 (PostgreSQL pg_stat_activity, H2 SESSIONS.BLOCKER_ID). 기다리지 않고 끝나면 실패한다 */
+    private void awaitLockWait(Future<?> waiter) throws InterruptedException {
+        String sql = postgres()
+                ? "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
+                : "select EXECUTING_STATEMENT from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (System.nanoTime() < deadline) {
+            assertThat(waiter.isDone()).as("잠금을 기다리지 않고 끝났다 (경합이 일어나지 않았다)").isFalse();
+            if (!jdbc.queryForList(sql, String.class).isEmpty()) return;
+            Thread.sleep(5);
+        }
+        throw new AssertionError("잠금 대기가 생기지 않았다");
+    }
+
+    private boolean postgres() {
+        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("기다리는 신호가 오지 않았다");
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 예외도 결과로 돌려준다 (트랜잭션 안에서 감싼 예외는 풀어서) */
+    private static Callable<Object> caught(Callable<Object> body) {
+        return () -> {
+            try {
+                return body.call();
+            } catch (CustomException e) {
+                return e;
+            } catch (IllegalStateException e) {
+                if (e.getCause() instanceof CustomException c) return c;
+                throw e;
+            }
+        };
+    }
+
+    private static void assertRejected(Object result, ErrorCode... expected) {
+        assertThat(result).isInstanceOf(CustomException.class);
+        assertThat(((CustomException) result).getErrorCode()).isIn((Object[]) expected);
+    }
+
+    /** 지워진 원본 연결을 가리키는 매핑·기준 지정이 없다 */
+    private void assertNoOrphans(Env e) {
+        for (String table : List.of("TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG")) {
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " m where m.PRJ_SN = ? and not exists (select 1 from TB_SRC_CNTN c where c.SRC_CNTN_SN = m.SRC_CNTN_SN)",
+                    Integer.class, e.project.getId())).as(table + " 고아 행").isZero();
         }
     }
 

@@ -60,7 +60,8 @@ public class SourceConnectionTester {
         } catch (CustomException e) {
             if (!RESULT_CODES.contains(e.getErrorCode())) throw e;
             boolean connected = used.get() != null && used.get().connected();
-            return new SourceConnectionDto.TestResult(connected, false, null, null, null, e.getErrorCode().name(), e.getErrorCode().getMessage());
+            // 사유가 있으면 함께 알린다 (예 : 외부 연결 정책의 차단 사유)
+            return new SourceConnectionDto.TestResult(connected, false, null, null, null, e.getErrorCode().name(), e.getCustomMessage());
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

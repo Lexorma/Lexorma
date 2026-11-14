@@ -1,5 +1,6 @@
 package com.lexorma.source.connection.jdbc;
 
+import com.lexorma.core.network.ConnectionPin;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.source.connection.domain.enums.DatabaseNameType;
 
@@ -136,11 +137,11 @@ public final class SourceJdbcSettings {
      * <ul>
      *   <li>시간 : connectTimeout(소켓 연결)·loginTimeout(접속·인증 전체)·socketTimeout(응답을 기다리는 최대 시간 : 끊긴 네트워크에서 영원히 기다리지 않는다). 단위는 초</li>
      *   <li>세션 : 읽기 전용이 기본(default_transaction_read_only), 서버 쪽 조회 제한 시간(statement_timeout), 이름 찾기는 pg_catalog 만(search_path)</li>
-     *   <li>소켓 : {@link SourceGuardedSocketFactory} — 실제 접속 주소를 {@link SourceAddressPolicy} 로 확인한다</li>
+     *   <li>소켓 : {@link SourceGuardedSocketFactory} — 실제 접속 주소를 외부 연결 판정 결과(pin : 검증한 주소·규칙 대역·포트·운영자 상한)로 확인한다 (SEC-1)</li>
      * </ul>
      */
     public static Properties connectionProperties(DbType dbType, String username, String password, int connectTimeoutSeconds, int queryTimeoutSeconds,
-                                                  String allowedNetworks) {
+                                                  ConnectionPin pin) {
         if (dbType != DbType.POSTGRESQL) throw new IllegalArgumentException("지원하지 않는 DB 유형입니다.");
         Properties properties = new Properties();
         properties.setProperty("user", username);
@@ -153,7 +154,7 @@ public final class SourceJdbcSettings {
         properties.setProperty("ApplicationName", "Lexorma metadata collector");
         properties.setProperty("options", "-c default_transaction_read_only=on -c statement_timeout=" + queryTimeoutSeconds * 1000 + " -c search_path=pg_catalog");
         properties.setProperty("socketFactory", SourceGuardedSocketFactory.class.getName());
-        properties.setProperty(SourceGuardedSocketFactory.ALLOWED_NETWORKS, allowedNetworks == null ? "" : allowedNetworks);
+        if (pin != null) pin.writeTo(properties);
         return properties;
     }
 

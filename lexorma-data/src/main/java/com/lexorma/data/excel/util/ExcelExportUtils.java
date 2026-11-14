@@ -26,6 +26,7 @@ import java.util.function.Consumer;
  * 메모리에 전체를 올리지 않도록 SXSSFWorkbook(스트리밍 쓰기)으로 데이터 행을 쓴다.
  * - static/excel 의 출력용 템플릿은 헤더(1행)만 둔다. SXSSF 는 템플릿에 이미 있는 행 위치에 쓸 수 없다.
  * - template.xlsx 는 공통표준용어 파일(dataPortal.xlsx)과 같은 형식(시트/헤더/열 서식/헤더 고정/필터)이고,
+ *   영어 요청이면 시트 이름·헤더를 영어로 바꾼다. ({@link ExcelTemplateLabels})
  *   데이터 셀은 템플릿의 열 서식(글꼴/정렬)에 얇은 테두리를 더해 쓴다.
  * - 반환한 임시 파일은 호출한 쪽에서 다 내려보낸 뒤 지워야 한다. (예: Files.newInputStream(path, DELETE_ON_CLOSE))
  */
@@ -86,9 +87,10 @@ public class ExcelExportUtils {
         return id != null && id != 0 ? id : null;
     }
 
-    /** 제정차수 : 공통표준용어 파일처럼 'N차' (0 이면 빈 값, 업로드는 숫자만 읽는다) */
+    /** 제정차수 : 공통표준용어 파일처럼 'N차', 영어 요청이면 숫자만 (0 이면 빈 값, 업로드는 숫자만 읽는다) */
     private static String revision(int revisionNumber) {
-        return revisionNumber != 0 ? revisionNumber + "차" : "";
+        if (revisionNumber == 0) return "";
+        return Messages.isEnglish() ? String.valueOf(revisionNumber) : revisionNumber + "차";
     }
 
     public static File loadAndCopyDictionaryExcelFile(String fileName, RowSource<StandardTermDto> terms,
@@ -161,7 +163,9 @@ public class ExcelExportUtils {
                 throw new FileNotFoundException(Messages.get("파일을 찾을 수 없습니다: {0}", fileName));
             }
 
-            SXSSFWorkbook workbook = new SXSSFWorkbook(new XSSFWorkbook(template), STREAMING_WINDOW_SIZE);
+            XSSFWorkbook header = new XSSFWorkbook(template);
+            ExcelTemplateLabels.localize(header); // 영어 요청이면 시트 이름·헤더를 영어로
+            SXSSFWorkbook workbook = new SXSSFWorkbook(header, STREAMING_WINDOW_SIZE);
             try {
                 writer.accept(workbook);
 

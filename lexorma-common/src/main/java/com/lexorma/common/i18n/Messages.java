@@ -62,7 +62,8 @@ public final class Messages {
         return EnglishMessages.MESSAGES.containsKey(message);
     }
 
-    private static boolean isEnglish() {
+    /** 현재 요청을 영어로 응답하는지 (요청이 없거나 Accept-Language 가 없거나 한국어면 false) */
+    public static boolean isEnglish() {
         if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) return false;
         HttpServletRequest request = attributes.getRequest();
         String header = request.getHeader(HttpHeaders.ACCEPT_LANGUAGE);

@@ -91,7 +91,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProjectDeletionIntegrationTest {
 
     /** 프로젝트와 무관한 공통 데이터 : 프로젝트를 지워도 건드리지 않는다 */
-    private static final Set<String> GLOBAL_TABLES = Set.of("TB_ACNT", "TB_ROLE", "TB_ACNT_ROLE", "TB_PST_CTGRY");
+    // 외부 연결 보안(SEC-1) 규칙·변경 이력·연결 감사는 시스템 단위라 프로젝트를 지워도 남는다
+    private static final Set<String> GLOBAL_TABLES = Set.of("TB_ACNT", "TB_ROLE", "TB_ACNT_ROLE", "TB_PST_CTGRY", "TB_EXTRL_CNTN_RULE", "TB_EXTRL_CNTN_RULE_HSTRY",
+            "TB_EXTRL_CNTN_HSTRY");
 
     /**
      * 프로젝트 ID 컬럼(PRJ_SN)이 있는 테이블. 테이블을 더하면 이 목록과 삭제 처리(ProjectDataCleanup 등), 아래 준비 데이터에 함께 넣는다 :
@@ -101,7 +103,7 @@ class ProjectDeletionIntegrationTest {
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
-            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG");
+            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -389,6 +391,9 @@ class ProjectDeletionIntegrationTest {
         sourceMappingService.setBase(admin, new SourceMappingDto.BaseRequest(connection.getId(), null));
         sourceMappingService.mapSchema(admin, new SourceMappingDto.SchemaRequest(sourceSchema.getId(), order.getSchema().getId()));
         sourceMappingService.mapTable(admin, new SourceMappingDto.TableRequest(users.getId(), order.getId()));
+        // 원본 가져오기 실행 이력 (M-4e)
+        jdbc.update("insert into TB_SRC_IMPRT_EXCN(SRC_IMPRT_EXCN_SN, PRJ_SN, SRC_CNTN_SN, RFLT_ORD, CHG_GROUP_ID) values (?, ?, ?, 1, ?)",
+                900_000_000L + projectId, projectId, connection.getId(), "deletion-" + projectId);
         return new Filled(order);
     }
 

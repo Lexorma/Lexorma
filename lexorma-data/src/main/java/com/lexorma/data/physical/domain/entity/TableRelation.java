@@ -34,6 +34,32 @@ public class TableRelation extends BaseEntity {
      */
     public enum Source { USER, REF_COLUMN, IMPORTED, AI_APPROVED }
 
+    /**
+     * FK 삭제·수정 규칙 (ON DELETE / ON UPDATE). null = NO_ACTION (DBMS 기본, DDL 에 쓰지 않는다).
+     * DBMS 가 지원하지 않는 규칙(Oracle 의 ON UPDATE·RESTRICT·SET DEFAULT, MySQL·MariaDB 의 SET DEFAULT)은 저장은 하고 DDL 에서 빼며 경고한다
+     */
+    public enum Rule {
+        NO_ACTION("NO ACTION"), RESTRICT("RESTRICT"), CASCADE("CASCADE"), SET_NULL("SET NULL"), SET_DEFAULT("SET DEFAULT");
+
+        private final String sql;
+
+        Rule(String sql) {
+            this.sql = sql;
+        }
+
+        public String sql() {
+            return sql;
+        }
+
+        /** "SET NULL"·"set_null"·"CASCADE" 등. 비었거나 모르면 null */
+        public static Rule parse(String value) {
+            if (value == null || value.isBlank()) return null;
+            String key = value.trim().toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
+            for (Rule rule : values()) if (rule.name().equals(key)) return rule;
+            return null;
+        }
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TBL_REL")
     @SequenceGenerator(name = "SQ_TBL_REL", sequenceName = "SQ_TBL_REL", allocationSize = 50)
@@ -68,6 +94,16 @@ public class TableRelation extends BaseEntity {
 
     @Column(name = "APRV_YN")
     private Boolean isApproval;
+
+    /** ON DELETE 규칙 (null = NO ACTION) */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "DEL_RULE_CD", length = 20)
+    private Rule deleteRule;
+
+    /** ON UPDATE 규칙 (null = NO ACTION) */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "MDFCN_RULE_CD", length = 20)
+    private Rule updateRule;
 
     @Builder.Default
     @OneToMany(mappedBy = "relation", cascade = CascadeType.ALL, orphanRemoval = true)

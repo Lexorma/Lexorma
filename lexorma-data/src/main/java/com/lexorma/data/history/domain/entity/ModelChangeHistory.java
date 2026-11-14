@@ -31,8 +31,8 @@ public class ModelChangeHistory {
     /** APPROVE·REVOKE 는 승인 여부만 바뀐 경우 (다른 값도 함께 바뀌면 UPDATE 한 건) */
     public enum Action { CREATE, UPDATE, DELETE, APPROVE, REVOKE }
 
-    /** AUTO_SYNC : 컬럼의 참조 테이블명에서 자동으로 맞춘 관계(REF_COLUMN)의 변경 */
-    public enum Source { USER, AUTO_SYNC }
+    /** AUTO_SYNC : 컬럼의 참조 테이블명에서 자동으로 맞춘 관계(REF_COLUMN)의 변경. IMPORT : 원본 메타데이터 가져오기(M-4e) 트랜잭션의 변경 */
+    public enum Source { USER, AUTO_SYNC, IMPORT }
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_MDL_CHG_HSTRY")

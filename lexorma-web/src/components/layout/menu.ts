@@ -35,6 +35,7 @@ export const MENU: MenuEntry[] = [
       { id: 'user-manage', label: t('사용자 관리'), path: '/userManage' },
       { id: 'project-manage', label: t('프로젝트 관리'), path: '/projectManage' },
       { id: 'system-log', label: t('시스템 로그'), path: '/systemLog' },
+      { id: 'connection-security', label: t('외부 연결 보안'), path: '/connectionSecurity' },
     ],
   },
   {
@@ -78,6 +79,7 @@ export const MENU: MenuEntry[] = [
       { id: 'source-catalog', label: t('원본 카탈로그'), path: '/sourceCatalog' },
       { id: 'source-erd', label: t('원본 DB ERD'), path: '/sourceErd' },
       { id: 'source-mapping', label: t('원본 매핑 관리'), path: '/sourceMapping' },
+      { id: 'source-compare', label: t('원본·모델 비교'), path: '/sourceCompare' },
     ],
   },
   {

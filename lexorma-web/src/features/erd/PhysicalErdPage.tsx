@@ -739,7 +739,8 @@ function ErdWorkspace() {
             <RelationPanel relation={relation} onTable={(tableId) => focus(String(tableId))}
               outOfScope={!graph.data!.tables.some((t) => t.id === relation.sourceTableId) || !graph.data!.tables.some((t) => t.id === relation.targetTableId)}
               onApproval={approvalAvailable ? () => toggleRelationApproval(relation) : undefined}
-              onDelete={editing ? () => removeRelation(relation) : undefined} />
+              onDelete={editing ? () => removeRelation(relation) : undefined}
+              onRulesChanged={editing ? () => void refresh() : undefined} key={`${relation.id}-${relation.deleteRule}-${relation.updateRule}`} />
           ) : (
             <p className="erd-muted">{t('테이블이나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}

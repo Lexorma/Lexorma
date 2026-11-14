@@ -52,6 +52,8 @@ public class ColumnBulkSaveDto {
         private BigDecimal precision;
         private Integer scale;
         private String defaultValue;
+        /** IDENTITY : ALWAYS · BY_DEFAULT (비면 없음) */
+        private String identity;
         private String refTableName;
         private String example;
 

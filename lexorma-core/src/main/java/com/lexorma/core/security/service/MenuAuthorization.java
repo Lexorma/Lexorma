@@ -41,6 +41,8 @@ public class MenuAuthorization {
             Map.entry("user-manage", "ADMIN"),
             Map.entry("project-manage", "DBA"),
             Map.entry("system-log", "DBA"),
+            // 외부 연결 보안 (SEC-1) : 허용 규칙·감사는 시스템 관리자만 (API 도 ADMIN)
+            Map.entry("connection-security", "ADMIN"),
 
             // 운영 관리
             Map.entry("notice", "NOT_APPROVE"),
@@ -97,6 +99,8 @@ public class MenuAuthorization {
             Map.entry("source-erd", "VIEWER"),
             // 원본 매핑 관리 (M-4c) : 매핑 현황·목록 조회 API 가 VIEWER. 기준 연결·매핑 확정·해제 버튼은 source-manage(USER) + projectManageable
             Map.entry("source-mapping", "VIEWER"),
+            // 원본·모델 비교 (M-4d) : 조회 API(/api/sourceCompare)만 있고 VIEWER. 변경·가져오기 버튼이 없다
+            Map.entry("source-compare", "VIEWER"),
             Map.entry("source-manage", "USER")
     );
 
@@ -106,7 +110,7 @@ public class MenuAuthorization {
      */
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
             "system-management",
-            new String[]{"user-manage", "project-manage", "system-log"},
+            new String[]{"user-manage", "project-manage", "system-log", "connection-security"},
 
             "operation-management",
             new String[]{"notice"},
@@ -124,7 +128,7 @@ public class MenuAuthorization {
             new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "view-manage", "physical-erd", "ddl-export"},
 
             "source-management",
-            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping"}
+            new String[]{"source-connection", "source-collection", "source-catalog", "source-erd", "source-mapping", "source-compare"}
     );
 
     private final RoleHierarchy roleHierarchy;

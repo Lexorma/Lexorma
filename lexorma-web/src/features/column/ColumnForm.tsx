@@ -49,7 +49,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   // 컬럼명 중복
   const [duplicate, setDuplicate] = useState<{ duplicated: boolean; message: Message; ok?: string }>({ duplicated: false, message: null });
 
-  const [fields, setFields] = useState<Record<string, string>>({ dataType: '', columnDesc: '', maxLength: '', precision: '', scale: '', defaultValue: '', sortOrder: '', refTableName: '', example: '' });
+  const [fields, setFields] = useState<Record<string, string>>({ dataType: '', columnDesc: '', maxLength: '', precision: '', scale: '', defaultValue: '', identity: '', sortOrder: '', refTableName: '', example: '' });
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [showExtra, setShowExtra] = useState(false);
 
@@ -257,6 +257,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       precision: num(fields.precision),
       scale: num(fields.scale),
       defaultValue: fields.defaultValue.trim(),
+      identity: fields.identity || null,
       sortOrder: num(fields.sortOrder),
       refTableName: fields.refTableName.trim(),
       example: fields.example.trim(),
@@ -371,6 +372,16 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
             <input type={type} className="form-control" id={key} value={fields[key]} onChange={(e) => setField(key, e.target.value)} />
           </div>
         ))}
+
+        {/* IDENTITY (V7) : 정수 타입에만, 기본값과 함께 쓰지 않는다 (서버가 검증) */}
+        <div className="form-group">
+          <label htmlFor="identity">IDENTITY</label>
+          <select className="form-control" id="identity" value={fields.identity} onChange={(e) => setField('identity', e.target.value)}>
+            <option value="">{t('없음')}</option>
+            <option value="BY_DEFAULT">BY DEFAULT</option>
+            <option value="ALWAYS">ALWAYS</option>
+          </select>
+        </div>
 
         <div className="form-group">
           <label htmlFor="refTableName">{t('참조 테이블명')}</label>

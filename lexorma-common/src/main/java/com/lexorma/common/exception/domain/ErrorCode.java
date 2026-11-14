@@ -67,12 +67,12 @@ public enum ErrorCode {
     TERM_WORD_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "TERM_WORD_COUNT_MISMATCH"),
 
     /**
-     * 테이블 한글명 중 승인된 표준 단어가 아닌 단어가 존재합니다.
+     * 테이블 코멘트 중 승인된 표준 단어가 아닌 단어가 존재합니다.
      */
     TABLE_WORD_NOT_STANDARD(HttpStatus.BAD_REQUEST, "TABLE_WORD_NOT_STANDARD"),
 
     /**
-     * 테이블 한글명을 입력해주세요.
+     * 테이블 코멘트를 입력해주세요.
      */
     TABLE_KOR_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "TABLE_KOR_NAME_REQUIRED"),
 
@@ -372,7 +372,7 @@ public enum ErrorCode {
     SOURCE_DRIVER_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "SOURCE_DRIVER_NOT_AVAILABLE"),
 
     /**
-     * 접속 대상 주소가 원본 DB 접속 정책에 맞지 않는다 (루프백·링크 로컬·메타데이터·멀티캐스트, 허용되지 않은 사설 주소, 허용 호스트 밖).
+     * 접속 대상이 외부 연결 정책(SEC-1)에 맞지 않는다 : 관리자 허용 규칙 없음·밖, 절대 차단 주소(링크 로컬·메타데이터·멀티캐스트 등), 운영자 상한 밖.
      */
     SOURCE_HOST_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SOURCE_HOST_NOT_ALLOWED"),
 
@@ -419,7 +419,37 @@ public enum ErrorCode {
     /**
      * 원본 매핑이 1:1 을 깨뜨린다 (이미 다른 원본에 매핑된 모델 스키마·테이블) 또는 확인이 필요한 변경 (기준 연결 변경으로 매핑이 남는다).
      */
-    SOURCE_MAPPING_CONFLICT(HttpStatus.CONFLICT, "SOURCE_MAPPING_CONFLICT");
+    SOURCE_MAPPING_CONFLICT(HttpStatus.CONFLICT, "SOURCE_MAPPING_CONFLICT"),
+
+    /**
+     * 원본 비교(M-4d) 요청이 앞서 받은 비교 기준(기준 연결·반영 순서)과 다르다 : 그 사이 기준 연결이 바뀌었거나 새 수집이 반영되었다 (다른 시점의 결과를 섞지 않는다).
+     */
+    SOURCE_COMPARE_STALE(HttpStatus.CONFLICT, "SOURCE_COMPARE_STALE"),
+
+    /**
+     * 원본 메타데이터 가져오기(M-4e) 요청을 처리할 수 없다 : 고른 항목이 없거나, 적용할 수 없는 항목이 있거나, 미리보기 없이 확정했다.
+     */
+    SOURCE_IMPORT_INVALID(HttpStatus.BAD_REQUEST, "SOURCE_IMPORT_INVALID"),
+
+    /**
+     * 외부 연결 허용 규칙(SEC-1)이 올바르지 않다 : 형식·너무 넓은 대역·절대 차단 대역·중복·포트 범위.
+     */
+    CONNECTION_RULE_INVALID(HttpStatus.BAD_REQUEST, "CONNECTION_RULE_INVALID"),
+
+    /**
+     * 외부 연결 허용 규칙(SEC-1)을 찾을 수 없다.
+     */
+    CONNECTION_RULE_NOT_FOUND(HttpStatus.NOT_FOUND, "CONNECTION_RULE_NOT_FOUND"),
+
+    /**
+     * 외부 연결(SEC-1, AI HTTP 등)이 관리자 정책으로 차단되었다.
+     */
+    EXTERNAL_CONNECTION_BLOCKED(HttpStatus.BAD_REQUEST, "EXTERNAL_CONNECTION_BLOCKED"),
+
+    /**
+     * 외부 연결 시도를 감사 기록에 남기지 못해 연결하지 않았다 (SEC-1 : 기록 없는 연결을 하지 않는다).
+     */
+    EXTERNAL_CONNECTION_AUDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_CONNECTION_AUDIT_FAILED");
 
     private final HttpStatus httpStatus;
     private final String code;

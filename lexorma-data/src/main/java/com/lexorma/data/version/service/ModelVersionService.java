@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,10 +45,11 @@ public class ModelVersionService {
 
     /**
      * 모델 내용 JSON 의 형식 번호 (대상 종류 → [{id, name, state}]). 2 : 인덱스 state 에 indexSource·derivedColumnId (M-14 1차),
-     * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차), 4 : 대상 종류 PHYSICAL_VIEW (M-15, state 에 columns·references).
+     * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차), 4 : 대상 종류 PHYSICAL_VIEW (M-15, state 에 columns·references),
+     * 5 : 테이블·컬럼 state 에 sourceComment (원본 COMMENT, M-4e).
      * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW 가 없어 현재의 VIEW 는 모두 추가로 보인다
      */
-    static final int FORMAT_VERSION = 4;
+    static final int FORMAT_VERSION = 5;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -59,11 +61,13 @@ public class ModelVersionService {
     private final ModelChangeRecorder recorder;
 
     /**
-     * 현재 모델을 새 버전으로 저장한다.
-     * REPEATABLE_READ : 여러 번의 조회가 같은 시점의 모델을 본다 (만드는 동안 커밋된 다른 사용자의 변경이 일부만 섞이지 않는다).
+     * 현재 모델을 새 버전으로 저장한다 : 프로젝트 행을 배타로 잡은 뒤의 최신 커밋 상태.
+     * READ_COMMITTED (T-09, docs/source-import-m4e.md 12장) : REPEATABLE_READ 면 PostgreSQL 이 첫 SQL(이 잠금 대기) 시작 때 시점을 정해, 기다리는 동안 커밋된 가져오기가 빠진다.
+     * 여러 번의 조회가 한 시점을 보는 것은 잠금이 보장한다 : 모든 모델 변경은 같은 트랜잭션에서 변경 이력(프로젝트 ID 있음)을 남기고, ProjectWriteGuard 가 커밋 직전에
+     * 프로젝트 행을 공유 잠금으로 잡으므로 배타 잠금을 쥔 동안에는 커밋되지 않는다 ({@link #createBeforeImport} 와 같은 근거). 변경 이력을 남기지 않는 모델 쓰기를 만들면 이 근거가 깨진다.
      * 내용과 버전 정보는 한 행이라 일부만 저장되는 일이 없다.
      */
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ModelVersionDto.Summary create(AccountDto accountDto, ModelVersionDto.Create request) {
         Long projectId = accountDto.getProjectId();
         String name = request == null || request.versionName() == null ? "" : request.versionName().trim();
@@ -85,6 +89,29 @@ public class ModelVersionService {
                     .projectId(projectId).versionName(name).description(description).formatVersion(FORMAT_VERSION)
                     .counts(JSON.writeValueAsString(counts)).snapshot(JSON.writeValueAsString(objects))
                     .createdBy(accountDto.getUsername()).createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)).build());
+            return summary(new Object[]{saved.getId(), saved.getVersionName(), saved.getDescription(), saved.getFormatVersion(), saved.getCounts(), saved.getCreatedBy(), saved.getCreatedAt()});
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);
+        }
+    }
+
+    /**
+     * 원본 가져오기(M-4e) 직전 상태를 버전으로 남긴다 : 부르는 쪽 트랜잭션 안에서만 (MANDATORY), 모델을 바꾸기 전에.
+     * 부르는 쪽이 이미 프로젝트 행을 배타 잠금으로 잡고 있어야 한다 (가져오기 확정이 맨 먼저 잡는다) : 그동안 같은 프로젝트의 다른 쓰기가 커밋되지 않으므로
+     * 여러 번 읽어도 같은 시점의 모델이다. 그래서 {@link #create} 의 잠금(공유 → 배타로 올리면 동시 가져오기끼리 교착)을 다시 잡지 않는다.
+     * 같은 트랜잭션이라 가져오기가 실패하면 버전도 남지 않는다. 버전명이 이미 있으면 SAVED_DATA_EXISTS (가져오기 전체가 롤백된다).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ModelVersionDto.Summary createBeforeImport(Long projectId, String name, String description, String createdBy) {
+        if (repository.existsByProjectIdAndVersionName(projectId, name)) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);
+        Map<String, List<ModelChangeRecorder.ObjectState>> objects = recorder.currentState(projectId);
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        objects.forEach((type, list) -> counts.put(type, list.size()));
+        try {
+            ModelVersion saved = repository.saveAndFlush(ModelVersion.builder()
+                    .projectId(projectId).versionName(name).description(description).formatVersion(FORMAT_VERSION)
+                    .counts(JSON.writeValueAsString(counts)).snapshot(JSON.writeValueAsString(objects))
+                    .createdBy(createdBy).createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)).build());
             return summary(new Object[]{saved.getId(), saved.getVersionName(), saved.getDescription(), saved.getFormatVersion(), saved.getCounts(), saved.getCreatedBy(), saved.getCreatedAt()});
         } catch (DataIntegrityViolationException e) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);

@@ -43,6 +43,10 @@ public class ColumnInfo extends BaseEntity {
     @Column(name = "COL_EXPLN")
     private String columnDesc;
 
+    /** 원본 COMMENT (M-4e 가져오기, V3). 원본 DB 에서 가져온 설명이며 업무 설명(columnDesc)과 따로 둔다 */
+    @Column(name = "SRC_ANTN_CN", columnDefinition = "TEXT")
+    private String sourceComment;
+
     /** 데이터 타입: VARCHAR2 */
     @Column(name = "DATA_TYPE_NM")
     private String dataType;
@@ -66,6 +70,36 @@ public class ColumnInfo extends BaseEntity {
     /** 기본값: nan */
     @Column(name = "BSC_VL")
     private String defaultValue;
+
+    /**
+     * 자동 생성 방법 (IDENTITY) : ALWAYS · BY_DEFAULT, null = 없음. 기본값·SERIAL 타입과 함께 쓰지 않는다.
+     * DDL : PostgreSQL·Oracle GENERATED … AS IDENTITY, MySQL·MariaDB AUTO_INCREMENT
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "AUTO_CRT_MTHD_CD", length = 20)
+    private Identity identity;
+
+    public enum Identity {
+        ALWAYS("ALWAYS"), BY_DEFAULT("BY DEFAULT");
+
+        private final String sql;
+
+        Identity(String sql) {
+            this.sql = sql;
+        }
+
+        public String sql() {
+            return sql;
+        }
+
+        /** "BY DEFAULT"·"by_default"·"ALWAYS". 비었거나 모르면 null */
+        public static Identity parse(String value) {
+            if (value == null || value.isBlank()) return null;
+            String key = value.trim().toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
+            for (Identity identity : values()) if (identity.name().equals(key)) return identity;
+            return null;
+        }
+    }
 
     /** 정렬 순서: 1 */
     @Column(name = "SORT_ORD")

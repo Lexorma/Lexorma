@@ -19,6 +19,12 @@ out/
 /data
 /docker/volume/**
 
+### 로컬 비밀 설정 (Docker Compose .env 등 — 예시 파일만 올린다) ###
+.env
+.env.*
+!.env.example
+secrets/
+
 CLAUDE.md
 AGENTS.md
 

@@ -165,9 +165,189 @@ final class EnglishMessages {
         add("{0} : 최대 길이가 없어 {1} 로 생성했습니다.", "{0}: generated as {1} because no max length is set.");
         add("길이 없는 VARCHAR", "VARCHAR without a length");
 
+        // ---------------------------------------------------------------- 외부 연결 보안 (SEC-1)
+        add("http 또는 https 주소만 연결할 수 있습니다.", "Only http or https addresses can be connected.");
+        add("같은 연결 유형·호스트·대역·포트의 규칙이 이미 있습니다.", "A rule with the same connection type, host, range and port already exists.");
+        add("관리자가 허용한 규칙이 없습니다", "No rule allowed by an administrator");
+        add("너무 넓은 대역입니다. IPv4 는 /8, IPv6 는 /16 보다 좁게 정해주세요.", "The range is too wide. Use a prefix of at least /8 for IPv4 and /16 for IPv6.");
+        add("설명은 1000자까지 입력할 수 있습니다.", "The description can be up to 1000 characters.");
+        add("숫자 주소 호스트는 허용 대역 안이어야 합니다.", "A numeric host address must be inside the allowed range.");
+        add("연결 시점의 목적지가 확인한 주소와 다릅니다", "The destination at connection time differs from the verified address");
+        add("연결 유형은 JDBC 또는 AI_HTTP 입니다.", "The connection type must be JDBC or AI_HTTP.");
+        add("연결하지 못했습니다", "Could not connect");
+        add("요청이 비어 있습니다.", "The request is empty.");
+        add("운영자가 정한 범위 밖의 사설·루프백 주소입니다", "A private or loopback address outside the range set by the operator");
+        add("호스트가 여러 주소로 해석되었지만 그 주소를 모두 담는 허용 규칙이 없습니다. localhost 처럼 IPv4·IPv6 로 함께 해석되는 이름이면 127.0.0.1 또는 ::1 같은 명시적인 IP 주소를 사용하세요.", "The host resolved to several addresses, but no allow rule covers all of them. For names that resolve to both IPv4 and IPv6, such as localhost, use an explicit IP address such as 127.0.0.1 or ::1.");
+        add("호스트가 IPv4와 IPv6 주소로 동시에 해석되어 현재 허용 규칙과 일치하지 않습니다. localhost 대신 127.0.0.1 또는 ::1과 같은 명시적인 IP 주소를 사용하세요.", "The host resolved to both IPv4 and IPv6 addresses, so it does not match the current allow rules. Use an explicit IP address such as 127.0.0.1 or ::1 instead of localhost.");
+        add("정책을 확인하지 못했습니다", "The policy could not be checked");
+        add("주소에 계정 정보를 넣을 수 없습니다.", "The address cannot contain account information.");
+        add("주소에 호스트가 없습니다.", "The address has no host.");
+        add("클라우드 메타데이터 이름은 항상 차단됩니다", "Cloud metadata host names are always blocked");
+        add("클라우드 메타데이터 이름은 허용할 수 없습니다.", "Cloud metadata host names cannot be allowed.");
+        add("포트는 1~65535 사이로 입력해주세요.", "Enter a port between 1 and 65535.");
+        add("항상 차단되는 대역(링크 로컬·클라우드 메타데이터·멀티캐스트·미지정 등)은 허용할 수 없습니다.", "Ranges that are always blocked (link-local, cloud metadata, multicast, unspecified and so on) cannot be allowed.");
+        add("항상 차단되는 주소는 허용할 수 없습니다.", "Addresses that are always blocked cannot be allowed.");
+        add("항상 차단되는 주소입니다 (링크 로컬·메타데이터·멀티캐스트·미지정 등)", "An address that is always blocked (link-local, metadata, multicast, unspecified and so on)");
+        add("허용 대역 밖의 주소입니다", "The address is outside the allowed range");
+        add("허용 대역(CIDR)을 입력해주세요.", "Enter the allowed range (CIDR).");
+        add("허용 대역은 10.10.0.0/16 · 127.0.0.1/32 · fd12::/48 처럼 숫자 주소와 접두 길이로 입력해주세요.", "Enter the allowed range as a numeric address and prefix length, such as 10.10.0.0/16, 127.0.0.1/32 or fd12::/48.");
+        add("허용하지 않은 포트입니다", "The port is not allowed");
+        add("허용하지 않은 호스트입니다", "The host is not allowed");
+        add("호스트 또는 포트 형식이 올바르지 않습니다", "The host or port format is not valid");
+        add("호스트 이름을 풀지 못했습니다", "The host name could not be resolved");
+        add("호스트는 호스트명 또는 숫자 주소로 입력해주세요. 와일드카드는 쓸 수 없습니다.", "Enter the host as a host name or a numeric address. Wildcards cannot be used.");
+
         // ---------------------------------------------------------------- 공지사항
         // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");
+        add("""
+                안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
+
+                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, ERD로 구조와 관계를 확인하며, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
+
+                ## 주요 기능
+
+                ### 1. 데이터 사전
+
+                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치)으로 표준 준수 여부를 확인합니다.
+
+                ### 2. 논리 모델
+
+                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
+
+                ### 3. 테이블 및 컬럼
+
+                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다.
+
+                ### 4. 논리·물리 ERD
+
+                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 드래그로 관계를 연결하고, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다.
+
+                ### 5. 논리·물리 매핑
+
+                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 정합성을 진단합니다.
+
+                ### 6. DDL 내보내기
+
+                PostgreSQL(기본)·Oracle·MySQL·MariaDB용 DDL을 테이블 단위로, 또는 프로젝트·스키마 단위의 통합 스크립트(스키마 → 테이블 → 인덱스 → FK → VIEW)로 생성합니다.
+
+                ### 7. 변경 이력과 모델 버전
+
+                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다.
+
+                ### 8. 원본 DB 연결과 가져오기
+
+                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 가져오기 직전의 모델은 모델 버전으로 자동 보존됩니다.
+
+                ### 9. 프로젝트
+
+                프로젝트별로 데이터 사전과 모델을 구분하고, 프로젝트 멤버·관리자, 테이블 접두사와 대상 DBMS를 관리합니다.
+
+                ### 10. 사용자 및 권한
+
+                역할과 프로젝트 접근 권한에 따라 이용 가능한 메뉴와 기능을 구분합니다. 신규 가입자는 관리자의 권한 부여가 필요합니다.
+
+                ## 이용 안내
+
+                - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
+                - 기본 프로젝트 `LEXORMA`에서 Lexorma 자체 스키마를 예제로 담은 데이터 사전, 논리·물리 모델과 ERD를 확인해 보세요.
+                - 원본 DB 정보는 모든 사용자가 조회할 수 있고, 연결·수집·매핑·가져오기는 프로젝트 관리자 또는 ADMIN만 실행할 수 있습니다. 원본 DB에는 조회만 하며 원본 구조를 바꾸지 않습니다.
+                - 원본 DB 연결 비밀번호를 저장하려면 서버에 암호화 키(`LEXORMA_SECRET_KEYS`)가 설정되어 있어야 합니다.
+                - 일부 기능은 사용자 역할과 프로젝트 권한에 따라 이용이 제한됩니다.
+                - 데이터와 메타데이터를 변경하기 전에 해당 프로젝트의 운영 정책을 확인해 주세요.
+                - 기능과 화면 구성은 업데이트 과정에서 변경될 수 있습니다.
+
+                ## 문의 및 오류 신고
+
+                | 용도 | 링크 |
+                |------|------|
+                | 프로젝트 저장소 및 이용 문서 | https://github.com/Lexorma/Lexorma |
+                | 오류 신고·기능 제안·프로젝트 관련 문의 (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
+
+                > 오류를 신고할 때에는 사용 환경과 재현 순서, 기대한 결과와 실제 결과를 함께 알려 주세요. 비밀번호와 개인정보 등 민감한 정보는 포함하지 마세요.
+                > 설치 환경의 계정·권한·운영 정책에 관한 문의는 해당 환경의 관리자에게 확인해 주세요.
+
+                ## 안내 사항
+
+                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 메타데이터 분석 등)은 저장소의 문서를 확인해 주세요.
+                서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
+
+                감사합니다.
+                **Lexorma**""", """
+                Hello, and thank you for using **Lexorma**.
+
+                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
+
+                ## Key features
+
+                ### 1. Data dictionary
+
+                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches) show how well the model follows the standard.
+
+                ### 2. Logical model
+
+                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Physical names are recommended from the standard dictionary.
+
+                ### 3. Tables and columns
+
+                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled.
+
+                ### 4. Logical and physical ERD
+
+                View and edit the logical and physical models directly in ERDs. Connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts.
+
+                ### 5. Logical ↔ physical mapping
+
+                Manage entity ↔ table and attribute ↔ column mappings and check their consistency.
+
+                ### 6. DDL export
+
+                Generate DDL for PostgreSQL (default), Oracle, MySQL and MariaDB, per table or as one combined script for a project or schema (schemas → tables → indexes → foreign keys → views).
+
+                ### 7. Change history and model versions
+
+                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs.
+
+                ### 8. Source database connections and import
+
+                Connect to a live database (PostgreSQL for now), collect its structure read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. The model just before each import is kept automatically as a model version.
+
+                ### 9. Projects
+
+                Keep the data dictionary and models separate per project, and manage project members, managers, the table prefix and the target DBMS.
+
+                ### 10. Users and permissions
+
+                Available menus and features depend on your role and project access. New users need an administrator to grant them a role.
+
+                ## Getting started
+
+                - On your first login, change the initial password and choose a project you can access.
+                - Explore the default project `LEXORMA`, whose example data dictionary, logical and physical models and ERDs describe Lexorma's own schema.
+                - Every user can view source database information; connecting, collecting, mapping and importing are limited to the project manager or ADMIN. Lexorma only reads from source databases and never changes their structure.
+                - Storing a source database password requires an encryption key (`LEXORMA_SECRET_KEYS`) configured on the server.
+                - Some features are restricted by your role and project permissions.
+                - Check the operating policy of your project before changing data or metadata.
+                - Features and screens may change as Lexorma is updated.
+
+                ## Questions and bug reports
+
+                | Purpose | Link |
+                |------|------|
+                | Project repository and documentation | https://github.com/Lexorma/Lexorma |
+                | Bug reports, feature requests and project questions (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
+
+                > When reporting a bug, include your environment, the steps to reproduce it, and the expected and actual results. Do not include passwords, personal data or other sensitive information.
+                > For questions about accounts, permissions or policies of your installation, contact its administrator.
+
+                ## About
+
+                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted metadata analysis and more).
+                Any problems or suggestions you share while using the service help the project grow.
+
+                Thank you.
+                **Lexorma**""");
+        // 2026-11-14 이전 V1 로 만든 DB 의 안내 공지 본문 (V1 은 다시 실행되지 않아 그 DB 에는 이전 본문이 남는다)
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
 
@@ -498,6 +678,20 @@ final class EnglishMessages {
         add("마지막으로 반영된 수집에 없는 원본 테이블입니다.", "The source table is not in the last applied collection.");
         add("매핑되지 않은 원본 스키마입니다.", "The source schema is not mapped.");
         add("매핑을 찾을 수 없습니다.", "The mapping was not found.");
+        add("{0} : IDENTITY 컬럼이라 기본값({1})을 DDL 에 쓰지 않았습니다.", "{0}: the default value ({1}) was not written to the DDL because the column is an IDENTITY column.");
+        add("{0} : {1} 은(는) GENERATED ALWAYS 가 없어 AUTO_INCREMENT(값을 직접 넣을 수 있음)로 만들었습니다.", "{0}: {1} has no GENERATED ALWAYS, so the column was created as AUTO_INCREMENT (explicit values are allowed).");
+        add("{0} : {1} 은(는) {2} {3} 을(를) 지원하지 않아 DDL 에서 뺐습니다.", "{0}: {1} does not support {2} {3}, so it was left out of the DDL.");
+        add("논리 관계에는 삭제·수정 규칙이 없습니다.", "Logical relationships have no delete or update rules.");
+        add("FK 규칙은 NO_ACTION · RESTRICT · CASCADE · SET_NULL · SET_DEFAULT 중 하나입니다.", "An FK rule must be one of NO_ACTION, RESTRICT, CASCADE, SET_NULL or SET_DEFAULT.");
+        add("IDENTITY 는 ALWAYS 또는 BY_DEFAULT 입니다.", "IDENTITY must be ALWAYS or BY_DEFAULT.");
+        add("IDENTITY 는 정수 타입(SMALLINT·INTEGER·BIGINT 등)에만 쓸 수 있습니다.", "IDENTITY can only be used with integer types (SMALLINT, INTEGER, BIGINT and so on).");
+        add("IDENTITY 컬럼에는 기본값을 쓸 수 없습니다.", "An IDENTITY column cannot have a default value.");
+        add("매핑 예외로 지정된 원본 테이블 {0} 은(는) 매핑할 수 없습니다. 예외를 먼저 취소해주세요.", "The source table {0} is excluded from mapping and cannot be mapped. Cancel the exclusion first.");
+        add("VIEW 는 매핑하지 않으므로 예외로 지정할 필요가 없습니다.", "VIEWs are not mapped, so they do not need to be excluded.");
+        add("원본 테이블 {0} 은(는) 이미 매핑 예외입니다.", "The source table {0} is already excluded from mapping.");
+        add("매핑된 원본 테이블 {0} 은(는) 예외로 지정할 수 없습니다. 매핑을 먼저 해제해주세요.", "The mapped source table {0} cannot be excluded. Release the mapping first.");
+        add("원본 테이블을 골라주세요.", "Choose a source table.");
+        add("매핑 예외를 찾을 수 없습니다.", "The mapping exclusion was not found.");
         add("모델 스키마 {0} 은(는) 이미 원본 스키마 {1} 에 매핑되어 있습니다.", "Model schema {0} is already mapped to source schema {1}.");
         add("모델 스키마를 찾을 수 없습니다.", "The model schema was not found.");
         add("모델 테이블 {0} 은(는) 원본 스키마 {1} 에 매핑된 모델 스키마에 있지 않습니다.", "Model table {0} is not in the model schema mapped to source schema {1}.");
@@ -507,5 +701,23 @@ final class EnglishMessages {
         add("원본 스키마와 모델 스키마를 골라주세요.", "Choose a source schema and a model schema.");
         add("원본 테이블과 모델 테이블을 골라주세요.", "Choose a source table and a model table.");
         add("지금 기준 연결의 매핑(스키마 {0}건, 테이블 {1}건)은 지우지 않고 그 연결의 매핑으로 남습니다. 확인 후 다시 요청해주세요.", "The mappings of the current base connection ({0} schemas, {1} tables) are not deleted and stay with that connection. Confirm and request again.");
+        // 원본 비교 (M-4d, 2026-11-14)
+        add("비교할 TABLE 을 골라주세요.", "Choose a TABLE to compare.");
+        add("비교할 수 있는 기준 연결·수집이 없습니다.", "There is no base connection or collection to compare.");
+        add("비교 대상에 없는 TABLE 입니다.", "The TABLE is not in the comparison.");
+        add("알 수 없는 값입니다 : {0}", "Unknown value: {0}");
+        add("기준 연결이 바뀌었거나 새 수집이 반영되었습니다. 비교 화면을 새로 고쳐주세요.", "The base connection changed or a new collection was applied. Refresh the comparison page.");
+        // 원본 가져오기 (M-4e, 2026-11-14)
+        add("미리보기에서 받은 계획으로 확정해주세요.", "Confirm the plan received from the preview.");
+        add("이미 적용된 가져오기입니다. 비교 결과를 새로 고쳐주세요.", "This import has already been applied. Refresh the comparison.");
+        add("적용할 수 없는 항목이 있습니다. 미리보기에서 확인해주세요.", "Some items cannot be applied. Check them in the preview.");
+        add("가져올 항목을 골라주세요.", "Choose the items to import.");
+        add("가져오기 이력을 찾을 수 없습니다.", "The import history was not found.");
+        add("다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.", "Another user is changing the same model. Refresh the comparison in a moment and confirm again.");
+        add("원본 가져오기 직전 상태 (기준 연결 #{0}, 반영 순서 {1}, 요청 {2})", "State just before a source import (base connection #{0}, reflected order {1}, request {2})");
+        add("가져올 TABLE 을 골라주세요.", "Choose the TABLEs to import.");
+        add("한 번에 {0}개 TABLE 까지 가져올 수 있습니다.", "Up to {0} TABLEs can be imported at once.");
+        add("기준 연결에 완료된 수집이 없어 가져올 수 없습니다. 먼저 메타데이터를 수집해주세요.", "The base connection has no completed collection, so nothing can be imported. Collect its metadata first.");
+        add("기준 연결·수집 또는 모델이 미리보기 이후 바뀌었습니다. 비교 결과를 새로 고친 뒤 다시 미리보기 해주세요.", "The base connection, collection or model changed after the preview. Refresh the comparison and preview again.");
     }
 }

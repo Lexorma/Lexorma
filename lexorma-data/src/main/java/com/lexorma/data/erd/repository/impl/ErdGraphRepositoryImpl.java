@@ -89,7 +89,7 @@ public class ErdGraphRepositoryImpl implements ErdGraphRepository {
         QColumnInfo targetColumn = new QColumnInfo("targetColumn");
 
         List<Tuple> rows = query.select(relation.id, relation.relationName, relation.relationType, relation.relationSource,
-                        source.id, source.tableName, target.id, target.tableName, relation.isApproval,
+                        source.id, source.tableName, target.id, target.tableName, relation.isApproval, relation.deleteRule, relation.updateRule,
                         sourceColumn.id, sourceColumn.columnName, targetColumn.id, targetColumn.columnName)
                 .from(pair)
                 .join(pair.relation, relation)
@@ -114,7 +114,8 @@ public class ErdGraphRepositoryImpl implements ErdGraphRepository {
             Tuple row = e.getValue();
             return new PhysicalModelDto.Relation(e.getKey(), row.get(relation.relationName), row.get(relation.relationType).name(),
                     row.get(relation.relationSource).name(), row.get(source.id), row.get(source.tableName),
-                    row.get(target.id), row.get(target.tableName), pairs.get(e.getKey()), row.get(relation.isApproval));
+                    row.get(target.id), row.get(target.tableName), pairs.get(e.getKey()), row.get(relation.isApproval),
+                    PhysicalModelDto.Relation.ruleName(row.get(relation.deleteRule)), PhysicalModelDto.Relation.ruleName(row.get(relation.updateRule)));
         }).toList();
     }
 

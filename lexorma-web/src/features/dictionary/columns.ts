@@ -59,7 +59,7 @@ export const standardDomainsColumns: GridColumn[] = [
 export const usageColumnColumns: GridColumn[] = [
   { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '8%' },
   { columnName: t('테이블명'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '15%' },
-  { columnName: t('테이블 한글명'), column: 'tableKorName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '11%' },
+  { columnName: t('테이블 코멘트'), column: 'tableKorName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '11%' },
   { columnName: t('컬럼명'), column: 'columnName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '11%' },
   { columnName: t('논리명'), column: 'termName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '11%' },
   { columnName: t('데이터 타입'), column: 'dataType', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '9%' },

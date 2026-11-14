@@ -6,7 +6,7 @@ import { Label, type LabelVariant } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, ApiError, enc } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
-import { t } from '../../lib/i18n';
+import { t, tc } from '../../lib/i18n';
 import { useTableDetail } from '../table/tableDetail';
 import { dbTypeLabel } from './model';
 import { Pager, useCanManageSource } from './shared';
@@ -17,7 +17,7 @@ import '../../styles/source.css';
  * 후보(같은 이름·PostgreSQL public → DEFAULT)는 제안만 하고, 확정은 사용자가 한다. 매핑만 저장하며 원본 DB·물리 모델은 바꾸지 않는다.
  * 상태(재확인·충돌·원본 없음·모델 없음)는 서버가 마지막 반영 시점으로 계산한다. 변경 버튼은 프로젝트 관리자·ADMIN 에게만 보인다 (서버도 같은 기준).
  */
-type Status = 'UNMAPPED' | 'MAPPED' | 'RECHECK' | 'CONFLICT' | 'SOURCE_MISSING' | 'MODEL_MISSING';
+type Status = 'UNMAPPED' | 'MAPPED' | 'RECHECK' | 'CONFLICT' | 'SOURCE_MISSING' | 'MODEL_MISSING' | 'EXCLUDED';
 type Reason = 'SCHEMA_UNMAPPED' | 'SCHEMA_MISMATCH' | 'NOT_TABLE' | 'RECREATED' | 'REMOVED' | 'MODEL_DELETED' | 'NO_COLLECTION';
 
 interface Candidate { id: number; name: string; taken: boolean }
@@ -28,7 +28,7 @@ interface SchemaRow {
 }
 interface TableRow {
   sourceTableId: number; sourceSchemaId: number; sourceSchemaName: string | null; sourceTableName: string; sourceComment: string | null; mappingId: number | null;
-  tableId: number | null; tableName: string | null; tableKorName: string | null; schemaId: number | null; schemaName: string | null; confirmedOrder: number | null;
+  tableId: number | null; tableName: string | null; tableKorName: string | null; tableDescription: string | null; tableSourceComment: string | null; schemaId: number | null; schemaName: string | null; confirmedOrder: number | null;
   status: Status; reason: Reason | null; candidate: Candidate | null;
 }
 interface Overview {
@@ -47,6 +47,7 @@ const STATUS: Record<Status, { label: string; variant: LabelVariant }> = {
   CONFLICT: { label: t('충돌'), variant: 'danger' },
   SOURCE_MISSING: { label: t('원본 없음'), variant: 'danger' },
   MODEL_MISSING: { label: t('모델 없음'), variant: 'danger' },
+  EXCLUDED: { label: t('매핑 예외'), variant: 'accent' },
 };
 const STATUSES = Object.keys(STATUS) as Status[];
 
@@ -277,6 +278,19 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
       reload();
     });
   };
+  // 매핑 예외 (M-4g) : 미매핑 원본 TABLE 을 매핑하지 않을 대상으로 둔다 (원본 수집은 그대로). 취소하면 미매핑으로 돌아간다
+  const exclude = async (row: TableRow) => {
+    try {
+      await api('/api/sourceMapping/exclusions', { method: 'PUT', body: { sourceTableId: row.sourceTableId } });
+      reload();
+    } catch { /* 공통 알림 */ }
+  };
+  const cancelExclusion = async (row: TableRow) => {
+    try {
+      await api(`/api/sourceMapping/exclusions/${enc(row.mappingId)}`, { method: 'DELETE' });
+      reload();
+    } catch { /* 공통 알림 */ }
+  };
   const pick = (row: TableRow) => {
     const schemaRow = data.schemas.find((s) => s.sourceSchemaId === row.sourceSchemaId);
     if (schemaRow?.schemaId == null || schemaRow.status !== 'MAPPED') {
@@ -317,27 +331,35 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
                   {tables.data.rows.map((row) => (
                     <tr key={`${row.sourceTableId}-${row.mappingId ?? 'n'}`}>
                       <td className="source-break">
-                        {row.status === 'SOURCE_MISSING'
+                        {row.status === 'SOURCE_MISSING' || (row.status === 'EXCLUDED' && row.reason === 'REMOVED')
                           ? <span className="gh-mono">{row.sourceSchemaName}.{row.sourceTableName}</span>
                           : <Link className="gh-mono" to={`/sourceCatalog?connectionId=${data.base!.id}&schemaId=${row.sourceSchemaId}&tableId=${row.sourceTableId}`}>{row.sourceSchemaName}.{row.sourceTableName}</Link>}
-                        {row.sourceComment && <div className="gh-muted source-sub">{row.sourceComment}</div>}
+                        {row.sourceComment && <div className="gh-muted source-sub">{t('원본 COMMENT : {0}', row.sourceComment)}</div>}
                       </td>
                       <td className="source-break">
                         {row.tableId != null ? (
                           <button type="button" className="source-link-button gh-mono" onClick={() => void openTableDetailById(row.tableId!)}>{row.schemaName}.{row.tableName}</button>
                         ) : <span className="gh-muted">-</span>}
                         {row.tableKorName && row.tableKorName !== row.tableName && <div className="gh-muted source-sub">{row.tableKorName}</div>}
+                        {/* 모델 쪽 COMMENT : 업무 설명(DDL 의 COMMENT)과 가져온 원본 COMMENT 칸을 따로 보인다. 한글명(논리명)·원본 값으로 채우지 않는다 */}
+                        {row.tableDescription && <div className="gh-muted source-sub">{t('모델 설명 : {0}', row.tableDescription)}</div>}
+                        {row.tableSourceComment && <div className="gh-muted source-sub">{t('모델 원본 COMMENT 칸 : {0}', row.tableSourceComment)}</div>}
                         {row.candidate && (
                           <div className="source-sub">
                             <Label variant={row.candidate.taken ? 'attention' : 'accent'}>{t('후보')}</Label> <span className="gh-mono">{row.candidate.name}</span>
                             {row.candidate.taken && <span className="gh-muted"> · {t('이미 다른 원본에 매핑됨')}</span>}
                           </div>
                         )}
-                        {row.confirmedOrder != null && <div className="gh-muted source-sub">{t('확정 : 반영 순서 {0}', row.confirmedOrder)}</div>}
+                        {row.confirmedOrder != null && row.status !== 'EXCLUDED' && <div className="gh-muted source-sub">{t('확정 : 반영 순서 {0}', row.confirmedOrder)}</div>}
                       </td>
                       <td><StatusLabel status={row.status} reason={row.reason} /></td>
                       <td>
-                        {canManage && (
+                        {canManage && row.status === 'EXCLUDED' && (
+                          <div className="source-actions">
+                            <button type="button" className="btn btn-sm" onClick={() => void cancelExclusion(row)}>{t('예외 취소')}</button>
+                          </div>
+                        )}
+                        {canManage && row.status !== 'EXCLUDED' && (
                           <div className="source-actions">
                             {row.candidate && !row.candidate.taken && row.mappingId == null && (
                               <button type="button" className="btn btn-sm btn-primary" onClick={() => void confirm(row, row.candidate!.id)}>{t('후보로 확정')}</button>
@@ -345,8 +367,9 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
                             {row.status === 'RECHECK' && row.tableId != null && (
                               <button type="button" className="btn btn-sm btn-primary" onClick={() => void confirm(row, row.tableId!)}>{t('다시 확정')}</button>
                             )}
-                            {row.status !== 'SOURCE_MISSING' && <button type="button" className="btn btn-sm" onClick={() => pick(row)}>{row.mappingId != null ? t('변경') : t('선택')}</button>}
+                            {row.status !== 'SOURCE_MISSING' && <button type="button" className="btn btn-sm" onClick={() => pick(row)}>{row.mappingId != null ? t('변경') : tc('버튼', '선택')}</button>}
                             {row.mappingId != null && <button type="button" className="btn btn-sm btn-danger" onClick={() => release(row)}>{t('해제')}</button>}
+                            {row.status === 'UNMAPPED' && <button type="button" className="btn btn-sm" onClick={() => void exclude(row)}>{t('예외 처리')}</button>}
                           </div>
                         )}
                       </td>
@@ -359,6 +382,7 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
           </>
         )}
       <p className="form-help">{t('원본 TABLE 은 매핑된 모델 스키마의 TABLE 하나에만 연결합니다. 이름이 같아도 자동으로 연결하지 않습니다. 원본이 같은 이름으로 다시 생기면 재확인이 필요합니다.')}</p>
+      <p className="form-help">{t('[예외 처리] 는 flyway_schema_history 같은 시스템 테이블처럼 모델과 매핑하지 않을 원본 TABLE 을 표시합니다. 매핑 누락·비교·가져오기 대상에서 빠지고, 원본 메타데이터는 계속 수집합니다. 매핑된 TABLE 은 먼저 해제해야 합니다.')}</p>
     </section>
   );
 }

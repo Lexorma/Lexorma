@@ -139,7 +139,8 @@ public class SourceConnectionService {
         // 진행 중인 반영이 끝난 뒤에 지운다 (반영이 먼저 끝나면 그 결과까지 지우고, 지운 뒤의 반영은 연결이 없어 실패한다)
         projectWriteGuard.lock(projectId);
         repository.findForUpdate(id, projectId).orElseThrow(SourceConnectionService::notFound);
-        // 이 연결에 기대는 다른 모듈의 데이터(원본 매핑·기준 연결, lexorma-data)를 같은 트랜잭션에서 먼저 정리한다 (실패하면 삭제 전체가 롤백된다)
+        // 이 연결에 기대는 다른 모듈의 데이터(원본 매핑·기준 연결, lexorma-data)를 같은 트랜잭션에서 먼저 정리한다 (실패하면 삭제 전체가 롤백된다).
+        // 그 데이터를 저장하는 쪽은 저장 전에 이 연결 행을 공유 잠금으로 잡으므로(SourceCatalogReader.lockConnection), 위의 배타 잠금이 진행 중인 저장의 커밋을 기다린 뒤라 그것까지 지운다
         events.publishEvent(new SourceConnectionDeletedEvent(projectId, id));
         int rows = cleanup.deleteCatalog(id);
         repository.delete(repository.findByIdAndProjectId(id, projectId).orElseThrow(SourceConnectionService::notFound));

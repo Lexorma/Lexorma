@@ -1,6 +1,7 @@
 package com.lexorma.data.excel.service.impl;
 
 import com.lexorma.data.excel.util.ExcelExportUtils;
+import com.lexorma.data.excel.util.ExcelTemplateLabels;
 import com.lexorma.data.excel.util.ExcelExportUtils.RowSource;
 import com.lexorma.data.excel.util.PagedReader;
 
@@ -12,9 +13,11 @@ import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.dictionary.repository.StandardWordRepository;
 import com.lexorma.data.excel.service.ExcelService;
 import com.lexorma.core.security.domain.dto.AccountDto;
+import com.lexorma.common.i18n.Messages;
 import com.lexorma.common.utils.ExcelUtils;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -66,8 +69,17 @@ public class ExcelServiceImpl implements ExcelService {
 
             File file = ExcelExportUtils.loadAndCopyDictionaryExcelFile(templateName, terms, words, domains);
             resource = new InputStreamResource(openAndDeleteOnClose(file));
-        }else{
+        }else if(templateName.equals("dataPortal")){
+            // 공통표준용어 : 한국 공공데이터포털 자료 그대로 (영어 화면에서는 버튼을 숨긴다)
             resource = ExcelUtils.downloadExcelFile(templateName);
+        }else{
+            // 빈 템플릿 : 영어 요청이면 시트 이름·헤더·예시 값을 영어로 바꿔 내려보낸다
+            resource = ExcelUtils.downloadExcelFile(templateName);
+            if (Messages.isEnglish()) {
+                try (InputStream template = resource.getInputStream()) {
+                    resource = new ByteArrayResource(ExcelTemplateLabels.localizedTemplate(template));
+                }
+            }
         }
         String encodedFileName = java.net.URLEncoder.encode(templateName, "UTF-8").replaceAll("\\+", "%20");
 

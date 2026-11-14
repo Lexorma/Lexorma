@@ -24,18 +24,34 @@ public final class PhysicalModelDto {
     public record ColumnPair(Long sourceColumnId, String sourceColumnName, Long targetColumnId, String targetColumnName) {
     }
 
-    /** relationType : FK(기본) / LOGICAL, relationSource : 조회 전용 (등록은 항상 USER) */
+    /**
+     * relationType : FK(기본) / LOGICAL, relationSource : 조회 전용 (등록은 항상 USER).
+     * deleteRule · updateRule : FK 의 ON DELETE · ON UPDATE (NO_ACTION · RESTRICT · CASCADE · SET_NULL · SET_DEFAULT, 비면 NO_ACTION. LOGICAL 은 쓰지 않는다)
+     */
     public record Relation(Long id, String relationName, String relationType, String relationSource,
                            Long sourceTableId, String sourceTableName, Long targetTableId, String targetTableName,
-                           List<ColumnPair> columns, Boolean isApproval) {
+                           List<ColumnPair> columns, Boolean isApproval, String deleteRule, String updateRule) {
+        public Relation(Long id, String relationName, String relationType, String relationSource, Long sourceTableId, String sourceTableName,
+                        Long targetTableId, String targetTableName, List<ColumnPair> columns, Boolean isApproval) {
+            this(id, relationName, relationType, relationSource, sourceTableId, sourceTableName, targetTableId, targetTableName, columns, isApproval, null, null);
+        }
+
         public static Relation fromEntity(TableRelation r) {
             return new Relation(r.getId(), r.getRelationName(), r.getRelationType().name(), r.getRelationSource().name(),
                     r.getSourceTable().getId(), r.getSourceTable().getTableName(),
                     r.getTargetTable().getId(), r.getTargetTable().getTableName(),
                     r.getColumns().stream().map(c -> new ColumnPair(c.getSourceColumn().getId(), c.getSourceColumn().getColumnName(),
                             c.getTargetColumn().getId(), c.getTargetColumn().getColumnName())).toList(),
-                    r.getIsApproval());
+                    r.getIsApproval(), ruleName(r.getDeleteRule()), ruleName(r.getUpdateRule()));
         }
+
+        public static String ruleName(TableRelation.Rule rule) {
+            return rule == null ? TableRelation.Rule.NO_ACTION.name() : rule.name();
+        }
+    }
+
+    /** FK 삭제·수정 규칙 변경 (M-4h) */
+    public record RelationRules(String deleteRule, String updateRule) {
     }
 
     /**

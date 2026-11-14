@@ -43,13 +43,14 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Source databases | Source ERD | Read-only ERD of a collected point in time, drawn from the actual foreign keys |
 | Source databases | Mapping and comparison | Map source schemas and tables to the model, then compare source and model table by table (columns, keys, constraints, indexes, comments; PostgreSQL rules) |
 | Source databases | Selective import | Preview a plan, then confirm only the chosen items: new tables (with their mapping), new columns, constraints and indexes, and chosen column attributes. Imported objects are unapproved, approved objects are never changed, nothing is deleted or renamed, and the model just before each import is saved as a model version. Source comments are stored separately from business descriptions |
+| Source databases | Re-import after a later collection | Each attribute is compared with the value last imported into the model: changes made only in the source can be chosen again, while attributes edited in the model after the import (or changed on both sides) are shown but never overwritten. Objects deleted in the source are reported and kept in the model |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 
 ### Planned (not implemented yet)
 
 | Area | Feature |
 |---|---|
-| Source databases | Refreshing the model from a later collection (re-import of changed objects); collection and comparison rules for DBMSs other than PostgreSQL |
+| Source databases | Synchronizing deletions and replacing changed constraints or indexes from the source; collection and comparison rules for DBMSs other than PostgreSQL |
 | AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
 
 ### Data Standardization Rules

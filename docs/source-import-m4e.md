@@ -308,3 +308,13 @@ PostgreSQL 18.6, TABLE 마다 컬럼 10개, 모두 매핑, 10% 는 컬럼 길이
 | H2 전체 (`./gradlew build --rerun-tasks`, React 포함) | 640 통과, 실패 0, 건너뜀 23 |
 | PostgreSQL 18.6 전체 (격리 임시 컨테이너) | 640 통과, 실패 0, 건너뜀 17 |
 
+## 13. M-4e·M-4f 공통 계약 (2026-11-14)
+
+재가져오기(M-4f, [기록](source-reimport-m4f.md))는 별도 엔진·API 없이 이 장의 흐름을 그대로 쓴다. 두 기능이 함께 지키는 계약 :
+
+- **흐름** : `candidates`(읽기 전용) → `plan`(읽기 전용, planToken·requestId) → 최종 확인 → `apply`(잠금 → 재계획 → planToken 이 같을 때만 반영, 아니면 409 `SOURCE_COMPARE_STALE`). 고른 항목이 모두 적용 가능해야 한다.
+- **고른 것만** : 고르지 않은 속성은 바꾸지 않는다. 삭제·이름 변경·기존 객체 교체 없음. 만든 객체는 미승인, 승인된 객체는 바꾸지 않는다. 원본 COMMENT 는 `SRC_ANTN_CN` 에만.
+- **한 트랜잭션** : 직전 모델 버전 `IMPORT-<요청>` → 모델 변경(IMPORT 이력, 변경 그룹 = 요청) → 실행 이력. 실패하면 모두 롤백. 같은 요청은 한 번만.
+- **잠금** : 프로젝트 배타 → 원본 연결 공유 → 기준 연결 행 → 스키마 이름 공간 → TABLE → 컬럼, 프로젝트 이후 행 잠금은 NOWAIT (55P03·50200 만 409).
+- **판정 정보** (M-4f 가 더함, 응답에 필드 추가만) : `TableCandidates.lastImport`·`reflectedAt`, `Item.baseline`·`judgement`, 이유 `MODEL_EDITED`·`BOTH_CHANGED`·`REMOVED_IN_SOURCE`. 실행 이력 요약(`items`)과 IMPORT 이력이 다음 재가져오기의 기준값이므로, **요약의 TABLE `key`·`items` 형식과 IMPORT 이력의 출처·변경 그룹을 바꾸면 기준값을 잃는다**.
+

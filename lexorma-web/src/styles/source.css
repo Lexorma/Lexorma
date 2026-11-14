@@ -765,6 +765,32 @@
     margin-top: 12px;
 }
 
+/* 재가져오기 (M-4f) : 처음/재가져오기 구분, 확인이 필요한 변경(모델에서 바꾼 속성), 원본에서 삭제된 객체 */
+.source-import-mode {
+    margin: 0 0 6px;
+    overflow-wrap: anywhere;
+}
+
+.source-import-conflicts,
+.source-import-removed {
+    margin: 10px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--gh-border);
+    border-left: 3px solid var(--gh-attention);
+    border-radius: 6px;
+}
+
+.source-import-conflicts h5,
+.source-import-removed h5 {
+    margin: 0 0 4px;
+    font-size: 13px;
+}
+
+.source-import-removed ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
 .source-import-ok {
     color: var(--gh-success);
 }

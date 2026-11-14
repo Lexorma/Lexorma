@@ -12,6 +12,8 @@ import com.lexorma.core.source.SourceCatalogReader.NameKind;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.common.i18n.Messages;
 import com.lexorma.core.project.repository.ProjectRepository;
+import com.lexorma.data.history.domain.entity.ModelChangeHistory;
+import com.lexorma.data.history.domain.entity.ModelChangeHistory.TargetType;
 import com.lexorma.data.history.record.ModelChangeRecorder;
 import com.lexorma.data.version.domain.dto.ModelVersionDto;
 import com.lexorma.data.version.service.ModelVersionService;
@@ -37,6 +39,7 @@ import com.lexorma.data.sourcemapping.domain.dto.SourceCompareDto.ObjectKind;
 import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto;
 import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Action;
 import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Item;
+import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Judgement;
 import com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Reason;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Status;
@@ -129,8 +132,8 @@ public class SourceImportService {
     public SourceImportDto.TableCandidates candidates(AccountDto accountDto, Long connectionId, Integer reflectedOrder, String key) {
         Work work = work(accountDto.getProjectId(), connectionId, reflectedOrder, List.of(new SourceImportDto.TableSelection(key, null, List.of())));
         TableWork table = work.tables.get(0);
-        return new SourceImportDto.TableCandidates(work.connection.id(), work.order, table.rowDto(), table.schemaName, table.modelName, table.create, table.blocked,
-                List.copyOf(table.candidates.values()));
+        return new SourceImportDto.TableCandidates(work.connection.id(), work.order, work.snapshot.reflectedAt(), table.rowDto(), table.schemaName, table.modelName,
+                table.create, table.blocked, work.baselines.last.get(table.key()), List.copyOf(table.candidates.values()));
     }
 
     /** 적용 계획 (저장하지 않는다). 확정할 때 쓸 requestId 를 새로 정해 준다 */
@@ -308,6 +311,7 @@ public class SourceImportService {
         Map<Long, CompareModel.Column> modelColumns = Map.of();
         Map<Long, CompareModel.Table> modelTables = Map.of();
         final Map<String, String> folded = new HashMap<>();
+        Baselines baselines;
 
         Work(Long projectId, SourceMappingService.State state) {
             this.projectId = projectId;
@@ -357,6 +361,7 @@ public class SourceImportService {
             SourceCompareModelRepository.Loaded loaded = modelRepository.load(projectId, modelIds);
             modelColumns = loaded.columns();
             modelTables = loaded.tables();
+            baselines = new Baselines(projectId, connection.id(), tables.stream().map(TableWork::key).toList());
             List<String> views = new ArrayList<>();
             Map<Long, List<String>> viewNames = modelRepository.viewNames(projectId);
             for (TableWork table : tables) table.classify(viewNames.getOrDefault(table.schemaId, views));
@@ -444,7 +449,8 @@ public class SourceImportService {
                 if (work != null && work.model != null) text.append('|').append(work.model.approved()).append('|').append(work.row.mappingId());
                 for (Item item : table.items()) {
                     text.append("\n").append(item.id()).append('|').append(item.selectable()).append('|').append(item.reason()).append('|').append(item.before()).append('|')
-                            .append(item.after()).append('|').append(item.excluded()).append('|').append(item.dependsOn());
+                            .append(item.after()).append('|').append(item.excluded()).append('|').append(item.dependsOn()).append('|').append(item.judgement()).append('|')
+                            .append(item.baseline());
                 }
             }
             try {
@@ -460,6 +466,76 @@ public class SourceImportService {
             for (TableWork table : tables) table.applyKeysAndIndexes();
             for (TableWork table : tables) table.applyForeignKeys();
             entityManager.flush();
+        }
+    }
+
+    /**
+     * 재가져오기 기준값 (M-4f, docs/source-reimport-m4f.md) : 저장된 실행 이력과 변경 이력만으로 만든다 (새 저장 구조 없음).
+     * 같은 기준 연결의 실행을 최근 것부터 읽어, TABLE(key)·항목 ID 마다 그 항목을 고른 가장 최근 실행의 변경 그룹을 정하고, 그 그룹의 IMPORT 이력(변경 후 상태)을
+     * 대상 ID 로 찾는다. 기준 연결이 바뀌었거나(다른 연결의 실행은 보지 않는다) 다시 매핑해 모델 객체가 다르면(그 ID 의 이력이 없다) 기준값이 없다.
+     */
+    private final class Baselines {
+
+        private static final List<TargetType> TYPES = List.of(TargetType.PHYSICAL_TABLE, TargetType.PHYSICAL_COLUMN, TargetType.PHYSICAL_CONSTRAINT,
+                TargetType.PHYSICAL_INDEX, TargetType.PHYSICAL_RELATION);
+
+        /** key → 마지막 가져오기 */
+        final Map<String, SourceImportDto.LastImport> last = new HashMap<>();
+        /** key → 항목 ID → 그 항목을 고른 가장 최근 실행 (실행 ID, 변경 그룹) */
+        private final Map<String, Map<String, Map.Entry<Long, String>>> latest = new HashMap<>();
+        /** key → 그 TABLE 을 다룬 실행의 변경 그룹 */
+        private final Map<String, Set<String>> groups = new HashMap<>();
+        /** 변경 그룹 → 대상 종류 → 대상 ID → 변경 후 상태(JSON, 읽을 때 푼다) */
+        private final Map<String, Map<TargetType, Map<Long, String>>> after = new HashMap<>();
+        private final Map<String, Map<String, Object>> parsed = new HashMap<>();
+
+        @SuppressWarnings("unchecked")
+        Baselines(Long projectId, Long connectionId, List<String> keys) {
+            Set<String> wanted = new LinkedHashSet<>(keys);
+            for (SourceImportExecution execution : executionRepository.findAllByProjectIdAndConnectionIdOrderByIdDesc(projectId, connectionId)) {
+                if (execution.getSummary() == null) continue;
+                Map<String, Object> summary = (Map<String, Object>) JSON.readValue(execution.getSummary(), Map.class);
+                Object tables = summary.get("tables");
+                if (!(tables instanceof List<?> list)) continue;
+                for (Object entry : list) {
+                    if (!(entry instanceof Map<?, ?> table) || !wanted.contains(String.valueOf(table.get("key")))) continue;
+                    String key = String.valueOf(table.get("key"));
+                    last.putIfAbsent(key, new SourceImportDto.LastImport(execution.getId(), execution.getReflectedOrder(), execution.appliedBy(), execution.appliedAt(),
+                            (String) summary.get("modelVersionName")));
+                    groups.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(execution.getChangeGroupId());
+                    Map<String, Map.Entry<Long, String>> byItem = latest.computeIfAbsent(key, k -> new HashMap<>());
+                    if (table.get("items") instanceof List<?> items) {
+                        for (Object item : items) byItem.putIfAbsent(String.valueOf(item), Map.entry(execution.getId(), execution.getChangeGroupId()));
+                    }
+                }
+            }
+            Set<String> all = new LinkedHashSet<>();
+            groups.values().forEach(all::addAll);
+            if (all.isEmpty()) return;
+            for (ModelChangeHistory history : historyRepository.findAllByGroupsAndTypes(projectId, all, TYPES)) {
+                if (history.getSource() != ModelChangeHistory.Source.IMPORT || history.getAfterData() == null) continue;
+                after.computeIfAbsent(history.getChangeGroupId(), g -> new HashMap<>()).computeIfAbsent(history.getTargetType(), t -> new HashMap<>())
+                        .put(history.getTargetId(), history.getAfterData());
+            }
+        }
+
+        /** 기준값 : covering 항목 중 가장 최근에 고른 실행이 이 대상에 남긴 변경 후 상태. 없으면 null */
+        @SuppressWarnings("unchecked")
+        Map<String, Object> after(String key, List<String> covering, TargetType type, Long targetId) {
+            Map<String, Map.Entry<Long, String>> byItem = latest.get(key);
+            if (byItem == null || targetId == null) return null;
+            Map.Entry<Long, String> chosen = covering.stream().map(byItem::get).filter(Objects::nonNull).max(Map.Entry.comparingByKey()).orElse(null);
+            if (chosen == null) return null;
+            String json = after.getOrDefault(chosen.getValue(), Map.of()).getOrDefault(type, Map.of()).get(targetId);
+            return json == null ? null : parsed.computeIfAbsent(chosen.getValue() + "|" + type + "|" + targetId, k -> (Map<String, Object>) JSON.readValue(json, Map.class));
+        }
+
+        /** 이 TABLE 을 다룬 가져오기가 이 모델 객체를 만들거나 바꾼 적이 있는지 */
+        boolean imported(String key, TargetType type, Long targetId) {
+            for (String group : groups.getOrDefault(key, Set.of())) {
+                if (after.getOrDefault(group, Map.of()).getOrDefault(type, Map.of()).containsKey(targetId)) return true;
+            }
+            return false;
         }
     }
 
@@ -490,6 +566,10 @@ public class SourceImportService {
             this.source = source;
             this.requestedName = selection.tableName() == null || selection.tableName().isBlank() ? null : selection.tableName().trim();
             if (selection.items() != null) selection.items().stream().filter(Objects::nonNull).forEach(selected::add);
+        }
+
+        String key() {
+            return "S" + row.sourceTableId();
         }
 
         SourceCompareDto.TableRow rowDto() {
@@ -573,11 +653,15 @@ public class SourceImportService {
             result = SourceModelComparator.compare(detail, source.name(), source.comment(), model, context);
             if (create) {
                 candidates.put("TABLE:CREATE", new Item("TABLE:CREATE", ObjectKind.TABLE, source.name(), schemaName + "." + modelName, Action.CREATE, null, source.name(),
-                        null, schemaName + "." + modelName, true, null, List.of(), List.of()));
+                        null, schemaName + "." + modelName, true, null, List.of(), List.of(), null, null));
             }
             Map<String, SourceCatalogReader.Column> columns = new HashMap<>();
             detail.columns().forEach(c -> columns.put(c.name(), c));
             for (ObjectDiff object : result.objects()) {
+                if (object.sourceName() == null && object.kind() != ObjectKind.TABLE) {
+                    removedInSource(object);
+                    continue;
+                }
                 switch (object.kind()) {
                     case TABLE -> tableComment(object);
                     case COLUMN -> column(object, columns.get(object.sourceName()));
@@ -593,7 +677,7 @@ public class SourceImportService {
 
         Item item(String id, ObjectKind kind, String sourceName, String modelName, Action action, String attribute, String source, String before, String after,
                   Reason reason, List<String> excluded, List<String> dependsOn) {
-            return new Item(id, kind, sourceName, modelName, action, attribute, source, before, after, reason == null, reason, excluded, dependsOn);
+            return new Item(id, kind, sourceName, modelName, action, attribute, source, before, after, reason == null, reason, excluded, dependsOn, null, null);
         }
 
         List<String> createDependency() {
@@ -604,8 +688,13 @@ public class SourceImportService {
             AttributeDiff comment = attribute(object, "comment");
             if (comment == null || comment.result() == AttributeResult.SAME) return;
             Reason reason = comment.source() == null ? Reason.EMPTY_COMMENT : model.approved() ? Reason.APPROVED : null;
-            put(item("TABLE:COMMENT", ObjectKind.TABLE, source.name(), modelName, Action.UPDATE, "comment", comment.source(), comment.model(), comment.source(), reason,
-                    List.of(), createDependency()));
+            Item item = item("TABLE:COMMENT", ObjectKind.TABLE, source.name(), modelName, Action.UPDATE, "comment", comment.source(), comment.model(), comment.source(), reason,
+                    List.of(), createDependency());
+            if (!create) {
+                Map<String, Object> b = work.baselines.after(key(), List.of("TABLE:COMMENT"), TargetType.PHYSICAL_TABLE, model.id());
+                item = judge(item, b == null ? NO_VALUE : (String) b.get("sourceComment"), model.sourceComment(), source.comment());
+            }
+            put(item);
         }
 
         void column(ObjectDiff object, SourceCatalogReader.Column column) {
@@ -635,29 +724,39 @@ public class SourceImportService {
                 Converted converted = convert(column);
                 Reason reason = typeAttributes.stream().anyMatch(a -> a.result() == AttributeResult.UNKNOWN) ? Reason.UNKNOWN
                         : converted.type == null ? Reason.TYPE_NOT_REPRESENTABLE : approved;
-                put(item(prefix + "TYPE", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "dataType", column.dataType(), modelType(modelColumn),
-                        converted.type == null ? null : converted.type.text(), reason, List.of(), List.of()));
+                Item item = item(prefix + "TYPE", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "dataType", column.dataType(), modelType(modelColumn),
+                        converted.type == null ? null : converted.type.text(), reason, List.of(), List.of());
+                Map<String, Object> b = baseline(column, modelColumn, "TYPE");
+                put(judge(item, b == null ? NO_VALUE : typeText(b), modelType(modelColumn), converted.type == null ? UNREPRESENTABLE : typeText(converted.type)));
             }
             AttributeDiff nullable = attribute(object, "nullable");
             if (nullable != null && nullable.result() != AttributeResult.SAME) {
                 Reason reason = nullable.result() == AttributeResult.UNKNOWN ? Reason.UNKNOWN
                         : Boolean.TRUE.equals(column.nullable()) && Boolean.TRUE.equals(modelColumn.pk()) ? Reason.PK_NOT_NULL : approved;
-                put(item(prefix + "NULLABLE", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "nullable", nullable.source(), nullable.model(),
-                        nullable.source(), reason, List.of(), List.of()));
+                Item item = item(prefix + "NULLABLE", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "nullable", nullable.source(), nullable.model(),
+                        nullable.source(), reason, List.of(), List.of());
+                Map<String, Object> b = baseline(column, modelColumn, "NULLABLE");
+                put(judge(item, b == null ? NO_VALUE : nullText(b.get("isNullable"), b.get("isPk"), b.get("isRequired")),
+                        nullText(modelColumn.nullable(), modelColumn.pk(), modelColumn.required()), column.nullable() == null ? UNREPRESENTABLE : nullText(column.nullable(), false, false)));
             }
             AttributeDiff defaultValue = attribute(object, "default");
             if (defaultValue != null && defaultValue.result() != AttributeResult.SAME) {
                 Converted converted = convert(column);
                 Reason reason = defaultValue.result() == AttributeResult.UNKNOWN ? Reason.UNKNOWN
                         : column.defaultValue() != null && converted.defaultValue == null ? Reason.DEFAULT_NOT_REPRESENTABLE : approved;
-                put(item(prefix + "DEFAULT", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "default", column.defaultValue(), modelColumn.defaultValue(),
-                        converted.defaultValue, reason, List.of(), List.of()));
+                Item item = item(prefix + "DEFAULT", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "default", column.defaultValue(), modelColumn.defaultValue(),
+                        converted.defaultValue, reason, List.of(), List.of());
+                Map<String, Object> b = baseline(column, modelColumn, "DEFAULT");
+                put(judge(item, b == null ? NO_VALUE : (String) b.get("defaultValue"), modelColumn.defaultValue(),
+                        column.defaultValue() != null && converted.defaultValue == null ? UNREPRESENTABLE : converted.defaultValue));
             }
             AttributeDiff comment = attribute(object, "comment");
             if (comment != null && comment.result() != AttributeResult.SAME) {
                 Reason reason = comment.source() == null ? Reason.EMPTY_COMMENT : approved;
-                put(item(prefix + "COMMENT", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "comment", comment.source(), comment.model(), comment.source(),
-                        reason, List.of(), List.of()));
+                Item item = item(prefix + "COMMENT", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.UPDATE, "comment", comment.source(), comment.model(), comment.source(),
+                        reason, List.of(), List.of());
+                Map<String, Object> b = baseline(column, modelColumn, "COMMENT");
+                put(judge(item, b == null ? NO_VALUE : (String) b.get("sourceComment"), modelColumn.sourceComment(), column.comment()));
             }
             AttributeDiff auto = attribute(object, "autoIncrement");
             if (auto != null && auto.result() != AttributeResult.SAME) {
@@ -735,6 +834,66 @@ public class SourceImportService {
             put(item(id, object.kind(), object.sourceName(), name, Action.ADD, null, sourceText, null, sourceText, reason, List.copyOf(excluded), dependencies));
         }
 
+        /** 컬럼 속성의 기준값 B : 그 속성을 쓴 가장 최근 가져오기(그 속성 항목 또는 컬럼 추가)가 이 모델 컬럼에 남긴 변경 후 상태 */
+        Map<String, Object> baseline(SourceCatalogReader.Column column, CompareModel.Column modelColumn, String attribute) {
+            String prefix = "COLUMN:" + column.name() + ":";
+            List<String> covering = "COMMENT".equals(attribute) ? List.of(prefix + "COMMENT") : List.of(prefix + attribute, prefix + "ADD");
+            return work.baselines.after(key(), covering, TargetType.PHYSICAL_COLUMN, modelColumn.id());
+        }
+
+        /**
+         * M-4f 판정 : 값은 모두 모델 표현 (b : 기준값, NO_VALUE 면 없음 / m : 지금 모델 / s : 지금 원본을 모델로 바꾼 값, UNREPRESENTABLE 이면 바꿀 수 없음).
+         * 이미 같으면 SAME (실제 변경 없음). 기준값이 있고 모델이 그 뒤 바뀌었으면 고를 수 없다 (MODEL_EDITED·BOTH_CHANGED). 다른 이유(승인 등)가 있으면 그 이유가 앞선다
+         */
+        Item judge(Item item, String b, String m, String s) {
+            Judgement judgement;
+            if (NO_VALUE.equals(b)) {
+                judgement = Judgement.NO_BASELINE;
+            } else {
+                boolean modelKept = Objects.equals(m, b);
+                boolean sourceChanged = !Objects.equals(s, b);
+                judgement = modelKept && sourceChanged ? Judgement.SOURCE_CHANGED : !modelKept && !sourceChanged ? Judgement.MODEL_EDITED
+                        : !modelKept ? Judgement.BOTH_CHANGED : Judgement.NO_BASELINE; // 셋이 같은데 비교가 다르다고 본다 : 기준값으로 판단하지 않는다
+            }
+            Reason reason = item.reason();
+            if (reason == null && !UNREPRESENTABLE.equals(s) && Objects.equals(s, m)) reason = Reason.SAME; // 반영해도 바뀌는 것이 없다
+            if (reason == null && judgement == Judgement.MODEL_EDITED) reason = Reason.MODEL_EDITED;
+            if (reason == null && judgement == Judgement.BOTH_CHANGED) reason = Reason.BOTH_CHANGED;
+            return new Item(item.id(), item.kind(), item.sourceName(), item.modelName(), item.action(), item.attribute(), item.source(), item.before(), item.after(),
+                    reason == null, reason, item.excluded(), item.dependsOn(), NO_VALUE.equals(b) ? null : b, judgement);
+        }
+
+        /** 모델에만 있는 객체 중 전에 이 TABLE 의 가져오기가 만들거나 바꾼 것 = 원본에서 없어졌다 (알림만, 지우지 않는다) */
+        void removedInSource(ObjectDiff object) {
+            if (create || model == null || object.modelName() == null) return;
+            String name = object.modelName();
+            Long id = null;
+            TargetType type = null;
+            switch (object.kind()) {
+                case COLUMN -> {
+                    type = TargetType.PHYSICAL_COLUMN;
+                    id = model.columns().stream().filter(c -> name.equals(c.name())).map(CompareModel.Column::id).findFirst().orElse(null);
+                }
+                case UNIQUE, CHECK -> {
+                    type = TargetType.PHYSICAL_CONSTRAINT;
+                    id = model.constraints().stream().filter(c -> name.equals(c.name())).map(CompareModel.Constraint::id).findFirst().orElse(null);
+                }
+                case INDEX -> {
+                    type = TargetType.PHYSICAL_INDEX;
+                    id = model.indexes().stream().filter(c -> name.equals(c.name())).map(CompareModel.Index::id).findFirst().orElse(null);
+                }
+                case FOREIGN_KEY -> {
+                    type = TargetType.PHYSICAL_RELATION;
+                    id = model.relations().stream().filter(c -> name.equals(c.name())).map(CompareModel.Relation::id).findFirst().orElse(null);
+                }
+                default -> {
+                }
+            }
+            if (id == null || !work.baselines.imported(key(), type, id)) return;
+            put(new Item(object.kind().name() + ":" + name + ":REMOVED", object.kind(), null, name, null, null, null, null, null, false, Reason.REMOVED_IN_SOURCE,
+                    List.of(), List.of(), null, null));
+        }
+
         List<String> columnDependencies(List<String> sourceColumns) {
             List<String> dependencies = new ArrayList<>(createDependency());
             for (String compareName : sourceColumns) {
@@ -757,7 +916,7 @@ public class SourceImportService {
             for (String id : selected) {
                 Item candidate = blocked != null ? null : candidates.get(id);
                 if (candidate == null) {
-                    items.add(new Item(id, null, null, null, null, null, null, null, null, false, blocked != null ? blocked : Reason.NOT_FOUND, List.of(), List.of()));
+                    items.add(new Item(id, null, null, null, null, null, null, null, null, false, blocked != null ? blocked : Reason.NOT_FOUND, List.of(), List.of(), null, null));
                     continue;
                 }
                 if (!candidate.selectable()) {
@@ -767,7 +926,8 @@ public class SourceImportService {
                 List<String> missing = candidate.dependsOn().stream().filter(d -> !satisfied(d)).toList();
                 Reason reason = !missing.isEmpty() ? Reason.MISSING_DEPENDENCY : extraCheck(candidate);
                 items.add(reason == null ? candidate : new Item(candidate.id(), candidate.kind(), candidate.sourceName(), candidate.modelName(), candidate.action(),
-                        candidate.attribute(), candidate.source(), candidate.before(), candidate.after(), false, reason, candidate.excluded(), missing.isEmpty() ? candidate.dependsOn() : missing));
+                        candidate.attribute(), candidate.source(), candidate.before(), candidate.after(), false, reason, candidate.excluded(), missing.isEmpty() ? candidate.dependsOn() : missing,
+                        candidate.baseline(), candidate.judgement()));
             }
             return new SourceImportDto.PlanTable("S" + row.sourceTableId(), row.sourceTableId(), row.sourceSchemaName() + "." + row.sourceTableName(),
                     model == null ? null : model.id(), schemaName, modelName, create, List.copyOf(items));
@@ -1033,6 +1193,33 @@ public class SourceImportService {
             if (defaultValue == null) excluded.add("DEFAULT " + raw.trim());
         }
         return new Converted(type, defaultValue, List.copyOf(excluded));
+    }
+
+    /** 판정 값 표지 : 기준값 없음 / 원본 값을 모델로 바꿀 수 없음 (어떤 모델 값과도 같지 않다) */
+    private static final String NO_VALUE = "\u0000none";
+    private static final String UNREPRESENTABLE = "\u0000unrepresentable";
+
+    private static String typeText(ModelType type) {
+        ColumnInfo probe = ColumnInfo.builder().columnName("X").dataType(type.dataType()).maxLength(type.maxLength())
+                .precision(type.precision() == null ? null : java.math.BigDecimal.valueOf(type.precision())).scale(type.scale()).build();
+        return TableDdlGenerator.mapType(DbType.POSTGRESQL, probe, new ArrayList<>());
+    }
+
+    /** 변경 이력의 컬럼 상태(필드 이름 그대로) → 모델 타입 표현 */
+    private static String typeText(Map<String, Object> state) {
+        ColumnInfo probe = ColumnInfo.builder().columnName("X").dataType((String) state.get("dataType")).maxLength(integer(state.get("maxLength")))
+                .precision(state.get("precision") == null ? null : new java.math.BigDecimal(String.valueOf(state.get("precision")))).scale(integer(state.get("scale"))).build();
+        return TableDdlGenerator.mapType(DbType.POSTGRESQL, probe, new ArrayList<>());
+    }
+
+    /** 모델의 실제 NULL 허용 (DDL 과 같다 : PK·필수면 NOT NULL) */
+    private static String nullText(Object nullable, Object pk, Object required) {
+        ColumnInfo probe = ColumnInfo.builder().columnName("X").isNullable((Boolean) nullable).isPk((Boolean) pk).isRequired((Boolean) required).build();
+        return TableDdlGenerator.isNotNull(probe) ? "NOT NULL" : "NULL";
+    }
+
+    private static Integer integer(Object value) {
+        return value == null ? null : value instanceof Number n ? n.intValue() : Integer.valueOf(String.valueOf(value));
     }
 
     private static String modelType(CompareModel.Column column) {

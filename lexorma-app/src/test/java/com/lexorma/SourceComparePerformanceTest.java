@@ -205,6 +205,61 @@ class SourceComparePerformanceTest {
         Files.writeString(Path.of("build", "snapshot-perf-" + System.getProperty("lexorma.perf.label", "run") + ".txt"), text);
     }
 
+    @Test
+    @DisplayName("[성능] 재가져오기 (M-4f) : 처음 가져와 기준값을 만든 뒤 원본을 다시 수집하고 비교·대상·계획·확정·버전 만들기, 300 / 1,000 / 3,000 TABLE")
+    void reimportScales() throws Exception {
+        Statistics stats = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        stats.setStatisticsEnabled(true);
+        List<String> report = new ArrayList<>();
+        report.add(String.format("%-6s | %-22s | %8s | %8s | %8s | %6s | %9s | %7s | %8s", "TABLE", "구간", "평균ms", "중앙ms", "최대ms", "SQL", "할당MB", "GC ms", "유지MB"));
+        for (int n : new int[]{300, 1000, 3000}) {
+            Env e = prepare(n);
+            SourceCompareDto.Summary first = compare.summary(e.manager());
+            Long connection = first.base().id();
+            List<String> keys = compare.tables(e.manager(), connection, first.reflectedOrder(), null, "MODIFIED", null, 0, 500).rows().stream()
+                    .map(SourceCompareDto.TableRow::key).toList();
+            // 처음 가져오기 : 차이 있는 TABLE 의 c_3 타입 (50개씩) → 기준값(실행 이력 + IMPORT 이력)이 생긴다
+            for (int from = 0; from < keys.size(); from += 50) {
+                var tables = keys.subList(from, Math.min(from + 50, keys.size())).stream()
+                        .map(k -> new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.TableSelection(k, null, List.of("COLUMN:c_3:TYPE"))).toList();
+                var plan = importService.plan(e.manager(), new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Request(connection, first.reflectedOrder(), tables, null, null));
+                importService.apply(e.manager(), new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Request(connection, first.reflectedOrder(), tables, plan.planToken(),
+                        plan.requestId()));
+            }
+            // 원본 재수집 : 같은 TABLE 의 c_3 길이가 50 → 120 (원본만 바뀐 재가져오기 대상)
+            List<SourceCollectionSpec.Table> changed = new ArrayList<>();
+            for (int i = 0; i < n; i++) changed.add(sourceTable(i, i % 10 == 0 ? 120 : 50));
+            ExecutionContext context = ExecutionContext.user(e.manager());
+            collections.apply(context, collections.start(context, connection, SourceCollectionSpec.Request.full()).jobId(),
+                    new SourceCollectionSpec.Result(List.of(SourceCollectionSpec.Schema.completed(null, Name.of("public"), changed))));
+            Integer order = compare.summary(e.manager()).reflectedOrder();
+            report.add(repeat(stats, n, "비교 조회(요약+목록)", () -> List.of(compare.summary(e.manager()),
+                    compare.tables(e.manager(), connection, order, null, "MODIFIED", null, 0, 100))));
+            report.add(repeat(stats, n, "대상 조회(TABLE 1)", () -> importService.candidates(e.manager(), connection, order, keys.get(0))));
+            for (int count : new int[]{1, Math.min(50, keys.size())}) {
+                var tables = keys.subList(0, count).stream()
+                        .map(k -> new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.TableSelection(k, null, List.of("COLUMN:c_3:TYPE"))).toList();
+                var request = new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Request(connection, order, tables, null, null);
+                report.add(repeat(stats, n, "미리보기(TABLE " + count + ")", () -> importService.plan(e.manager(), request)));
+            }
+            int[] next = {0};
+            report.add(repeat(stats, n, "재가져오기 확정(TABLE 1)", () -> {
+                var tables = List.of(new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.TableSelection(keys.get(next[0]++), null, List.of("COLUMN:c_3:TYPE")));
+                var plan = importService.plan(e.manager(), new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Request(connection, order, tables, null, null));
+                if (plan.tables().getFirst().items().getFirst().judgement() != com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Judgement.SOURCE_CHANGED) {
+                    throw new IllegalStateException("재가져오기 판정이 원본 변경이 아니다 : " + plan.tables().getFirst().items().getFirst());
+                }
+                return importService.apply(e.manager(), new com.lexorma.data.sourcemapping.domain.dto.SourceImportDto.Request(connection, order, tables, plan.planToken(), plan.requestId()));
+            }));
+            int[] seq = {0};
+            report.add(repeat(stats, n, "버전 만들기(사용자)", () -> versionService.create(e.manager(),
+                    new com.lexorma.data.version.domain.dto.ModelVersionDto.Create("reimport-" + n + "-" + (seq[0]++), null))));
+        }
+        String text = "\n[M-4f 재가져오기 성능]\n" + String.join("\n", report) + "\n";
+        System.out.println(text);
+        Files.writeString(Path.of("build", "reimport-perf.txt"), text);
+    }
+
     /** 워밍업 1회 + 5회 : 평균·중앙·최대 시간, 그 5회의 평균 SQL·할당·GC 시간, 마지막 호출 뒤 GC 해서 남은 Heap 증가분 */
     private static String repeat(Statistics stats, int n, String label, Supplier<Object> body) {
         body.get();
@@ -350,10 +405,17 @@ class SourceComparePerformanceTest {
     }
 
     private static SourceCollectionSpec.Table sourceTable(int i) {
+        return sourceTable(i, 50);
+    }
+
+    /** @param c3Length c_3 컬럼 길이 (재가져오기 측정에서 원본만 바꾼다) */
+    private static SourceCollectionSpec.Table sourceTable(int i, int c3Length) {
         List<SourceCatalogSpec.Column> columns = new ArrayList<>();
         for (int c = 1; c <= COLUMNS; c++) {
             String name = c == 1 ? "id" : c == 2 ? "parent_id" : "c_" + c;
-            columns.add(new SourceCatalogSpec.Column(Name.of(name), c, c <= 2 ? "bigint" : "character varying(50)", c <= 2 ? null : 50, null, null, c != 1, null, null));
+            int length = c == 3 ? c3Length : 50;
+            columns.add(new SourceCatalogSpec.Column(Name.of(name), c, c <= 2 ? "bigint" : "character varying(" + length + ")", c <= 2 ? null : length, null, null, c != 1, null,
+                    null));
         }
         List<SourceCatalogSpec.Relation> fks = i == 0 ? List.of() : List.of(new SourceCatalogSpec.Relation("fk_t_" + i, null, Name.of("public"), Name.of("t_" + (i - 1)),
                 "NO ACTION", "NO ACTION", List.of(new SourceCatalogSpec.ColumnPair(Name.of("parent_id"), Name.of("id")))));

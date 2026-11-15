@@ -432,3 +432,40 @@ AI 화면을 한 대메뉴로 모았다. 화면·기능·API 는 그대로이고
 ### 21.6 한계
 
 - 판정자가 작업자 1명이고 사람의 확인이 없다 — 업무 정확성 평가 **완료가 아니다**. 표본 20개(Lexorma 자체 스키마)로 실제 레거시 DB 의 품질을 일반화할 수 없다. 금액·통화, 표준 용어 없는 컬럼은 예제에 없어 빠졌다. 모델 1개(`gemma4:e4b`)만 봤다. 같은 입력에서도 출력이 달라질 수 있어 1회 생성 결과다.
+
+## 22. 후속 : 근거 출처·예제 코드 용어 정의 정확성 (AI-5-QUAL-1, 2026-11-15)
+
+21장 예비 평가에서 찾은 문제 중 근거 데이터·출처에 관한 두 가지를 확인하고 고쳤다. 21장의 판정 수치(21건)는 그대로 두며, 아래는 별도 기록이다.
+
+### 22.1 원본 COMMENT 출처 오기 (`TB_ACNT.ACNT_SN`)
+
+- 경로 확인 : 원본 COMMENT 는 `TB_COL.SRC_ANTN_CN`(가져오기만 씀), 업무 설명은 `TASK_EXPLN`, 컬럼 설명(DDL COMMENT)은 `COL_EXPLN`. 근거 수집 `MetadataTools.ColumnItem` 이 각각 `sourceComment`·`businessDescription`·`description` 으로 싣고(테이블은 `TableItem` 같은 방식), 모델 맥락은 이 JSON 을 그대로 넣는다(`AiDescriptionDraftService` 의 [1]~[3] 묶음). 제안 상세의 `current`(지금 값)와 화면 라벨(원본 COMMENT · 컬럼 설명 · 현재 업무 설명)도 같은 칸을 쓴다.
+- 원인 : 예비 평가 당시 ACNT_SN 은 원본 COMMENT 가 없고 컬럼 설명 "계정 일련번호" 만 있었다. 서버가 보낸 근거는 `description` 이었고 `sourceComment` 는 없었다 — "(소스 DB COMMENT: 계정 일련번호)" 는 **모델이 만든 문구**다(저장·수집·맥락·화면 오류 아님). 맥락 안내가 "[1] … names, comments, … source database COMMENTs" 로 DDL COMMENT 와 원본 COMMENT 를 같은 낱말로 부르는 점이 혼동을 부를 수 있다 → AI-5-QUAL-2 후보(프롬프트 변경은 이번 범위 밖).
+- 수정 : 서버·화면 코드는 바꾸지 않았다. 결정적 회귀 테스트 `AiEvidenceSourceIntegrationTest`(가짜 Ollama 로 모델에 실제로 보낸 요청 본문을 읽음) : 원본 COMMENT 만 / 업무 설명만 / 둘 다(다름) / 둘 다(같은 문자열) / 둘 다 없음 / 컬럼 설명만(ACNT_SN 조건) / 표준 용어 정의만 — 값이 제 칸에만 있고 없는 칸은 만들지 않으며, 용어 정의는 `searchStandardTerms` 결과에만 있다. 제안 상세 `current`·저장 칸도 같고, 모델이 "(소스 DB COMMENT: …)" 를 써도 원본 COMMENT·업무 설명은 바뀌지 않는다. `sourceComment`·`businessDescription` 매핑을 일부러 바꾸면 이 테스트가 실패함을 확인했다.
+
+### 22.2 낡은 예제 코드 용어 정의 (`TB_AI_EXPLN_SGSTN.RVW_STTS_CD`)
+
+- 실제 값 : `AiDescriptionProposal.ReviewStatus` = PROPOSED, REVIEWED, APPROVED, REJECTED, ON_HOLD, REVIEW_REQUIRED, SUPERSEDED(새 제안으로 대체), CLOSED(적용하지 않고 종결) — 8개, 끝 상태 APPROVED·REJECTED·SUPERSEDED·CLOSED. `AiDescriptionProposalHistory.Action` = GENERATE, REVIEW, APPROVE, APPROVE_EDITED, REJECT, HOLD, REVIEW_REQUIRED, RECHECK_FLAGGED, SUPERSEDE, REVALIDATE, CLOSE — 11개.
+- 예제 정의(V1) : `검토_상태_코드` "검토 상태 : PROPOSED·REVIEWED·APPROVED·REJECTED·ON_HOLD·REVIEW_REQUIRED." (6개), `처리_유형_코드` "처리 유형 : GENERATE·APPROVE·APPROVE_EDITED·REJECT·HOLD·REVIEW·REVIEW_REQUIRED·SUPERSEDE." (8개). 19·20장에서 값이 늘 때 예제 정의를 고치지 않았다. 근거 수집은 정의를 그대로 실었다(누락 아님) — 모델은 받은 정의대로 6개라고 했다. V4(예제 업무 설명)가 이 컬럼의 업무 설명에는 8개를 적어, V4 뒤로는 근거 안에 8개(업무 설명)와 6개(용어 정의)가 함께 있었다.
+- 수정 (사용자 결정 : V5 마이그레이션) : `V5__example_term_code_definitions.sql`(H2·PostgreSQL 같은 내용). 프로젝트 0 의 두 용어만, `TRM_NM`·`TRM_ENG_ABBR_NM` 이 맞고 `TRM_EXPLN` 이 V1 원문과 정확히 같을 때만 갱신(조건은 한 UPDATE 의 WHERE). 승인 여부·수정 일시는 그대로(V1·V4 와 같음 — 그래서 예전 정의를 근거로 만든 기존 제안이 재검토로 바뀌지 않는다). 새 정의는 "검토 상태 : PROPOSED(제안)·…·SUPERSEDED(새 제안으로 대체)·CLOSED(적용하지 않고 종결). 끝 상태는 APPROVED·REJECTED·SUPERSEDED·CLOSED." 와 "처리 유형 : GENERATE(생성)·…·RECHECK_FLAGGED(승인 뒤 근거 변경 표시)·SUPERSEDE(새 제안으로 대체)·REVALIDATE(근거 재검증)·CLOSE(종결)." — 변경 2행.
+- 회귀 테스트 `ExampleTermCodeDefinitionTest` : 값 목록을 적은 예제 코드 용어(검토 상태·처리 유형·확실성·생성 방법·인덱스 출처·참조 유형·접속 유형·제공자 유형)의 정의에서 " : " 뒤 괄호 밖 대문자 값 집합 = enum 상수 집합(기대값은 enum 에서 읽는다, 빠진 값·없는 값 모두 실패). V5 안전성 : 이미 적용된 DB 에서 다시 실행하면 0행, V1 원문으로 되돌리면 프로젝트 0 만 갱신(다른 프로젝트의 같은 이름·약어·원문 용어는 그대로, 승인 여부·수정 일시 그대로), 사용자가 고친 정의는 그대로. `AiEvidenceSourceIntegrationTest.statusDefinitionReachesPrompt` : 그 정의를 쓰는 컬럼의 초안 맥락에 8개 상태가 모두 간다.
+- 업그레이드 확인 : H2 파일 DB·PostgreSQL 18.6 에서 V4 까지(`spring.flyway.target=4`) → V5. PostgreSQL 은 V4 상태에서 프로젝트 0 의 `처리_유형_코드` 를 사용자 정의로 바꾸고 다른 프로젝트에 V1 원문 `검토_상태_코드` 를 넣은 뒤 올렸다 — 프로젝트 0 의 `검토_상태_코드` 만 갱신, 나머지 그대로. 재기동해도 V5 를 다시 적용하지 않는다.
+- 범위 밖으로 남긴 것 : 예제 `실행_상태_코드` 정의("생성·실행 중·완료·실패·취소")가 AI 대량 생성 상태(PENDING·RUNNING·COMPLETED·PARTIAL_FAILED·FAILED·INTERRUPTED)와 다르다(원본 수집 실행과 함께 쓰는 용어, 한글 목록이라 비교 테스트 대상 아님) — pending-work [AI-5-QUAL]. 이전·이후_상태_코드, 삭제·수정_규칙_코드는 값 목록을 적지 않아 해당 없음.
+
+### 22.3 실제 모델 보조 확인 (로컬 Ollama `gemma4:e4b`, `dictionary-draft/2`, 격리 인스턴스, 2026-11-15)
+
+| 대상·조건 | 횟수 | 결과 |
+|---|---:|---|
+| ACNT_SN, V4 업무 설명 있음 | 2 | 원본 COMMENT 언급 없음 (1회는 업무 설명을 "(원문: …)" 으로 인용) |
+| ACNT_SN, 업무 설명 비움 (21장 조건) | 2 | 원본 COMMENT 언급 없음, 둘 다 VERIFIED |
+| RVW_STTS_CD, V5 정의 + V4 업무 설명 | 2 | 8개 상태 모두 |
+| RVW_STTS_CD, 업무 설명 비움 (V5 정의만) | 2 | 8개 상태 모두 — 정의를 거의 그대로 옮기고 VERIFIED (규칙 11·VERIFIED 문제는 그대로) |
+| FILE_NM, 원본 COMMENT ≠ 업무 설명 | 1 | "(Source COMMENT: 첨부 파일 저장 이름)" — 실제 원본 COMMENT 를 맞게 인용 |
+
+- LLM 응답은 비결정적이라 위는 1회성 관찰이다. 출처 오기가 다시 나오지 않았다고 해결됐다고 보지 않는다 — 결정적인 보장은 서버 근거(22.1·22.2 테스트)까지다. 모델이 출처를 지어내는 것을 막는 규칙·검증은 AI-5-QUAL-2.
+- 사람의 업무 정확성 판정은 여전히 없다 (AI-5-EVAL).
+
+### 22.4 V0·V1 두 번째 합침 (2026-11-15, 사용자 결정)
+
+- 이 장의 V5 와 16장의 V2(품질 평가 테이블·예제)·18장의 V3(안내 공지 AI 절)·예제 업무 설명 V4 를 V0·V1 로 다시 합쳤다. V2 의 스키마는 V0 끝 'AI-5 품질 평가' 구간, 예제 행은 V1 끝 구간, V3·V5 는 V1 의 공지 본문·두 용어 정의에 최종 문구로 바로 넣었고, V4 는 V1 마지막 구간이다. 합치기 전후 H2 DB 의 데이터·스키마가 같다.
+- 그래서 V5 의 "V1 원문일 때만 갱신·재실행 안전" 은 더 이상 해당되지 않고 그 테스트도 없앴다. 예제 정의 ↔ enum 비교(`ExampleTermCodeDefinitionTest.definitionsMatchEnums`)는 그대로다. V2 이상으로 만든 DB 는 새로 만든다.

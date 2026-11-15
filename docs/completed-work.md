@@ -40,7 +40,7 @@
 - 상태: 완료 (정책은 계속 유효)
 - 구현 내용
   - Flyway 가 스키마를 소유하고 Hibernate 는 `validate`. 모든 스키마 변경은 PostgreSQL·H2 두 디렉터리에 같은 내용으로 둔다.
-  - **2026-11-15 Flyway 초기화 (소유자 결정)** : 예전 V2~V10 을 `V0__init.sql`·`V1__seed_data.sql` 기준선으로 합침. 이후 증분 : `V2__ai_dictionary_evaluation.sql`(AI-5 품질 평가), `V3__notice_ai_menu.sql`(안내 공지의 AI 절, 데이터만), `V4__example_task_description.sql`(예제 프로젝트 0 의 테이블 73개·컬럼 811개 업무 설명 `TASK_EXPLN`, 데이터만 — 비어 있는 행만 채우고 사용자가 적은 값·수정 일시는 그대로, 모델 변경 이력에는 남지 않음. 검증 : `AiDictionaryMigrationTest` 가 V3 → V4 증분에서 기존 값 보존·예제 빈 칸 0건을 확인, H2 전체 테스트 통과 · PostgreSQL 은 이번에 돌리지 않음). **다음 스키마 변경은 V5.** 이후 예제 테이블·컬럼을 더할 때는 업무 설명도 함께 넣는다.
+  - **2026-11-15 Flyway 초기화 (소유자 결정)** : 예전 V2~V10 을 `V0__init.sql`·`V1__seed_data.sql` 기준선으로 합침. 같은 날 두 번째로 그 뒤의 증분 V2~V5(AI-5 품질 평가 테이블·예제, 안내 공지의 AI 절, 예제 업무 설명 `TASK_EXPLN`, 예제 코드 용어 정의)도 V0·V1 로 합침(사용자 결정) — V2 의 스키마는 V0 끝 'AI-5 품질 평가' 구간, 예제는 V1 끝 구간, V3·V5 는 V1 의 공지 본문·용어 정의에 최종 문구로, V4 는 V1 마지막 구간(`TASK_EXPLN is null` 조건이 테이블별 → 공통 컬럼 순서를 지킨다). 합치기 전 V0~V4+V5 와 합친 V0·V1 로 만든 H2 DB 의 75개 테이블 데이터(시각 칸 제외)·테이블·컬럼·인덱스·시퀀스·제약 수가 같음을 확인. V2 이상으로 만든 DB 는 이어서 쓸 수 없다. **다음 스키마 변경은 V2.** 예제 테이블·컬럼을 더할 때는 업무 설명도 넣고, 값 목록을 적은 예제 코드 용어는 enum 과 같게 둔다(`ExampleTermCodeDefinitionTest`).
   - 원칙 : 적용된 마이그레이션은 고치지 않는다(주석·공백 포함), 증분 업그레이드를 검증한다, 데이터 이전은 새 마이그레이션에 명시한다, 새 `TB_` 테이블의 COMMENT·예제 데이터는 같은 마이그레이션에 넣는다 (`V0SeedMigrationTest`·`SmokeTest`). 경과 기록은 [data-modeling-roadmap.md 마이그레이션 정책](reference/data-modeling-roadmap.md#마이그레이션-정책).
   - Lexorma 자체 테이블 명명 규칙(`TB_` + 표준 단어 약어, `{X}_SN`, `SQ_*`, `PK_/FK_/IX_/UX_`) — [db-naming-standard.md](reference/db-naming-standard.md). 예제 프로젝트(LEXORMA, 프로젝트 0)는 실제 스키마와 FK·UNIQUE·CHECK·기본값·IDENTITY 까지 일치 — [lexorma-example-sync.md](reference/lexorma-example-sync.md).
   - **스키마 단위 TABLE/VIEW 이름** (2026-11-13, D-25 변경 · D-03 관련) : 이름 유일성 범위를 프로젝트 → 스키마로 변경 (`UX_TBL_01 (SCHM_SN, TBL_NM)`), 같은 스키마의 TABLE·VIEW 는 이름 공간 잠금 + 서비스 검사, 이름 기반 참조는 `TableNameResolver`(`테이블명` 또는 `스키마명.테이블명`) — [schema-scoped-naming.md](reference/schema-scoped-naming.md).
@@ -72,6 +72,14 @@
   - **실제 모델 예비 평가** : 실제 Ollama `gemma4:e4b` 로 LEXORMA 예제 20개 대상(테이블 4·컬럼 16, 코드·여부·FK·날짜·모호한 이름 포함, 맞는/틀린 원본 COMMENT·확정 업무 설명 조건 포함)의 제안 21개를 만들고, 소스 코드로 확인한 실제 의미와 견줘 기존 평가 기능에 판정했다. **판정자는 사람이 아니라 작업자(AI 코딩 도우미)** 이므로 사람 판정을 대신하지 않는 예비 검토다. 결과 : 맞음 9 · 일부 맞음 11 · 틀림 1 (21건), 근거 없는 주장 2, 불확실성 단정 4 · 과잉 1, VERIFIED 주장 18건 중 11건이 일부 맞음·틀림. 대표 문제 : 이름에서 만든 잘못된 의미(`DRVN_COL_SN`), 낡은 예제 용어 정의를 완전한 값 목록으로 단정(`RVW_STTS_CD`), 컬럼 설명을 원본 COMMENT 로 오기(`ACNT_SN`), 용어 사전 정의 복사. 잘 된 것 : 근거 없는 사실·코드 값을 지어내지 않음, 틀린 원본 COMMENT 를 충돌로 밝힘, 확정 업무 설명 사용.
 - 설계 결정 : 프롬프트·모델·검증 로직·승인 정책은 바꾸지 않았다 — 개선 후보만 기록(21.5, pending-work [AI-5-QUAL]).
 - 검증 결과 : `AiDictionaryTargetPageIntegrationTest.evaluationBeyondOldLimit`(1,052개 중 1,001번째 테이블로 후보 → 등록 → 상세, VIEWER 등록 거부, 다른 프로젝트 거부). H2 792건(실패 0, 건너뜀 34)·PostgreSQL 792건(실패 0, 건너뜀 25, 격리 컨테이너). 성능(opt-in) 30·500·1,000·3,000 테이블 H2·PostgreSQL — 쪽 목록 첫·검색·마지막 쪽 PostgreSQL 4~14ms, SQL 7~8 (21.1). 격리 인스턴스 브라우저 : 1,200개 테이블 프로젝트에서 1150번째 검색·선택·후보 표시·등록(A), 검색어 변경 뒤 2/4·4/4 쪽 이동·전체 건수 120 = API·선택 유지(B), 등록 → 실제 모델 제안 → 실제 의미 "확인 불가" → "평가할 수 없음" 판정 저장·지표 반영(C·E), 다른 프로젝트 테이블·대상 ID 직접 요청 거부(400·404)·잘못된 쪽 번호 보정(F·G), 목록 실패 안내, 프로젝트 전환 시 선택 초기화, 영어·다크, 390·606px(라이트·다크) 가로 넘침 없음·쪽 버튼 보임(수치), 판정 대화상자 390px. **미검증** : VIEWER 계정의 브라우저 화면(통합 테스트로만), 사람의 판정, 제안이 많은 프로젝트의 평가 후보 성능.
+
+### [AI-5-QUAL-1] AI 설명 근거의 출처·예제 코드 용어 정의 정확성 (AI-5-QUAL 하위)
+
+- 상태: 완료 (2026-11-15) — 상위 [AI-5-QUAL] 의 남은 범위(QUAL-2)는 pending-work.md. 상세 [ai-dictionary-draft-ai5.md 22장](completed/ai-dictionary-draft-ai5.md)
+- 오류 1 (원본 COMMENT 출처 오기, `TB_ACNT.ACNT_SN`) : 저장(원본 COMMENT `SRC_ANTN_CN` · 업무 설명 `TASK_EXPLN` · 컬럼 설명 `COL_EXPLN`) → 근거 수집(`MetadataTools.ColumnItem` 의 `sourceComment`·`businessDescription`·`description`) → 모델 맥락(JSON 필드 그대로) → 제안 상세 `current` → 화면 라벨까지 모두 제 칸이었다. "(소스 DB COMMENT: 계정 일련번호)" 는 원본 COMMENT 가 없는 컬럼의 **컬럼 설명을 모델이 원본 COMMENT 라고 쓴 문구**(모델 응답 단계)다 — 서버·화면 수정 없음. 맥락에서 `description`(DDL COMMENT)과 원본 COMMENT 의 구분이 약한 점은 AI-5-QUAL-2 후보. 회귀 테스트 `AiEvidenceSourceIntegrationTest` 4건(원본만·업무 설명만·둘 다·같은 문자열·둘 다 없음·ACNT_SN 조건·용어 정의만 — 모델에 실제로 보낸 요청 본문과 상세 API·저장 칸으로 확인, 모델이 쓴 설명은 원본 COMMENT·업무 설명이 되지 않음, 근거 매핑을 일부러 바꾸면 실패함을 확인).
+- 오류 2 (낡은 상태 코드 정의, `TB_AI_EXPLN_SGSTN.RVW_STTS_CD`) : 실제 검토 상태는 8개(`ReviewStatus` : PROPOSED·REVIEWED·APPROVED·REJECTED·ON_HOLD·REVIEW_REQUIRED·SUPERSEDED·CLOSED), 예제 용어 `검토_상태_코드` 정의(V1)는 앞 6개뿐 — AI-5 후속으로 SUPERSEDED·CLOSED 가 생길 때 예제 정의를 고치지 않았다. 같은 원인으로 `처리_유형_코드`(V1 8개)에 `Action` 의 RECHECK_FLAGGED·REVALIDATE·CLOSE 가 없었다. 모델 맥락에는 정의가 그대로 갔다(수집 누락 아님). **V5 `V5__example_term_code_definitions.sql`** (사용자 결정, H2·PostgreSQL 같은 내용) : 프로젝트 0 의 두 용어만, 이름·영문 약어가 맞고 정의가 V1 원문과 정확히 같을 때만 갱신(WHERE 안에서), 승인 여부·수정 일시는 그대로. 변경 2행. → 같은 날 V0·V1 두 번째 합침으로 V1 의 두 용어 정의에 최종 문구를 바로 넣고 V5 는 없앴다(재실행·사용자 수정 보존 테스트도 함께 없앰). 회귀 테스트 `ExampleTermCodeDefinitionTest` 2건 : 값 목록을 적은 예제 코드 용어 8개(검토 상태·처리 유형·확실성·생성 방법·인덱스 출처·참조 유형·접속 유형·제공자 유형)의 정의 값 집합 = enum(enum 에서 읽음, 빠짐·남음 모두 실패), V5 를 다시 실행해도 0행·사용자 수정 정의·다른 프로젝트의 같은 용어는 그대로·V1 원문이면 갱신.
+- 기존 데이터 보호 : 기존 AI 제안·평가·검토 이력·근거 스냅숏·승인 정책·VERIFIED 정책·평가 모델 V2 는 바꾸지 않았다. V5 는 수정 일시를 바꾸지 않아(V1·V4 와 같음) 예전 정의를 근거로 만든 기존 제안을 재검토로 바꾸지 않는다.
+- 검증 결과 : H2 805건(실패 0, 건너뜀 34)·PostgreSQL 805건(실패 0, 건너뜀 25, 격리 컨테이너), 마이그레이션 수 단언(V0SeedMigrationTest·LexormaIndexSeedTest 5 → 6). 업그레이드 : H2 파일 DB·PostgreSQL 18.6 에서 `spring.flyway.target=4` 로 V4 까지 만든 뒤 V5 적용(PostgreSQL 은 사용자 수정 정의·다른 프로젝트 용어를 넣어 둔 상태 — 둘 다 그대로, 프로젝트 0 의 원문 용어만 갱신), 재기동 시 재적용 없음. 실제 모델(로컬 Ollama `gemma4:e4b`, `dictionary-draft/2`) 보조 확인 9회 : ACNT_SN 4회(업무 설명 있음 2·없음 2) 모두 원본 COMMENT 언급 없음, RVW_STTS_CD 4회(V4 업무 설명과 함께 2, 업무 설명을 비우고 V5 정의만 2) 모두 8개 상태, 원본 COMMENT 가 있는 FILE_NM 은 "(Source COMMENT: …)" 로 맞게 인용 — LLM 은 비결정적이라 1회성 확인이다(정의를 그대로 옮기고 VERIFIED 로 둔 문제는 그대로, QUAL-2). 브라우저(격리 인스턴스) : 제안 상세의 원본 COMMENT·컬럼 설명·업무 설명이 각 칸에(원본 COMMENT 가 다른 FILE_NM, 원본 COMMENT 없는 ACNT_SN), 표준 용어 상세의 V5 정의, 품질 평가 화면 검색·선택·후보, 영어(Source COMMENT 등)·라이트·다크, 390·606px 가로 넘침 없음(수치).
 
 ### [AI-5-PAGE] AI 설명 제안 대상 선택의 서버 쪽 나누기
 
@@ -340,7 +348,7 @@
 
 ## 9. 검증 및 테스트 현황
 
-- **최근 전체 실행 (2026-11-15, UI-DASH)** : H2 799건 실패 0 · 건너뜀 34, PostgreSQL 799건 실패 0 · 건너뜀 25 (격리된 PostgreSQL 18.6 컨테이너, `LEXORMA_TEST_POSTGRES_URL`).
+- **최근 전체 실행 (2026-11-15, AI-5-QUAL-1)** : H2 805건 실패 0 · 건너뜀 34, PostgreSQL 805건 실패 0 · 건너뜀 25 (격리된 PostgreSQL 18.6 컨테이너, `LEXORMA_TEST_POSTGRES_URL`).
 - **단계별 기록된 검증** : 각 작업 항목의 "검증 결과"와 연결된 기록. 대부분의 단계는 H2·PostgreSQL 통합 테스트와 헤드리스 Chrome 화면 검증을 기록하고 있다. 기록에 미검증으로 남은 항목(대규모 성능, Oracle·MySQL·MariaDB 실제 실행, 일부 브라우저·역할·언어 조합)은 pending-work.md 에서 관리한다.
 - **검증 환경** : 단위 테스트(Mockito, 모듈별), 통합 테스트(`lexorma-app`, `@SpringBootTest` + Flyway H2), `SmokeTest`(실제 서버 + JDK `HttpClient`), PostgreSQL 은 빈 DB 를 가리켜 같은 테스트를 실행. 프론트엔드 검사는 `npm run typecheck` 뿐이다.
 
@@ -356,3 +364,5 @@
 | 2026-11-15 | [COL-TERM] 기존 컬럼의 표준 용어 재연결 추가 (DEC-01) |
 | 2026-11-15 | [AI-5-EVAL] 품질 평가 화면의 500개 제한 해소, 실제 모델 예비 평가(작업자 판정) 추가 — 사람 판정은 미완료 |
 | 2026-11-15 | [UI-DASH] 메인 대시보드 개편 추가 (통계 API·차트, 최근 활동 제거) |
+| 2026-11-15 | [AI-5-QUAL-1] AI 설명 근거 출처 회귀 테스트, 예제 코드 용어 정의 V5 추가 |
+| 2026-11-15 | Flyway 두 번째 합침 : 증분 V2~V5 를 V0·V1 로 (사용자 결정, 데이터 동일 확인). 다음 스키마 변경은 V2 |

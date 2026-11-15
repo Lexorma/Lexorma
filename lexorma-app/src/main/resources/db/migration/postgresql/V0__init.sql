@@ -8,6 +8,8 @@
 -- 2026-11-15 : Flyway 초기화 — 그 뒤의 V2~V10 (원본 매핑 M-4c, 가져오기 M-4e, SEC-1, 매핑 예외 M-4g, FK 규칙·IDENTITY, AI-3, 기본 AI Provider, AI-5)을 다시 이 파일에 합쳤다.
 --   추가된 컬럼은 해당 create table 에 넣었고(예전 ALTER 와 같은 컬럼 순서), 새 테이블·시퀀스·인덱스·FK·COMMENT 는 맨 끝의 '예전 Vn' 구간에 그 순서대로 있다.
 --   이전 V0~V10 으로 만든 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다.
+-- 2026-11-15 (두 번째) : 그 뒤의 증분 V2~V5 를 다시 V0·V1 로 합쳤다. 스키마 변경은 V2(AI-5 품질 평가 테이블)뿐이라 맨 끝 'AI-5 품질 평가' 구간에 있다.
+--   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다. 다음 스키마 변경은 V2 다.
 --   TABLE·VIEW 이름은 스키마 안에서 하나다 (UX_TBL_01·UX_VIEW_01 = SCHM_SN + 이름, 같은 스키마의 TABLE·VIEW 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 막는다).
 -- =====================================================================
 
@@ -2376,3 +2378,104 @@ comment on column TB_AI_EXPLN_CRT_EXCN.REG_DT is '등록 일시';
 comment on column TB_AI_EXPLN_CRT_EXCN.MDFCN_DT is '수정 일시';
 comment on column TB_AI_EXPLN_CRT_EXCN.RGTR_ID is '등록자 아이디';
 comment on column TB_AI_EXPLN_CRT_EXCN.MDFR_ID is '수정자 아이디';
+
+-- ---------- AI-5 품질 평가 : 평가 대상·판정 (2026-11-15, 예전 증분 V2. docs/completed/ai-dictionary-draft-ai5.md 16장) ----------
+-- TB_AI_EXPLN_EVL_TRGT : 평가 대상 (테이블·컬럼, 범주, 담당자가 확인한 실제 업무 의미·확인 상태, 등록 시점 메타데이터 버전). 실제 의미는 평가 기준이라 AI 에 보내지 않는다
+-- TB_AI_EXPLN_EVL : AI 설명 제안 하나에 대한 사람의 판정 (검토자당 하나). 모델·프롬프트 버전을 함께 남긴다. AI 가 판정하지 않는다
+-- 모델 테이블·제안에 FK 를 걸지 않는다 (AI-5 제안과 같은 방식). 프로젝트 삭제 때 함께 지운다 (ProjectDataCleanup)
+create sequence SQ_AI_EXPLN_EVL_TRGT start with 1 increment by 50;
+create sequence SQ_AI_EXPLN_EVL start with 1 increment by 50;
+
+create table TB_AI_EXPLN_EVL_TRGT (
+    AI_EXPLN_EVL_TRGT_SN bigint not null,
+    PRJ_SN bigint not null,
+    TRGT_TYPE_CD varchar(20) not null,
+    TBL_SN bigint not null,
+    COL_SN bigint,
+    TRGT_NM varchar(255) not null,
+    EVL_CTGRY_CN TEXT,
+    ACTL_MNNG_CN TEXT,
+    MNNG_IDNTY_STTS_CD varchar(20) not null,
+    CRTR_VER_CN TEXT not null,
+    RVWR_ID varchar(255),
+    RVW_DT timestamp(6),
+    VER_NO bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_EVL_TRGT primary key (AI_EXPLN_EVL_TRGT_SN)
+);
+
+create index IX_AI_EXPLN_EVL_TRGT_01 on TB_AI_EXPLN_EVL_TRGT (PRJ_SN, TBL_SN, COL_SN);
+
+create table TB_AI_EXPLN_EVL (
+    AI_EXPLN_EVL_SN bigint not null,
+    PRJ_SN bigint not null,
+    AI_EXPLN_EVL_TRGT_SN bigint not null,
+    AI_EXPLN_SGSTN_SN bigint not null,
+    MDL_NM varchar(255),
+    PRMPT_VER_NM varchar(30) not null,
+    JGMT_RSLT_CD varchar(20) not null,
+    UNFND_CLM_YN boolean not null,
+    OMSN_INFO_CN TEXT,
+    UNCRT_JGMT_CD varchar(20) not null,
+    TRM_RCMDTN_JGMT_CD varchar(20) not null,
+    DMN_RCMDTN_JGMT_CD varchar(20) not null,
+    MDFCN_NEED_CN TEXT,
+    RVW_REQ_HR integer,
+    WRT_REQ_HR integer,
+    RVWR_ID varchar(255) not null,
+    RVW_DT timestamp(6) not null,
+    VER_NO bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_EVL primary key (AI_EXPLN_EVL_SN)
+);
+
+create unique index UX_AI_EXPLN_EVL_01 on TB_AI_EXPLN_EVL (AI_EXPLN_SGSTN_SN, RVWR_ID);
+create index IX_AI_EXPLN_EVL_01 on TB_AI_EXPLN_EVL (PRJ_SN, AI_EXPLN_EVL_TRGT_SN);
+
+comment on table TB_AI_EXPLN_EVL_TRGT is 'AI 설명 평가 대상';
+comment on column TB_AI_EXPLN_EVL_TRGT.AI_EXPLN_EVL_TRGT_SN is 'AI 설명 평가 대상 일련번호';
+comment on column TB_AI_EXPLN_EVL_TRGT.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_EVL_TRGT.TRGT_TYPE_CD is '대상 유형 코드';
+comment on column TB_AI_EXPLN_EVL_TRGT.TBL_SN is '테이블 일련번호';
+comment on column TB_AI_EXPLN_EVL_TRGT.COL_SN is '컬럼 일련번호';
+comment on column TB_AI_EXPLN_EVL_TRGT.TRGT_NM is '대상 명';
+comment on column TB_AI_EXPLN_EVL_TRGT.EVL_CTGRY_CN is '평가 범주 내용';
+comment on column TB_AI_EXPLN_EVL_TRGT.ACTL_MNNG_CN is '실제 의미 내용';
+comment on column TB_AI_EXPLN_EVL_TRGT.MNNG_IDNTY_STTS_CD is '의미 확인 상태 코드';
+comment on column TB_AI_EXPLN_EVL_TRGT.CRTR_VER_CN is '기준 버전 내용';
+comment on column TB_AI_EXPLN_EVL_TRGT.RVWR_ID is '검토자 아이디';
+comment on column TB_AI_EXPLN_EVL_TRGT.RVW_DT is '검토 일시';
+comment on column TB_AI_EXPLN_EVL_TRGT.VER_NO is '버전 번호';
+comment on column TB_AI_EXPLN_EVL_TRGT.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_EVL_TRGT.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_EVL_TRGT.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_EVL_TRGT.MDFR_ID is '수정자 아이디';
+comment on table TB_AI_EXPLN_EVL is 'AI 설명 평가';
+comment on column TB_AI_EXPLN_EVL.AI_EXPLN_EVL_SN is 'AI 설명 평가 일련번호';
+comment on column TB_AI_EXPLN_EVL.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_EVL.AI_EXPLN_EVL_TRGT_SN is 'AI 설명 평가 대상 일련번호';
+comment on column TB_AI_EXPLN_EVL.AI_EXPLN_SGSTN_SN is 'AI 설명 제안 일련번호';
+comment on column TB_AI_EXPLN_EVL.MDL_NM is '모델 명';
+comment on column TB_AI_EXPLN_EVL.PRMPT_VER_NM is '프롬프트 버전 명';
+comment on column TB_AI_EXPLN_EVL.JGMT_RSLT_CD is '판정 결과 코드';
+comment on column TB_AI_EXPLN_EVL.UNFND_CLM_YN is '무근거 주장 여부';
+comment on column TB_AI_EXPLN_EVL.OMSN_INFO_CN is '누락 정보 내용';
+comment on column TB_AI_EXPLN_EVL.UNCRT_JGMT_CD is '불확실 판정 코드';
+comment on column TB_AI_EXPLN_EVL.TRM_RCMDTN_JGMT_CD is '용어 추천 판정 코드';
+comment on column TB_AI_EXPLN_EVL.DMN_RCMDTN_JGMT_CD is '도메인 추천 판정 코드';
+comment on column TB_AI_EXPLN_EVL.MDFCN_NEED_CN is '수정 필요 내용';
+comment on column TB_AI_EXPLN_EVL.RVW_REQ_HR is '검토 소요 시간';
+comment on column TB_AI_EXPLN_EVL.WRT_REQ_HR is '작성 소요 시간';
+comment on column TB_AI_EXPLN_EVL.RVWR_ID is '검토자 아이디';
+comment on column TB_AI_EXPLN_EVL.RVW_DT is '검토 일시';
+comment on column TB_AI_EXPLN_EVL.VER_NO is '버전 번호';
+comment on column TB_AI_EXPLN_EVL.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_EVL.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_EVL.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_EVL.MDFR_ID is '수정자 아이디';

@@ -261,7 +261,7 @@ final class EnglishMessages {
         add("같은 이름의 테이블이 여러 스키마에 있습니다. tableId 로 지정하세요 : {0}", "Tables with this name exist in several schemas. Specify the tableId : {0}");
 
         // ---------------------------------------------------------------- 공지사항
-        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지(V3__notice_ai_menu.sql 로 AI 절을 고친 뒤)와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
+        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.

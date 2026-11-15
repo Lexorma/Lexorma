@@ -200,67 +200,78 @@
     color: var(--fg);
 }
 
-/* ---------- 최근 활동 타임라인 ---------- */
-.dash-timeline {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+/* ---------- 프로젝트 현황 카드 (등록 수) ---------- */
+.dash-kpis {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
 }
-.dash-timeline-item {
-    position: relative;
-    display: flex;
-    gap: 12px;
-    padding: 12px 16px;
-}
-.dash-timeline-item + .dash-timeline-item {
-    border-top: 1px solid var(--border-muted);
-}
-.dash-timeline-body {
-    flex: 1;
-    min-width: 0;
-}
-.dash-timeline-text {
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-}
-.dash-name {
-    padding: 1px 6px;
-    border-radius: 6px;
-    background: #818b981f;
-    color: var(--fg);
-    font-family: var(--app-font);
-    font-size: 12px;
-}
-.dash-time {
-    display: block;
-    margin-top: 2px;
-    color: var(--fg-muted);
-    font-size: 12px;
-}
+.dash-stat.is-static:hover { border-color: var(--border); box-shadow: none; }
 
-/* 구분 라벨 (GitHub Label) */
-.dash-label {
-    display: inline-block;
-    padding: 0 7px;
-    border: 1px solid transparent;
-    border-radius: 2em;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 18px;
-    white-space: nowrap;
-    background: var(--canvas-subtle);
-    border-color: var(--border);
-    color: var(--fg-muted);
-}
-.dash-label[data-type="표준단어"],
-.dash-label[data-type="표준용어"],
-.dash-label[data-type="표준도메인"] {
-    background: var(--accent-subtle); border-color: #54aeff66; color: var(--accent);
-}
-.dash-label[data-type="테이블관리"],
-.dash-label[data-type="컬럼관리"] {
-    background: var(--success-subtle); border-color: #4ac26b66; color: var(--success);
-}
+/* ---------- 박스 안 공통 ---------- */
+.dash-box-body { padding: 16px; }
+.dash-grid + .dash-box, .dash-box + .dash-grid, .dash-grid + .dash-grid { margin-top: 16px; }
+.dash-grid.dash-grid-even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.dash-note { margin: 12px 0 0; color: var(--fg-muted); font-size: 12px; }
+.dash-empty { margin: 0; color: var(--fg-muted); }
+.dash-muted { margin-left: 6px; color: var(--fg-muted); font-size: 12px; font-weight: 400; }
+.dash-mono { font-family: var(--gh-mono); font-size: 12px; }
+.dash-sub { margin: 16px 0 8px; font-size: 13px; font-weight: 600; }
+.dash .is-attention { color: var(--attention); }
+.dash-loading, .dash-error { margin: 0 0 16px; color: var(--fg-muted); }
+.dash-error { display: flex; align-items: center; gap: 8px; color: var(--danger); }
+.dash-foot { margin: 8px 0 16px; color: var(--fg-muted); font-size: 12px; text-align: right; }
+.dash .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- 표준 적용률 (도넛) ---------- */
+.dash-standard { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.dash-donut { width: 140px; height: 140px; flex: none; }
+.dash-donut-value { fill: var(--fg); font-size: 20px; font-weight: 600; }
+.dash-donut-value.is-empty { fill: var(--fg-muted); font-size: 14px; font-weight: 500; }
+.dash-figures { display: grid; grid-template-columns: auto auto; gap: 4px 16px; margin: 0; flex: 1; min-width: 180px; }
+.dash-figures dt { color: var(--fg-muted); }
+.dash-figures dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- 승인 대기 ---------- */
+.dash-pending { list-style: none; margin: 0; padding: 0; }
+.dash-pending-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.dash-pending-item + .dash-pending-item { border-top: 1px solid var(--border-muted); }
+.dash-pending-item a { color: var(--fg); text-decoration: none; }
+.dash-pending-item a:hover { color: var(--accent); text-decoration: underline; }
+.dash-pending-count { margin-left: auto; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+.dash-pending-count.is-pending { color: var(--attention); }
+
+/* ---------- 승인 상태 분포 (누적 막대) ---------- */
+.dash-approvals { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dash-approvals th, .dash-approvals td { padding: 6px 8px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dash-approvals th:first-child { text-align: left; }
+.dash-approvals thead th { color: var(--fg-muted); font-weight: 500; border-bottom: 1px solid var(--border-muted); }
+.dash-approvals .dash-col-chart { width: 45%; }
+.dash-stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--gh-neutral-muted); }
+.dash-stack-seg { display: block; height: 100%; }
+.dash-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--fg-muted); }
+.dash-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.dash-legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+/* ---------- 데이터 모델 · 품질 (가로 막대) ---------- */
+.dash-model { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.dash-model div { padding: 8px 12px; border: 1px solid var(--border-muted); border-radius: 6px; }
+.dash-model dt { color: var(--fg-muted); font-size: 12px; }
+.dash-model dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash-model dd .dash-muted { display: block; margin: 0; }
+.dash-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dash-bars li { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) 84px; align-items: center; gap: 8px; font-size: 13px; }
+.dash-bars-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-bars-label a { color: var(--fg); }
+.dash-bars-label a:hover { color: var(--accent); }
+.dash-bars-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dash-bars-value .dash-muted { margin-left: 0; }
+.dash-bar { height: 8px; border-radius: 4px; background: var(--gh-neutral-muted); overflow: hidden; }
+.dash-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.dash-quality-head { margin: 0 0 12px; }
+
+.dash-notices { margin-top: 16px; }
 
 /* ---------- 공지사항 목록 ---------- */
 .dash-list {
@@ -341,9 +352,14 @@
 
 /* ---------- 반응형 ---------- */
 @media (max-width: 1012px) {
-    .dash-grid { grid-template-columns: minmax(0, 1fr); }
+    .dash-grid, .dash-grid.dash-grid-even { grid-template-columns: minmax(0, 1fr); }
+    .dash-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
     .dash-stats { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .dash-stat-value { font-size: 24px; margin-top: 8px; }
+    .dash-model { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dash-approvals .dash-col-chart { width: auto; min-width: 60px; }
+    .dash-approvals th, .dash-approvals td { padding: 6px 4px; }
 }

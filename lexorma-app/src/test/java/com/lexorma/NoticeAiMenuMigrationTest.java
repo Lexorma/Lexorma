@@ -35,7 +35,7 @@ class NoticeAiMenuMigrationTest {
             // 다른 게시물 하나 : 같은 문구가 있어도 공지 1번만 바꾼다
             db.update("insert into " + posts + "(PST_SN, PRJ_SN, CTGRY_CD, WRTR_ID, PST_TTL, PST_CN, DEL_YN) values (2, 0, 'NOTICE', 'admin', '다른 글', ?, 'N')", before);
 
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
+            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target("3").load();
             assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
             String after = db.queryForObject("select PST_CN from " + posts + " where PST_SN = 1", String.class);
             assertThat(after).contains("AI 관리 › AI Provider 설정", "AI 관리 › AI 설명 제안", "**AI 품질 평가**").doesNotContain("데이터 사전에서 테이블·컬럼의 업무 설명 초안");

@@ -4,8 +4,8 @@ import { ClipboardCheck } from 'lucide-react';
 import { useDialog } from '../../../components/dialog/DialogProvider';
 import { useAuth } from '../../../hooks/useAuth';
 import { t, tv } from '../../../lib/i18n';
-import { aiDictionary } from './aiDictionary';
 import { aiEvaluation, CATEGORIES, CATEGORY_LABEL, MEANING_LABEL, rateText, type Category, type ModelResult } from './aiEvaluation';
+import { EvaluationTablePicker, type PickedTable } from './EvaluationTablePicker';
 import { EvaluationTargetView } from './EvaluationTargetView';
 import { SelectAll } from './SelectAll';
 
@@ -18,10 +18,10 @@ export function EvaluationPanel() {
   const canWrite = canView('ai-dictionary-evaluate');
   const dialog = useDialog();
   const queryClient = useQueryClient();
-  const [tableId, setTableId] = useState<number | null>(null);
+  const [table, setTable] = useState<PickedTable | null>(null);
+  const tableId = table?.tableId ?? null;
   const [selected, setSelected] = useState<Map<string, Category[]>>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
-  const tables = useQuery({ queryKey: ['ai-dict-targets', null, false, ''], queryFn: () => aiDictionary.targets(null, false) });
   const candidates = useQuery({ queryKey: ['ai-eval-candidates', tableId], queryFn: () => aiEvaluation.candidates(tableId), enabled: tableId != null });
   const targets = useQuery({ queryKey: ['ai-eval-targets'], queryFn: aiEvaluation.targets });
   const metrics = useQuery({ queryKey: ['ai-eval-metrics'], queryFn: aiEvaluation.metrics });
@@ -62,7 +62,7 @@ export function EvaluationPanel() {
           <>
             <p className="ai-dict-small">
               {t('평가 대상 {0}개 · 실제 의미 확인 {1} · 확인 불가 {2} · 미확인 {3}', m.dataset.targets, m.dataset.confirmed, m.dataset.unconfirmable, m.dataset.pending)}
-              {' · '}{CATEGORIES.filter((c) => m.dataset.categories[c] > 0).map((c) => `${CATEGORY_LABEL[c]} ${m.dataset.categories[c]}`).join(', ')}
+              {CATEGORIES.some((c) => m.dataset.categories[c] > 0) && ` · ${CATEGORIES.filter((c) => m.dataset.categories[c] > 0).map((c) => `${CATEGORY_LABEL[c]} ${m.dataset.categories[c]}`).join(', ')}`}
             </p>
             {!m.evaluated && <div className="ai-dict-callout is-warn" role="status">{t('사람이 판정한 정확성 결과가 아직 없어 품질 평가가 완료되지 않았습니다.')}</div>}
             {m.models.length > 0 && <MetricsTable models={m.models} />}
@@ -74,11 +74,8 @@ export function EvaluationPanel() {
       {canWrite && (
         <section className="ai-dict-card">
           <h3>{t('평가 대상 고르기')}</h3>
+          <EvaluationTablePicker picked={table} onPick={(next) => { if (next.tableId !== tableId) setSelected(new Map()); setTable(next); }} />
           <div className="ai-dict-toolbar">
-            <select className="search-column-select" aria-label={t('테이블')} value={tableId ?? ''} onChange={(e) => { setTableId(e.target.value ? Number(e.target.value) : null); setSelected(new Map()); }}>
-              <option value="">{t('테이블을 고르세요')}</option>
-              {(tables.data ?? []).filter((r) => r.targetType === 'TABLE').map((r) => <option key={r.tableId} value={r.tableId}>{r.name}</option>)}
-            </select>
             <button type="button" className="btn btn-primary" disabled={selected.size === 0} onClick={() => void register()}>
               <ClipboardCheck size={14} aria-hidden="true" /> {t('고른 {0}개 등록', selected.size)}
             </button>

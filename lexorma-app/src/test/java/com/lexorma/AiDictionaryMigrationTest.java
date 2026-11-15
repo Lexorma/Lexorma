@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class AiDictionaryMigrationTest {
 
-    @ParameterizedTest(name = "신규 설치 {0} : 업무 설명은 비어 있고 AI 제안 테이블도 비어 있다")
+    @ParameterizedTest(name = "신규 설치 {0} : 예제 테이블·컬럼에만 업무 설명이 있고 AI 제안 테이블은 비어 있다")
     @ValueSource(strings = {"h2", "postgresql"})
     void freshInstall(String vendor) {
         String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
@@ -28,11 +28,23 @@ class AiDictionaryMigrationTest {
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            flyway.migrate();
+            // V3 까지 올린 뒤 사용자가 적은 업무 설명은 V4 (예제 업무 설명)가 덮어쓰지 않는다
+            Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target("3").load().migrate();
             JdbcTemplate db = new JdbcTemplate(dataSource);
             String s = "\"" + schema + "\".";
             assertThat(db.queryForObject("select count(*) from " + s + "TB_TBL where TASK_EXPLN is not null", Long.class)).isZero();
             assertThat(db.queryForObject("select count(*) from " + s + "TB_COL where TASK_EXPLN is not null", Long.class)).isZero();
+            db.update("update " + s + "TB_TBL set TASK_EXPLN = '사용자 업무 설명' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT'");
+            db.update("update " + s + "TB_COL set TASK_EXPLN = '사용자 업무 설명' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'REG_DT'");
+            flyway.migrate();
+            // V4 : 예제(프로젝트 0)의 모든 테이블·컬럼에 업무 설명이 있다
+            assertThat(db.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0 and TASK_EXPLN is null", Long.class)).isZero();
+            assertThat(db.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0 and TASK_EXPLN is null", Long.class)).isZero();
+            assertThat(db.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN <> 0 and TASK_EXPLN is not null", Long.class)).isZero();
+            assertThat(db.queryForObject("select TASK_EXPLN from " + s + "TB_TBL where PRJ_SN = 0 and TBL_NM = 'TB_ACNT'", String.class)).isEqualTo("사용자 업무 설명");
+            assertThat(db.queryForObject("select TASK_EXPLN from " + s + "TB_COL where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'REG_DT'", String.class)).isEqualTo("사용자 업무 설명");
+            // 공통 컬럼 설명보다 테이블별 설명이 앞선다 (TB_PRJ.PRJ_SN 은 기본키)
+            assertThat(db.queryForObject("select TASK_EXPLN from " + s + "TB_COL where PRJ_SN = 0 and TBL_NM = 'TB_PRJ' and COL_NM = 'PRJ_SN'", String.class)).startsWith("프로젝트를 구분하는");
             for (String t : new String[]{"TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN", "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL"}) {
                 assertThat(db.queryForObject("select count(*) from " + s + t, Long.class)).as(t).isZero();
             }

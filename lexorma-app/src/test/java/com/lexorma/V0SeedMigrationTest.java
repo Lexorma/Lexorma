@@ -28,8 +28,8 @@ class V0SeedMigrationTest {
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
             // V0 (스키마·COMMENT) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑·인덱스).
-            // 2026-11-13 에 예전 V2~V6, 2026-11-15 Flyway 초기화 때 예전 V2~V10 을 V0·V1 로 합쳤다. 그 뒤 V2 (AI 설명 품질 평가)·V3 (안내 공지의 AI 절)
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            // 2026-11-13 에 예전 V2~V6, 2026-11-15 Flyway 초기화 때 예전 V2~V10 을 V0·V1 로 합쳤다. 그 뒤 V2 (AI 설명 품질 평가)·V3 (안내 공지의 AI 절)·V4 (예제 업무 설명)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             var jdbc = new JdbcTemplate(dataSource);
             // V0·V2 의 create index 114개(컬럼 167개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.

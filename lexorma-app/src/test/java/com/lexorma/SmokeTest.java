@@ -868,7 +868,7 @@ class SmokeTest {
     }
 
     @ParameterizedTest(name = "API {0}")
-    @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
+    @ValueSource(strings = {"/api/dashboard", "/api/dashboard/stats", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
     @Order(21)
     @DisplayName("기타 주요 API")
     void apis(String path) throws Exception {

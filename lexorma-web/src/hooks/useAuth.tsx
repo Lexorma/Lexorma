@@ -4,6 +4,7 @@ import { api, resetCsrf } from '../lib/api';
 
 export type MenuId =
   | 'dashboard'
+  | 'dashboard-stats'
   | 'user-manage'
   | 'project-manage'
   | 'system-log'

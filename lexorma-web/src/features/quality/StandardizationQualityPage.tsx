@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Approval, Label, Mono, Muted, type LabelVariant } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -28,13 +29,16 @@ const TYPES: { type: IssueType; label: string; variant: LabelVariant; count: key
 
 /**
  * 표준화 품질 진단 (M-5 2차, 조회 전용) : 표준 용어 미연결·컬럼명 불일치·도메인 정의 불일치.
- * 요약 카드를 누르면 그 진단 유형만 보고, 행에서 테이블 상세 대화상자·물리 ERD 로 간다.
+ * 요약 카드를 누르면 그 진단 유형만 보고, 행에서 테이블 상세 대화상자·물리 ERD 로 간다. 주소의 ?type= 으로 처음 유형을 고를 수 있다(대시보드).
  */
 export function StandardizationQualityPage() {
   const grid = useRef<GridHandle>(null);
   const { user } = useAuth();
   const { schemas } = useSchemas();
-  const [type, setType] = useState<IssueType | ''>('');
+  // 대시보드의 품질 항목에서 ?type= 으로 들어오면 그 진단 유형부터 본다
+  const [searchParams] = useSearchParams();
+  const initialType = TYPES.find((item) => item.type === searchParams.get('type'))?.type ?? '';
+  const [type, setType] = useState<IssueType | ''>(initialType);
   const [schemaId, setSchemaId] = useState('');
   const [isApproval, setIsApproval] = useState('');
   const summary = useQuery({

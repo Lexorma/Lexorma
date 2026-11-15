@@ -11,6 +11,7 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository;
+import com.lexorma.data.ai.dictionary.service.AiDescriptionEvaluationService;
 import com.lexorma.data.ai.dictionary.service.AiDictionaryQueryService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
@@ -43,6 +44,7 @@ import java.util.function.Supplier;
 /**
  * AI-5-PAGE 대상 테이블 목록 성능 측정 (LEXORMA_PERF=true 일 때만) : 30 · 500 · 1,000 · 3,000 테이블(테이블마다 컬럼 5개)에서 첫·중간·마지막 쪽, 검색(뒤쪽 테이블 1건),
  * 업무 설명 빠진 것만 거르기의 시간·SQL 문 수·요청당 할당을 잰다. 비교로 예전 방식(프로젝트 전체 테이블·집계·제안을 읽고 메모리에서 정렬·거르기·500 자르기)을 같은 데이터에서 다시 돌린다.
+ * 품질 평가 화면(AI-5-EVAL)의 호출 흐름도 잰다 : 예전 테이블 드롭다운(쪽 없는 targets, 앞 500개)과 지금 흐름(쪽 목록 검색 → 고른 테이블의 평가 후보).
  * 결과는 표준 출력과 build/ai5-page-perf.txt.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -51,6 +53,7 @@ import java.util.function.Supplier;
 class AiDictionaryTargetPagePerformanceTest {
 
     @Autowired AiDictionaryQueryService queries;
+    @Autowired AiDescriptionEvaluationService evaluation;
     @Autowired AiDescriptionProposalRepository proposals;
     @Autowired ProjectRepository projectRepository;
     @Autowired ProjectMemberRepository projectMemberRepository;
@@ -86,6 +89,13 @@ class AiDictionaryTargetPagePerformanceTest {
             report.add(repeat(stats, n, "업무 설명 빠진 것만", () -> queries.targetTables(ctx, true, null, 0, 30)));
             report.add(repeat(stats, n, "예전 방식 (전체·메모리)", () -> legacy(project.getId(), null)));
             report.add(repeat(stats, n, "예전 방식 검색", () -> legacy(project.getId(), far)));
+            Long farId = queries.targetTables(ctx, false, far, 0, 30).getContent().getFirst().tableId();
+            report.add(repeat(stats, n, "평가: 예전 드롭다운 (500)", () -> queries.targets(ctx, null, false, null)));
+            report.add(repeat(stats, n, "평가: 검색 → 후보", () -> {
+                queries.targetTables(ctx, false, far, 0, 30);
+                return evaluation.candidates(ctx, farId);
+            }));
+            report.add(repeat(stats, n, "평가: 고른 테이블 후보만", () -> evaluation.candidates(ctx, farId)));
         }
         String text = "\n[AI-5-PAGE 대상 테이블 목록 성능]\n" + String.join("\n", report) + "\n";
         System.out.println(text);

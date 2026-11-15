@@ -5,6 +5,7 @@ import { Bot, ListChecks, MessageSquare, Plug, Plus, Star, Stethoscope } from 'l
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { AI_STATUS_KEY } from '../../hooks/useAiStatus';
 import { api, enc } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
@@ -57,7 +58,8 @@ function sizeText(bytes: number | null) {
 export function AiProviderPage() {
   const dialog = useDialog();
   const queryClient = useQueryClient();
-  const reload = () => queryClient.invalidateQueries({ queryKey: [KEY] });
+  // Provider 를 바꾸면 사이드바(AI 관리)·AI 도우미가 쓰는 기본 Provider 상태도 다시 읽는다
+  const reload = () => Promise.all([queryClient.invalidateQueries({ queryKey: [KEY] }), queryClient.invalidateQueries({ queryKey: AI_STATUS_KEY })]);
   // 활성화·비활성화 중인 Provider (같은 버튼을 다시 눌러 요청이 겹치지 않게)
   const [toggling, setToggling] = useState<number | null>(null);
   const providers = useQuery({ queryKey: [KEY, 'list'], queryFn: () => api<Provider[]>('/api/ai/providers') });
@@ -118,7 +120,7 @@ export function AiProviderPage() {
   const list = providers.data ?? [];
   return (
     <>
-      <PageHeader category={t('시스템 관리')} title={t('AI Provider 관리')}
+      <PageHeader category={t('AI 관리')} title={t('AI Provider 설정')}
         description={t('Lexorma 가 호출할 AI 서버(Ollama)를 등록하고 연결을 확인합니다. AI 를 쓰지 않으면 등록하지 않아도 됩니다.')} />
 
       <div className="gh-flash source-flash" role="note">

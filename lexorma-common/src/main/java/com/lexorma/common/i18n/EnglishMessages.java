@@ -59,6 +59,7 @@ final class EnglishMessages {
         add("{0} : 같은 컬럼이 두 번 들어 있습니다.", "{0}: the same column is included twice.");
         add("표준용어를 찾을 수 없습니다.", "The standard term could not be found.");
         add("{0} : 이 테이블에 이미 같은 컬럼명이 있습니다.", "{0}: this table already has a column with the same name.");
+        add("{0} : 다른 사용자가 업무 설명을 수정했습니다. 화면을 새로 열어 확인하세요.", "{0}: another user changed the business description. Open the screen again and check.");
         add("{0} : {1}을(를) 입력해주세요.", "{0}: enter the {1}.");
         add("{0} : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다.", "{0}: length, precision and scale must be 0 or greater.");
         add("공통 컬럼은 {0}개까지 등록할 수 있습니다.", "You can register up to {0} common columns.");
@@ -232,6 +233,20 @@ final class EnglishMessages {
         add("질문을 입력해주세요.", "Enter a question.");
         add("그 이름의 물리 테이블이 없습니다. 한글명·설명이면 searchTables 로 먼저 찾아 tableId 를 쓰세요.", "There is no physical table with that name. For a Korean name or a description, call searchTables first and use the tableId.");
         add("targetId 나 targetName 이 필요합니다.", "targetId or targetName is required.");
+        add("대상 범위가 올바르지 않습니다.", "The target scope is not valid.");
+        add("대상 테이블이나 컬럼이 필요합니다.", "A target table or column is required.");
+        add("대상을 고르세요.", "Choose the targets.");
+        add("만들 대상이 없습니다.", "There is nothing to generate.");
+        add("반려 사유를 입력해주세요.", "Enter the reason for rejection.");
+        add("사유는 {0}자까지 입력할 수 있습니다.", "The reason can be up to {0} characters.");
+        add("실행을 찾을 수 없습니다.", "The job was not found.");
+        add("업무 설명은 {0}자까지 입력할 수 있습니다.", "The business description can be up to {0} characters.");
+        add("일괄 처리는 승인·반려·보류만 할 수 있습니다.", "Bulk review supports only approve, reject and hold.");
+        add("조회 조건이 올바르지 않습니다.", "The search conditions are not valid.");
+        add("처리할 제안을 고르세요.", "Choose the proposals to process.");
+        add("테이블을 고르세요.", "Choose a table.");
+        add("한 번에 {0}개까지 만들 수 있습니다. 범위를 좁혀주세요.", "Up to {0} targets can be generated at once. Narrow the scope.");
+        add("한 번에 {0}개까지 처리할 수 있습니다.", "Up to {0} items can be processed at once.");
         add("그 대상이 현재 프로젝트에 없고 기록된 이력도 없습니다. 이름은 물리명이어야 합니다 — 한글명·설명이면 searchTables 로 먼저 찾아 ID 를 쓰세요.", "No such object exists in the current project and no history is recorded for it. Names must be physical names; for a Korean name or a description, call searchTables first and use the id.");
         add("targetType 은 TABLE·COLUMN·RELATION 중 하나입니다.", "targetType must be TABLE, COLUMN or RELATION.");
         add("컬럼 ID 나 검색어가 필요합니다.", "A column id or a keyword is required.");
@@ -241,7 +256,7 @@ final class EnglishMessages {
         add("같은 이름의 테이블이 여러 스키마에 있습니다. tableId 로 지정하세요 : {0}", "Tables with this name exist in several schemas. Specify the tableId : {0}");
 
         // ---------------------------------------------------------------- 공지사항
-        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
+        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지(V3__notice_ai_menu.sql 로 AI 절을 고친 뒤)와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
@@ -290,12 +305,22 @@ final class EnglishMessages {
 
                 역할과 프로젝트 접근 권한에 따라 이용 가능한 메뉴와 기능을 구분합니다. 신규 가입자는 관리자의 권한 부여가 필요합니다.
 
+                ### 11. AI 기능 (선택)
+
+                관리자가 **AI 관리 › AI Provider 설정**에서 AI 서버(현재 Ollama)를 등록하고 시스템 기본 AI Provider로 지정하면 AI 기능을 사용할 수 있습니다. AI를 사용하지 않아도 다른 기능은 그대로 동작하며, 기본 AI Provider가 없으면 AI 관리 메뉴는 관리자에게만 보입니다.
+
+                - **AI 도우미** : 화면 오른쪽 아래 버튼으로 현재 프로젝트의 메타데이터에 대해 질문합니다. AI는 읽기 전용 조회만 할 수 있고, 답변이 근거로 든 메타데이터는 Lexorma가 다시 확인해 표시합니다.
+                - **AI 설명 제안** : AI 관리 › AI 설명 제안에서 테이블·컬럼의 업무 설명 초안을 만들고 근거, 확인할 수 없는 부분, 확인 질문과 함께 검토합니다. 승인한 내용만 업무 설명에 반영되며, 원본 COMMENT와 표준 용어 연결은 바꾸지 않습니다.
+                - **AI 품질 평가** : AI 관리 › AI 품질 평가에서 업무 담당자·검토자가 확인한 실제 의미를 기준으로 AI 설명을 판정하고 모델별 지표를 봅니다. AI가 스스로 정답을 판정하지 않습니다.
+
                 ## 이용 안내
 
                 - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
                 - 기본 프로젝트 `LEXORMA`에서 Lexorma 자체 스키마를 예제로 담은 데이터 사전, 논리·물리 모델과 ERD를 확인해 보세요.
                 - 원본 DB 정보는 모든 사용자가 조회할 수 있고, 연결·수집·매핑·가져오기는 프로젝트 관리자 또는 ADMIN만 실행할 수 있습니다. 원본 DB에는 조회만 하며 원본 구조를 바꾸지 않습니다.
                 - 원본 DB 연결 비밀번호를 저장하려면 서버에 암호화 키(`LEXORMA_SECRET_KEYS`)가 설정되어 있어야 합니다.
+                - AI 서버 연결은 관리자가 등록한 주소와 외부 연결 보안의 허용 규칙으로만 이루어지며, 질문과 조회한 메타데이터가 그 AI 서버로 전송됩니다. 실제 업무 데이터는 보내지 않습니다.
+                - AI가 만든 답변과 설명 초안은 참고용입니다. 확정하기 전에 담당자가 내용을 확인해 주세요.
                 - 일부 기능은 사용자 역할과 프로젝트 권한에 따라 이용이 제한됩니다.
                 - 데이터와 메타데이터를 변경하기 전에 해당 프로젝트의 운영 정책을 확인해 주세요.
                 - 기능과 화면 구성은 업데이트 과정에서 변경될 수 있습니다.
@@ -312,7 +337,7 @@ final class EnglishMessages {
 
                 ## 안내 사항
 
-                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 메타데이터 분석 등)은 저장소의 문서를 확인해 주세요.
+                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 품질 점검 등)은 저장소의 문서를 확인해 주세요.
                 서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
 
                 감사합니다.
@@ -363,12 +388,22 @@ final class EnglishMessages {
 
                 Available menus and features depend on your role and project access. New users need an administrator to grant them a role.
 
+                ### 11. AI features (optional)
+
+                When an administrator registers an AI server (Ollama for now) under **AI management › AI provider settings** and sets it as the system default AI provider, the AI features become available. Everything else works without AI, and without a default AI provider the AI management menu is shown only to administrators.
+
+                - **AI assistant** : ask about the metadata of the current project with the button at the bottom right of the screen. The AI can only read, and Lexorma checks again the metadata that an answer cites.
+                - **AI description proposals** : under AI management › AI description proposals, draft business descriptions of tables and columns and review them with their evidence, the points that cannot be determined and questions to confirm. Only approved text becomes the business description; source comments and standard term links are not changed.
+                - **AI quality evaluation** : under AI management › AI quality evaluation, judge AI descriptions against the actual meaning confirmed by business owners or reviewers and see metrics per model. The AI never judges its own answers.
+
                 ## Getting started
 
                 - On your first login, change the initial password and choose a project you can access.
                 - Explore the default project `LEXORMA`, whose example data dictionary, logical and physical models and ERDs describe Lexorma's own schema.
                 - Every user can view source database information; connecting, collecting, mapping and importing are limited to the project manager or ADMIN. Lexorma only reads from source databases and never changes their structure.
                 - Storing a source database password requires an encryption key (`LEXORMA_SECRET_KEYS`) configured on the server.
+                - Lexorma connects only to the AI server address an administrator registered and allowed in external connection security; questions and the metadata looked up are sent to that AI server. Actual business data is not sent.
+                - AI answers and description drafts are for reference. Have the person in charge check them before confirming.
                 - Some features are restricted by your role and project permissions.
                 - Check the operating policy of your project before changing data or metadata.
                 - Features and screens may change as Lexorma is updated.
@@ -385,111 +420,7 @@ final class EnglishMessages {
 
                 ## About
 
-                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted metadata analysis and more).
-                Any problems or suggestions you share while using the service help the project grow.
-
-                Thank you.
-                **Lexorma**""");
-        // 2026-11-14 이전 V1 로 만든 DB 의 안내 공지 본문 (V1 은 다시 실행되지 않아 그 DB 에는 이전 본문이 남는다)
-        add("""
-                안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
-
-                Lexorma는 데이터베이스 모델링과 데이터 표준화, 메타데이터 관리를 지원하는 오픈소스 데이터 관리 플랫폼입니다. 데이터 사전과 테이블·컬럼 정보를 관리하고, 물리 모델의 구조와 관계를 시각적으로 확인할 수 있습니다.
-
-                ## 주요 기능
-
-                ### 1. 데이터 사전
-
-                표준 단어·도메인·용어를 등록하고 승인하며, 표준 단어와 약어를 기준으로 일관된 이름을 관리합니다. Excel 템플릿을 이용한 가져오기와 데이터 사전 내보내기를 지원합니다.
-
-                ### 2. 테이블 및 컬럼
-
-                테이블·컬럼의 구조와 속성, 스키마, 관계·인덱스·제약을 관리합니다. 표준 용어 기반 컬럼 등록, 일괄 편집과 공통 컬럼 세트를 지원하며, 프로젝트의 대상 DBMS에 맞는 DDL을 생성할 수 있습니다.
-
-                ### 3. 물리 ERD
-
-                등록한 테이블과 컬럼, 테이블 간 관계를 시각적으로 조회합니다. 스키마·검색 조건으로 조회 범위를 좁히고 자동 배치·전체 보기·사용자별 배치 저장 기능을 이용할 수 있습니다.
-
-                ### 4. 프로젝트
-
-                프로젝트별로 데이터 사전과 설계 정보를 구분하고, 프로젝트 멤버·관리자, 테이블 접두사와 대상 DBMS를 관리합니다.
-
-                ### 5. 사용자 및 권한
-
-                역할과 프로젝트 접근 권한에 따라 이용 가능한 메뉴와 기능을 구분합니다. 신규 가입자는 관리자의 권한 부여가 필요합니다.
-
-                ## 이용 안내
-
-                - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
-                - 기본 프로젝트 `LEXORMA`의 예제 데이터 사전과 테이블·컬럼, 물리 ERD를 확인해 보세요.
-                - 일부 기능은 사용자 역할과 프로젝트 권한에 따라 이용이 제한됩니다.
-                - 데이터와 메타데이터를 변경하기 전에 해당 프로젝트의 운영 정책을 확인해 주세요.
-                - 기능과 화면 구성은 업데이트 과정에서 변경될 수 있습니다.
-
-                ## 문의 및 오류 신고
-
-                | 용도 | 링크 |
-                |------|------|
-                | 프로젝트 저장소 및 이용 문서 | https://github.com/Lexorma/Lexorma |
-                | 오류 신고·기능 제안·프로젝트 관련 문의 (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
-
-                > 오류를 신고할 때에는 사용 환경과 재현 순서, 기대한 결과와 실제 결과를 함께 알려 주세요. 비밀번호와 개인정보 등 민감한 정보는 포함하지 마세요.
-                > 설치 환경의 계정·권한·운영 정책에 관한 문의는 해당 환경의 관리자에게 확인해 주세요.
-
-                ## 안내 사항
-
-                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획은 저장소의 문서를 확인해 주세요.
-                서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
-
-                감사합니다.
-                **Lexorma**""", """
-                Hello, and thank you for using **Lexorma**.
-
-                Lexorma is an open-source data management platform for database modeling, data standardization and metadata management. You can manage a data dictionary together with table and column information, and view the structure and relationships of your physical model visually.
-
-                ## Key features
-
-                ### 1. Data dictionary
-
-                Register and approve standard words, domains and terms, and keep names consistent based on standard words and their abbreviations. You can import from an Excel template and export the data dictionary.
-
-                ### 2. Tables and columns
-
-                Manage the structure and attributes of tables and columns, along with schemas, relations, indexes and constraints. Columns can be registered from standard terms, edited in bulk and added from a common column set, and DDL is generated for the target DBMS of the project.
-
-                ### 3. Physical ERD
-
-                View registered tables, columns and the relations between tables visually. Narrow the view by schema or search, and use auto layout, fit to view and per-user layout saving.
-
-                ### 4. Projects
-
-                Keep the data dictionary and design information separate for each project, and manage project members and managers, the table prefix and the target DBMS.
-
-                ### 5. Users and permissions
-
-                Available menus and features depend on your role and project access. New users need permission from an administrator.
-
-                ## Getting started
-
-                - On your first login, change the initial password and select a project you can access.
-                - Take a look at the sample data dictionary, tables, columns and physical ERD in the default project `LEXORMA`.
-                - Some features are limited depending on your role and project permissions.
-                - Check the operating policy of the project before changing data or metadata.
-                - Features and screens may change with updates.
-
-                ## Questions and bug reports
-
-                | Purpose | Link |
-                |---------|------|
-                | Project repository and documentation | https://github.com/Lexorma/Lexorma |
-                | Bug reports, feature requests and questions (GitHub Issues) | https://github.com/Lexorma/Lexorma/issues |
-
-                > When reporting a bug, please include your environment, the steps to reproduce it, and the expected and actual results. Do not include sensitive information such as passwords or personal data.
-                > For questions about accounts, permissions or operating policies of your installation, contact the administrator of that environment.
-
-                ## About
-
-                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans.
+                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted quality checks and more).
                 Any problems or suggestions you share while using the service help the project grow.
 
                 Thank you.

@@ -123,6 +123,24 @@ class MenuAuthorizationTest {
     }
 
     @Test
+    @DisplayName("AI 관리 그룹 : Provider 설정은 ADMIN 만, 설명 제안·품질 평가는 VIEWER 부터 (기본 Provider 유무에 따른 숨김은 화면이 정한다). 예전 그룹에는 AI 메뉴가 없다")
+    void aiManagement() {
+        assertThat(MenuAuthorization.MENU_GROUPS.get("ai-management")).containsExactly("ai-provider", "ai-dictionary", "ai-evaluation");
+        assertThat(MenuAuthorization.MENU_GROUPS.get("system-management")).doesNotContain("ai-provider");
+        assertThat(MenuAuthorization.MENU_GROUPS.get("data-dictionary")).doesNotContain("ai-dictionary");
+
+        SecurityTestSupport.loginAs(1L, "5", "ROLE_VIEWER");
+        assertThat(menuAuth.canView("ai-management")).isTrue();
+        assertThat(menuAuth.canView("ai-dictionary")).isTrue();
+        assertThat(menuAuth.canView("ai-evaluation")).isTrue();
+        assertThat(menuAuth.canView("ai-provider")).isFalse();
+        assertThat(menuAuth.canView("ai-dictionary-evaluate")).isFalse();
+
+        SecurityTestSupport.loginAs(1L, "6", "ROLE_NOT_APPROVE");
+        assertThat(menuAuth.canView("ai-management")).isFalse();
+    }
+
+    @Test
     @DisplayName("권한 계층 적용 : ADMIN 은 모든 메뉴를 볼 수 있다")
     void admin() {
         SecurityTestSupport.loginAsAdmin(1L);

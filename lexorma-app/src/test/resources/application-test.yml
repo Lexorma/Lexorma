@@ -11,6 +11,12 @@ spring:
     hikari:
       minimum-idle: 1
       idle-timeout: 10000
+  # 실제 UPDATE SQL 확인용 (SqlCapture : 켜 둔 동안만 모으고 SQL 은 바꾸지 않는다)
+  jpa:
+    properties:
+      hibernate:
+        session_factory:
+          statement_inspector: com.lexorma.SqlCapture
 
 # API 문서 생성도 회귀 확인 대상에 포함 (springdoc 업그레이드 대비)
 springdoc:

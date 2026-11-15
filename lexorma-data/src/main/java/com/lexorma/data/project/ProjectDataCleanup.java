@@ -30,6 +30,12 @@ public class ProjectDataCleanup {
     private static final List<String> DELETES = List.of(
             // 논리 ↔ 물리 매핑
             // 원본 매핑 (M-4c) : 모델 스키마·테이블로 가는 FK 가 있어 먼저 지운다
+            // AI 설명 제안 (AI-5) : 모델 테이블에 FK 가 없어 순서는 상관없지만 모델보다 먼저 지운다
+            "delete from TB_AI_EXPLN_EVL where PRJ_SN = :projectId",
+            "delete from TB_AI_EXPLN_EVL_TRGT where PRJ_SN = :projectId",
+            "delete from TB_AI_EXPLN_SGSTN_HSTRY where PRJ_SN = :projectId",
+            "delete from TB_AI_EXPLN_SGSTN where PRJ_SN = :projectId",
+            "delete from TB_AI_EXPLN_CRT_EXCN where PRJ_SN = :projectId",
             "delete from TB_SRC_IMPRT_EXCN where PRJ_SN = :projectId",
             "delete from TB_SRC_TBL_MPNG where PRJ_SN = :projectId",
             "delete from TB_SRC_SCHM_MPNG where PRJ_SN = :projectId",

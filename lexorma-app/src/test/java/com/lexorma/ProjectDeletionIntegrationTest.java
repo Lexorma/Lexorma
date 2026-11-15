@@ -103,7 +103,8 @@ class ProjectDeletionIntegrationTest {
             "TB_CMN_COL", "TB_TBL_REL", "TB_TBL_IDX", "TB_IDX_CHG_DMND", "TB_TBL_CNSTRT", "TB_ERD_LYT", "TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_REL", "TB_LGCL_ERD_LYT", "TB_ENTT_TBL_MPNG",
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
-            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN");
+            "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
+            "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -394,6 +395,20 @@ class ProjectDeletionIntegrationTest {
         // 원본 가져오기 실행 이력 (M-4e)
         jdbc.update("insert into TB_SRC_IMPRT_EXCN(SRC_IMPRT_EXCN_SN, PRJ_SN, SRC_CNTN_SN, RFLT_ORD, CHG_GROUP_ID) values (?, ?, ?, 1, ?)",
                 900_000_000L + projectId, projectId, connection.getId(), "deletion-" + projectId);
+        // AI 설명 제안 (AI-5) : 제안·검토 이력·생성 실행 (모델 테이블에 FK 가 없어 대상이 지워져도 남는 행 — 프로젝트 삭제 때는 함께 지운다)
+        jdbc.update("insert into TB_AI_EXPLN_CRT_EXCN(AI_EXPLN_CRT_EXCN_SN, PRJ_SN, ACNT_SN, EXCN_STTS_CD, TRGT_CN, TRGT_CNT, CMPTN_CNT, FAIL_CNT, SKIP_CNT) values (?, ?, ?, 'COMPLETED', '[]', 0, 0, 0, 0)",
+                900_000_000L + projectId, projectId, Long.valueOf(admin.getId()));
+        jdbc.update("insert into TB_AI_EXPLN_SGSTN(AI_EXPLN_SGSTN_SN, PRJ_SN, TRGT_TYPE_CD, TBL_SN, TRGT_NM, SGSTN_CYCL, SGSTN_EXPLN, CRTNTY_CD, RVW_STTS_CD, CRTR_VER_CN,"
+                        + " PRMPT_VER_NM, PRMPT_HASH_VL, CRT_MTHD_CD, AI_EXPLN_CRT_EXCN_SN, RRVW_NEED_YN, VER_NO) values (?, ?, 'TABLE', ?, 'TB_ORD', 1, '주문', 'INFERRED', 'PROPOSED', '{}', 'test', 'hash', 'SERVER_CONTEXT', ?, false, 0)",
+                900_000_000L + projectId, projectId, order.getId(), 900_000_000L + projectId);
+        jdbc.update("insert into TB_AI_EXPLN_SGSTN_HSTRY(AI_EXPLN_SGSTN_HSTRY_SN, PRJ_SN, AI_EXPLN_SGSTN_SN, PRCS_TYPE_CD, AFTR_STTS_CD, PRCS_DT) values (?, ?, ?, 'GENERATE', 'PROPOSED', current_timestamp)",
+                900_000_000L + projectId, projectId, 900_000_000L + projectId);
+        // AI 설명 품질 평가 : 기준 데이터(평가 대상)와 사람의 판정
+        jdbc.update("insert into TB_AI_EXPLN_EVL_TRGT(AI_EXPLN_EVL_TRGT_SN, PRJ_SN, TRGT_TYPE_CD, TBL_SN, TRGT_NM, MNNG_IDNTY_STTS_CD, CRTR_VER_CN, VER_NO) values (?, ?, 'TABLE', ?, 'TB_ORD', 'CONFIRMED', '{}', 0)",
+                900_000_000L + projectId, projectId, order.getId());
+        jdbc.update("insert into TB_AI_EXPLN_EVL(AI_EXPLN_EVL_SN, PRJ_SN, AI_EXPLN_EVL_TRGT_SN, AI_EXPLN_SGSTN_SN, PRMPT_VER_NM, JGMT_RSLT_CD, UNFND_CLM_YN, UNCRT_JGMT_CD,"
+                        + " TRM_RCMDTN_JGMT_CD, DMN_RCMDTN_JGMT_CD, RVWR_ID, RVW_DT, VER_NO) values (?, ?, ?, ?, 'test', 'CORRECT', false, 'APPROPRIATE', 'NO_RECOMMENDATION', 'NO_RECOMMENDATION', 'admin', current_timestamp, 0)",
+                900_000_000L + projectId, projectId, 900_000_000L + projectId, 900_000_000L + projectId);
         return new Filled(order);
     }
 

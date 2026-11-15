@@ -12,6 +12,7 @@ import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
+import com.lexorma.data.table.service.BizDescriptions;
 import com.lexorma.data.table.service.TableNameResolver;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -21,6 +22,7 @@ import com.lexorma.core.util.AuthUtil;
 import com.lexorma.common.utils.ExcelUtils;
 import com.lexorma.common.i18n.Messages;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -580,6 +582,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         // 2) 행 검증 : 기존 컬럼(수정) / 새 컬럼(추가)
         List<ColumnBulkSaveDto.Row> rows = request.getRows() == null ? List.of() : request.getRows();
+        // 업무 설명을 고치는 행은 먼저 잠그고 지금 값을 다시 읽어 비교한다 : 같은 업무 설명을 동시에 고친 두 저장(또는 AI 제안 승인) 중 뒤의 것이
+        // 앞의 것을 모르고 덮어쓰지 않도록 (AI-5). 교착을 피하려고 ID 순서로 잠근다. 다른 행은 잠그지 않는다 (@DynamicUpdate 로 바꾼 칸만 쓴다)
+        rows.stream().filter(row -> row.getId() != null && row.getBizDescription() != null && existing.containsKey(row.getId()))
+                .map(ColumnBulkSaveDto.Row::getId).distinct().sorted()
+                .forEach(id -> entityManager.refresh(existing.get(id), LockModeType.PESSIMISTIC_WRITE));
         Map<String, StandardTerm> termByRowKey = new HashMap<>();
         Set<Long> seenIds = new HashSet<>();
         // 새로 적거나 바꾼 참조 테이블명 (행 키 → 값) : 여러 스키마에 있어 정할 수 없는 이름은 스키마명을 적게 한다
@@ -598,6 +605,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 같은 컬럼이 두 번 들어 있습니다.", column.getColumnName())));
                 } else if (!Boolean.TRUE.equals(column.getIsApproval())) {
                     validateRowFields(row, column.getColumnName(), errors);
+                    if (BizDescriptions.conflict(column.getBizDescription(), row.getBizDescription(), row.getBizDescriptionBase())) {
+                        errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 다른 사용자가 업무 설명을 수정했습니다. 화면을 새로 열어 확인하세요.", column.getColumnName())));
+                    }
                     String reference = trimToNull(row.getRefTableName());
                     if (reference != null && !reference.equalsIgnoreCase(String.valueOf(column.getRefTableName()))) changedReferences.put(key, reference);
                 }
@@ -731,6 +741,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         List<Object> before = snapshot(column);
 
         column.setColumnDesc(trimToNull(row.getColumnDesc()));
+        if (row.getBizDescription() != null) column.setBizDescription(BizDescriptions.normalize(row.getBizDescription()));
         column.setDataType(row.getDataType() == null ? null : row.getDataType().trim().toUpperCase());
         column.setMaxLength(row.getMaxLength());
         column.setPrecision(row.getPrecision());
@@ -753,7 +764,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     }
 
     private static List<Object> snapshot(ColumnInfo c) {
-        return java.util.Arrays.asList(c.getColumnDesc(), c.getDataType(), c.getMaxLength(),
+        return java.util.Arrays.asList(c.getColumnDesc(), c.getBizDescription(), c.getDataType(), c.getMaxLength(),
                 c.getPrecision() == null ? null : c.getPrecision().stripTrailingZeros(),
                 c.getScale(), c.getDefaultValue(), c.getIdentity(), c.getRefTableName(), c.getExample(), c.getIsPk(), c.getIsNullable(),
                 c.getIsRequired(), c.getIsUnique(), c.getIsIndex(), c.getIsMasterData(), c.getIsSensitive(), c.getIsEncrypted(),

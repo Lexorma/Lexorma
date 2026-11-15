@@ -62,6 +62,14 @@ public class MenuAuthorization {
             Map.entry("dictionary-edit", "USER"),
             // 승인·승인취소 버튼 : 데이터 사전 승인 API 의 역할. 서버는 여기에 승인 권한(AuthUtil.isApprovalAvailable)도 요구하고, 화면도 approvalAvailable 을 함께 본다
             Map.entry("dictionary-approve", "DBA"),
+            // AI 설명 제안 (AI-5) : 데이터 사전 화면의 'AI 설명 제안' 탭 (조회 API 와 같은 VIEWER), 생성·재확인 버튼 (생성 API 의 USER),
+            // 승인·수정 후 승인·반려·보류 버튼 (검토 API 의 USER — 서버는 승인 권한도 요구하고 화면도 approvalAvailable 을 함께 본다)
+            Map.entry("ai-dictionary", "VIEWER"),
+            // AI 품질 평가 화면 (AI 관리 › AI 품질 평가) : 평가 조회 API(/api/ai/dictionary/evaluation/**) 가 VIEWER. 작성 버튼은 ai-dictionary-evaluate(USER)
+            Map.entry("ai-evaluation", "VIEWER"),
+            Map.entry("ai-dictionary-generate", "USER"),
+            Map.entry("ai-dictionary-review", "USER"),
+            Map.entry("ai-dictionary-evaluate", "USER"),
 
             // 논리 모델 관리
             Map.entry("logical-model", "VIEWER"),
@@ -115,13 +123,18 @@ public class MenuAuthorization {
      */
     public static final Map<String, String[]> MENU_GROUPS = Map.of(
             "system-management",
-            new String[]{"user-manage", "project-manage", "system-log", "connection-security", "ai-provider"},
+            new String[]{"user-manage", "project-manage", "system-log", "connection-security"},
 
             "operation-management",
             new String[]{"notice"},
 
             "data-dictionary",
             new String[]{"standard-domain", "standard-word", "standard-term"},
+
+            // AI 관리 : AI Provider 설정(ADMIN) · AI 설명 제안 · AI 품질 평가. 역할로 보일 수 있는 메뉴만 여기서 정하고,
+            // 시스템 기본 Provider 가 정해지지 않았으면 설명 제안·품질 평가를 사이드바에서 숨기는 것은 화면이 /api/ai/metadata/status 로 정한다 (편의 — API 권한은 그대로)
+            "ai-management",
+            new String[]{"ai-provider", "ai-dictionary", "ai-evaluation"},
 
             "logical-modeling",
             new String[]{"logical-model", "logical-erd", "model-mapping"},

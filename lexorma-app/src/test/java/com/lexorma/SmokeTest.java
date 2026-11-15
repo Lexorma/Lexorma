@@ -998,6 +998,44 @@ class SmokeTest {
     }
 
     @Test
+    @Order(24)
+    @DisplayName("AI-5 AI 설명 제안 API : 실제 HTTP 로 조회 파라미터·경로 변수가 묶인다 (컴파일 옵션 -parameters 없음). AI 없이도 조회는 동작하고 생성은 기본 Provider 미지정 오류")
+    void aiDictionaryApi() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var tables = mapper.readTree(get("/api/ai/dictionary/targets?onlyMissing=false&keyword=TB_AI", true).body());
+        assertThat(tables.isArray()).isTrue();
+        long tableId = tables.get(0).path("tableId").asLong();
+        assertThat(get("/api/ai/dictionary/targets?tableId=" + tableId + "&onlyMissing=true", true).statusCode()).isEqualTo(200);
+        assertThat(get("/api/ai/dictionary/objects/" + tableId, true).statusCode()).isEqualTo(200);
+        var page = mapper.readTree(get("/api/ai/dictionary/proposals?status=OPEN&targetType=&tableId=&keyword=&page=0&size=20", true).body());
+        assertThat(page.path("content").isArray()).isTrue();
+        assertThat(get("/api/ai/dictionary/proposals/999999999", true).statusCode()).isEqualTo(404);
+        assertThat(get("/api/ai/dictionary/jobs", true).statusCode()).isEqualTo(200);
+        assertThat(get("/api/ai/dictionary/metrics", true).statusCode()).isEqualTo(200);
+        HttpResponse<String> generate = postJson("/api/ai/dictionary/proposals/generate", "{\"tableId\":" + tableId + ",\"columnId\":null,\"regenerate\":false}");
+        assertThat(generate.body()).contains("AI_DEFAULT_PROVIDER_NOT_CONFIGURED");
+        // 선택 필드(onlyMissing·regenerate)를 빼고 보내도 묶인다 (기본형이 아니다)
+        assertThat(postJson("/api/ai/dictionary/jobs", "{\"scope\":\"EVERYTHING\"}").body()).contains("AI_JOB_INVALID");
+        assertThat(postJson("/api/ai/dictionary/proposals/generate", "{\"tableId\":" + tableId + "}").body()).contains("AI_DEFAULT_PROVIDER_NOT_CONFIGURED");
+
+        // 품질 평가 (AI-5 후속) : 후보(조회 파라미터) → 등록(선택 필드 생략) → 목록·상세(경로 변수) → 판정(없는 제안) → 지표 → 삭제. 기준 데이터는 남기지 않는다
+        assertThat(mapper.readTree(get("/api/ai/dictionary/evaluation/candidates?tableId=" + tableId, true).body()).isArray()).isTrue();
+        assertThat(postJson("/api/ai/dictionary/evaluation/targets", "{\"items\":[{\"tableId\":" + tableId + "}]}").body()).contains("\"created\":1");
+        var evalTargets = mapper.readTree(get("/api/ai/dictionary/evaluation/targets", true).body());
+        long evalId = evalTargets.get(0).path("id").asLong();
+        assertThat(mapper.readTree(get("/api/ai/dictionary/evaluation/targets/" + evalId, true).body()).path("target").path("meaningStatus").asString()).isEqualTo("PENDING");
+        assertThat(postJson("/api/ai/dictionary/evaluation/judgments", "{\"targetId\":" + evalId + ",\"proposalId\":999999999,\"judgment\":\"CORRECT\",\"unfoundedClaim\":false}").body())
+                .contains("AI_PROPOSAL_NOT_FOUND");
+        var evalMetrics = mapper.readTree(get("/api/ai/dictionary/evaluation/metrics", true).body());
+        assertThat(evalMetrics.path("evaluated").asBoolean()).isFalse();
+        assertThat(evalMetrics.path("dataset").path("pending").asInt()).isEqualTo(1);
+        assertThat(putJson("/api/ai/dictionary/evaluation/targets/" + evalId, "{\"version\":" + evalTargets.get(0).path("version").asLong() + ",\"status\":\"UNCONFIRMABLE\"}").body())
+                .contains("\"meaningStatus\":\"UNCONFIRMABLE\"");
+        assertThat(delete("/api/ai/dictionary/evaluation/targets/" + evalId).statusCode()).isEqualTo(200);
+        assertThat(get("/api/ai/dictionary/evaluation/targets/" + evalId, true).statusCode()).isEqualTo(404);
+    }
+
+    @Test
     @Order(30)
     @DisplayName("API 호출 시 시스템 로그 저장 (민감정보 마스킹 포함)")
     void systemLogSaved() throws Exception {

@@ -18,6 +18,7 @@ import com.lexorma.data.table.domain.dto.TableNameDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.data.table.service.TableDesignService;
+import com.lexorma.data.table.service.BizDescriptions;
 import com.lexorma.data.table.service.TableNameResolver;
 import com.lexorma.data.physical.repository.TableRelationRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -307,6 +308,11 @@ public class TableDesignServiceImpl implements TableDesignService {
             physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
         }
         tableInfo.setTableDescription(tableInfoDto.getTableDescription());
+        // 업무 설명 : 보내지 않으면(null) 그대로 둔다 — 업무 설명을 모르는 화면·엑셀이 지우지 않도록. 화면이 읽은 뒤 바뀌었으면 덮어쓰지 않는다 (잠근 행의 값과 비교)
+        if (BizDescriptions.conflict(tableInfo.getBizDescription(), tableInfoDto.getBizDescription(), tableInfoDto.getBizDescriptionBase())) {
+            throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
+        }
+        if (tableInfoDto.getBizDescription() != null) tableInfo.setBizDescription(BizDescriptions.normalize(tableInfoDto.getBizDescription()));
         tableInfo.setIsMasterTable(tableInfoDto.getIsMasterTable().equals("Y"));
         tableInfo.setSortOrder(tableInfoDto.getSortOrder());
     }

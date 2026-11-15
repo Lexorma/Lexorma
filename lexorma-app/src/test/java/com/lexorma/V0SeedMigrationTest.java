@@ -27,15 +27,15 @@ class V0SeedMigrationTest {
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema)
                 .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            // V0 (스키마·COMMENT : 예전 V2~V6 의 스키마 변경 포함) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑,
-            // 예전 V2~V6 의 예제 — 원본 인덱스 표현식, M-14 인덱스 출처·고급 인덱스, Lexorma 자체 인덱스, M-15 VIEW 모델). 2026-11-13 에 V0·V1 로 합쳤다
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(10);
+            // V0 (스키마·COMMENT) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑·인덱스).
+            // 2026-11-13 에 예전 V2~V6, 2026-11-15 Flyway 초기화 때 예전 V2~V10 을 V0·V1 로 합쳤다. 그 뒤 V2 (AI 설명 품질 평가)·V3 (안내 공지의 AI 절)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             var jdbc = new JdbcTemplate(dataSource);
-            // V0·V2·V3·V4·V8 의 create index 107개(컬럼 152개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
+            // V0·V2 의 create index 114개(컬럼 167개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.
             String idx = "\"" + schema + "\".TB_TBL_IDX";
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(107);
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(152);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(114);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(167);
             assertThat(jdbc.queryForObject("select count(*) from INFORMATION_SCHEMA.TABLES where upper(TABLE_NAME) = 'TMP_IDX_SEED'", Integer.class)).isZero();
             // 초기 데이터에 예전 프로젝트 이름이 없다
             assertThat(oldNames(jdbc, "\"" + schema + "\".")).isZero();
@@ -130,6 +130,9 @@ class V0SeedMigrationTest {
                             "이용 안내", "문의 및 오류 신고", "https://github.com/Lexorma/Lexorma/issues", "MIT 라이선스")
                     .contains("## 주요 기능", "### 1. 데이터 사전", "| 용도 | 링크 |")
                     .contains("논리 모델", "논리·물리 매핑", "DDL 내보내기", "변경 이력과 모델 버전", "원본 DB 연결과 가져오기", "LEXORMA_SECRET_KEYS")
+                    .contains("### 11. AI 기능 (선택)", "AI 도우미", "AI 설명 제안", "외부 연결 보안")
+                    // V3 : 사이드바 AI 관리 메뉴에 맞춘 AI 절
+                    .contains("AI 관리 › AI Provider 설정", "AI 관리 › AI 설명 제안", "**AI 품질 평가**").doesNotContain("데이터 사전에서 테이블·컬럼의 업무 설명 초안")
                     // 영어판(EnglishMessages)의 키와 한 글자도 다르지 않아야 영어 화면에 영어로 나온다.
                     .matches(Messages::hasEnglish)
                     .doesNotContain("<a", "mailto:");

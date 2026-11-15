@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Check, Eraser, Send, Sparkles, X } from 'lucide-react';
+import { useAiStatus } from '../../hooks/useAiStatus';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -19,7 +19,6 @@ import '../../styles/ai-assistant.css';
  * - 시스템 기본 AI Provider 를 쓸 수 있을 때(READY)만 버튼이 보인다. Provider 가 없거나 미지정·비활성·기본 모델 없음이면 숨긴다
  *   (상태 조회는 AI 서버에 연결하지 않는다. 화면을 불러올 때·브라우저 창으로 돌아올 때 다시 본다)
  */
-type DefaultStatus = 'READY' | 'NOT_CONFIGURED' | 'DISABLED' | 'MODEL_MISSING' | 'UNSUPPORTED';
 type ToolStatus = 'OK' | 'NOT_FOUND' | 'INVALID_ARGUMENT' | 'REJECTED' | 'FAILED';
 interface ToolCall { name: string; status: ToolStatus; durationMillis: number }
 type EvidenceType = 'SCHEMA' | 'TABLE' | 'COLUMN' | 'RELATION' | 'TERM' | 'WORD' | 'DOMAIN' | 'HISTORY';
@@ -102,15 +101,9 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
   const nextId = useRef(1);
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
-  // 버튼을 보일지 정하는 상태 (AI 서버에 연결하지 않는 조회)
-  const availability = useQuery({
-    queryKey: ['ai-metadata-query', 'status'],
-    queryFn: () => api<{ status: DefaultStatus }>('/api/ai/metadata/status', { silent: true }),
-    staleTime: 60_000,
-    refetchOnWindowFocus: true,
-  });
-  const status = availability.data?.status;
-  const ready = status === 'READY';
+  // 버튼을 보일지 정하는 상태 (AI 서버에 연결하지 않는 조회) : 사이드바 AI 관리와 같은 상태를 쓴다
+  const availability = useAiStatus();
+  const { status, ready } = availability;
 
   useEffect(() => {
     if (open) input.current?.focus();

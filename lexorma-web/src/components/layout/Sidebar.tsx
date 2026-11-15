@@ -2,8 +2,9 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, type MenuId } from '../../hooks/useAuth';
 // 사이드바 아이콘은 Lucide (그 외 화면은 GitHub Octicons - @primer/octicons-react)
-import {Bell, BookOpen, ChevronDown, ClipboardCheck, Database, LayoutGrid, Menu, ServerCog, SlidersHorizontal, Workflow} from 'lucide-react';
-import { isGroup, MENU, type MenuGroup } from './menu';
+import {Bell, BookOpen, ChevronDown, ClipboardCheck, Database, LayoutGrid, Menu, ServerCog, SlidersHorizontal, Sparkles, Workflow} from 'lucide-react';
+import { useAiStatus } from '../../hooks/useAiStatus';
+import { isGroup, MENU, type MenuGroup, type MenuItem } from './menu';
 import { t } from '../../lib/i18n';
 
 const MENU_ICONS: Partial<Record<MenuId, ReactNode>> = {
@@ -14,6 +15,7 @@ const MENU_ICONS: Partial<Record<MenuId, ReactNode>> = {
   'physical-modeling': <Database className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'source-management': <ServerCog className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
   'data-quality': <ClipboardCheck className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
+  'ai-management': <Sparkles className="sidebar-icon" strokeWidth={1.8} aria-hidden />,
 };
 
 function isCollapsed() {
@@ -33,7 +35,10 @@ export function toggleSidebarCollapse(): boolean {
 
 export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
   const { canView } = useAuth();
+  const ai = useAiStatus();
   const location = useLocation();
+  // 역할(서버 menus) + 메뉴별 조건 (AI 메뉴는 기본 Provider 가 정해져 있을 때만)
+  const visible = (item: MenuItem) => canView(item.id) && (item.requires !== 'ai' || ai.configured);
   const [collapsed, setCollapsed] = useState(isCollapsed);
 
   // 현재 화면이 속한 메뉴 그룹을 연다
@@ -87,6 +92,9 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
             );
           }
           const group: MenuGroup = entry;
+          const items = group.items.filter(visible);
+          // 보이는 하위 메뉴가 없으면 그룹도 숨긴다 (빈 그룹을 남기지 않는다)
+          if (items.length === 0) return null;
           const open = openGroup === group.id && !collapsed;
           return (
             <Fragment key={group.id}>
@@ -105,8 +113,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
                 <ChevronDown className="sidebar-chevron" aria-hidden />
               </a>
               <div id={group.id} className={`collapse sidebar-submenu${open ? ' show' : ''}`}>
-                {group.items
-                  .filter((item) => canView(item.id))
+                {items
                   .map((item) => (
                     <NavLink key={item.id} to={item.path} className={({ isActive }) => `sidebar-sublink${isActive ? ' active' : ''}`}>
                       {item.label}

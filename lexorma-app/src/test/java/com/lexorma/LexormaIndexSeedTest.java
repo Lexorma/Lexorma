@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * LEXORMA 예제 인덱스 (V1 의 9)·10)) : 개수가 아니라 인덱스별 정의를 비교한다 (docs/index-management-m14.md 13).
- * 예전 V3~V6 은 2026-11-13 에 V0·V1 로 합쳤다 (예전 설치의 V4 → V5 업그레이드 경로는 더 없다).
+ * 예전 V3~V6 은 2026-11-13 에, 예전 V2~V10 은 2026-11-15 Flyway 초기화 때 V0·V1 로 합쳤다 (예전 설치의 업그레이드 경로는 없다).
  * 정의 = 인덱스명 → "테이블|UNIQUE 여부|컬럼,컬럼(순서대로)". 정규화는 식별자 대문자뿐이다.
  * PostgreSQL 은 LEXORMA_TEST_POSTGRES_URL 이 있을 때만 (UUID 스키마를 만들고 지운다).
  */
@@ -38,23 +38,23 @@ class LexormaIndexSeedTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, vendor, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(10);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             var jdbc = new JdbcTemplate(dataSource);
             Map<String, String> declared = declaredIndexes(vendor);
             Map<String, String> model = modelIndexes(jdbc, s);
 
-            // 누락·추가·불일치 없이 같다 (107·152 는 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑(V2) 10개·가져오기 실행(V3) 2개·외부 연결 보안(V4) 4개·AI Provider(V8) 1개 포함,
+            // 누락·추가·불일치 없이 같다 (114·167 은 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개 포함,
             // TABLE·VIEW 이름은 스키마 단위라 UX_TBL_01·UX_VIEW_01 = 스키마 + 이름이고 IX_TBL_01·IX_VIEW_01 은 없다)
-            assertThat(model).isEqualTo(declared).hasSize(107);
+            assertThat(model).isEqualTo(declared).hasSize(114);
             assertThat(model).isEqualTo(realIndexes(jdbc, vendor, schema));
-            assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL")).isEqualTo(152);
+            assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL")).isEqualTo(167);
             // 중복 없음, 모두 프로젝트 LEXORMA 의 기본 스키마 테이블, 구성 컬럼은 그 테이블의 컬럼
-            assertThat(count(jdbc, "select count(distinct IDX_NM) from " + s + "TB_TBL_IDX")).isEqualTo(107);
+            assertThat(count(jdbc, "select count(distinct IDX_NM) from " + s + "TB_TBL_IDX")).isEqualTo(114);
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX i join " + s + "TB_TBL t on t.TBL_SN = i.TBL_SN join " + s + "TB_SCHM h on h.SCHM_SN = t.SCHM_SN "
-                    + "where i.PRJ_SN = 0 and t.PRJ_SN = 0 and h.PRJ_SN = 0")).isEqualTo(107);
+                    + "where i.PRJ_SN = 0 and t.PRJ_SN = 0 and h.PRJ_SN = 0")).isEqualTo(114);
             // 시스템 초기 등록 : 직접 정의(USER)·승인·등록자 SYSTEM, 유형·고급 속성 없음(BTREE 기본), 변경 요청·변경 이력은 만들지 않는다
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX where IDX_SRC_CD = 'USER' and APRV_YN = true and RGTR_ID = 'SYSTEM' and MDFR_ID = 'SYSTEM' "
-                    + "and IDX_TYPE_NM is null and CND_CN is null and DRVN_COL_SN is null")).isEqualTo(107);
+                    + "and IDX_TYPE_NM is null and CND_CN is null and DRVN_COL_SN is null")).isEqualTo(114);
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL where EXPR_CN is not null or SORT_CD is not null or COL_SN is null")).isZero();
             assertThat(count(jdbc, "select count(*) from " + s + "TB_IDX_CHG_DMND")).isZero();
             assertThat(count(jdbc, "select count(*) from " + s + "TB_MDL_CHG_HSTRY where TRGT_TYPE_CD like '%INDEX%'")).isZero();

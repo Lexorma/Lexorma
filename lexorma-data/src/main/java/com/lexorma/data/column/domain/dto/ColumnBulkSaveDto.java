@@ -47,6 +47,14 @@ public class ColumnBulkSaveDto {
         private Long termId;
 
         private String columnDesc;
+
+
+        /** 업무 설명 (AI-5). null 이면 바꾸지 않는다 (빈 문자열이면 지운다) */
+
+        private String bizDescription;
+
+        /** 화면이 읽은 업무 설명 (빈 문자열 = 없었음). 보내면 그 사이 바뀐 업무 설명을 덮어쓰지 않는다 */
+        private String bizDescriptionBase;
         private String dataType;
         private Integer maxLength;
         private BigDecimal precision;

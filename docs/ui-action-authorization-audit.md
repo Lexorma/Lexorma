@@ -112,6 +112,8 @@
 | 외부 연결 보안 | 허용 규칙 조회·등록·수정·활성화·비활성화·삭제, 허용 규칙이 없는 등록 연결, 연결 시도 감사, 정책 변경 이력 (`/api/security/**`) | **ADMIN** (시스템 관리자. MANAGER·DBA·프로젝트 관리자는 403) | 메뉴 `connection-security` ADMIN |
 | AI Provider 관리 (AI-3) | Provider 목록·상세·유형, 등록·수정·활성화·비활성화·삭제, 연결 테스트, 모델 목록, 테스트 프롬프트 (`/api/ai/providers/**`), 시스템 기본 Provider 조회·지정·해제 (`/api/ai/default-provider`) | **ADMIN** (시스템 관리자. MANAGER·DBA·프로젝트 관리자는 403) | 메뉴 `ai-provider` ADMIN |
 | AI 메타데이터 질의 (AI-4) | 질의 가능 여부(`GET /api/ai/metadata/status`), 메타데이터 질의(`POST /api/ai/metadata/query` — 조회라 USER 미만 변경 API 예외 목록에 있다). Tool 은 호출마다 실행 컨텍스트를 VIEWER 로 재검증 | **VIEWER** (조회 화면·API 와 같다. 승인 대기 계정은 403) | 메뉴(버튼) `ai-metadata-query` VIEWER — 오른쪽 아래 AI 도우미 버튼, 시스템 기본 Provider 가 READY 일 때만 보인다 |
+| AI 설명 제안 (AI-5) | 목록·상세·대상 후보·테이블/컬럼 상태·품질 지표·실행 조회(`GET /api/ai/dictionary/**`), 생성·대량 생성·근거 변경 재확인(`POST …/proposals/generate`·`…/jobs`·`…/proposals/recheck`), 승인·수정 후 승인·반려·보류·검토함·일괄(`POST …/proposals/{id}/approve·reject·hold·review`, `…/proposals/bulk`) | 조회 **VIEWER**, 생성·재확인 **USER**, 검토 **USER + 승인 권한**(ADMIN·MANAGER·프로젝트 관리자를 서비스가 DB 에서 다시 확인, 로그인 실행만) | 메뉴 `ai-dictionary`(VIEWER, AI 관리 그룹의 화면), 버튼 `ai-dictionary-generate`(USER)·`ai-dictionary-review`(USER, `approvalAvailable` 과 함께) |
+| AI 설명 품질 평가 (AI-5 후속) | 후보·대상 목록·상세·지표(`GET /api/ai/dictionary/evaluation/**`), 대상 등록·실제 의미 수정·삭제(`POST·PUT·DELETE …/evaluation/targets`), 판정(`POST …/evaluation/judgments`) | 조회 **VIEWER**, 작성 **USER** (로그인 실행만, 서비스가 DB 에서 다시 확인) | 화면 `ai-evaluation`(VIEWER, AI 관리 › AI 품질 평가 `/aiEvaluation`), 버튼·입력 `ai-dictionary-evaluate`(USER) |
 
 외부 연결 허용 규칙은 프로젝트가 아닌 시스템 보안 정책이다. 원본 DB 연결 테스트·수집은 기존 권한(USER + 프로젝트 관리자 또는 ADMIN)에 이 정책이 더해진다 (규칙이 없으면 연결하지 않는다). `ExternalConnectionSecurityIntegrationTest` 가 USER·MANAGER·DBA 의 거절을 본다.
 
@@ -319,3 +321,4 @@ P1 로 남은 문제는 없다. 위 표는 모두 P2 이고 M-9(모델 변경 �
 
 NOT_APPROVE 는 메뉴가 없고 API 가 403 이다. 복구 세션은 화면이 복구 화면으로 돌아가고 API 가 403 이다. 테이블 상세·엔터티 상세의 [변경 이력] 버튼은 `canView('model-history')` 일 때만 나온다.
 
+- 2026-11-15 AI 관리 메뉴 그룹 : `ai-management` = `ai-provider`(ADMIN)·`ai-dictionary`(VIEWER)·`ai-evaluation`(VIEWER, 새). 시스템 관리·데이터 사전 그룹에서 AI 메뉴를 뺐다. 기본 Provider 가 없을 때 설명 제안·품질 평가를 사이드바에서 숨기는 것은 화면 편의이고 API 권한은 그대로다 ([AI-5 기록 18장](ai-dictionary-draft-ai5.md)).

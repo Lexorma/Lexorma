@@ -9,6 +9,7 @@ import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
 import { TableDdlView } from '../table/TableDdl';
 import { indexManagePath } from '../index/model';
 import { useTableDetail } from '../table/tableDetail';
+import { ObjectBizInfo } from '../dictionary/ai/BizDescriptionInfo';
 import { TableForm } from '../table/TableForm';
 import type { Schema as TableSchema } from '../schema/schemas';
 import type { Row } from '../../components/grid/Grid';
@@ -870,6 +871,8 @@ function ColumnDetail({ column, tableName, isFk, onDictionary, onNavigate }: {
         })}
       </dl>
       <ColumnRecommendationNote columnId={column.id} onNavigate={onNavigate} />
+      {/* 업무 설명과 AI 설명 제안 상태 (AI-5) */}
+      <ObjectBizInfo tableId={column.tableId} columnId={column.id} />
     </div>
   );
 }
@@ -914,6 +917,8 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
         {table.isMasterTable && <> <Label variant="accent">{t('마스터')}</Label></>}
       </p>
       <p className="erd-muted">{table.tableDescription || t('설명 없음')}</p>
+      {/* 업무 설명과 AI 설명 제안 상태 (AI-5) — 제안으로 이동하면 그 테이블이 선택된다 */}
+      <ObjectBizInfo tableId={tableId} compact />
 
       <div className="erd-toolbar">
         <select className="form-control" aria-label={t('이웃 단계')} value={depth} onChange={(e) => onDepth(Number(e.target.value))}>

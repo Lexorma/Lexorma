@@ -67,6 +67,8 @@ public class MenuAuthorization {
             Map.entry("ai-dictionary", "VIEWER"),
             // AI 품질 평가 화면 (AI 관리 › AI 품질 평가) : 평가 조회 API(/api/ai/dictionary/evaluation/**) 가 VIEWER. 작성 버튼은 ai-dictionary-evaluate(USER)
             Map.entry("ai-evaluation", "VIEWER"),
+            // 업무 설명(TASK_EXPLN) 직접 수정 버튼 : PUT /api/bizDescription 이 USER (AI 없이 동작, 테이블·컬럼 상세·물리 ERD 패널)
+            Map.entry("biz-description-edit", "USER"),
             Map.entry("ai-dictionary-generate", "USER"),
             Map.entry("ai-dictionary-review", "USER"),
             Map.entry("ai-dictionary-evaluate", "USER"),

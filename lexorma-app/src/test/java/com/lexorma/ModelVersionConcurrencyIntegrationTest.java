@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 모델 버전 만들기의 시점·일관성 (T-09, docs/source-import-m4e.md 12장). 가져오기 확정과 같은 모양(프로젝트 배타 잠금 → 모델 변경 → 커밋 지연)의 트랜잭션과 경합시킨다.
+ * 모델 버전 만들기의 시점·일관성 (T-09, docs/completed/source-import-m4e.md 12장). 가져오기 확정과 같은 모양(프로젝트 배타 잠금 → 모델 변경 → 커밋 지연)의 트랜잭션과 경합시킨다.
  * 사용자 버전은 READ COMMITTED + 프로젝트 배타 잠금 : 잠금을 얻은 뒤의 최신 커밋 상태. PostgreSQL 결과가 기준이다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

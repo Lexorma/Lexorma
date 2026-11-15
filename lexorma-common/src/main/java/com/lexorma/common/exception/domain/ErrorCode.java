@@ -540,6 +540,11 @@ public enum ErrorCode {
     BIZ_DESCRIPTION_CONFLICT(HttpStatus.CONFLICT, "BIZ_DESCRIPTION_CONFLICT"),
 
     /**
+     * 컬럼의 표준 용어 연결을 화면을 연 뒤 다른 사용자가 바꿨다 (COL-TERM). 다시 열어 확인한다.
+     */
+    COLUMN_TERM_CONFLICT(HttpStatus.CONFLICT, "COLUMN_TERM_CONFLICT"),
+
+    /**
      * 지금 상태에서는 할 수 없는 검토다 (이미 승인·반려됨, 재검토 필요 제안의 승인 등, AI-5).
      */
     AI_PROPOSAL_INVALID_STATE(HttpStatus.CONFLICT, "AI_PROPOSAL_INVALID_STATE"),

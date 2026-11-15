@@ -49,14 +49,17 @@ public class ProposalWriter {
         List<AiDescriptionProposal> open = existing.stream().filter(p -> p.getStatus().open()).toList();
         if (!open.isEmpty() && !regenerate) return new Saved(false, open.getFirst());
         LocalDateTime now = LocalDateTime.now();
+        draft.setCycle(existing.stream().map(AiDescriptionProposal::getCycle).max(Comparator.naturalOrder()).orElse(0) + 1);
+        AiDescriptionProposal saved = proposals.save(draft);
+        // 대체한 제안과 새 제안을 이력으로 잇는다 (앞 제안·이력은 지우지 않는다)
         for (AiDescriptionProposal old : open) {
             ReviewStatus before = old.getStatus();
             old.setStatus(ReviewStatus.SUPERSEDED);
-            histories.save(history(old, AiDescriptionProposalHistory.Action.SUPERSEDE, before, processor, now, "새 제안으로 대체", null));
+            histories.save(history(old, AiDescriptionProposalHistory.Action.SUPERSEDE, before, processor, now, "새 제안 #" + saved.getId() + " 으로 대체", null));
         }
-        draft.setCycle(existing.stream().map(AiDescriptionProposal::getCycle).max(Comparator.naturalOrder()).orElse(0) + 1);
-        AiDescriptionProposal saved = proposals.save(draft);
-        histories.save(history(saved, AiDescriptionProposalHistory.Action.GENERATE, null, processor, now, reason, null));
+        String replaced = open.isEmpty() ? null : "제안 #" + open.stream().map(o -> String.valueOf(o.getId())).collect(java.util.stream.Collectors.joining(", #")) + " 을 대체";
+        String note = reason == null ? replaced : replaced == null ? reason : reason + " · " + replaced;
+        histories.save(history(saved, AiDescriptionProposalHistory.Action.GENERATE, null, processor, now, note, null));
         return new Saved(true, saved);
     }
 

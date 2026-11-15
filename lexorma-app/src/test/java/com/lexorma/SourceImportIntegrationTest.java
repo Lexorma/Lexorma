@@ -381,7 +381,7 @@ class SourceImportIntegrationTest {
                 () -> versions.create(v.manager, new com.lexorma.data.version.domain.dto.ModelVersionDto.Create("사용자 버전", null)));
         assertThat(withVersion[0]).isInstanceOf(SourceImportDto.Result.class);
         assertThat(withVersion[1]).isInstanceOf(com.lexorma.data.version.domain.dto.ModelVersionDto.Summary.class);
-        // 사용자 버전은 잠금을 얻은 뒤의 최신 상태 = 가져오기 뒤 (T-09, docs/source-import-m4e.md 12장). 가져오기 직전 버전보다 EMAIL 1개가 더 있다
+        // 사용자 버전은 잠금을 얻은 뒤의 최신 상태 = 가져오기 뒤 (T-09, docs/completed/source-import-m4e.md 12장). 가져오기 직전 버전보다 EMAIL 1개가 더 있다
         Long userVersion = ((com.lexorma.data.version.domain.dto.ModelVersionDto.Summary) withVersion[1]).id();
         List<String> columnsInVersion = new ArrayList<>();
         versions.snapshot(v.manager, userVersion).objects().get("PHYSICAL_COLUMN").forEach(c -> columnsInVersion.add(c.get("name").asString()));

@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-14 1차 안정화 : 컬럼 인덱스 여부(IDX_YN) ↔ 사용자 인덱스(일반·UNIQUE) ↔ 고유값(UNQ_YN)·PK 의 중복 판정 시나리오 A~K.
- * (L : V3 이관 전후 DDL 은 IndexMigrationV3Test 와 DDL 골든 파일 테스트) — 결과 표는 docs/index-management-m14.md 9장.
+ * (L : V3 이관 전후 DDL 은 IndexMigrationV3Test 와 DDL 골든 파일 테스트) — 결과 표는 docs/completed/index-management-m14.md 9장.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

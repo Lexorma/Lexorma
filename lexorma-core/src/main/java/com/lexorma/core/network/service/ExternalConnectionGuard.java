@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 외부 연결 정책 판정 (SEC-1, docs/external-connection-security-sec1.md). JDBC(원본 DB)·AI HTTP 가 같이 쓴다.
+ * 외부 연결 정책 판정 (SEC-1, docs/reference/external-connection-security-sec1.md). JDBC(원본 DB)·AI HTTP 가 같이 쓴다.
  * <ol>
  *   <li>호스트 형식·메타데이터 이름·숫자 주소의 절대 차단</li>
  *   <li>그 연결 유형의 활성 규칙 중 포트가 같고, 호스트를 정했다면 호스트도 같은 것 (없으면 기본 차단)</li>

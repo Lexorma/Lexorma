@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 원본 메타데이터 선택 가져오기 (M-4e, docs/source-import-m4e.md). 흐름 : 대상 조회(candidates) → 계획(plan, 읽기 전용) → 확정(apply, 다시 계획해 같을 때만 반영).
+ * 원본 메타데이터 선택 가져오기 (M-4e, docs/completed/source-import-m4e.md). 흐름 : 대상 조회(candidates) → 계획(plan, 읽기 전용) → 확정(apply, 다시 계획해 같을 때만 반영).
  * 항목 ID 는 사용자가 고르는 단위다 :
  * <ul>
  *   <li>{@code TABLE:CREATE} (원본 TABLE 로 새 모델 TABLE + 매핑 확정), {@code TABLE:COMMENT}</li>

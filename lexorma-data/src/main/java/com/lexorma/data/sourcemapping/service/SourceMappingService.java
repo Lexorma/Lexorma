@@ -39,7 +39,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 원본 DB 스키마·TABLE 매핑 (M-4c, docs/source-mapping-m4c.md · 정책 docs/m4-foundation.md 5장).
+ * 원본 DB 스키마·TABLE 매핑 (M-4c, docs/completed/source-mapping-m4c.md · 정책 docs/reference/m4-foundation.md 5장).
  * <ul>
  *   <li>프로젝트마다 가져오기 기준 원본 연결 하나. 매핑은 그 연결 기준이고, 기준을 바꾸면 이전 연결의 매핑은 지우지 않고 남긴다 (다시 고르면 쓰인다)</li>
  *   <li>스키마·TABLE 모두 연결 안에서 1:1. 후보(같은 이름·PostgreSQL public → DEFAULT)는 제안만 하고, 사용자가 확정해야 저장한다 — 자동 매핑 없음</li>

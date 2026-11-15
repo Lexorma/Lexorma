@@ -147,7 +147,7 @@ cd lexorma
 
 Open http://localhost:9940 and sign in with `admin` / `admin`. The password must be changed on first login. Data is kept in an H2 file database at `~/.lexorma/data/lexorma.mv.db` and survives restarts; set `LEXORMA_DATA_DIR` to store it elsewhere (optional).
 
-The same profile runs the single JAR without PostgreSQL: `java -jar lexorma.jar --spring.profiles.active=h2-local`. The database file stays outside the JAR, so rebuilding or replacing the JAR keeps your data. Stop Lexorma normally (Ctrl+C) before copying the file for a backup; see [docs/h2-file-storage.md](docs/h2-file-storage.md) for backup, restore and troubleshooting.
+The same profile runs the single JAR without PostgreSQL: `java -jar lexorma.jar --spring.profiles.active=h2-local`. The database file stays outside the JAR, so rebuilding or replacing the JAR keeps your data. Stop Lexorma normally (Ctrl+C) before copying the file for a backup; see [docs/reference/h2-file-storage.md](docs/reference/h2-file-storage.md) for backup, restore and troubleshooting.
 
 ### With PostgreSQL
 

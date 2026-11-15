@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 시스템 기본 AI Provider (docs/ai-provider-ai3.md 13장) : 업무 AI 기능이 쓸 Provider 를 관리자가 명시적으로 하나 정한다 (없어도 된다).
+ * 시스템 기본 AI Provider (docs/completed/ai-provider-ai3.md 13장) : 업무 AI 기능이 쓸 Provider 를 관리자가 명시적으로 하나 정한다 (없어도 된다).
  * <ul>
  *   <li>저장 : 설정 행 하나(TB_AI_STNG)의 Provider 참조. 지정·해제는 그 행을 배타로 잡고 바꾼다 — 동시 요청은 차례대로 적용되고 마지막 것이 남는다.
  *       Provider 삭제도 같은 행을 먼저 잡으므로 (AiProviderService.delete) 지정과 삭제가 엇갈리지 않는다</li>

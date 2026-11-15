@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 원본 ↔ 모델 비교 (M-4d, docs/source-compare-m4d.md). <b>읽기 전용 분석 결과</b>다 : 실행 명령이 아니고 저장하지 않는다 (요청마다 계산한다).
+ * 원본 ↔ 모델 비교 (M-4d, docs/completed/source-compare-m4d.md). <b>읽기 전용 분석 결과</b>다 : 실행 명령이 아니고 저장하지 않는다 (요청마다 계산한다).
  * M-4c 의 매핑 상태(SourceMappingDto.Status)와 비교 상태({@link CompareStatus})는 다른 개념이다 : 매핑 상태는 "무엇과 무엇을 잇는가", 비교 상태는 "이은 둘이 같은가".
  */
 public final class SourceCompareDto {

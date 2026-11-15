@@ -77,3 +77,36 @@
 .ai-dict-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 240px; }
 .ai-dict-cell-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
 .dict-detail-columns + .ai-dict-info, .dict-detail + .ai-dict-info { margin: 8px 0; }
+.ai-dict-review-required { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--gh-attention); border-radius: 6px; background-color: var(--gh-attention-subtle); }
+.ai-dict-review-required h4 { margin: 0; font-size: 13px; }
+.ai-dict-review-required h4 svg { vertical-align: -2px; }
+.ai-dict-info-edit { margin-left: auto; }
+.ai-dict-info-edit svg { vertical-align: -2px; }
+.ai-dict-info-editor { display: flex; flex-direction: column; gap: 6px; }
+.ai-dict-info-editor .ai-dict-buttons { margin-top: 0; }
+.ai-dict-expand { display: inline-flex; padding: 2px; border: 0; background: none; color: var(--gh-fg-muted); cursor: pointer; border-radius: 4px; }
+.ai-dict-expand:hover { color: var(--gh-fg); background-color: var(--gh-canvas-subtle); }
+.ai-dict-tree .ai-dict-table { min-width: 640px; }
+.ai-dict-tree-detail > td { background-color: var(--gh-canvas-subtle); }
+.ai-dict-tree-body { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; white-space: normal; }
+.ai-dict-column-cards { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.ai-dict-column-cards > li { padding: 8px 10px; border: 1px solid var(--gh-border-muted); border-radius: 6px; background-color: var(--gh-canvas); display: flex; flex-direction: column; gap: 4px; }
+.ai-dict-column-cards > li.is-focus { border-color: var(--gh-accent); }
+.ai-dict-options { margin-top: 10px; }
+.ai-dict-preview { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--gh-border); border-radius: 6px; font-size: 13px; }
+.ai-dict-preview details { margin-top: 4px; }
+.ai-dict-preview-list { max-height: 200px; overflow: auto; margin-top: 4px; }
+.ai-dict-tree .ai-dict-table td { overflow-wrap: anywhere; }
+@media (max-width: 768px) {
+    /* 대상 선택 : 펼친 상세를 가로 스크롤 없이 읽도록 표 최소 너비를 없앤다 (긴 설명은 줄바꿈) */
+    .ai-dict-tree .ai-dict-table { min-width: 0; }
+    .ai-dict-tree .ai-dict-table th:nth-child(5), .ai-dict-tree .ai-dict-table td:nth-child(5) { display: none; }
+    .ai-dict-tree-detail > td { padding: 6px 4px; }
+}
+
+/* 재검토 사유 (AI-5-REASON) : 사유마다 제목 · 확인할 것 · 대상 */
+.ai-dict-reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ai-dict-reasons .ai-dict-reasons { margin-top: 4px; padding-left: 12px; border-left: 2px solid var(--gh-border); }
+.ai-dict-reasons > li { overflow-wrap: anywhere; }
+.ai-dict-history .ai-dict-reasons { margin-top: 2px; }
+.ai-dict-reason-text { white-space: pre-line; }

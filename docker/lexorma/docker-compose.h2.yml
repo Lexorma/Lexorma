@@ -10,7 +10,7 @@
 #
 # One H2 database file is used by one process only: do not run this and another Lexorma on the same LEXORMA_DATA_DIR.
 # Stop with "docker compose -f docker-compose.h2.yml -p lexorma-h2 stop" (not kill) so the database file is closed cleanly.
-# Backup: stop the container and copy LEXORMA_DATA_DIR/lexorma.mv.db (see docs/h2-file-storage.md).
+# Backup: stop the container and copy LEXORMA_DATA_DIR/lexorma.mv.db (see docs/reference/h2-file-storage.md).
 # Use docker-compose.yml (PostgreSQL) instead for a server that several people use.
 
 services:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     environment:
       # Same database file as the h2-docker profile (/data/lexorma), without DB_CLOSE_DELAY=-1: when Spring closes the
-      # connection pool on a normal stop, H2 closes the file cleanly (see docs/h2-file-storage.md)
+      # connection pool on a normal stop, H2 closes the file cleanly (see docs/reference/h2-file-storage.md)
       SPRING_DATASOURCE_URL: "jdbc:h2:file:/data/lexorma;DB_CLOSE_ON_EXIT=FALSE"
       # Optional secret encryption key (needed only to store source database passwords).
       # The key list comes from the lexorma_secret_keys secret below and is read from /run/secrets/lexorma.secret.keys.

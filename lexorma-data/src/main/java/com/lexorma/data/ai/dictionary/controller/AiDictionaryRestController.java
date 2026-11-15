@@ -56,7 +56,18 @@ public class AiDictionaryRestController {
         return ResponseEntity.ok(queries.detail(ExecutionContext.user(account), id));
     }
 
-    @Operation(summary = "생성 대상 후보", description = "tableId 가 없으면 테이블, 있으면 그 테이블과 컬럼. onlyMissing 이면 업무 설명 없는 것만")
+    @Operation(summary = "생성 대상 테이블 목록 (쪽 단위)", description = "page 0 부터, size 기본 30·최대 100, 테이블 이름 → ID 순. keyword 는 이름·테이블 코멘트 부분 일치, onlyMissing 이면 업무 설명이 없거나 업무 설명 없는 컬럼이 있는 테이블")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/targets/tables")
+    public ResponseEntity<Page<AiDictionaryDto.TargetRow>> targetTables(@AuthenticationPrincipal AccountDto account,
+                                                                        @RequestParam(value = "onlyMissing", defaultValue = "false") boolean onlyMissing,
+                                                                        @RequestParam(value = "keyword", required = false) String keyword,
+                                                                        @RequestParam(value = "page", defaultValue = "0") int page,
+                                                                        @RequestParam(value = "size", defaultValue = "30") int size) {
+        return ResponseEntity.ok(queries.targetTables(ExecutionContext.user(account), onlyMissing, keyword, page, size));
+    }
+
+    @Operation(summary = "생성 대상 후보", description = "tableId 가 없으면 테이블(앞에서 최대 500 — 대상 선택 화면은 /targets/tables), 있으면 그 테이블과 컬럼. onlyMissing 이면 업무 설명 없는 것만")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/targets")
     public ResponseEntity<List<AiDictionaryDto.TargetRow>> targets(@AuthenticationPrincipal AccountDto account, @RequestParam(value = "tableId", required = false) Long tableId,
@@ -86,7 +97,14 @@ public class AiDictionaryRestController {
         return ResponseEntity.ok(queries.generated(result));
     }
 
-    @Operation(summary = "대량 생성 시작", description = "MISSING_TABLES · TABLE_COLUMNS · SELECTED. 비동기로 차례로 만든다 (프로젝트당 하나)")
+    @Operation(summary = "생성 대상 미리 보기", description = "실행과 같은 판정 (SELECTED : tables·columns·onlyMissing). 대상마다 CREATE · OPEN_PROPOSAL(건너뜀) · DESCRIBED(뺌). 아무것도 만들지 않는다")
+    @PreAuthorize("hasRole('USER')") // 생성 화면용 (생성 권한과 같다). POST 라 USER 이상
+    @PostMapping("/jobs/preview")
+    public ResponseEntity<AiDictionaryDto.JobPreview> previewJob(@AuthenticationPrincipal AccountDto account, @RequestBody AiDictionaryDto.JobRequest request) {
+        return ResponseEntity.ok(jobs.preview(ExecutionContext.user(account), request));
+    }
+
+    @Operation(summary = "대량 생성 시작", description = "MISSING_TABLES · TABLE_COLUMNS · SELECTED(tables : 고른 테이블 자신, columns : 그 테이블의 컬럼도, onlyMissing : 업무 설명 있는 것은 뺀다). 비동기로 차례로 만든다 (프로젝트당 하나)")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/jobs")
     public ResponseEntity<AiDictionaryDto.JobSummary> startJob(@AuthenticationPrincipal AccountDto account, @RequestBody AiDictionaryDto.JobRequest request) {
@@ -121,6 +139,22 @@ public class AiDictionaryRestController {
     public ResponseEntity<AiDictionaryDto.ReviewResult> reject(@AuthenticationPrincipal AccountDto account, @PathVariable(value = "id") Long id,
                                                                @RequestBody AiDictionaryDto.ReviewRequest request) {
         return ResponseEntity.ok(reviews.reject(ExecutionContext.user(account), id, request));
+    }
+
+    @Operation(summary = "종결 (적용하지 않음, 사유 필수)", description = "검토 대기·검토 중·보류·재검토 필요 → CLOSED. 업무 설명은 바꾸지 않는다. 반려와 달리 품질 지표에 넣지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/proposals/{id}/close")
+    public ResponseEntity<AiDictionaryDto.ReviewResult> close(@AuthenticationPrincipal AccountDto account, @PathVariable(value = "id") Long id,
+                                                              @RequestBody AiDictionaryDto.ReviewRequest request) {
+        return ResponseEntity.ok(reviews.close(ExecutionContext.user(account), id, request));
+    }
+
+    @Operation(summary = "근거 재검증 (재검토 필요)", description = "생성 때 기준과 지금을 다시 비교. 남은 변경이 없으면 검토 중으로, 내용 변경뿐이면 acknowledge + 사유로 기준을 옮겨 검토 중으로. 승인은 따로")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/proposals/{id}/revalidate")
+    public ResponseEntity<AiDictionaryDto.RevalidateResult> revalidate(@AuthenticationPrincipal AccountDto account, @PathVariable(value = "id") Long id,
+                                                                       @RequestBody AiDictionaryDto.RevalidateRequest request) {
+        return ResponseEntity.ok(reviews.revalidate(ExecutionContext.user(account), id, request));
     }
 
     @Operation(summary = "보류")

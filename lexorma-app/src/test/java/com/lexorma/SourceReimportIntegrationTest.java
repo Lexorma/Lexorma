@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 원본 메타데이터 선택 재가져오기 (M-4f, docs/source-reimport-m4f.md) : 한 번 가져온 원본이 바뀐 뒤 다시 가져올 때, 마지막으로 가져온 값(B)·지금 원본(S)·지금 모델(M) 로
+ * 원본 메타데이터 선택 재가져오기 (M-4f, docs/completed/source-reimport-m4f.md) : 한 번 가져온 원본이 바뀐 뒤 다시 가져올 때, 마지막으로 가져온 값(B)·지금 원본(S)·지금 모델(M) 로
  * 원본만 바뀐 것(고를 수 있음)·모델에서 바꾼 것·둘 다 바뀐 것(고를 수 없음)·기준값 없음을 나누고, 고른 속성만 반영하는지 본다. 원본 DB 에 접속하지 않는다 (수집 결과를 직접 넘긴다).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

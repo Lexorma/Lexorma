@@ -24,7 +24,7 @@ import java.util.TreeSet;
  *   <li>출력 컬럼 목록은 넣지 않는다 (모델링 정보). CREATE OR REPLACE 는 쓰지 않는다 (DBMS 마다 바꿀 수 있는 범위가 다르다)</li>
  *   <li>논리명 COMMENT : PostgreSQL {@code COMMENT ON VIEW}, Oracle {@code COMMENT ON TABLE} (VIEW 에도 쓴다), MySQL·MariaDB 는 VIEW 에 COMMENT 가 없어 넣지 않는다</li>
  * </ul>
- * PostgreSQL 은 실제 DB 에서 실행해 확인했다. Oracle·MySQL·MariaDB 는 같은 형식의 표준 문법이지만 실제 DBMS 에서 확인하지 않았다 (docs/view-management-m15.md).
+ * PostgreSQL 은 실제 DB 에서 실행해 확인했다. Oracle·MySQL·MariaDB 는 같은 형식의 표준 문법이지만 실제 DBMS 에서 확인하지 않았다 (docs/completed/view-management-m15.md).
  * 정의 SQL 이 대상 DBMS 문법인지는 보장하지 않는다.
  */
 public final class ViewDdlGenerator {

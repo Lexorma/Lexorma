@@ -1,0 +1,16 @@
+/* 기존 컬럼의 표준 용어 재연결 (COL-TERM) */
+/* popup 본문은 여백이 없다 : 공통 버튼 줄(.gh-dialog-actions, 좌우 -16px)이 넘치지 않게 16px 여백 */
+.term-relink { display: grid; gap: 12px; min-width: 0; padding: 16px; }
+.term-relink-search { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.term-relink-search .search-input { flex: 1 1 160px; min-width: 0; }
+.term-relink-results { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; border: 1px solid var(--gh-border); border-radius: 6px; }
+.term-relink-results li + li { border-top: 1px solid var(--gh-border); }
+.term-relink-results button { width: 100%; padding: 6px 10px; text-align: left; background: none; border: 0; color: var(--gh-fg); cursor: pointer; overflow-wrap: anywhere; }
+.term-relink-results button:hover { background: var(--gh-canvas-subtle); }
+.term-relink-results button.is-picked { background: var(--gh-accent-subtle, var(--gh-canvas-subtle)); box-shadow: inset 3px 0 0 var(--gh-accent-fg, #0969da); }
+.term-relink-results .gh-label { margin-left: 6px; }
+.term-relink-compare h4 { margin: 0 0 6px; font-size: 14px; }
+.term-relink-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.term-relink-table th, .term-relink-table td { padding: 4px 6px; border-bottom: 1px solid var(--gh-border); text-align: left; overflow-wrap: anywhere; vertical-align: top; }
+.term-relink-table thead th { color: var(--gh-fg-muted); font-weight: 600; }
+.term-relink-keep { margin: 8px 0; padding-left: 18px; font-size: 13px; }

@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Sparkles } from 'lucide-react';
 import { useDialog } from '../../../components/dialog/DialogProvider';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiError } from '../../../lib/api';
 import { t } from '../../../lib/i18n';
-import { aiDictionary, CERTAINTY_LABEL, JOB_LABEL, STATUS_CLASS, STATUS_LABEL, type JobSummary, type ProposalSummary, type TargetRow } from './aiDictionary';
+import { aiDictionary, CERTAINTY_LABEL, JOB_LABEL, STATUS_CLASS, STATUS_LABEL, type JobSummary, type ProposalSummary } from './aiDictionary';
 import { AiStatusNotice } from './AiStatusNotice';
 import { ProposalDetailView } from './ProposalDetailView';
+import { ReviewReasonSummary } from './ReasonView';
 import { SelectAll } from './SelectAll';
+import { TargetPicker } from './TargetPicker';
 import '../../../styles/ai-dictionary.css';
 
-const FILTERS = ['OPEN', 'PROPOSED', 'REVIEWED', 'REVIEW_REQUIRED', 'ON_HOLD', 'APPROVED', 'REJECTED', 'SUPERSEDED', ''] as const;
+const OPEN_REVIEWABLE = new Set(['PROPOSED', 'REVIEWED', 'ON_HOLD']);
+const FILTERS = ['OPEN', 'PROPOSED', 'REVIEWED', 'REVIEW_REQUIRED', 'ON_HOLD', 'APPROVED', 'REJECTED', 'SUPERSEDED', 'CLOSED', ''] as const;
 
 /**
  * 데이터 사전 › AI 설명 제안 (AI-5). 대상 선택 → 초안 생성(단건·대량) → 검토 목록 → 상세에서 승인·수정 후 승인·반려·보류.
@@ -21,7 +23,7 @@ const FILTERS = ['OPEN', 'PROPOSED', 'REVIEWED', 'REVIEW_REQUIRED', 'ON_HOLD', '
  * 주소 : ?proposal=ID (그 제안을 연다) · ?tableId=&columnId= (그 대상의 제안으로 이동 — 테이블·컬럼 화면과 ERD 에서 온다) · 예전 ?tab=evaluation (품질 평가) 은 /aiEvaluation 으로 옮긴다 (App 라우트)
  */
 export default function AiDescriptionPage() {
-  const { canView, approvalAvailable } = useAuth();
+  const { canView, approvalAvailable, user } = useAuth();
   const canGenerate = canView('ai-dictionary-generate');
   const canReview = canView('ai-dictionary-review') && approvalAvailable;
   const dialog = useDialog();
@@ -30,16 +32,11 @@ export default function AiDescriptionPage() {
   const initialTable = params.get('tableId') ? Number(params.get('tableId')) : null;
   const initialColumn = params.get('columnId') ? Number(params.get('columnId')) : null;
 
-  const [tableId, setTableId] = useState<number | null>(initialTable);
-  const [onlyMissing, setOnlyMissing] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const [filter, setFilter] = useState({ status: initialTable ? '' : 'OPEN', keyword: '', recheck: false, page: 0, tableId: initialTable });
-  const [checked, setChecked] = useState<Map<number, number>>(new Map());
+  const [checked, setChecked] = useState<Map<number, ProposalSummary>>(new Map());
 
-  const tables = useQuery({ queryKey: ['ai-dict-targets', null, false], queryFn: () => aiDictionary.targets(null, false) });
-  const targets = useQuery({ queryKey: ['ai-dict-targets', tableId, onlyMissing], queryFn: () => aiDictionary.targets(tableId, onlyMissing) });
   const list = useQuery({ queryKey: ['ai-dict-proposals', filter], queryFn: () => aiDictionary.list(filter) });
   const jobs = useQuery({
     queryKey: ['ai-dict-jobs'], queryFn: aiDictionary.jobs,
@@ -56,6 +53,8 @@ export default function AiDescriptionPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['ai-dict-proposals'] });
     void queryClient.invalidateQueries({ queryKey: ['ai-dict-targets'] });
+    void queryClient.invalidateQueries({ queryKey: ['ai-dict-preview'] });
+    void queryClient.invalidateQueries({ queryKey: ['ai-dict-objects'] });
   };
 
   const openDetail = (id: number) => {
@@ -84,82 +83,16 @@ export default function AiDescriptionPage() {
       openDetail(Number(proposal));
       return;
     }
-    if (initialTable && targets.data) {
-      opened.current = true;
-      const row = targets.data.find((r) => r.tableId === initialTable && (r.columnId ?? null) === initialColumn);
-      if (row?.proposalId) openDetail(row.proposalId);
-      if (row) setSelected(new Set([key(row)]));
-    }
-  }, [targets.data]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const rows = targets.data ?? [];
-  const selectedRows = useMemo(() => rows.filter((r) => selected.has(key(r))), [rows, selected]);
-  const toggle = (row: TargetRow) => setSelected((s) => {
-    const next = new Set(s);
-    if (next.has(key(row))) next.delete(key(row));
-    else next.add(key(row));
-    return next;
-  });
+    opened.current = true;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fail = (e: unknown) => setNotice({ kind: 'error', text: e instanceof ApiError ? e.message : t('처리하지 못했습니다.') });
 
-  const generateSelected = async () => {
-    if (selectedRows.length === 0) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      if (selectedRows.length === 1) {
-        const row = selectedRows[0];
-        const result = await aiDictionary.generate(row.tableId, row.columnId, false);
-        setNotice(result.outcome === 'SKIPPED'
-          ? { kind: 'warn', text: t('검토 대기 중인 제안이 있어 새로 만들지 않았습니다. 다시 만들려면 상세에서 다시 만드세요.') }
-          : { kind: 'ok', text: t('제안을 만들었습니다. 승인 전까지 업무 설명은 바뀌지 않습니다.') });
-        refresh();
-        openDetail(result.proposal.id);
-      } else {
-        await aiDictionary.startJob({ scope: 'SELECTED', targets: selectedRows.map((r) => ({ tableId: r.tableId, columnId: r.columnId })) });
-        setNotice({ kind: 'ok', text: t('{0}개 대상의 제안을 차례로 만듭니다. 진행 상태는 아래에서 볼 수 있습니다.', selectedRows.length) });
-        void jobs.refetch();
-      }
-      setSelected(new Set());
-    } catch (e) {
-      fail(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startJob = async (scope: 'MISSING_TABLES' | 'TABLE_COLUMNS') => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const job = await aiDictionary.startJob(scope === 'MISSING_TABLES' ? { scope } : { scope, tableId, onlyMissing: true });
-      setNotice({ kind: 'ok', text: t('{0}개 대상의 제안을 차례로 만듭니다. 진행 상태는 아래에서 볼 수 있습니다.', job.targetCount) });
-      void jobs.refetch();
-    } catch (e) {
-      fail(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const recheck = async () => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const r = await aiDictionary.recheck();
-      setNotice({ kind: r.reviewRequired + r.recheckFlagged > 0 ? 'warn' : 'ok', text: t('{0}개를 확인했습니다. 재검토 필요 {1}개, 승인 뒤 근거 변경 {2}개.', r.checked, r.reviewRequired, r.recheckFlagged) });
-      refresh();
-    } catch (e) {
-      fail(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const bulk = (action: 'APPROVE' | 'REJECT' | 'HOLD') => {
-    const items = [...checked.entries()].map(([id, version]) => ({ id, version }));
+    const items = [...checked.values()].map((p) => ({ id: p.id, version: p.version }));
     if (items.length === 0) return;
+    // 교체 대상 : 고른 제안 중 생성 때 다른 업무 설명이 있던 것 (서버는 항목마다 생성 때 값과 지금 값을 다시 비교한다)
+    const replacing = [...checked.values()].filter((p) => p.replacesBizDescription).length;
     const perform = async (reason: string | null) => {
       setBusy(true);
       setNotice(null);
@@ -168,7 +101,9 @@ export default function AiDescriptionPage() {
         const ok = results.filter((r) => r.outcome !== 'FAILED' && r.outcome !== 'REVIEW_REQUIRED').length;
         const review = results.filter((r) => r.outcome === 'REVIEW_REQUIRED').length;
         const failed = results.filter((r) => r.outcome === 'FAILED').length;
-        setNotice({ kind: failed + review > 0 ? 'warn' : 'ok', text: t('{0}개 처리, 재검토 필요 {1}개, 실패 {2}개 (다른 사용자가 먼저 처리했거나 상태가 바뀐 제안).', ok, review, failed) });
+        setNotice({ kind: failed + review > 0 ? 'warn' : 'ok', text: action === 'APPROVE'
+          ? t('승인 {0}개, 재검토 필요 {1}개 (근거나 업무 설명이 생성 뒤 바뀌어 반영하지 않음), 실패 {2}개 (다른 사용자가 먼저 처리했거나 상태가 바뀐 제안).', ok, review, failed)
+          : t('{0}개 처리, 재검토 필요 {1}개, 실패 {2}개 (다른 사용자가 먼저 처리했거나 상태가 바뀐 제안).', ok, review, failed) });
         setChecked(new Map());
         refresh();
       } catch (e) {
@@ -178,7 +113,9 @@ export default function AiDescriptionPage() {
       }
     };
     if (action === 'APPROVE') {
-      dialog.confirm(t('고른 {0}개 제안을 그대로 승인할까요? 승인하면 업무 설명에 반영됩니다 (근거가 바뀐 제안은 반영하지 않습니다).', items.length), () => void perform(null));
+      dialog.confirm(replacing > 0
+        ? t('고른 {0}개 제안을 그대로 승인할까요? 그중 {1}개는 기존 업무 설명을 AI 제안 설명으로 교체합니다. 생성 뒤 업무 설명이나 근거가 바뀐 제안은 반영하지 않고 재검토 필요로 돌립니다.', items.length, replacing)
+        : t('고른 {0}개 제안을 그대로 승인할까요? 승인하면 업무 설명에 반영됩니다 (근거가 바뀐 제안은 반영하지 않습니다).', items.length), () => void perform(null));
       return;
     }
     dialog.open({
@@ -187,7 +124,6 @@ export default function AiDescriptionPage() {
     });
   };
 
-  const tableOptions = (tables.data ?? []).filter((r) => r.targetType === 'TABLE');
   const page = list.data;
 
   return (
@@ -198,60 +134,10 @@ export default function AiDescriptionPage() {
       <AiStatusNotice />
       {notice && <div className={`ai-dict-callout is-${notice.kind}`} role="status">{notice.text}</div>}
 
-      <section className="ai-dict-card">
-        <h3>{t('대상 선택')}</h3>
-        <div className="ai-dict-toolbar">
-          <select className="search-column-select" aria-label={t('테이블')} value={tableId ?? ''} onChange={(e) => { setTableId(e.target.value ? Number(e.target.value) : null); setSelected(new Set()); }}>
-            <option value="">{t('테이블 목록')}</option>
-            {tableOptions.map((r) => <option key={r.tableId} value={r.tableId}>{r.name}{r.description ? ` (${r.description})` : ''}</option>)}
-          </select>
-          <label className="ai-dict-check"><input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} /> {t('업무 설명 없는 것만')}</label>
-        </div>
-        <div className="ai-dict-table-wrap">
-          <table className="ai-dict-table">
-            <thead>
-              <tr>
-                {canGenerate && <th className="ai-dict-col-check">
-                  <SelectAll label={t('전체 선택')} total={rows.length} selected={selectedRows.length}
-                             onChange={(all) => setSelected(all ? new Set(rows.map(key)) : new Set())} />
-                </th>}
-                <th>{t('대상')}</th><th>{t('설명')}</th><th>{t('원본 COMMENT')}</th><th>{t('업무 설명')}</th><th>{t('최근 제안')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.isLoading && <tr><td colSpan={6} className="gh-muted">{t('불러오는 중…')}</td></tr>}
-              {!targets.isLoading && rows.length === 0 && <tr><td colSpan={6} className="gh-muted">{t('대상이 없습니다.')}</td></tr>}
-              {rows.map((r) => (
-                <tr key={key(r)}>
-                  {canGenerate && <td className="ai-dict-col-check"><input type="checkbox" aria-label={r.name} checked={selected.has(key(r))} onChange={() => toggle(r)} /></td>}
-                  <td><span className="gh-label">{r.targetType === 'TABLE' ? t('테이블') : t('컬럼')}</span> <span className="ai-dict-name">{r.name}</span></td>
-                  <td>{r.description ?? '-'}</td>
-                  <td>{r.hasSourceComment ? t('있음') : <span className="gh-muted">{t('없음')}</span>}</td>
-                  <td>{r.hasBizDescription ? t('있음') : <span className="gh-muted">{t('없음')}</span>}</td>
-                  <td>
-                    {r.proposalStatus ? (
-                      <button type="button" className="ai-dict-link" onClick={() => openDetail(r.proposalId!)}>
-                        <span className={`gh-label ${STATUS_CLASS[r.proposalStatus]}`}>{STATUS_LABEL[r.proposalStatus]}</span>
-                      </button>
-                    ) : <span className="gh-muted">-</span>}
-                    {r.recheckNeeded && <span className="gh-label gh-label-attention">{t('근거 변경')}</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {canGenerate && (
-          <div className="ai-dict-buttons">
-            <button type="button" className="btn btn-primary" disabled={busy || selectedRows.length === 0} onClick={generateSelected}>
-              <Sparkles size={14} aria-hidden="true" /> {busy ? t('만드는 중…') : t('선택한 {0}개 초안 만들기', selectedRows.length)}
-            </button>
-            {tableId != null && <button type="button" className="btn" disabled={busy || !!active} onClick={() => startJob('TABLE_COLUMNS')}>{t('이 테이블의 업무 설명 없는 컬럼 모두')}</button>}
-            <button type="button" className="btn" disabled={busy || !!active} onClick={() => startJob('MISSING_TABLES')}>{t('업무 설명 없는 테이블 모두')}</button>
-            <button type="button" className="btn" disabled={busy} onClick={recheck}><RefreshCw size={14} aria-hidden="true" /> {t('근거 변경 확인')}</button>
-          </div>
-        )}
-      </section>
+      {/* 선택은 프로젝트마다 따로 : 프로젝트가 바뀌면 새로 시작한다 */}
+      <TargetPicker key={user?.projectId ?? 0} canGenerate={canGenerate} busy={busy} setBusy={setBusy} onNotice={setNotice} onOpenProposal={openDetail}
+                    onStarted={() => { refresh(); void jobs.refetch(); }} jobActive={!!active}
+                    focus={initialTable != null ? { tableId: initialTable, columnId: initialColumn } : null} />
 
       {(jobs.data ?? []).length > 0 && (
         <section className="ai-dict-card">
@@ -275,6 +161,12 @@ export default function AiDescriptionPage() {
 
       <section className="ai-dict-card">
         <h3>{t('제안 목록')}</h3>
+        <div className="ai-dict-tabs" role="group" aria-label={t('검토 상태')}>
+          {([['', t('전체')], ['OPEN', t('검토 대기 전체')], ['ON_HOLD', STATUS_LABEL.ON_HOLD], ['REVIEW_REQUIRED', STATUS_LABEL.REVIEW_REQUIRED]] as const).map(([value, label]) => (
+            <button key={value} type="button" className={`btn btn-sm${filter.status === value ? ' btn-primary' : ''}`} aria-pressed={filter.status === value}
+                    onClick={() => setFilter({ ...filter, status: value, page: 0 })}>{label}</button>
+          ))}
+        </div>
         <div className="ai-dict-toolbar">
           <select className="search-column-select" aria-label={t('검토 상태')} value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value, page: 0 })}>
             {FILTERS.map((s) => <option key={s} value={s}>{s === 'OPEN' ? t('검토 대기 전체') : s === '' ? t('전체') : STATUS_LABEL[s]}</option>)}
@@ -291,7 +183,7 @@ export default function AiDescriptionPage() {
                 <SelectAll label={t('이 페이지 전체 선택')} total={reviewable.length} selected={picked}
                            onChange={(all) => setChecked((m) => {
                              const next = new Map(m);
-                             reviewable.forEach((p) => { if (all) next.set(p.id, p.version); else next.delete(p.id); });
+                             reviewable.forEach((p) => { if (all) next.set(p.id, p); else next.delete(p.id); });
                              return next;
                            })} />
                 {t('이 페이지 전체 선택')}
@@ -302,6 +194,9 @@ export default function AiDescriptionPage() {
         {canReview && checked.size > 0 && (
           <div className="ai-dict-buttons">
             <span className="gh-muted">{t('{0}개 선택', checked.size)}</span>
+            {[...checked.values()].some((p) => p.replacesBizDescription) && (
+              <span className="gh-muted">{t('기존 설명 교체 {0}개', [...checked.values()].filter((p) => p.replacesBizDescription).length)}</span>
+            )}
             <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => bulk('APPROVE')}>{t('일괄 승인')}</button>
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => bulk('REJECT')}>{t('일괄 반려')}</button>
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => bulk('HOLD')}>{t('일괄 보류')}</button>
@@ -316,7 +211,7 @@ export default function AiDescriptionPage() {
               <li key={p.id} className="ai-dict-proposal">
                 {canReview && (
                   <input type="checkbox" aria-label={p.targetName} disabled={!reviewable} checked={checked.has(p.id)}
-                         onChange={() => setChecked((m) => { const next = new Map(m); if (next.has(p.id)) next.delete(p.id); else next.set(p.id, p.version); return next; })} />
+                         onChange={() => setChecked((m) => { const next = new Map(m); if (next.has(p.id)) next.delete(p.id); else next.set(p.id, p); return next; })} />
                 )}
                 <button type="button" className="ai-dict-proposal-body" onClick={() => openDetail(p.id)}>
                   <span className="ai-dict-proposal-head">
@@ -324,8 +219,10 @@ export default function AiDescriptionPage() {
                     <span className="ai-dict-name">{p.targetName}</span>
                     <span className="gh-muted ai-dict-small">{CERTAINTY_LABEL[p.certainty]} · {t('근거 {0}/{1}', p.evidenceVerified, p.evidenceTotal)} · {p.model ?? '-'}</span>
                     {p.recheckNeeded && <span className="gh-label gh-label-attention">{t('근거 변경')}</span>}
+                    {p.replacesBizDescription && OPEN_REVIEWABLE.has(p.status) && <span className="gh-label" title={t('승인하면 기존 업무 설명을 교체합니다')}>{t('기존 설명 교체')}</span>}
                   </span>
                   <span className="ai-dict-proposal-text">{p.confirmedDescription ?? p.proposedDescription}</span>
+                  {p.status === 'REVIEW_REQUIRED' && <span className="ai-dict-small gh-muted">{t('재검토 사유')} : <ReviewReasonSummary raw={p.reviewReason} action="REVIEW_REQUIRED" /> — {t('열어서 근거 재검증·새 초안·종결')}</span>}
                 </button>
               </li>
             );
@@ -341,10 +238,6 @@ export default function AiDescriptionPage() {
       </section>
     </div>
   );
-}
-
-function key(row: { tableId: number; columnId: number | null }) {
-  return `${row.tableId}:${row.columnId ?? ''}`;
 }
 
 function ReasonForm({ required, onSubmit }: { required: boolean; onSubmit: (reason: string | null) => void }) {

@@ -62,7 +62,7 @@ public class ModelVersionService {
 
     /**
      * 현재 모델을 새 버전으로 저장한다 : 프로젝트 행을 배타로 잡은 뒤의 최신 커밋 상태.
-     * READ_COMMITTED (T-09, docs/source-import-m4e.md 12장) : REPEATABLE_READ 면 PostgreSQL 이 첫 SQL(이 잠금 대기) 시작 때 시점을 정해, 기다리는 동안 커밋된 가져오기가 빠진다.
+     * READ_COMMITTED (T-09, docs/completed/source-import-m4e.md 12장) : REPEATABLE_READ 면 PostgreSQL 이 첫 SQL(이 잠금 대기) 시작 때 시점을 정해, 기다리는 동안 커밋된 가져오기가 빠진다.
      * 여러 번의 조회가 한 시점을 보는 것은 잠금이 보장한다 : 모든 모델 변경은 같은 트랜잭션에서 변경 이력(프로젝트 ID 있음)을 남기고, ProjectWriteGuard 가 커밋 직전에
      * 프로젝트 행을 공유 잠금으로 잡으므로 배타 잠금을 쥔 동안에는 커밋되지 않는다 ({@link #createBeforeImport} 와 같은 근거). 변경 이력을 남기지 않는 모델 쓰기를 만들면 이 근거가 깨진다.
      * 내용과 버전 정보는 한 행이라 일부만 저장되는 일이 없다.

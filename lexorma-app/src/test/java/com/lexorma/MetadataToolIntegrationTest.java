@@ -74,7 +74,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   <li>Spring AI 통합 : 가짜 Ollama(127.0.0.1)가 tool_calls 를 돌려주면 Spring AI 가 Tool 을 실행하고 결과로 최종 답변을 받는다. 연속 호출, 호출 상한, 허용 목록 밖 Tool,
  *       프롬프트 인젝션, Tool 미지원 모델, 기본 Provider 정책·SEC-1·연결 실패·시간 초과</li>
  * </ul>
- * 실제 모델(Ollama gemma4:e4b) 검증은 이 테스트가 아니라 격리 실행 환경에서 했다 (docs/ai-tool-calling-ai4.md).
+ * 실제 모델(Ollama gemma4:e4b) 검증은 이 테스트가 아니라 격리 실행 환경에서 했다 (docs/completed/ai-tool-calling-ai4.md).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {"lexorma.ai.test-timeout-seconds=1", "lexorma.external.http.response-timeout-seconds=3"})
 @ActiveProfiles("test")

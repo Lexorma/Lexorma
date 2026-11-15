@@ -28,7 +28,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
- * 매핑된 원본 TABLE ↔ 모델 TABLE 하나의 하위 객체 비교 (M-4d, docs/source-compare-m4d.md 4장). 저장하지 않는 순수 계산이다.
+ * 매핑된 원본 TABLE ↔ 모델 TABLE 하나의 하위 객체 비교 (M-4d, docs/completed/source-compare-m4d.md 4장). 저장하지 않는 순수 계산이다.
  * <ul>
  *   <li>짝짓기 : 이름(원본 DBMS 의 비교 이름 규칙, SourceCatalogReader.compareName)으로만 같은 객체로 본다. 이름이 다르면 구조가 같아도 같은 객체로 확정하지 않고
  *       원본에만·모델에만 있는 객체로 두며, 구조가 같으면 이름 변경 후보(RENAME_CANDIDATE)로 제안한다</li>

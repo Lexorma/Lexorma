@@ -657,6 +657,19 @@ dialog p {
     text-align: left; /* 내용 왼쪽 정렬 */
 }
 
+/* 알림·확인의 긴 문구 : 대화상자는 overflow: hidden 이라, 화면 높이 안에서 제목·버튼은 그대로 두고 문구만 줄여 스크롤한다 */
+dialog.dialog-message[open] {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 32px);
+}
+
+dialog.dialog-message > p {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
 /* 확인 버튼 스타일 (파란색) */
 dialog button.confirm {
     padding: 10px 20px;

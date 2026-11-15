@@ -17,6 +17,7 @@ import com.lexorma.data.table.repository.TableInfoRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -45,6 +46,7 @@ public class AiDictionaryQueryService {
     private final AiDescriptionProposalHistoryRepository histories;
     private final TableInfoRepository tables;
     private final ColumnInfoRepository columns;
+    private final com.lexorma.data.physical.repository.TableRelationRepository relations;
     private final ProposalVersions versions;
     private final ExecutionContextVerifier verifier;
 
@@ -83,7 +85,8 @@ public class AiDictionaryQueryService {
         List<ProposalVersions.Change> changes = p.getStatus().open() || p.getStatus() == ReviewStatus.APPROVED
                 ? versions.changes(projectId, base, current.bizDescription(), p.getStatus().open()) : List.of();
         List<AiDictionaryDto.HistoryItem> history = histories.findAllByProjectIdAndProposalIdOrderByIdAsc(projectId, id).stream().map(ProposalMapper::history).toList();
-        return new AiDictionaryDto.ProposalDetail(ProposalMapper.summary(p), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), current, changes, history);
+        return new AiDictionaryDto.ProposalDetail(ProposalMapper.summary(p), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), current, changes, history,
+                ProposalMapper.baseBizDescription(p));
     }
 
     private AiDictionaryDto.Current current(Long projectId, AiDescriptionProposal p) {
@@ -97,37 +100,127 @@ public class AiDictionaryQueryService {
                 .orElse(new AiDictionaryDto.Current(false, p.getTargetName(), null, null, null, null));
     }
 
+    /** 대상 테이블 목록 한 쪽의 기본·최대 크기 */
+    public static final int TARGET_PAGE_SIZE = 30;
+    static final int TARGET_PAGE_MAX = 100;
+    /** 쪽 없이 부르는 예전 목록(품질 평가의 테이블 고르기)의 최대 건수 — 대상 선택 화면은 쪽 단위 {@link #targetTables} 를 쓴다 */
+    static final int TARGET_LIST_MAX = 500;
+
     /**
-     * 생성 대상 후보 : tableId 가 없으면 테이블 목록, 있으면 그 테이블과 컬럼. 원본 COMMENT·업무 설명·최근 제안을 구분해 보인다
-     * (원본 COMMENT 가 있어도 업무 설명이 있는 것으로 보지 않는다)
+     * 생성 대상 테이블 목록 (서버 쪽 나누기, AI-5-PAGE) : 프로젝트의 모든 테이블에서 이름·테이블 코멘트 부분 일치(대소문자 무시, 와일드카드 문자는 글자 그대로)와
+     * onlyMissing(업무 설명이 없거나 업무 설명 없는 컬럼이 있는 테이블)을 DB 에서 걸러 테이블 이름 → ID 순으로 한 쪽만 읽는다. 전체 건수는 같은 조건으로 센다.
+     * 컬럼 수·최근 제안은 그 쪽의 테이블에만 묻는다. 정렬은 고정이다 (요청으로 바꿀 수 없다)
+     */
+    public Page<AiDictionaryDto.TargetRow> targetTables(ExecutionContext context, boolean onlyMissing, String keyword, int page, int size) {
+        verifier.verify(context, "VIEWER");
+        Long projectId = context.projectId();
+        int pageSize = size <= 0 ? TARGET_PAGE_SIZE : Math.min(size, TARGET_PAGE_MAX);
+        Page<TableInfo> found = tables.findAll(targetSpec(projectId, onlyMissing, keyword),
+                PageRequest.of(Math.max(page, 0), pageSize, Sort.by(Sort.Order.asc("tableName"), Sort.Order.asc("id"))));
+        return new PageImpl<>(tableRows(projectId, found.getContent()), found.getPageable(), found.getTotalElements());
+    }
+
+    /** 대상 테이블 조건 : 프로젝트 + onlyMissing + 검색어 */
+    private static Specification<TableInfo> targetSpec(Long projectId, boolean onlyMissing, String keyword) {
+        String kw = keyword == null || keyword.isBlank() ? null : "%" + likeEscape(keyword.strip().toUpperCase(Locale.ROOT)) + "%";
+        return (root, query, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            p.add(cb.equal(root.get("projectId"), projectId));
+            if (onlyMissing) {
+                // 업무 설명 없는 컬럼이 있는 테이블 : 상관 EXISTS 를 OR 안에 두면 PostgreSQL 이 테이블마다 컬럼을 다시 훑는다 (3,000 테이블에서 2초대).
+                // 프로젝트 단위 비상관 IN 은 한 번만 계산된다
+                var sub = query.subquery(Long.class);
+                var col = sub.from(ColumnInfo.class);
+                sub.select(col.get("tableInfo").get("id")).where(cb.equal(col.get("projectId"), projectId), cb.isNull(col.get("bizDescription")));
+                p.add(cb.or(cb.isNull(root.get("bizDescription")), cb.equal(cb.trim(root.get("bizDescription")), ""), root.get("id").in(sub)));
+            }
+            if (kw != null) {
+                p.add(cb.or(cb.like(cb.upper(root.get("tableName")), kw, '\\'), cb.like(cb.upper(root.get("tableKorName")), kw, '\\')));
+            }
+            return cb.and(p.toArray(Predicate[]::new));
+        };
+    }
+
+    private static String likeEscape(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    /** 테이블 목록 행 : 컬럼 수·업무 설명 없는 컬럼 수와 최근 제안을 그 테이블들에만 묻는다 (설명 본문은 싣지 않는다) */
+    private List<AiDictionaryDto.TargetRow> tableRows(Long projectId, List<TableInfo> list) {
+        if (list.isEmpty()) return List.of();
+        List<Long> ids = list.stream().map(TableInfo::getId).toList();
+        Map<Long, long[]> counts = new LinkedHashMap<>();
+        for (Object[] r : columns.countBizDescriptionsByTables(projectId, ids)) {
+            counts.put((Long) r[0], new long[]{((Number) r[1]).longValue(), r[2] == null ? 0 : ((Number) r[2]).longValue()});
+        }
+        Map<String, AiDescriptionProposal> latest = new LinkedHashMap<>();
+        for (AiDescriptionProposal p : proposals.findAllByProjectIdAndTableIdInAndColumnIdIsNull(projectId, ids)) {
+            latest.merge(key(p.getTableId(), null), p, (a, b) -> a.getCycle() >= b.getCycle() ? a : b);
+        }
+        return list.stream().map(t -> {
+            long[] c = counts.getOrDefault(t.getId(), new long[2]);
+            return row(AiDescriptionProposal.TargetType.TABLE, t.getId(), null, t.getTableName(), t.getTableKorName(), t.getSourceComment(), t.getBizDescription(),
+                    latest.get(key(t.getId(), null)), new AiDictionaryDto.TargetDetail(null, null, null, null, null, null, null, null, null, null, null, (int) c[0], (int) c[1]));
+        }).toList();
+    }
+
+    /**
+     * 생성 대상 후보 (쪽 없음). tableId 가 없으면 테이블 목록 — {@link #targetTables} 와 같은 조건·순서로 앞에서 최대 500 (품질 평가의 테이블 고르기가 쓴다),
+     * 있으면 그 테이블과 컬럼의 상세 (펼쳤을 때 한 번 조회 : 스키마·논리명·물리 설명·원본 COMMENT·업무 설명·타입·PK/FK·표준 용어·도메인).
+     * 원본 COMMENT 가 있어도 업무 설명이 있는 것으로 보지 않는다
      */
     public List<AiDictionaryDto.TargetRow> targets(ExecutionContext context, Long tableId, boolean onlyMissing, String keyword) {
         verifier.verify(context, "VIEWER");
         Long projectId = context.projectId();
+        if (tableId == null) {
+            List<TableInfo> list = tables.findAll(targetSpec(projectId, onlyMissing, keyword),
+                    PageRequest.of(0, TARGET_LIST_MAX, Sort.by(Sort.Order.asc("tableName"), Sort.Order.asc("id")))).getContent();
+            return tableRows(projectId, list);
+        }
         Map<String, AiDescriptionProposal> latest = latestByTarget(projectId, tableId);
         List<AiDictionaryDto.TargetRow> rows = new ArrayList<>();
-        String kw = keyword == null || keyword.isBlank() ? null : keyword.strip().toUpperCase(Locale.ROOT);
-        if (tableId == null) {
-            List<TableInfo> list = tables.findAll((root, q, cb) -> cb.equal(root.get("projectId"), projectId));
-            list.stream().sorted(Comparator.comparing(TableInfo::getTableName))
-                    .filter(t -> !onlyMissing || blank(t.getBizDescription()))
-                    .filter(t -> kw == null || t.getTableName().toUpperCase(Locale.ROOT).contains(kw) || (t.getTableKorName() != null && t.getTableKorName().toUpperCase(Locale.ROOT).contains(kw)))
-                    .limit(500)
-                    .forEach(t -> rows.add(row(AiDescriptionProposal.TargetType.TABLE, t.getId(), null, t.getTableName(), t.getTableKorName(), t.getSourceComment(),
-                            t.getBizDescription(), latest.get(key(t.getId(), null)))));
-            return rows;
+        Map<Long, long[]> counts = new LinkedHashMap<>();
+        for (Object[] r : columns.countBizDescriptionsByTables(projectId, List.of(tableId))) {
+            counts.put((Long) r[0], new long[]{((Number) r[1]).longValue(), r[2] == null ? 0 : ((Number) r[2]).longValue()});
         }
         TableInfo table = tables.findById(tableId).filter(t -> projectId.equals(t.getProjectId())).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
+        long[] c = counts.getOrDefault(tableId, new long[2]);
         if (!onlyMissing || blank(table.getBizDescription())) {
             rows.add(row(AiDescriptionProposal.TargetType.TABLE, tableId, null, table.getTableName(), table.getTableKorName(), table.getSourceComment(), table.getBizDescription(),
-                    latest.get(key(tableId, null))));
+                    latest.get(key(tableId, null)), new AiDictionaryDto.TargetDetail(table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getTableName(),
+                            text(table.getTableKorName()), text(table.getTableDescription()), text(table.getSourceComment()), text(table.getBizDescription()), null, null, null,
+                            null, null, (int) c[0], (int) c[1])));
         }
-        columns.findAllByTableInfo_IdIn(List.of(tableId)).stream().filter(c -> projectId.equals(c.getProjectId()))
-                .sorted(Comparator.comparing((ColumnInfo c) -> c.getSortOrder() == null ? Integer.MAX_VALUE : c.getSortOrder()))
-                .filter(c -> !onlyMissing || blank(c.getBizDescription()))
-                .forEach(c -> rows.add(row(AiDescriptionProposal.TargetType.COLUMN, tableId, c.getId(), table.getTableName() + "." + c.getColumnName(), c.getColumnDesc(),
-                        c.getSourceComment(), c.getBizDescription(), latest.get(key(tableId, c.getId())))));
+        List<ColumnInfo> cols = columns.findAllByTableInfo_IdIn(List.of(tableId)).stream().filter(col -> projectId.equals(col.getProjectId()))
+                .sorted(Comparator.comparing((ColumnInfo col) -> col.getSortOrder() == null ? Integer.MAX_VALUE : col.getSortOrder())).toList();
+        // FK : 이 테이블 컬럼이 원본(참조하는 쪽) 컬럼인 FK 관계
+        java.util.Set<Long> fkColumns = new java.util.HashSet<>();
+        if (!cols.isEmpty()) {
+            relations.findAllUsingColumns(cols.stream().map(ColumnInfo::getId).toList()).stream()
+                    .filter(r -> r.getRelationType() == com.lexorma.data.physical.domain.entity.TableRelation.Type.FK)
+                    .forEach(r -> r.getColumns().forEach(pair -> fkColumns.add(pair.getSourceColumn().getId())));
+        }
+        cols.stream().filter(col -> !onlyMissing || blank(col.getBizDescription())).forEach(col -> {
+            var term = col.getStandardTerms();
+            rows.add(row(AiDescriptionProposal.TargetType.COLUMN, tableId, col.getId(), table.getTableName() + "." + col.getColumnName(), col.getColumnDesc(),
+                    col.getSourceComment(), col.getBizDescription(), latest.get(key(tableId, col.getId())), new AiDictionaryDto.TargetDetail(
+                            table.getSchema() == null ? null : table.getSchema().getSchemaName(), col.getColumnName(), term == null ? null : text(term.getCommonStandardTermName()),
+                            text(col.getColumnDesc()), text(col.getSourceComment()), text(col.getBizDescription()), typeLabel(col), Boolean.TRUE.equals(col.getIsPk()),
+                            fkColumns.contains(col.getId()) || !blank(col.getRefTableName()), term == null ? null : text(term.getCommonStandardTermName()),
+                            term == null || term.getStandardDomain() == null ? null : text(term.getStandardDomain().getCommonStandardDomainName()), null, null)));
+        });
         return rows;
+    }
+
+    private static String typeLabel(ColumnInfo c) {
+        if (c.getDataType() == null) return null;
+        if (c.getMaxLength() != null) return c.getDataType() + "(" + c.getMaxLength() + ")";
+        if (c.getPrecision() != null) return c.getDataType() + "(" + c.getPrecision().stripTrailingZeros().toPlainString() + (c.getScale() == null ? "" : "," + c.getScale()) + ")";
+        return c.getDataType();
+    }
+
+    private static String text(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     /** 테이블·컬럼 화면과 ERD 상세용 : 그 테이블과 컬럼의 업무 설명과 최근 제안 상태 */
@@ -163,7 +256,7 @@ public class AiDictionaryQueryService {
                 .forEach(p -> groups.computeIfAbsent(p.getModel() + "\u0000" + p.getPromptVersion(), k -> new ArrayList<>()).add(p));
         List<AiDictionaryDto.ModelMetrics> models = new ArrayList<>();
         for (List<AiDescriptionProposal> group : groups.values()) {
-            int approved = 0, edited = 0, rejected = 0, hold = 0, required = 0, superseded = 0, open = 0, unknown = 0, unsupported = 0;
+            int approved = 0, edited = 0, rejected = 0, hold = 0, required = 0, superseded = 0, closed = 0, open = 0, unknown = 0, unsupported = 0;
             int cited = 0, invalid = 0, relations = 0, invalidRelations = 0, termBase = 0, termMatch = 0;
             List<Double> minutes = new ArrayList<>();
             for (AiDescriptionProposal p : group) {
@@ -173,6 +266,7 @@ public class AiDictionaryQueryService {
                     case ON_HOLD -> hold++;
                     case REVIEW_REQUIRED -> required++;
                     case SUPERSEDED -> superseded++;
+                    case CLOSED -> closed++;
                     default -> open++;
                 }
                 List<AiDescriptionProposalHistory> h = byProposal.getOrDefault(p.getId(), List.of());
@@ -211,7 +305,7 @@ public class AiDictionaryQueryService {
             minutes.sort(Comparator.naturalOrder());
             Double median = minutes.isEmpty() ? null : minutes.get(minutes.size() / 2);
             AiDescriptionProposal first = group.getFirst();
-            models.add(new AiDictionaryDto.ModelMetrics(first.getModel(), first.getPromptVersion(), group.size(), approved, edited, rejected, hold, required, superseded, open,
+            models.add(new AiDictionaryDto.ModelMetrics(first.getModel(), first.getPromptVersion(), group.size(), approved, edited, rejected, hold, required, superseded, closed, open,
                     ratio(approved, approved + rejected), ratio(edited, approved), ratio(rejected, approved + rejected), ratio(invalid, cited),
                     ratio(unsupported, group.size()), ratio(invalidRelations, relations), ratio(unknown, group.size()), ratio(termMatch, termBase), termBase, median));
         }
@@ -237,9 +331,9 @@ public class AiDictionaryQueryService {
     }
 
     private static AiDictionaryDto.TargetRow row(AiDescriptionProposal.TargetType type, Long tableId, Long columnId, String name, String description, String sourceComment,
-                                                 String bizDescription, AiDescriptionProposal latest) {
+                                                 String bizDescription, AiDescriptionProposal latest, AiDictionaryDto.TargetDetail detail) {
         return new AiDictionaryDto.TargetRow(type, tableId, columnId, name, description, !blank(sourceComment), !blank(bizDescription),
-                latest == null ? null : latest.getId(), latest == null ? null : latest.getStatus(), latest != null && Boolean.TRUE.equals(latest.getRecheckNeeded()));
+                latest == null ? null : latest.getId(), latest == null ? null : latest.getStatus(), latest != null && Boolean.TRUE.equals(latest.getRecheckNeeded()), detail);
     }
 
     private static AiDictionaryDto.ObjectStatus status(AiDescriptionProposal.TargetType type, Long tableId, Long columnId, String bizDescription, AiDescriptionProposal latest) {

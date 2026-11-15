@@ -46,13 +46,15 @@ Lexorma is an open-source web application for data standardization and metadata 
 | Source databases | Re-import after a later collection | Each attribute is compared with the value last imported into the model: changes made only in the source can be chosen again, while attributes edited in the model after the import (or changed on both sides) are shown but never overwritten. Objects deleted in the source are reported and kept in the model |
 | Administration | Users, projects, permissions | Project membership, hierarchical roles, approval rights, announcements, system logs, recovery login when every project is inactive |
 | Administration | External connection security | Outgoing connections to source databases (JDBC) and AI servers (HTTP) are allowed only to destinations an administrator has allowed (connection type, optional host, CIDR range, port); everything else is denied. The actual connection is pinned to the verified addresses, and every connection attempt and policy change is audited |
+| Administration | AI providers (optional) | An `ADMIN` registers the AI server Lexorma may call (Ollama for now) and checks it with a connection test, the server's model list and a test prompt. Calls go through Spring AI and only through the external connection security rules; nothing is set up or connected when no provider is registered |
+| AI assistant | Metadata query (optional) | Ask the system default AI provider about the current project's registered metadata (schemas, tables, columns, relations, standard words, terms and domains). The AI can only use read-only lookup tools that Lexorma checks against your project and role on every call; it cannot run SQL, change metadata or reach other projects or source databases. The assistant window shows which tools actually ran. Lexorma checks every table, column, relation, dictionary item and change-history entry the answer cites against the project (existence, scope, name, parent table and changes since the lookup) and marks what it could not confirm. Tools include similar-column search (rule-based scores) and change history. Each request stays within a token budget. Models without tool calling still answer from metadata that Lexorma looks up itself (narrower) |
 
 ### Planned (not implemented yet)
 
 | Area | Feature |
 |---|---|
 | Source databases | Synchronizing deletions and replacing changed constraints or indexes from the source; collection and comparison rules for DBMSs other than PostgreSQL |
-| AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review |
+| AI | AI-assisted metadata analysis — column descriptions, term mapping suggestions and schema analysis, always with human review; OpenAI-compatible providers (InfraMesh, vLLM) and streaming responses |
 
 ### Data Standardization Rules
 
@@ -142,7 +144,9 @@ cd lexorma
 ./gradlew bootRun --args='--spring.profiles.active=h2-local'
 ```
 
-Open http://localhost:9940 and sign in with `admin` / `admin`. The password must be changed on first login. The H2 in-memory database is rebuilt on every start.
+Open http://localhost:9940 and sign in with `admin` / `admin`. The password must be changed on first login. Data is kept in an H2 file database at `~/.lexorma/data/lexorma.mv.db` and survives restarts; set `LEXORMA_DATA_DIR` to store it elsewhere (optional).
+
+The same profile runs the single JAR without PostgreSQL: `java -jar lexorma.jar --spring.profiles.active=h2-local`. The database file stays outside the JAR, so rebuilding or replacing the JAR keeps your data. Stop Lexorma normally (Ctrl+C) before copying the file for a backup; see [docs/h2-file-storage.md](docs/h2-file-storage.md) for backup, restore and troubleshooting.
 
 ### With PostgreSQL
 
@@ -172,7 +176,7 @@ A user can be signed in from one place at a time; a later login ends the earlier
 | Profile | Database | Purpose |
 |---|---|---|
 | `local` (default) | PostgreSQL at `localhost:15439` | Local development |
-| `h2-local` | H2 in-memory | Local development without PostgreSQL |
+| `h2-local` | H2 file database in `~/.lexorma/data` (`LEXORMA_DATA_DIR`) | Local run and single JAR without PostgreSQL (development conveniences such as the H2 console are on) |
 | `dev` | PostgreSQL at `lexorma-postgres:5432` | Development server (port `18080`) |
 | `docker` | PostgreSQL from `DB_*` environment variables | Docker deployment |
 | `h2-docker` | H2 file database in `/data` | Standalone Docker deployment |
@@ -191,7 +195,7 @@ The default database name and account are kept from the previous project name so
 
 ### Secret encryption key (optional)
 
-Credentials that Lexorma stores for external systems (external database connection passwords; AI endpoints are planned) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
+Credentials that Lexorma stores for external systems (external database connection passwords; AI providers store no credentials yet) are encrypted with AES-256-GCM. The key is never stored in the database. **The key is optional**: Lexorma starts and all modeling features (dictionary, models, ERD, DDL, mapping, history) work without it; only storing or using such credentials needs a key.
 
 | Property | Environment variable | Description |
 |---|---|---|
@@ -208,7 +212,7 @@ Credentials that Lexorma stores for external systems (external database connecti
 
 ### External connection access
 
-Lexorma connects to source databases (and, later, AI servers) itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
+Lexorma connects to source databases and AI servers itself. Connections are **denied by default**: an `ADMIN` allows destinations under *System › External connection security* with rules of connection type, optional host, CIDR range and port. One rule must match the port, the host (if set) and every address the host name resolves to. Link-local, cloud metadata, multicast and unspecified addresses are always refused, even with a rule. The socket is pinned to the verified addresses, so a DNS change after the check cannot redirect the connection.
 
 After upgrading, existing source connections stay blocked until a rule allows them; the same screen lists registered connections without a rule. Use a numeric address such as `127.0.0.1` instead of `localhost` when it resolves to both IPv4 and IPv6.
 
@@ -220,6 +224,18 @@ The operator can additionally cap source database connections with environment v
 | `LEXORMA_SOURCE_ALLOWED_NETWORKS` | Private and loopback ranges (CIDR, comma separated) that source connections may reach. Empty: no cap (an administrator rule is still required) |
 
 Storing a connection password requires the secret encryption key above.
+
+### AI providers (optional)
+
+AI is optional: with no provider registered Lexorma needs no AI settings, no Ollama, no API key and no secret key, and it never connects to an AI server on its own. To use a local Ollama:
+
+1. *System › External connection security*: add an `AI HTTP` rule, for example host `127.0.0.1`, range `127.0.0.1/32`, port `11434`.
+2. *System › AI provider management*: register type Ollama with the address `http://127.0.0.1:11434` (saving does not connect).
+3. *Check*: run the connection test, pick the default model from the server's model list and try a test prompt.
+4. *Set as default*: AI features use the **system default provider** and its default model. Registering a provider does not make it the default; only an enabled provider with a default model can be set. A disabled default stays selected but is not called, and Lexorma never switches to another provider on its own. Clear the default (or set another one) before deleting that provider.
+5. *AI assistant* (the button at the bottom right, for `VIEWER` and above; it appears only while the system default provider is usable): ask a question about the current project. The default model must support tool calling (for example a model whose Ollama capabilities include `tools`); otherwise the query fails with `AI_TOOL_CALLING_UNSUPPORTED`. Questions, answers and looked-up metadata are sent to that AI server and are not stored.
+
+In Docker, `127.0.0.1` is the Lexorma container itself: register the address of the host (for example `host.docker.internal` on Docker Desktop) or of the Ollama container, and allow the range it resolves to. Lexorma does not install Ollama or download models. Responses are returned in one piece (no streaming). Timeouts: `lexorma.ai.test-timeout-seconds` (connection test and model list, default 15), `lexorma.external.http.response-timeout-seconds` (calls, default 120).
 
 ### Database migrations
 
@@ -348,6 +364,16 @@ docker run -d \
 To store source database passwords, add an encryption key (optional): either `-e LEXORMA_SECRET_KEYS=prod:<key>` (visible in `docker inspect`), or mount a file you create yourself with `-v ./secrets/lexorma.secret.keys:/run/secrets/lexorma.secret.keys:ro -e SPRING_CONFIG_IMPORT=configtree:/run/secrets/` (one line `prod:<key>`, not in Git). `docker run` does not use Compose secrets.
 
 ### Standalone with H2
+
+With Docker Compose (same `.env` as above; the `POSTGRES_*` values are not used, the database file goes to `LEXORMA_DATA_DIR`):
+
+```bash
+cd docker/lexorma
+cp .env.example .env     # if you have not created it yet
+docker compose -f docker-compose.h2.yml -p lexorma-h2 up -d
+```
+
+Or with `docker run`:
 
 ```bash
 docker run -d \

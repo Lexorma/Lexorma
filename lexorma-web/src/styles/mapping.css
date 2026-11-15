@@ -33,3 +33,21 @@ dialog .mapping-detail table.mapping-fixed-table td, dialog .mapping-detail tabl
 /* 물리명 추천 */
 .mapping-target { display: inline-flex; gap: 4px; margin: 0 0 12px; }
 dialog .mapping-recommendation-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; padding: 8px 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); font-size: 12px; overflow-wrap: anywhere; }
+
+/* 좁은 화면 : 필터(매핑 여부·스키마 등) + 검색 컬럼·검색어·조회가 한 줄에 들어가지 않아 본문 밖으로 밀려난다 → 줄을 나눈다 (인덱스 관리와 같다) */
+@media (max-width: 768px) {
+    .mapping-tab .search-container {
+        flex-wrap: wrap;
+        row-gap: 8px;
+        max-width: 100%;
+    }
+
+    .mapping-tab .search-container > .search-column-select {
+        flex: 1 1 30%;
+        max-width: none;
+    }
+
+    .mapping-tab .search-container > .search-input {
+        min-width: 0;
+    }
+}

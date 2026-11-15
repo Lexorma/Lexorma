@@ -5,7 +5,7 @@ import { Label, Mono, Muted } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
-import { mappingQualityColumns } from './columns';
+import { MAPPING_QUALITY_GRID_MIN_WIDTH, mappingQualityColumns } from './columns';
 import { CHECK_STATUSES, CHECK_TYPES, checkTypeLabel, type CheckStatus, type CheckType, type QualityRow, type QualitySummary } from './model';
 
 /** 진단 유형별 논리 측 값 / 물리 측 값의 이름 */
@@ -94,6 +94,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       <Grid
         ref={grid}
         id="mappingQualityGrid"
+                  minWidth={MAPPING_QUALITY_GRID_MIN_WIDTH}
         columns={mappingQualityColumns}
         dataUrl="/api/modelMapping/quality"
         params={params}

@@ -1,13 +1,13 @@
 package com.lexorma.core.network.http;
 
-import com.lexorma.common.exception.CustomException;
-import com.lexorma.common.exception.domain.ErrorCode;
+import com.lexorma.common.i18n.Messages;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.ConnectionDecision;
 import com.lexorma.core.network.ConnectionPin;
 import com.lexorma.core.network.ConnectionType;
 import com.lexorma.core.network.NetworkAddresses;
 import com.lexorma.core.network.PinnedSocket;
+import com.lexorma.core.network.domain.dto.ExternalConnectionDto.Reason;
 import com.lexorma.core.network.service.ExternalConnectionGuard;
 import org.apache.hc.client5.http.DnsResolver;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -64,17 +64,27 @@ public class ExternalHttpClients {
      * @param uri 대상 (http·https, 계정 정보 없음). 이 대상의 호스트·포트로만 연결된다
      */
     public GuardedHttpTarget open(ConnectionType type, URI uri, ExecutionContext context) {
+        return open(type, uri, context, responseTimeoutSeconds);
+    }
+
+    /**
+     * {@link #open(ConnectionType, URI, ExecutionContext)} 에 응답 제한 시간만 따로 준다 (연결 테스트처럼 짧게 끝내야 하는 요청).
+     * 기본 응답 제한 시간보다 길게 늘리지 않는다. 차단이면 {@link ExternalConnectionBlockedException} (사유 코드 포함).
+     */
+    public GuardedHttpTarget open(ConnectionType type, URI uri, ExecutionContext context, int responseTimeoutSeconds) {
         if (type != ConnectionType.AI_HTTP) throw new IllegalArgumentException("HTTP 연결 유형이 아닙니다.");
+        if (responseTimeoutSeconds < 1) throw new IllegalArgumentException("응답 제한 시간이 올바르지 않습니다.");
         String scheme = uri == null || uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-        if (!scheme.equals("http") && !scheme.equals("https")) throw new CustomException(ErrorCode.EXTERNAL_CONNECTION_BLOCKED, "http 또는 https 주소만 연결할 수 있습니다.");
-        if (uri.getRawUserInfo() != null) throw new CustomException(ErrorCode.EXTERNAL_CONNECTION_BLOCKED, "주소에 계정 정보를 넣을 수 없습니다.");
-        if (uri.getHost() == null) throw new CustomException(ErrorCode.EXTERNAL_CONNECTION_BLOCKED, "주소에 호스트가 없습니다.");
+        if (!scheme.equals("http") && !scheme.equals("https")) throw new ExternalConnectionBlockedException(Reason.INVALID_HOST, Messages.get("http 또는 https 주소만 연결할 수 있습니다."));
+        if (uri.getRawUserInfo() != null) throw new ExternalConnectionBlockedException(Reason.INVALID_HOST, Messages.get("주소에 계정 정보를 넣을 수 없습니다."));
+        if (uri.getHost() == null) throw new ExternalConnectionBlockedException(Reason.INVALID_HOST, Messages.get("주소에 호스트가 없습니다."));
         int port = uri.getPort() < 0 ? (scheme.equals("https") ? 443 : 80) : uri.getPort();
         ConnectionDecision decision = guard.authorize(type, uri.getHost(), port, List.of(), context);
         if (!decision.allowed()) {
-            throw new CustomException(ErrorCode.EXTERNAL_CONNECTION_BLOCKED, "{0}", ExternalConnectionGuard.reasonText(decision));
+            throw new ExternalConnectionBlockedException(decision.reason(), ExternalConnectionGuard.reasonText(decision));
         }
-        return new GuardedHttpTarget(decision, client(decision.pin(), connectTimeoutSeconds, responseTimeoutSeconds), guard);
+        int timeout = Math.min(responseTimeoutSeconds, this.responseTimeoutSeconds);
+        return new GuardedHttpTarget(decision, client(decision.pin(), connectTimeoutSeconds, timeout), guard);
     }
 
     static CloseableHttpClient client(ConnectionPin pin, int connectTimeoutSeconds, int responseTimeoutSeconds) {

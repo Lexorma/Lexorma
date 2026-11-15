@@ -794,3 +794,18 @@
 .source-import-ok {
     color: var(--gh-success);
 }
+
+/* ---------------------------------------------------------------- AI Provider 테스트 프롬프트 응답 (AI-3) */
+.ai-answer {
+    max-height: 320px;
+    margin: 0;
+    padding: 8px 12px;
+    overflow: auto;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas-subtle);
+    color: var(--gh-fg);
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

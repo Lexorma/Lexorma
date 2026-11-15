@@ -28,6 +28,7 @@ subprojects {
     dependencyManagement {
         imports {
             mavenBom SpringBootPlugin.BOM_COORDINATES
+            mavenBom libs.spring.ai.bom.get().toString()
         }
     }
 
@@ -52,6 +53,14 @@ subprojects {
         useJUnitPlatform()
         // 루트에서 --tests 로 단일 테스트를 지정해도 해당 테스트가 없는 모듈이 실패하지 않도록
         filter.failOnNoMatchingTests = false
+    }
+}
+
+// AI 구조화 응답의 JSON Schema 검증기 (StructuredAnswerParser 가 직접 쓴다). Spring AI(spring-ai-client-chat)도 같은 버전을 가져오지만,
+// 전이 의존성에 기대지 않도록 직접 선언한다 — Spring AI 를 올릴 때 이 버전과 맞는지 확인한다
+project(':lexorma-data') {
+    dependencies {
+        implementation libs.json.schema.validator
     }
 }
 

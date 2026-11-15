@@ -1,6 +1,6 @@
 # Lexorma AI 메타데이터 관리 로드맵
 
-> **상태: 구현 중 (2026-11-13).** 0단계(공통 기반)의 결정, **AI-1a 공통 기반**, **AI-1b 외부 DB 연결·원본 카탈로그 저장 모델(아키텍처 보완 포함)**, **AI-1c 수집 실행·스냅샷·변경 이력**, **AI-2b PostgreSQL JDBC 수집·수동 최신화**까지 끝났다 — [9장](#9-미확정-사항-종합), [1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리), [AI-1b 기록](source-catalog-ai1b.md), [AI-1c 기록](source-catalog-versioning.md), [원본 DB 연동·내부 도구 아키텍처](source-tool-architecture.md), [AI-2b 기록](source-postgresql-collection-ai2b.md). **Oracle·MySQL·MariaDB 수집 도구·Ollama·Tool Calling 은 아직 구현되지 않았다.** **DBMS 확대(EDB·MySQL·MariaDB·Oracle 수집기·드라이버·타입 변환)는 전체 핵심 기능과 AI 기능 개발 → 통합 안정화 이후로 미룬다** (2026-11-13 확정, [정책](m4-foundation.md#1-dbms-지원-정책-확정)). **개발 순서 (2026-11-13)** : ~~AI-2b 배포 패키징 검증~~(완료) → 데이터 모델링 M-14(인덱스 관리)·M-15(VIEW 관리) → AI 후속 재개 ([데이터 모델링 로드맵 5.3](data-modeling-roadmap.md#53-개발-순서-조정-2026-11-13)). 재개할 AI 단계는 정하지 않았다. 4장의 현황은 2026-11-12 의 `dev` 코드를 기준으로 다시 확인한 것이다.
+> **상태: 구현 중 (2026-11-13).** 0단계(공통 기반)의 결정, **AI-1a 공통 기반**, **AI-1b 외부 DB 연결·원본 카탈로그 저장 모델(아키텍처 보완 포함)**, **AI-1c 수집 실행·스냅샷·변경 이력**, **AI-2b PostgreSQL JDBC 수집·수동 최신화**, **SEC-1 외부 연결 보안**, **AI-3 Spring AI 기반 AI Provider 관리·Ollama 연동**, **AI-4 Lexorma DB 기반 AI Tool Calling(4단계 전체 완료, 2026-11-15)**까지 끝났다 — [9장](#9-미확정-사항-종합), [1단계의 작업 분할](#1단계-메타데이터-모델-보강--변경-이력--상세-설명-분리), [AI-1b 기록](source-catalog-ai1b.md), [AI-1c 기록](source-catalog-versioning.md), [원본 DB 연동·내부 도구 아키텍처](source-tool-architecture.md), [AI-2b 기록](source-postgresql-collection-ai2b.md), [AI-3 기록](ai-provider-ai3.md), [AI-4 기록](ai-tool-calling-ai4.md). **Oracle·MySQL·MariaDB 수집 도구·업무 AI 기능(5단계~)·AI 스트리밍은 아직 구현되지 않았다.** **DBMS 확대(EDB·MySQL·MariaDB·Oracle 수집기·드라이버·타입 변환)는 전체 핵심 기능과 AI 기능 개발 → 통합 안정화 이후로 미룬다** (2026-11-13 확정, [정책](m4-foundation.md#1-dbms-지원-정책-확정)). **개발 순서 (2026-11-13)** : ~~AI-2b 배포 패키징 검증~~(완료) → 데이터 모델링 M-14(인덱스 관리)·M-15(VIEW 관리) → AI 후속 재개 ([데이터 모델링 로드맵 5.3](data-modeling-roadmap.md#53-개발-순서-조정-2026-11-13)). 재개할 AI 단계는 정하지 않았다. 4장의 현황은 2026-11-12 의 `dev` 코드를 기준으로 다시 확인한 것이다.
 >
 > README 의 [Project Roadmap](../README.md#project-roadmap) 은 방향만 요약하고, AI·원본 DB 수집 관련 상세 계획은 이 문서에서 관리한다.
 > ERD·논리/물리 모델링·표준화·DDL/Export 와 **전체 제품 우선순위**는 [데이터 모델링 로드맵](data-modeling-roadmap.md)에서 관리한다. AI 는 모델링·메타데이터 관리를 대체하지 않는 **보조 계층**이다. 다른 문서에서 이 문서의 n단계는 `AI-n` 으로 가리킨다.
@@ -113,7 +113,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 | 외부 DB 연결 | **연결 설정 관리 구현 (AI-1b)**, 접속·수집은 미구현 | `lexorma-source` 의 `TB_SRC_CNTN` : 프로젝트별, DBMS·호스트·포트·데이터베이스명(Oracle 서비스명·SID)·계정·암호화한 비밀번호·허용된 옵션. JDBC URL·드라이버 클래스는 입력받지 않고 서버가 정한다(`SourceJdbcSettings`). PostgreSQL 은 연결 테스트·수동 최신화로 실제 접속한다 (AI-2b : 읽기 전용 세션, 접속 대상 주소 정책, 호출 제한 — [기록](source-postgresql-collection-ai2b.md)) |
 | 내부 도구 (원본 DB) | **계약 (AI-1b)·PostgreSQL 도구 7개 (AI-2b) 구현** | `lexorma-source` 의 `tool/` : `SourceMetadataTool`, `SourceToolExecutor`(실행 직전 권한·연결·호스트 정책·DBMS 확인, 세션 하나에 JDBC 연결 하나), `SourceToolRegistry`, `tool/postgresql/PostgresSourceTools`. Oracle·MySQL·MariaDB 도구는 없다 |
 | MCP | 없음 (후속 선택 기능) | AI-1b 첫 구현의 MCP 서버 설정(`TB_MCP_SRVR`)은 아키텍처 보완에서 제거했다. MCP 코드·의존성 없음 |
-| AI / LLM / Tool Calling | 미구현 | Spring AI, Ollama, OpenAI 등 의존성·코드 없음 (`gradle/libs.versions.toml`) |
+| AI / LLM / Tool Calling | **AI Provider·Ollama 연결 구현 (AI-3)**, **읽기 전용 메타데이터 Tool Calling 기반 (AI-4 기반)**, 업무 AI 기능 미구현 | Spring AI 2.0.2 (`spring-ai-ollama`·`spring-ai-client-chat`, starter·자동 설정 없음). `lexorma-core` 의 `core/ai` : Provider 설정(`TB_AI_PRVDR`), 요청마다 SEC-1 HTTP 로 만드는 Ollama ChatModel·ChatClient, 연결 테스트·모델 목록·테스트 프롬프트(ADMIN) — [ai-provider-ai3.md](ai-provider-ai3.md). 스트리밍 미지원 |
 | 스케줄러 / 배치 / 비동기 실행 | 미구현 | `@EnableScheduling`, `@Scheduled`, `@Async`, 분산 락 없음 |
 | 아웃바운드 HTTP 클라이언트 | 미구현 | 사용 중인 클라이언트 없음 (Spring Framework 의 `RestClient`, JDK `HttpClient` 는 추가 의존성 없이 사용 가능) |
 
@@ -160,8 +160,8 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 | 0 | 공통 기반 결정 (모듈 배치, 비밀값 저장, 감사·마스킹) | P1 | — | **결정 완료 (2026-11-12)**, 공통 기반 구현은 AI-1a |
 | 1 | 메타데이터 모델 보강 · 변경 이력 · 상세 설명 분리 | P1 | 0 | **AI-1a(공통 기반)·AI-1b(연결·원본 카탈로그 저장 모델)·AI-1c(수집 실행·스냅샷·변경 이력) 구현**. AI-1d 미구현 |
 | 2 | DBMS 별 내부 메타데이터 수집 도구 (JDBC) | P1 | 0, 1 | **PostgreSQL 구현 (AI-2b)**. Oracle·MySQL·MariaDB·EDB 는 보류 — 전체·AI 기능 개발과 통합 안정화 이후 ([정책](m4-foundation.md#1-dbms-지원-정책-확정)) |
-| 3 | Ollama 연결 및 Provider 추상화 | P1 | 0 | 미구현 |
-| 4 | Lexorma DB 기반 AI Tool Calling | P1 | 1, 3 | 미구현 |
+| 3 | Ollama 연결 및 Provider 추상화 | P1 | 0 | **구현 (AI-3, 2026-11-14)** — [기록](ai-provider-ai3.md). 스트리밍 미지원 |
+| 4 | Lexorma DB 기반 AI Tool Calling | P1 | 1, 3 | **완료 (2026-11-15)** — 기반(11-14) + 구조화 응답·근거 검증 + 유사 컬럼·변경 이력 Tool·토큰 예산·미지원 모델 대체 흐름 ([기록](ai-tool-calling-ai4.md), 완료 조건 점검 [12.9](ai-tool-calling-ai4.md#129-로드맵-4단계-완료-조건-점검)) |
 | 5 | AI 데이터 사전 초안 생성 및 승인 | P1 | 1, 4 | 미구현 |
 | 6 | 규칙 기반 메타데이터 품질 검사 | P2 | 1 | 일부 구현 (개별 검증 로직만) |
 | 7 | AI 기반 품질 검사 및 개선 권고 | P2 | 4, 6 | 미구현 |
@@ -343,7 +343,7 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 3단계. Ollama 연결 및 Provider 추상화
 
 - **목적 및 배경:** 사용자가 운영하는 Ollama 서버에 연결해 이후 AI 기능의 기반을 만든다. Lexorma 는 Ollama 를 설치·관리하지 않는다.
-- **현재 구현 상태:** 미구현. HTTP 클라이언트·AI 관련 의존성이 없다.
+- **현재 구현 상태:** **구현 (AI-3, 2026-11-14, [기록](ai-provider-ai3.md))** — U-10 을 Spring AI 로 정했다 (2.0.2, 비-starter 모듈만 → 기본 모델 Bean·접속 설정 없음). 시스템 전역 Provider 설정(`TB_AI_PRVDR`, V8 : 유형 `OLLAMA`·주소·기본 모델·활성, 인증 정보 칸 없음)과 ADMIN 화면·API(`/api/ai/providers/**`), 요청마다 SEC-1 `ExternalHttpClients`(AI_HTTP)의 요청 팩토리로 만드는 `OllamaApi`·`OllamaChatModel`·`ChatClient`(재시도·모델 내려받기 없음), 연결 테스트(실제 응답 해석)·모델 목록·테스트 프롬프트, 오류 분류(SEC-1 차단 사유·거부·시간 초과·모델 없음·서버 오류·리다이렉트·잘못된 응답), 이후 기능용 `AiProviderClients.call`. **후속 : 시스템 기본 AI Provider** (V9 `TB_AI_STNG`, 최대 하나·명시 지정·자동 전환 없음, 업무 기능은 `AiProviderClients.callDefault` — [기록 13장](ai-provider-ai3.md#13-시스템-기본-ai-provider-ai-3-후속-v9)). **스트리밍은 지원하지 않는다** — Spring AI 의 WebClient 경로가 SEC-1 주소 고정 전송을 쓸 수 없어 막았다 (대안 : [기록 5장](ai-provider-ai3.md#5-스트리밍-미지원--제약과-대안)). 운영 지표(U-22)는 정하지 않았다. 아래는 등록 당시의 계획이다.
 - **작업 범위:**
   - AI 연결 설정 등록/수정/비활성화: `provider`(초기 `OLLAMA`), `base_url`, 기본 모델, 사용 여부, 인증 정보 참조(필요한 경우, 0단계 방식으로 암호화).
   - 연결 테스트, 모델 목록 조회, 기본 모델 선택.
@@ -373,7 +373,11 @@ Lexorma 를 **AI 기반 데이터베이스 메타데이터 관리 및 데이터 
 ### 4단계. Lexorma DB 기반 AI Tool Calling
 
 - **목적 및 배경:** AI 가 필요한 메타데이터만 골라 읽도록, 자체 DB 조회 Tool 을 제공한다.
-- **현재 구현 상태:** 미구현. 단, Tool 이 재사용할 조회 서비스(테이블·컬럼·용어 조회, 용어 찾기)는 있다.
+- **현재 구현 상태:** **4단계 전체 완료 (2026-11-15)** — 2026-11-14 사용자 결정으로 기반 → 후속 → 잔여로 나눠 구현했다. [기록](ai-tool-calling-ai4.md), 완료 조건 점검 [12.9](ai-tool-calling-ai4.md#129-로드맵-4단계-완료-조건-점검).
+  - 구현 : 읽기 전용 메타데이터 Tool 8개(`listSchemas`·`searchTables`·`getTableDetail`·`getTableColumns`·`getTableRelations`·`searchStandardTerms`·`searchStandardWords`·`searchStandardDomains`, 기존 조회 서비스 재사용), Spring AI 공식 Tool Calling(`FunctionToolCallback`·요청별 등록·`ToolContext`·`ToolCallingAdvisor`·호출 상한), 시스템 기본 Provider(`callDefault`), 실행 컨텍스트 범위 고정과 Tool 호출마다 재검증(USER·ASYNC·**세션 없는 SCHEDULED 포함, 실제 Tool 경계에서 테스트로 검증**), 허용 목록 밖 Tool 거절, 호출 횟수·시간·결과 크기 제한, Tool 미지원 모델 `AI_TOOL_CALLING_UNSUPPORTED`, 질의 API(VIEWER)·AI 도우미 창, 실제 Ollama `gemma4:e4b` 검증.
+  - **후속 구현 (2026-11-15, [11장](ai-tool-calling-ai4.md#11-ai-4-후속--구조화-응답근거-검증))** : ① 근거 검증 — Tool 결과에 실린 근거 ID 의 존재·프로젝트 범위·이 질의의 Tool 결과와의 연결·이름·소속·버전(행 수정 일시 `MDFCN_DT`, 새 마이그레이션 없음)을 서버가 판정, 근거별 상태(VERIFIED·NOT_FOUND·OUT_OF_SCOPE·MISMATCH·STALE·UNVERIFIABLE)와 답변 전체 상태를 응답·화면에 표시 ② 구조화 응답 — JSON Schema(엄격) 검증과 1회 재요청, 실패 시 `AI_STRUCTURED_OUTPUT_INVALID`. 조회(Tool)와 구조화를 두 단계로 나눴다(한 요청에 형식 지시를 함께 주면 실제 모델이 Tool 을 건너뛰었다).
+  - **잔여 구현 (2026-11-15, [12장](ai-tool-calling-ai4.md#12-ai-4-잔여--유사-컬럼변경-이력토큰-예산미지원-모델-대체-흐름))** : ③ Tool 미지원 모델의 대체 흐름 — Ollama 모델 정보(capabilities)나 서버의 명시적 거절로만 판정, 서버가 질문을 규칙으로 해석해 최소한만 조회(같은 Tool 경계)하고 그 맥락으로 구조화 답변·근거 검증(출처 `SERVER_CONTEXT`). SEC-1 차단·일반 오류는 우회하지 않는다 ④ `findSimilarColumns`(규칙 기반 점수 — 물리명·표준 용어·논리명·이름 부분·단어 겹침·도메인, 임베딩 없음)·`getMetadataHistory`(물리 테이블·컬럼·관계 이력, 바뀐 필드의 전후만, 근거 종류 `HISTORY`) ⑤ 토큰 예산 — 요청별 `num_ctx`·`num_predict`, 보내기 전 입력 추정·질의 누적 상한, 출력 잘림 거절(`AI_TOKEN_BUDGET_EXCEEDED`), 실측(AI 서버 값)과 추정 구분. JSON Schema 검증기(networknt)를 직접 의존성으로 선언.
+  - **남은 제약 (4단계 완료 조건 밖)** : 버전 검증은 행 수정 일시 기준(직접 DB 수정·같은 시각 정밀도·하위 변경 한계), 토큰 수는 추정, 대체 흐름은 Tool Calling 보다 좁고 실제 Tool 미지원 모델로는 검증하지 못했다(Mock·capabilities 를 가린 프록시로 검증). 운영 지표(U-22)는 3·8단계 미확정 사항으로 남는다.
 - **작업 범위:**
   - Tool 목록(예시, 이름 확정 아님): `listSchemas`, `listTables`, `getTableMetadata`, `getColumns`, `getTableRelations`, `searchDictionary`, `searchStandardTerms`, `findSimilarColumns`, `getMetadataHistory`.
   - Tool 레지스트리 / 실행기 / 오케스트레이터 역할 설계 (클래스명 강제 아님).
@@ -698,16 +702,16 @@ AI·원본 DB 수집 관련 PR 리뷰와 테스트에서 매번 확인한다.
 | U-01 | 새 기능의 코드 위치 | **결정 (2026-11-12) : `lexorma-data` 의 기능 패키지.** 새 모듈 없음. 도메인과 무관한 공통 부품(암호화·마스킹·실행 컨텍스트·프로젝트 권한 판정)은 `lexorma-core` | 0단계 |
 | U-02 | 비밀값 암호화 키 관리 | **결정 (2026-11-12) : 환경변수 키 + AES-256-GCM** (`LEXORMA_SECRET_KEYS`, 키ID 로 여러 키, AAD 로 자리 결합). 분실 시 비밀값 재등록, 교체 시 옛 키를 남기고 다시 암호화. 외부 Secret Store 는 쓰지 않는다. 구현 `core/crypto` (AI-1a) | 0단계 |
 | U-03 | 원본 메타데이터 저장 모델 | **결정 (2026-11-12) : 별도 원본 카탈로그 + 물리 모델과 명시적 매핑** (설계 데이터와 원본 사실의 생명주기가 다름). 구현 AI-1b·AI-1d | 1단계 |
-| U-04 | AI·연결 설정 범위 | **결정 (2026-11-12) : 혼합.** 전역 Provider·Endpoint = ADMIN, 프로젝트 AI 사용·외부 DB 연결 = 그 프로젝트의 관리자 또는 ADMIN(접근 가능한 프로젝트만). 프로젝트별 역할은 만들지 않는다 | 0단계 |
+| U-04 | AI·연결 설정 범위 | **결정 (2026-11-12) : 혼합.** 전역 Provider·Endpoint = ADMIN, 프로젝트 AI 사용·외부 DB 연결 = 그 프로젝트의 관리자 또는 ADMIN(접근 가능한 프로젝트만). 프로젝트별 역할은 만들지 않는다. **2026-11-14** : 시스템 기본 AI Provider(ADMIN, 최대 하나) 구현. 프로젝트별 Provider·AI 사용 여부는 아직 없다 — 더하면 "프로젝트 지정 → 없으면 시스템 기본" | 0단계 |
 | U-05 | 승인된 설명·용어 재사용 범위 | 프로젝트 / 조직 / 전역. 초기 권고: 프로젝트 | 1단계 |
 | U-06 | 스냅샷·이력·보고서 보관 | **방식 결정 (2026-11-13, AI-1c)** : 원본 카탈로그는 **현재 상태(9개 테이블) + 테이블·스키마 단위 버전(바뀐 것만, Copy-on-Write) + 객체별 변경 이력**으로 보관한다. 기준 상태는 처음 수집한 BASE 버전이고, 보관 정책을 더할 때는 경계 시점에 유효한 버전을 남겨 새 기준으로 삼는다(롤링 기준). **보관 기간은 미정 — 지금은 자동으로 지우지 않는다** ([source-catalog-versioning.md](source-catalog-versioning.md) 7장). 보고서 보관은 9단계 | 보관 기간 : 후속 |
 | U-07 | MCP | **재결정 (2026-11-12, AI-1b 보완)** : **MCP 는 필수가 아닌 후속 선택 기능**이다. 수집은 Lexorma 내부 JDBC 도구로 하고(원칙 1·11·12), MCP 전용 테이블·설정·클라이언트를 지금 만들지 않는다. 필요해지면 JDBC 를 대체하지 않는 선택 Connector 로 더한다. (처음 결정 — 외부 MCP 서버·HTTP·접속 정보는 MCP 서버가 보관 — 은 별도 서버 운영 부담과 단일 서버 배포와의 불일치 때문에 폐기) | 후속 |
 | U-08 | JDBC 드라이버 배포 | PostgreSQL 외 드라이버(MySQL : GPL-2.0 + FOSS Exception, MariaDB : LGPL-2.1, Oracle : FUTC)를 기본 배포본에 넣을지, 운영자가 넣게 할지. 라이선스 조건 확인 포함. (원래 U-08 'MCP 클라이언트 구현 방식' 은 U-07 재결정으로 없어졌다) | 2단계 착수 전 |
 | U-09 | 지원 DB 엔진 범위·순서 | 기존 `DbType`(PostgreSQL, Oracle, MySQL, MariaDB) 중 우선 순서 | 2단계 |
-| U-10 | AI 클라이언트 구현 | Spring `RestClient` 직접 구현 vs Spring AI (Tool Calling 요구, 의존성 비용, Boot 4.1 호환성 비교) | 3단계 |
+| U-10 | AI 클라이언트 구현 | **결정 (2026-11-14, AI-3) : Spring AI.** 2.0.2 는 Boot 4.1.2 와 같은 Spring Framework 7.0.10·Jackson 3.1.7 이다. starter·autoconfigure 없이 모델 모듈만 쓰고, 모델 객체는 Provider 설정으로 요청마다 만들며 HTTP 는 SEC-1 요청 팩토리로만 보낸다 ([기록](ai-provider-ai3.md)) | 3단계 |
 | U-11 | Endpoint 허용 정책 | 등록 가능 역할, 허용 스킴·포트, 관리자 승인 절차. **대상 주소 범위는 SEC-1 의 공통 정책(U-27~U-32)으로 정한다** | 3단계 |
-| U-12 | LLM 전달 데이터 범위 | `example`(데이터 예시), 민감 표시 컬럼, 설명 전문 전달 여부 | 4단계 |
-| U-13 | 호출·토큰·결과 크기 기본 한도 | 모델·환경별 기본값과 설정 가능 범위 | 4단계 |
+| U-12 | LLM 전달 데이터 범위 | `example`(데이터 예시), 민감 표시 컬럼, 설명 전문 전달 여부. **AI-4 기반 (2026-11-14) : `example` 은 보내지 않는다(실제 데이터일 수 있음), 민감 컬럼은 표시(`sensitive`)만, 설명은 300자까지 잘라 보낸다** — 정형 작업(5단계)의 범위는 그때 다시 정한다 | 4단계 |
+| U-13 | 호출·토큰·결과 크기 기본 한도 | 모델·환경별 기본값과 설정 가능 범위. **AI-4 기본값 (코드 상수)** : Tool 호출 질의당 8회(같은 Tool 4회)·질의 180초·검색 20건·Tool 결과 24,000자·질문 1,000자·구조화 재요청 1회. **토큰 (2026-11-15, 선택 설정)** : 요청 컨텍스트 16,384(모델 최대 이하로 자동 축소, `lexorma.ai.query.context-tokens`)·응답 4,096(`output-tokens`)·질의 누적 100,000(`total-tokens`). 5단계 이후 정형 작업의 한도는 그때 다시 정한다 | 4단계 |
 | U-14 | 프롬프트·모델 버전 관리 | 코드 내 버전 상수 / DB 관리, 결과에 기록할 항목 | 5단계 |
 | U-15 | 비동기 작업 실행 방식 | 애플리케이션 스레드 풀 + DB 작업 테이블 / 별도 작업 큐 | 5단계 |
 | U-16 | 품질 규칙 목록·심각도 | 기본 규칙 세트, 프로젝트별 on/off | 6단계 |
@@ -778,3 +782,9 @@ README 의 기존 로드맵 항목과 상세 문서의 관계. README 항목은 
 | 2026-11-13 | DBMS 확대 시점 확정 (문서만) : 전체 핵심 기능·AI 기능 → 통합 안정화 → DBMS 확대. 그때까지 PostgreSQL(원본·앱 DB)·H2(테스트) 기준, 다른 DBMS 수집기·드라이버 추가 보류. 원본 쪽 DBMS 중립 계약은 유지. M-4c~M-4f 정책(core 읽기 전용 원본 카탈로그 계약 포함)은 [m4-foundation.md](m4-foundation.md) |
 | 2026-11-13 | 데이터 모델링 M-4c(원본 스키마·TABLE 매핑) 반영 : core 에 읽기 전용 원본 카탈로그 계약(`SourceCatalogReader`)과 연결 삭제 이벤트(`SourceConnectionDeletedEvent`)를 두고 `lexorma-source` 가 구현했다 (data ↔ source 직접 의존 없음). 원본 수집·저장 구조는 그대로다. 기록은 [source-mapping-m4c.md](source-mapping-m4c.md) |
 | 2026-11-13 | **M-4c 완료 반영과 외부 연결 보안 보완** (문서만, 코드·DB 변경 없음) : 데이터 모델링 M-4c 를 완료로 반영(core 계약 `SourceCatalogReader`·`SourceConnectionDeletedEvent`, 구현 `SourceCatalogReaderService`, source ↔ data 직접 의존 없음 그대로). **SEC-1 외부 연결 접근 정책 및 관리자 허용 목록 관리** 등록(P1, AI-3 착수 전 완료 권장, 단계 번호 밖 공통 작업) — 2단계 현황에 구현된 환경 설정 기반 주소 검증과 미구현 관리 기능을 구분, 3·11단계 선행·SSRF 연계, 7장 요구사항·8장 체크리스트, U-11 범위 조정, U-27~U-32 추가. 4.3 의 마이그레이션 정책을 현재 정책(V0·V1 고정, V2 증분 적용, 이후 V3…)으로 고침 |
+| 2026-11-14 | **AI-3 Spring AI 기반 AI Provider 관리·Ollama 연동 구현** : U-10 결정(Spring AI 2.0.2, 비-starter), `TB_AI_PRVDR`(V8), `core/ai`(설정·유형별 어댑터·호출), ADMIN 화면·API, SEC-1 HTTP 통합(일반 호출·모델 목록 적용, 스트리밍·모델 내려받기 경로 차단), `ExternalHttpClients` 보완(차단 사유 코드를 담는 예외, 짧은 응답 제한 시간). 스트리밍은 미지원으로 두고 대안을 기록했다. 기록은 [ai-provider-ai3.md](ai-provider-ai3.md) |
+| 2026-11-14 | **AI-3 후속 안정화** : 스트리밍 미지원 확정(필요해지면 SEC-1 비동기 전송부터 별도 검토), 스트리밍은 SEC-1 연결 준비 전에 차단(감사 `ALLOWED` 행이 생기지 않음, 감사 계약 그대로), 호출마다 생기던 쓰지 않는 JDK HttpClient 제거, PostgreSQL 테스트 `too many clients` 원인(캐시된 테스트 컨텍스트의 유휴 풀, 누수 아님)·테스트 프로필 조정. 기록은 [ai-provider-ai3.md](ai-provider-ai3.md) 10·12장 |
+| 2026-11-14 | **시스템 기본 AI Provider (AI-3 후속)** : `TB_AI_STNG`(V9, 단일 행 + FK·CHECK), 최대 하나·미지정 허용·명시 지정만, 지정 조건(활성·기본 모델, 연결은 보지 않음), 비활성 시 지정 유지·호출 차단, 기본 Provider 삭제 금지, 자동 전환 없음, `AiDefaultProviderService`·`callDefault`, ADMIN API·화면. 프로젝트별 Provider 는 후속. 기록은 [ai-provider-ai3.md](ai-provider-ai3.md) 13장 |
+| 2026-11-14 | **AI-4 Tool Calling 기반 (4단계 일부)** : 사용자 결정으로 4단계를 "기반 구현" 과 "후속(근거 검증·구조화 응답·대체 흐름·추가 Tool)" 으로 나눴다 — 4단계의 정의·완료 조건은 바꾸지 않았고 상태만 "기반 구현 / 전체 미완료". `lexorma-data` `ai/` (Tool 8개·`MetadataToolset` 실행 경계·질의 서비스·API), 오류 코드 3개(`AI_TOOL_CALLING_UNSUPPORTED`·`AI_TOOL_CALL_LIMIT_EXCEEDED`·`AI_QUERY_INVALID`), 어댑터의 Tool 미지원 판별, 오른쪽 아래 AI 도우미(메뉴 권한 `ai-metadata-query` VIEWER, 기본 Provider READY 일 때만). U-12·U-13 의 AI-4 기본값. 기록은 [ai-tool-calling-ai4.md](ai-tool-calling-ai4.md) |
+| 2026-11-15 | **AI-4 후속 : 구조화 응답·근거 검증 (4단계 일부)** : 4단계의 "응답 구조 검증"·"근거 검증" 구현 — Tool 결과에 근거 ID(내부 PK) 추가, 조회 → 구조화 두 단계, JSON Schema(networknt, Spring AI `BeanOutputConverter` 형식 지시) 검증·1회 재요청, `EvidenceVerifier`(존재·범위·Tool 결과 연결·이름·소속·버전 = 행 수정 일시), 응답 필드 추가(`evidence`·`verification`·`structuredRetries`), AI 도우미 근거 표시, `AI_STRUCTURED_OUTPUT_INVALID`. 새 마이그레이션 없음. 4단계는 여전히 "전체 미완료" (대체 흐름·추가 Tool·토큰 상한). 기록은 [ai-tool-calling-ai4.md](ai-tool-calling-ai4.md) 11장 |
+| 2026-11-15 | **AI-4 잔여 구현 → 4단계 완료** : `findSimilarColumns`(새 읽기 전용 `SimilarColumnService`, 규칙 기반 점수)·`getMetadataHistory`(`ModelChangeHistoryService.recent`, 근거 종류 `HISTORY`)·토큰 예산(`ai/budget`, Ollama `num_ctx`·`num_predict`·`/api/show` context_length, `AI_TOKEN_BUDGET_EXCEEDED`)·Tool Calling 미지원 모델의 서버 맥락 대체 흐름(`ServerContextAssembler`, 응답 `mode`·`fallback`·`usage`, 근거 `source`)·networknt 직접 의존성. core : `AiProviderClients.callWith/callDefaultWith`·`AiCall`, 어댑터 `modelInfo`·`chatOptions`·`usage`. 새 마이그레이션·필수 환경 변수 없음. U-13 의 토큰 기본값. 완료 조건 점검은 [ai-tool-calling-ai4.md](ai-tool-calling-ai4.md) 12.9 |

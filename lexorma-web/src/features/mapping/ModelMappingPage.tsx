@@ -10,7 +10,7 @@ import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useLogicalModels } from '../logical/model';
 import { useSchemas } from '../schema/schemas';
-import { mappingEntityColumns } from './columns';
+import { MAPPING_ENTITY_GRID_MIN_WIDTH, mappingEntityColumns } from './columns';
 import { MappingQuality } from './MappingQuality';
 import { MappingRecommendation } from './MappingRecommendation';
 import { AttributeMappingDetail, EntityMappingForm } from './mappingDialogs';
@@ -191,6 +191,7 @@ export function ModelMappingPage() {
                   key={modelId}
                   ref={grid}
                   id="modelMappingGrid"
+                  minWidth={MAPPING_ENTITY_GRID_MIN_WIDTH}
                   columns={mappingEntityColumns}
                   dataUrl="/api/modelMapping/entity"
                   params={gridParams}

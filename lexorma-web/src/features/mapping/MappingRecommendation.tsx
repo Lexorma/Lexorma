@@ -9,7 +9,7 @@ import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { TableLinks } from '../dictionary/DictionaryUsage';
-import { recommendationColumnColumns, recommendationTableColumns } from './columns';
+import { RECOMMENDATION_COLUMN_GRID_MIN_WIDTH, RECOMMENDATION_TABLE_GRID_MIN_WIDTH, recommendationColumnColumns, recommendationTableColumns } from './columns';
 import {
   mappingPath, RECOMMENDATION_SOURCES, RECOMMENDATION_STATUSES,
   useColumnRecommendation, type ColumnRecommendation, type ColumnRecommendationSummary, type RecommendationStatus, type TableRecommendation,
@@ -113,6 +113,7 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
           <Grid
             key="column"
             id="recommendationColumnGrid"
+                  minWidth={RECOMMENDATION_COLUMN_GRID_MIN_WIDTH}
             columns={recommendationColumnColumns}
             dataUrl="/api/modelMapping/recommendation/column"
             params={columnParams}
@@ -136,6 +137,7 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
         <Grid
           key="table"
           id="recommendationTableGrid"
+                  minWidth={RECOMMENDATION_TABLE_GRID_MIN_WIDTH}
           columns={recommendationTableColumns}
           dataUrl="/api/modelMapping/recommendation/table"
           params={params}

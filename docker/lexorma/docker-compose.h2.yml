@@ -1,0 +1,46 @@
+# Lexorma — standalone application with the embedded H2 file database (Docker Compose, no PostgreSQL)
+#
+# Uses the H2 image (Dockerfile-h2, profile h2-docker). The database is the file /data/lexorma.mv.db inside the
+# container, kept on the host in LEXORMA_DATA_DIR, so it survives container recreation and image upgrades.
+# Every environment-specific value is read from the .env file next to this file (the same .env as docker-compose.yml;
+# the POSTGRES_* values are not used here). Create it once before the first start:
+#   cp .env.example .env      # then edit .env
+#   docker compose -f docker-compose.h2.yml -p lexorma-h2 up -d
+# Build the image first if you do not pull it:  docker build -f Dockerfile-h2 -t lexorma/lexorma:h2-latest .  (repository root)
+#
+# One H2 database file is used by one process only: do not run this and another Lexorma on the same LEXORMA_DATA_DIR.
+# Stop with "docker compose -f docker-compose.h2.yml -p lexorma-h2 stop" (not kill) so the database file is closed cleanly.
+# Backup: stop the container and copy LEXORMA_DATA_DIR/lexorma.mv.db (see docs/h2-file-storage.md).
+# Use docker-compose.yml (PostgreSQL) instead for a server that several people use.
+
+services:
+  lexorma-app:
+    image: ${LEXORMA_H2_IMAGE:-lexorma/lexorma:h2-latest}
+    container_name: lexorma-h2-app
+    restart: unless-stopped
+    environment:
+      # Same database file as the h2-docker profile (/data/lexorma), without DB_CLOSE_DELAY=-1: when Spring closes the
+      # connection pool on a normal stop, H2 closes the file cleanly (see docs/h2-file-storage.md)
+      SPRING_DATASOURCE_URL: "jdbc:h2:file:/data/lexorma;DB_CLOSE_ON_EXIT=FALSE"
+      # Optional secret encryption key (needed only to store source database passwords).
+      # The key list comes from the lexorma_secret_keys secret below and is read from /run/secrets/lexorma.secret.keys.
+      # When LEXORMA_SECRET_KEYS is empty no secret file is mounted and Lexorma starts without a key ("optional:").
+      # Do not add LEXORMA_SECRET_KEYS to this environment list: an environment variable would take precedence over the secret.
+      SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+      LEXORMA_SECRET_ACTIVE_KEY_ID: ${LEXORMA_SECRET_ACTIVE_KEY_ID:-}
+    secrets:
+      - source: lexorma_secret_keys
+        target: lexorma.secret.keys
+    volumes:
+      # H2 database file (lexorma.mv.db) and other application data
+      - ${LEXORMA_DATA_DIR:?Set LEXORMA_DATA_DIR in .env (see .env.example)}:/data
+    ports:
+      - ${LEXORMA_PORT:-9940}:9940
+    # Give Spring time to close the connection pool so H2 writes and closes its file
+    stop_grace_period: 30s
+
+# The secret's source is the LEXORMA_SECRET_KEYS variable of the shell or .env that runs docker compose
+# (requires Docker Compose v2.23.1 or later). Leave it empty in .env to run without an encryption key.
+secrets:
+  lexorma_secret_keys:
+    environment: LEXORMA_SECRET_KEYS

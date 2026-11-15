@@ -1,7 +1,12 @@
-# 로컬 개발 (H2 In-Memory DB, Postgres 불필요) : 기동 시마다 Flyway로 스키마/초기 데이터 새로 생성
+# 로컬 실행 · 단일 JAR(Standalone) (H2 파일 DB, Postgres 불필요) : 재시작·JAR 교체 후에도 데이터가 남는다.
+# 저장 위치 : <LEXORMA_DATA_DIR>/lexorma.mv.db, 기본 <사용자 홈>/.lexorma/data (실행 위치와 상관없이 같은 DB 를 연다).
+#   다른 위치를 쓰려면 LEXORMA_DATA_DIR 환경변수 (또는 -DLEXORMA_DATA_DIR=…) — 필수 아님. 처음 실행하면 Flyway 가 스키마·초기 데이터를 만들고,
+#   다음부터는 새 마이그레이션만 적용한다. 한 DB 파일은 한 프로세스만 쓴다 (H2FileDatabaseCheck 가 시작할 때 경로·권한·잠금을 확인한다).
+# DB_CLOSE_ON_EXIT=FALSE : H2 의 JVM 종료 훅 대신 Spring 이 정상 종료 때 연결 풀을 닫으면서 DB 를 닫는다 (마지막 연결이 닫히면 파일을 정리해 닫는다).
+# 자동화 테스트는 이 프로필이 아니라 test 프로필(H2 In-Memory)을 쓴다.
 spring:
   datasource:
-    url: jdbc:h2:mem:lexorma;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:file:${LEXORMA_DATA_DIR:${user.home}/.lexorma/data}/lexorma;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: lexorma
     password: lexorma

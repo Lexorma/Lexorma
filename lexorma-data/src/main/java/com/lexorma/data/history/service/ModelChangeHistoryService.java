@@ -19,6 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -59,6 +60,36 @@ public class ModelChangeHistoryService {
             return builder.and(predicates.toArray(Predicate[]::new));
         };
         return repository.findAll(where, PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 500), LATEST_FIRST)).map(ModelChangeHistoryService::summary);
+    }
+
+    /**
+     * 대상 조건 (AI-4 getMetadataHistory) : 종류 + (ID 목록 또는 기록된 이름 또는 이름 앞부분). 셋 다 비면 조건이 없는 것이 아니라 아무것도 맞지 않는다.
+     * 기록된 이름은 변경 시점의 이름이라 삭제된 대상도 찾을 수 있다
+     */
+    public record TargetFilter(ModelChangeHistory.TargetType type, Collection<Long> ids, String name, String namePrefix) {
+    }
+
+    /** 대상들의 최근 이력과 변경 전후 (최신 순, size 건). 로그인 프로젝트의 이력만 본다 */
+    public Page<ModelChangeHistoryDto.Detail> recent(AccountDto accountDto, List<TargetFilter> targets, int size) {
+        Long projectId = accountDto.getProjectId();
+        Specification<ModelChangeHistory> where = (root, query, builder) -> {
+            List<Predicate> any = new ArrayList<>();
+            for (TargetFilter target : targets) {
+                List<Predicate> same = new ArrayList<>();
+                if (target.ids() != null && !target.ids().isEmpty()) same.add(root.get("targetId").in(target.ids()));
+                if (notBlank(target.name())) same.add(builder.equal(root.get("targetName"), target.name().trim()));
+                if (notBlank(target.namePrefix())) {
+                    String prefix = target.namePrefix().trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+                    same.add(builder.like(root.get("targetName"), prefix + "%", '\\'));
+                }
+                if (same.isEmpty()) continue;
+                any.add(builder.and(builder.equal(root.get("targetType"), target.type()), builder.or(same.toArray(Predicate[]::new))));
+            }
+            Predicate project = builder.equal(root.get("projectId"), projectId);
+            return any.isEmpty() ? builder.disjunction() : builder.and(project, builder.or(any.toArray(Predicate[]::new)));
+        };
+        return repository.findAll(where, PageRequest.of(0, Math.min(Math.max(size, 1), 500), LATEST_FIRST))
+                .map(history -> new ModelChangeHistoryDto.Detail(summary(history), node(history.getBeforeData()), node(history.getAfterData())));
     }
 
     /** 한 작업(변경 그룹)의 이력 : 기록된 순서대로 */

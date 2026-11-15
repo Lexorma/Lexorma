@@ -122,6 +122,11 @@ public enum ErrorCode {
     TABLE_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "TABLE_IS_NOT_DEFINED"),
 
     /**
+     * 등록된 컬럼 정보가 존재하지 않습니다 (현재 프로젝트에 그 컬럼이 없다).
+     */
+    COLUMN_IS_NOT_DEFINED(HttpStatus.BAD_REQUEST, "COLUMN_IS_NOT_DEFINED"),
+
+    /**
      * NULL 허용여부, 필수 입력 여부, 민감정보 여부, PK 여부, 고유값 여부, 인덱스 생성 여부, 암호화 필요 여부는 Y 또는 N 값이어야합니다.
      */
     COLUMN_BOOLEAN_TYPE_DEF(HttpStatus.BAD_REQUEST, "COLUMN_BOOLEAN_TYPE_DEF"),
@@ -449,7 +454,74 @@ public enum ErrorCode {
     /**
      * 외부 연결 시도를 감사 기록에 남기지 못해 연결하지 않았다 (SEC-1 : 기록 없는 연결을 하지 않는다).
      */
-    EXTERNAL_CONNECTION_AUDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_CONNECTION_AUDIT_FAILED");
+    EXTERNAL_CONNECTION_AUDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_CONNECTION_AUDIT_FAILED"),
+
+    /**
+     * AI Provider(AI-3)를 찾을 수 없다.
+     */
+    AI_PROVIDER_NOT_FOUND(HttpStatus.NOT_FOUND, "AI_PROVIDER_NOT_FOUND"),
+
+    /**
+     * AI Provider 설정 값이 올바르지 않다 (이름·주소·모델 ID 등).
+     */
+    AI_PROVIDER_INVALID(HttpStatus.BAD_REQUEST, "AI_PROVIDER_INVALID"),
+
+    /**
+     * 비활성화된 AI Provider 로는 AI 를 호출하지 않는다.
+     */
+    AI_PROVIDER_DISABLED(HttpStatus.CONFLICT, "AI_PROVIDER_DISABLED"),
+
+    /**
+     * 지원하지 않는 AI Provider 유형 또는 기능이다.
+     */
+    AI_PROVIDER_UNSUPPORTED(HttpStatus.BAD_REQUEST, "AI_PROVIDER_UNSUPPORTED"),
+
+    /**
+     * AI 서버 호출에 실패했다 (연결 거부·시간 초과·모델 없음·서버 오류·응답 처리 실패).
+     */
+    AI_PROVIDER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_CALL_FAILED"),
+
+    /**
+     * 시스템 기본 AI Provider 가 지정되지 않았다 : 기본 Provider 를 쓰는 AI 기능만 쓸 수 없다.
+     */
+    AI_DEFAULT_PROVIDER_NOT_CONFIGURED(HttpStatus.CONFLICT, "AI_DEFAULT_PROVIDER_NOT_CONFIGURED"),
+
+    /**
+     * 시스템 기본 AI Provider 에 기본 모델이 없다 (지정할 수 없고, 지정된 뒤 지워졌으면 호출하지 않는다).
+     */
+    AI_DEFAULT_PROVIDER_MODEL_MISSING(HttpStatus.CONFLICT, "AI_DEFAULT_PROVIDER_MODEL_MISSING"),
+
+    /**
+     * 시스템 기본 AI Provider 로 지정된 Provider 라 삭제할 수 없다.
+     */
+    AI_PROVIDER_IN_USE(HttpStatus.CONFLICT, "AI_PROVIDER_IN_USE"),
+
+    /**
+     * 모델이 Tool Calling 을 지원하지 않는다 (AI-4). 메타데이터 질의는 서버가 맥락을 모으는 대체 흐름으로 처리하므로 이 오류를 내지 않는다 —
+     * 대체 흐름이 없는 호출({@code AiProviderClients.call})에서만 난다.
+     */
+    AI_TOOL_CALLING_UNSUPPORTED(HttpStatus.CONFLICT, "AI_TOOL_CALLING_UNSUPPORTED"),
+
+    /**
+     * 한 질의에서 AI 가 Tool 을 허용된 횟수·시간보다 많이 부르려 했다 (AI-4). 결과를 만들지 않고 끝낸다.
+     */
+    AI_TOOL_CALL_LIMIT_EXCEEDED(HttpStatus.BAD_GATEWAY, "AI_TOOL_CALL_LIMIT_EXCEEDED"),
+
+    /**
+     * AI 메타데이터 질의 입력이 올바르지 않다 (질문 없음·너무 김).
+     */
+    AI_QUERY_INVALID(HttpStatus.BAD_REQUEST, "AI_QUERY_INVALID"),
+
+    /**
+     * AI 의 최종 답변이 정해진 형식(JSON Schema)을 따르지 않았다. 한 번 다시 요청해도 맞지 않으면 이 오류로 끝낸다 (형식이 틀린 답변을 보이지 않는다).
+     */
+    AI_STRUCTURED_OUTPUT_INVALID(HttpStatus.BAD_GATEWAY, "AI_STRUCTURED_OUTPUT_INVALID"),
+
+    /**
+     * AI 요청이 토큰 예산(모델 입력 한도·응답 한도·질의 전체 누적)을 넘는다 (AI-4). 프롬프트를 잘라 보내지 않고 요청 전에 끝내거나,
+     * 응답이 출력 한도에서 잘렸으면 결과를 쓰지 않는다. Provider 오류와 다르다.
+     */
+    AI_TOKEN_BUDGET_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "AI_TOKEN_BUDGET_EXCEEDED");
 
     private final HttpStatus httpStatus;
     private final String code;

@@ -18,6 +18,10 @@ out/
 ### 로컬 데이터 ###
 /data
 /docker/volume/**
+# H2 파일 DB (h2-local 은 기본으로 사용자 홈에 두지만 LEXORMA_DATA_DIR 로 저장소 안을 가리킬 수 있다)
+*.mv.db
+*.trace.db
+*.lock.db
 
 ### 로컬 비밀 설정 (Docker Compose .env 등 — 예시 파일만 올린다) ###
 .env

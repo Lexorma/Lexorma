@@ -30,7 +30,7 @@ spring:
     locations: classpath:db/migration/{vendor}
   # 로그인 세션 : Spring Session JDBC (SPRING_SESSION 테이블은 Flyway V0__init.sql 이 만든다)
   # 만료 시간은 server.servlet.session.timeout, 쿠키(SESSION) 설정은 server.servlet.session.cookie 를 따른다.
-  # 만료된 세션은 1분마다 지운다(cleanup-cron 기본값). h2-local(In-Memory) 은 재시작하면 세션도 사라진다.
+  # 만료된 세션은 1분마다 지운다(cleanup-cron 기본값). 세션도 DB 에 있으므로 재시작해도 만료 전이면 남는다 (h2-local 도 파일 DB 라 같다).
   session:
     jdbc:
       initialize-schema: never

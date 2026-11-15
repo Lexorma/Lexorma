@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lexorma metadata answer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "evidence"],
+  "properties": {
+    "answer": {
+      "description": "The answer for the user, in Markdown. Base it only on tool results.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "evidence": {
+      "description": "The metadata items from tool results that the answer relies on. Use the ids exactly as returned by the tools. Empty if no tool result was used.",
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "id", "name"],
+        "properties": {
+          "type": {
+            "description": "SCHEMA (schemaId), TABLE (tableId), COLUMN (columnId), RELATION (relationId), TERM (termId), WORD (wordId), DOMAIN (domainId), HISTORY (historyId: one past change record)",
+            "enum": ["SCHEMA", "TABLE", "COLUMN", "RELATION", "TERM", "WORD", "DOMAIN", "HISTORY"]
+          },
+          "id": {
+            "description": "The id returned by the tool for this item",
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "description": "The name of the item as returned by the tool (table name, column name, relation name, term, word or domain name)",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "tableId": {
+            "description": "COLUMN only: the tableId of the table the column belongs to",
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "kind": {
+            "description": "RELATION only: FK (registered foreign key) or LOGICAL (model relation without a database constraint)",
+            "enum": ["FK", "LOGICAL", null]
+          }
+        }
+      }
+    }
+  }
+}

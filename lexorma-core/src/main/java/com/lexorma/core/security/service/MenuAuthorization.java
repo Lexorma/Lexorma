@@ -46,6 +46,9 @@ public class MenuAuthorization {
             // AI Provider 관리 (AI-3) : 등록·수정·삭제·연결 테스트·모델 목록·테스트 프롬프트 모두 시스템 관리자만 (API 도 ADMIN)
             Map.entry("ai-provider", "ADMIN"),
 
+            // 화면 메뉴가 아니라 오른쪽 아래 AI 도우미(메타데이터 질의, AI-4) 버튼 노출용 : 현재 프로젝트 메타데이터를 읽기만 한다 — 질의 API 와 같은 VIEWER
+            Map.entry("ai-metadata-query", "VIEWER"),
+
             // 운영 관리
             Map.entry("notice", "NOT_APPROVE"),
             // 화면 메뉴가 아니라 공지 등록·수정·삭제 버튼 노출용 : 공지 변경 API 의 권한과 같다 (현재 프로젝트의 관리자여야 하는 조건은 /api/selectNotice/permission)

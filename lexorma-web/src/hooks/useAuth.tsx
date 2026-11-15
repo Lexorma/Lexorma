@@ -11,6 +11,8 @@ export type MenuId =
   | 'connection-security'
   /** AI Provider 관리 (AI-3) : 시스템 관리자(ADMIN)만 */
   | 'ai-provider'
+  /** 화면 메뉴가 아니라 오른쪽 아래 AI 도우미(메타데이터 질의, AI-4) 버튼 노출 여부 : 질의 API 와 같은 VIEWER */
+  | 'ai-metadata-query'
   | 'notice'
   /** 화면이 아니라 공지 등록·수정·삭제 버튼 노출 여부 (현재 프로젝트의 관리자인지는 /api/selectNotice/permission) */
   | 'notice-edit'

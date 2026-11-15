@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { AiAssistant } from '../ai/AiAssistant';
 import { Footer } from './Footer';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -32,6 +33,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <Footer />
         </div>
       </div>
+      {/* AI 도우미 (AI-4) : 업무 메뉴가 있는 세션에서만, 메뉴 권한 ai-metadata-query 가 있을 때 */}
+      {showSidebar && <AiAssistant />}
     </div>
   );
 }

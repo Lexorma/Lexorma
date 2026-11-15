@@ -48,6 +48,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.stream.IntStream;
 
@@ -104,7 +105,7 @@ class ModelChangeHistoryIntegrationTest {
         assertThat(created.getChangedAt()).isNotNull();
 
         // 설명만 변경 → UPDATE 1건, 전후 값은 실제 저장된 값
-        long mark = mark();
+        Set<Long> mark = mark();
         tables.updateTable(update(table, "TB_ORDER", "주문"), admin);
         ModelChangeHistory updated = onlySince(projectId, mark);
         assertThat(updated.getAction()).isEqualTo(Action.UPDATE);
@@ -144,7 +145,7 @@ class ModelChangeHistoryIntegrationTest {
 
         // 삭제 : 컬럼이 있는 테이블은 삭제가 거절된다 → 이력 없음. 컬럼을 지운 뒤 테이블을 지운다 (요청이 둘이라 그룹도 둘)
         ColumnInfo column = column(projectId, table, "ORDER_NO", true, null);
-        long beforeDelete = mark();
+        Set<Long> beforeDelete = mark();
         assertThatThrownBy(() -> tables.deleteTable(admin, List.of(dto(table)))).isInstanceOf(CustomException.class);
         assertThat(since(projectId, beforeDelete)).isEmpty();
         columns.deleteColumn(admin, List.of(ColumnInfoDto.builder().id(column.getId()).build()));
@@ -175,7 +176,7 @@ class ModelChangeHistoryIntegrationTest {
         column(projectId, child, "CHILD_ID", true, null);
 
         // 참조 테이블명 지정 → 커밋 직전 자동 동기화가 REF_COLUMN 관계를 만든다 : 컬럼 변경과 같은 그룹, 출처 AUTO_SYNC
-        long mark = mark();
+        Set<Long> mark = mark();
         ColumnInfo ref = column(projectId, child, "PARENT_ID", false, "TB_PARENT");
         List<ModelChangeHistory> made = since(projectId, mark);
         assertThat(made).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getAction, ModelChangeHistory::getSource)
@@ -234,7 +235,7 @@ class ModelChangeHistoryIntegrationTest {
         // 승인 권한이 없는 사용자 : 등록한 컬럼이 승인 대기라 계속 고칠 수 있다
         AccountDto user = login(projectId, "930002", "ROLE_USER");
 
-        long mark = mark();
+        Set<Long> mark = mark();
         List<ColumnBulkSaveDto.Row> rows = new ArrayList<>();
         for (int i = 0; i < 20; i++) rows.add(row("new-" + i, null, terms.get(i).getId(), "설명 " + i, "VARCHAR", 10 + i));
         assertThat(columns.saveColumnsBulk(bulk(table, rows, List.of()), user).getBody().created()).isEqualTo(20);
@@ -354,7 +355,7 @@ class ModelChangeHistoryIntegrationTest {
         ColumnInfo stat = column(projectId, order, "STAT_CD", false, null);
 
         // 복합 FK 생성 : 컬럼 쌍이 순서대로 남는다. 승인 권한자가 만들어 바로 승인 상태
-        long mark = mark();
+        Set<Long> mark = mark();
         Relation fk = physical.saveRelation(admin, relation("FK", order, code, pair(statGrp, grp), pair(stat, cd))).getBody();
         ModelChangeHistory created = onlySince(projectId, mark);
         assertThat(created).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getTargetId, ModelChangeHistory::getAction, ModelChangeHistory::getSource, ModelChangeHistory::getTargetName)
@@ -512,24 +513,28 @@ class ModelChangeHistoryIntegrationTest {
 
     // ------------------------------------------------------------------ 보조
 
-    private long mark() {
-        return historyRepository.findAll().stream().mapToLong(ModelChangeHistory::getId).max().orElse(0L);
+    /**
+     * 지금까지 있는 이력 ID. "최대 ID 보다 큰 것" 으로 새 이력을 가리면 PostgreSQL 에서 틀린다 : Hibernate 가 시퀀스를 블록 단위로 미리 받아
+     * 테스트 컨텍스트가 여럿이면 나중에 기록한 행의 ID 가 더 작을 수 있다
+     */
+    private Set<Long> mark() {
+        return historyRepository.findAll().stream().map(ModelChangeHistory::getId).collect(java.util.stream.Collectors.toSet());
     }
 
-    /** 표시(mark) 뒤에 이 프로젝트에 기록된 이력, 기록된 순서대로 */
-    private List<ModelChangeHistory> since(long projectId, long mark) {
-        return historyRepository.findAll().stream().filter(h -> h.getProjectId() == projectId && h.getId() > mark)
+    /** 표시(mark) 뒤에 이 프로젝트에 기록된 이력, 기록된 순서대로 (같은 트랜잭션 안의 ID 는 한 블록에서 차례로 받는다) */
+    private List<ModelChangeHistory> since(long projectId, Set<Long> mark) {
+        return historyRepository.findAll().stream().filter(h -> h.getProjectId() == projectId && !mark.contains(h.getId()))
                 .sorted(Comparator.comparing(ModelChangeHistory::getId)).toList();
     }
 
-    private ModelChangeHistory onlySince(long projectId, long mark) {
+    private ModelChangeHistory onlySince(long projectId, Set<Long> mark) {
         List<ModelChangeHistory> found = since(projectId, mark);
         assertThat(found).hasSize(1);
         return found.getFirst();
     }
 
     private ModelChangeHistory only(long projectId) {
-        return onlySince(projectId, 0);
+        return onlySince(projectId, Set.of());
     }
 
     private static JsonNode json(String value) {

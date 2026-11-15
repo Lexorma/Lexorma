@@ -95,7 +95,9 @@ class UiActionAuthorizationIntegrationTest {
             "PUT /api/erd/layout", "PUT /api/logical/model/{modelId}/erd/layout",
             "POST /api/recovery/projects/{projectId}/activate",
             // 원본 가져오기 계획 (M-4e) : 읽기 전용 미리보기 (고른 항목을 본문으로 받아 POST, 아무것도 저장하지 않는다). 확정(apply)은 USER + 프로젝트 관리자
-            "POST /api/sourceImport/plan");
+            "POST /api/sourceImport/plan",
+            // AI 메타데이터 질의 (AI-4) : 질문을 본문으로 받는 조회. 읽기 전용 Tool 만 쓰고 아무것도 저장하지 않는다 (조회 API 와 같은 VIEWER)
+            "POST /api/ai/metadata/query");
 
     private static final Pattern HAS_ROLE = Pattern.compile("^hasRole\\('([A-Z_]+)'\\)$");
 

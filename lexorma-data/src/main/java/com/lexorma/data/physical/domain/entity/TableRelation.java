@@ -109,4 +109,9 @@ public class TableRelation extends BaseEntity {
     @OneToMany(mappedBy = "relation", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("columnOrder")
     private List<TableRelationColumn> columns = new ArrayList<>();
+
+    /** 등록·수정 정보 (AI 근거 검증의 버전 : 마지막 수정 일시. bean getter 가 아니라 JSON 프로퍼티가 되지 않는다) */
+    public Audit audit() {
+        return toAudit();
+    }
 }

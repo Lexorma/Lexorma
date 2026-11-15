@@ -228,6 +228,17 @@ final class EnglishMessages {
         add("이 Provider 에서 지원하지 않는 AI 기능입니다 (스트리밍 등).", "This AI feature is not supported by this provider (streaming and so on).");
         add("프롬프트는 {0}자까지 입력할 수 있습니다.", "The prompt can be up to {0} characters.");
         add("프롬프트를 입력해주세요.", "Enter a prompt.");
+        // AI-4 메타데이터 질의·Tool
+        add("질문을 입력해주세요.", "Enter a question.");
+        add("그 이름의 물리 테이블이 없습니다. 한글명·설명이면 searchTables 로 먼저 찾아 tableId 를 쓰세요.", "There is no physical table with that name. For a Korean name or a description, call searchTables first and use the tableId.");
+        add("targetId 나 targetName 이 필요합니다.", "targetId or targetName is required.");
+        add("그 대상이 현재 프로젝트에 없고 기록된 이력도 없습니다. 이름은 물리명이어야 합니다 — 한글명·설명이면 searchTables 로 먼저 찾아 ID 를 쓰세요.", "No such object exists in the current project and no history is recorded for it. Names must be physical names; for a Korean name or a description, call searchTables first and use the id.");
+        add("targetType 은 TABLE·COLUMN·RELATION 중 하나입니다.", "targetType must be TABLE, COLUMN or RELATION.");
+        add("컬럼 ID 나 검색어가 필요합니다.", "A column id or a keyword is required.");
+        add("현재 프로젝트에 그 컬럼이 없습니다.", "There is no such column in the current project.");
+        add("질문은 {0}자까지 입력할 수 있습니다.", "The question can be up to {0} characters.");
+        add("검색어가 필요합니다.", "A search keyword is required.");
+        add("같은 이름의 테이블이 여러 스키마에 있습니다. tableId 로 지정하세요 : {0}", "Tables with this name exist in several schemas. Specify the tableId : {0}");
 
         // ---------------------------------------------------------------- 공지사항
         // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)

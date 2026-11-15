@@ -45,6 +45,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -93,7 +94,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
                 .containsExactly(TargetType.LOGICAL_MODEL, model.id(), "회원 모델", Action.CREATE, admin.getUsername());
 
         // 같은 값 재저장 → 없음, 설명 변경 → UPDATE
-        long mark = mark();
+        Set<Long> mark = mark();
         logical.saveModel(admin, new Model(model.id(), "회원 모델", null));
         assertThat(since(projectId, mark)).isEmpty();
         logical.saveModel(admin, new Model(model.id(), "회원 모델", "회원 영역"));
@@ -245,7 +246,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
         Attribute date = logical.saveAttribute(admin, attribute(null, order, "주문 일자", null, false, null));
 
         // 식별자 생성 : 구성 속성이 순서대로, 이름과 함께
-        long mark = mark();
+        Set<Long> mark = mark();
         Identifier pk = logical.saveIdentifier(admin, new Identifier(null, order.id(), "주문 식별자", true, List.of(no.id(), seq.id()), null));
         ModelChangeHistory created = onlySince(projectId, mark);
         assertThat(created).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getTargetId, ModelChangeHistory::getTargetName, ModelChangeHistory::getAction)
@@ -315,7 +316,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
         TableInfo tbSpare = table(projectId, "TB_SPARE");
 
         // 엔터티 ↔ 테이블 등록
-        long mark = mark();
+        Set<Long> mark = mark();
         EntityMapping mapping = mappings.saveEntityMapping(admin, new EntityMapping(null, member.id(), tbSpare.getId()));
         ModelChangeHistory created = onlySince(projectId, mark);
         assertThat(created).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getTargetId, ModelChangeHistory::getTargetName, ModelChangeHistory::getAction, ModelChangeHistory::getSource)
@@ -361,7 +362,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
         // 매핑된 엔터티·테이블·속성은 삭제가 거절되고(매핑이 연쇄로 지워지지 않는다), 속성 매핑이 있는 엔터티 매핑도 해제할 수 없다 → 이력 없음
         mark = mark();
         logical.updateEntityApproval(admin, member.id(), false);
-        long afterRevoke = mark();
+        Set<Long> afterRevoke = mark();
         assertThatThrownBy(() -> logical.deleteEntity(admin, member.id())).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> logical.deleteAttribute(admin, number.id())).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> tables.deleteTable(admin, List.of(TableInfoDto.builder().id(tbMember.getId()).build()))).isInstanceOf(CustomException.class);
@@ -392,23 +393,24 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
     // ------------------------------------------------------------------ 보조
 
-    private long mark() {
-        return historyRepository.findAll().stream().mapToLong(ModelChangeHistory::getId).max().orElse(0L);
+    /** 지금까지 있는 이력 ID (최대 ID 기준은 PostgreSQL 의 시퀀스 블록 할당 때문에 틀릴 수 있다 : ModelChangeHistoryIntegrationTest.mark) */
+    private Set<Long> mark() {
+        return historyRepository.findAll().stream().map(ModelChangeHistory::getId).collect(java.util.stream.Collectors.toSet());
     }
 
-    private List<ModelChangeHistory> since(long projectId, long mark) {
-        return historyRepository.findAll().stream().filter(h -> h.getProjectId() == projectId && h.getId() > mark)
+    private List<ModelChangeHistory> since(long projectId, Set<Long> mark) {
+        return historyRepository.findAll().stream().filter(h -> h.getProjectId() == projectId && !mark.contains(h.getId()))
                 .sorted(Comparator.comparing(ModelChangeHistory::getId)).toList();
     }
 
-    private ModelChangeHistory onlySince(long projectId, long mark) {
+    private ModelChangeHistory onlySince(long projectId, Set<Long> mark) {
         List<ModelChangeHistory> found = since(projectId, mark);
         assertThat(found).hasSize(1);
         return found.getFirst();
     }
 
     private ModelChangeHistory only(long projectId) {
-        return onlySince(projectId, 0);
+        return onlySince(projectId, Set.of());
     }
 
     private static JsonNode json(String value) {

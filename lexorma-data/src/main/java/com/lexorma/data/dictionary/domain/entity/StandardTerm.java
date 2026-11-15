@@ -61,4 +61,9 @@ public class StandardTerm extends BaseEntity {
     // 이 용어를 사용하는 컬럼 : ColumnInfo.standardTerms(FK) 기준 읽기 전용 (조인 테이블은 V6 에서 제거)
     @OneToMany(mappedBy = "standardTerms")
     private List<ColumnInfo> columnInfos;
+
+    /** 등록·수정 정보 (AI 근거 검증의 버전 : 마지막 수정 일시. bean getter 가 아니라 JSON 프로퍼티가 되지 않는다) */
+    public Audit audit() {
+        return toAudit();
+    }
 }

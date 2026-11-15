@@ -66,4 +66,9 @@ public class TableInfo extends BaseEntity {
 
     @OneToMany(mappedBy = "tableInfo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ColumnInfo> columns = new ArrayList<>();
+
+    /** 등록·수정 정보 (AI 근거 검증의 버전 : 마지막 수정 일시. bean getter 가 아니라 JSON 프로퍼티가 되지 않는다) */
+    public Audit audit() {
+        return toAudit();
+    }
 }

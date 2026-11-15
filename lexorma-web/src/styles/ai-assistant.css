@@ -1,0 +1,474 @@
+/*
+ * AI 도우미 (AI-4) : 오른쪽 아래 버튼 + 메타데이터 질의 창. 색은 테마의 파란 계열만 쓴다 (라이트·다크).
+ * 푸터를 가리지 않는다 : --ai-assistant-lift (푸터가 화면 아래쪽을 차지하는 높이, AiAssistant 가 측정)만큼 위로 올린다.
+ * 버튼은 흐르는 파란 그라데이션·반짝이는 ✦·은은한 파동으로 AI 기능임을 알린다. 움직임 줄이기 설정이면 애니메이션을 끈다
+ */
+:root {
+    --ai-assistant-size: 40px;
+    --ai-assistant-from: #0969da;
+    --ai-assistant-via: #218bff;
+    --ai-assistant-to: #54aeff;
+    --ai-assistant-glow: rgba(33, 139, 255, 0.45);
+}
+
+:root[data-theme="dark"] {
+    --ai-assistant-from: #1f6feb;
+    --ai-assistant-via: #388bfd;
+    --ai-assistant-to: #79c0ff;
+    --ai-assistant-glow: rgba(56, 139, 253, 0.5);
+}
+
+.ai-assistant-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background-image: linear-gradient(135deg, var(--ai-assistant-from), var(--ai-assistant-to));
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.ai-assistant-launcher {
+    position: fixed;
+    right: 24px;
+    bottom: calc(24px + var(--ai-assistant-lift, 0px));
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ai-assistant-size);
+    height: var(--ai-assistant-size);
+    border: 0;
+    border-radius: 50%;
+    background-image: linear-gradient(120deg, var(--ai-assistant-from), var(--ai-assistant-via), var(--ai-assistant-to), var(--ai-assistant-from));
+    background-size: 300% 300%;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    animation: ai-assistant-flow 6s ease-in-out infinite;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* 은은한 파동 : 버튼 둘레로 퍼지는 빛 (닫혀 있을 때만) */
+.ai-assistant-launcher:not(.is-open):not(.is-docked)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 0 0 var(--ai-assistant-glow);
+    animation: ai-assistant-pulse 2.8s ease-out infinite;
+    pointer-events: none;
+}
+
+/* ✦ 아이콘이 가끔 반짝인다 */
+.ai-assistant-launcher:not(.is-open) svg {
+    animation: ai-assistant-twinkle 3.2s ease-in-out infinite;
+}
+
+.ai-assistant-launcher:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 6px 16px var(--ai-assistant-glow);
+}
+
+.ai-assistant-launcher.is-open {
+    animation: none;
+}
+
+@keyframes ai-assistant-flow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+@keyframes ai-assistant-pulse {
+    0% { box-shadow: 0 0 0 0 var(--ai-assistant-glow); }
+    70%, 100% { box-shadow: 0 0 0 10px rgba(0, 0, 0, 0); }
+}
+
+@keyframes ai-assistant-twinkle {
+    0%, 70%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    80% { transform: scale(1.25) rotate(15deg); opacity: 0.85; }
+    90% { transform: scale(0.95) rotate(-5deg); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-assistant-launcher,
+    .ai-assistant-launcher svg,
+    .ai-assistant-launcher::after {
+        animation: none !important;
+        transition: none;
+    }
+}
+
+.ai-assistant-launcher:focus-visible {
+    outline: 2px solid var(--gh-accent);
+    outline-offset: 2px;
+}
+
+.ai-assistant-panel {
+    position: fixed;
+    right: 24px;
+    bottom: calc(76px + var(--ai-assistant-lift, 0px));
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, calc(100vw - 32px));
+    height: min(640px, calc(100vh - 108px - var(--ai-assistant-lift, 0px)));
+    min-height: 240px;
+    border: 1px solid var(--gh-border);
+    border-radius: 12px;
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.ai-assistant-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gh-border);
+    background-color: var(--gh-canvas-subtle);
+}
+
+.ai-assistant-heading {
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-assistant-heading h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.ai-assistant-heading span {
+    display: block;
+    color: var(--gh-fg-muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ai-assistant-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gh-fg-muted);
+    cursor: pointer;
+}
+
+.ai-assistant-icon-btn:hover:not(:disabled) {
+    background-color: var(--gh-hover);
+    color: var(--gh-fg);
+}
+
+.ai-assistant-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ai-assistant-body {
+    flex: 1;
+    min-height: 0;
+    padding: 12px;
+    overflow-y: auto;
+    font-size: 13px;
+}
+
+.ai-assistant-note {
+    margin: 0 0 12px;
+    color: var(--gh-fg-muted);
+    font-size: 12px;
+}
+
+.ai-assistant-error {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--gh-danger);
+    border-radius: 6px;
+    background-color: var(--gh-danger-subtle);
+    overflow-wrap: anywhere;
+}
+
+.ai-assistant-turn {
+    margin-bottom: 16px;
+}
+
+.ai-assistant-question {
+    margin-left: 32px;
+    padding: 8px 10px;
+    border-radius: 10px 10px 2px 10px;
+    background-color: var(--gh-accent-subtle);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-assistant-answer {
+    margin-top: 8px;
+    margin-right: 16px;
+    padding: 8px 10px;
+    border: 1px solid var(--gh-border-muted);
+    border-radius: 10px 10px 10px 2px;
+    background-color: var(--gh-canvas-subtle);
+    overflow-wrap: anywhere;
+}
+
+/* 답변의 Markdown 표가 창보다 넓으면 표만 가로로 스크롤한다 */
+.ai-assistant-answer .notice-markdown {
+    font-size: 13px;
+    overflow-x: auto;
+}
+
+.ai-assistant-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.ai-assistant-tool {
+    padding: 1px 8px;
+    border: 1px solid var(--gh-border);
+    border-radius: 999px;
+    color: var(--gh-fg-muted);
+    font-size: 11px;
+}
+
+.ai-assistant-tool.is-ok {
+    border-color: var(--gh-success);
+    color: var(--gh-success);
+}
+
+.ai-assistant-tool.is-rejected,
+.ai-assistant-tool.is-failed {
+    border-color: var(--gh-danger);
+    color: var(--gh-danger);
+}
+
+.ai-assistant-tool.is-invalid_argument {
+    border-color: var(--gh-attention);
+    color: var(--gh-attention);
+}
+
+.ai-assistant-warn {
+    color: var(--gh-attention);
+    font-size: 12px;
+}
+
+.ai-assistant-mode {
+    margin: 0 0 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--gh-accent-muted, var(--gh-border-muted));
+    border-radius: 6px;
+    background-color: var(--gh-accent-subtle, var(--gh-canvas-subtle));
+    color: var(--gh-fg-muted);
+    font-size: 12px;
+}
+
+.ai-assistant-tools-label {
+    color: var(--gh-fg-muted);
+    font-size: 11px;
+}
+
+.ai-assistant-meta {
+    margin-top: 4px;
+    color: var(--gh-fg-subtle);
+    font-size: 11px;
+}
+
+.ai-assistant-waiting {
+    margin: 0;
+    color: var(--gh-fg-muted);
+    font-size: 12px;
+}
+
+.ai-assistant-input {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding: 10px 12px 4px;
+    border-top: 1px solid var(--gh-border);
+}
+
+.ai-assistant-input textarea {
+    flex: 1;
+    min-height: 40px;
+    max-height: 140px;
+    padding: 6px 8px;
+    border: 1px solid var(--gh-border);
+    border-radius: 6px;
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+    font: inherit;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.ai-assistant-input textarea:focus {
+    outline: 2px solid var(--gh-accent);
+    outline-offset: -1px;
+}
+
+.ai-assistant-hint {
+    margin: 0;
+    padding: 0 12px 10px;
+    color: var(--gh-fg-subtle);
+    font-size: 11px;
+}
+
+/* 푸터가 화면 밖일 때 : 본문 오른쪽 여백 안의 얇은 세로 탭 (화면 요소와 겹치지 않는다) */
+.ai-assistant-launcher.is-docked {
+    right: var(--ai-assistant-tab-right, 0px);
+    bottom: 24px;
+    flex-direction: column;
+    gap: 3px;
+    width: var(--ai-assistant-tab-width, 16px);
+    height: 64px;
+    padding: 0;
+    border-radius: 8px;
+    background-image: linear-gradient(180deg, var(--ai-assistant-from), var(--ai-assistant-via), var(--ai-assistant-to), var(--ai-assistant-from));
+    background-size: 100% 300%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    animation: ai-assistant-flow-vertical 6s ease-in-out infinite;
+}
+
+/* 탭은 여백 안에 있어야 하므로 떠오르거나 커지지 않는다 */
+.ai-assistant-launcher.is-docked:hover {
+    transform: none;
+    filter: brightness(1.1);
+}
+
+@keyframes ai-assistant-flow-vertical {
+    0%, 100% { background-position: 50% 0%; }
+    50% { background-position: 50% 100%; }
+}
+
+.ai-assistant-tab-text {
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+}
+
+/* 근거 검증 (AI-4 후속) : 확인된 근거는 초록, 확인되지 않은 근거는 주의 색으로 구분한다 */
+.ai-assistant-check {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--gh-border-muted);
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.ai-assistant-check.is-verified {
+    border-color: var(--gh-success);
+    background-color: var(--gh-success-subtle);
+}
+
+.ai-assistant-check.is-partial,
+.ai-assistant-check.is-unverified,
+.ai-assistant-check.is-no_evidence {
+    border-color: var(--gh-attention);
+    background-color: var(--gh-attention-subtle);
+}
+
+.ai-assistant-check-title {
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+    font-weight: 600;
+}
+
+.ai-assistant-check-title svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.ai-assistant-evidence {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ai-assistant-evidence li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 6px;
+    align-items: baseline;
+    padding: 2px 0;
+    overflow-wrap: anywhere;
+}
+
+.ai-assistant-evidence-mark {
+    width: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ai-assistant-evidence li.is-verified .ai-assistant-evidence-mark {
+    color: var(--gh-success);
+}
+
+.ai-assistant-evidence li:not(.is-verified) .ai-assistant-evidence-mark,
+.ai-assistant-evidence-status {
+    color: var(--gh-danger);
+}
+
+.ai-assistant-evidence-type {
+    color: var(--gh-fg-muted);
+}
+
+.ai-assistant-evidence-name {
+    font-family: var(--gh-mono);
+}
+
+.ai-assistant-check-note {
+    margin: 6px 0 0;
+    color: var(--gh-fg-muted);
+    font-size: 11px;
+}
+
+/* 버튼 자리 : 본문과 푸터 사이 (버튼 40px + 아래 여백 24px). 버튼은 푸터 위로 올라가므로 이 자리에 놓인다 */
+.has-ai-assistant .app-footer {
+    margin-top: 64px;
+}
+
+/* 모바일 : 창을 화면 전체로 (닫기는 창 머리의 X) */
+@media (max-width: 575.98px) {
+    .ai-assistant-launcher {
+        right: 16px;
+        bottom: calc(16px + var(--ai-assistant-lift, 0px));
+    }
+
+    /* 화면 전체를 쓰되 아래는 푸터 위에서 멈춘다 */
+    .ai-assistant-panel {
+        inset: 0 0 var(--ai-assistant-lift, 0px) 0;
+        width: 100vw;
+        height: auto;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .ai-assistant-launcher.is-open {
+        display: none;
+    }
+
+    .ai-assistant-launcher.is-docked {
+        bottom: 16px;
+    }
+
+    .has-ai-assistant .app-footer {
+        margin-top: 56px;
+    }
+}

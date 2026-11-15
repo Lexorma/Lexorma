@@ -254,7 +254,7 @@ class AiProviderIntegrationTest {
         assertThatThrownBy(() -> clients.call(provider.id(), null, admin, client -> client.prompt().user("hi").call().content()))
                 .extracting("errorCode").isEqualTo(ErrorCode.EXTERNAL_CONNECTION_BLOCKED);
         assertThat(ollama.requests).as("차단이면 서버에 아무 요청도 가지 않는다").isEmpty();
-        assertThat(rules.attempts("AI_HTTP", "DENIED", "127.0.0.1", null, null, null, 0, 50).rows())
+        assertThat(localAttempts("DENIED"))
                 .filteredOn(a -> a.port() == ollama.port()).hasSize(4).allSatisfy(a -> assertThat(a.reason()).isEqualTo(Reason.NO_RULE));
 
         // 다른 포트만 허용 → 포트 불일치로 차단
@@ -272,7 +272,7 @@ class AiProviderIntegrationTest {
         assertThat(ok.modelCount()).isEqualTo(2);
         assertThat(ok.defaultModelPresent()).as("태그 없는 기본 모델은 :latest").isTrue();
         assertThat(clients.prompt(provider.id(), new AiProviderDto.PromptRequest("hi", null), admin).success()).isTrue();
-        assertThat(rules.attempts("AI_HTTP", null, "127.0.0.1", null, null, null, 0, 50).rows()).filteredOn(a -> a.port() == ollama.port())
+        assertThat(localAttempts(null)).filteredOn(a -> a.port() == ollama.port())
                 .extracting(ExternalConnectionDto.Attempt::result).contains(ExternalConnectionDto.Result.CONNECTED);
 
         // 절대 차단(링크 로컬·메타데이터) : 주소 자체가 차단되어 규칙을 볼 것도 없다
@@ -425,7 +425,7 @@ class AiProviderIntegrationTest {
         rule("127.0.0.1", "127.0.0.1/32", closedPort);
         AiProviderDto.Provider refused = create("거부", "http://127.0.0.1:" + closedPort, null);
         assertThat(clients.testConnection(refused.id(), admin).error().failure()).isEqualTo(Failure.CONNECTION_REFUSED);
-        assertThat(rules.attempts("AI_HTTP", null, "127.0.0.1", null, null, null, 0, 50).rows()).filteredOn(a -> a.port() == closedPort)
+        assertThat(localAttempts(null)).filteredOn(a -> a.port() == closedPort)
                 .extracting(ExternalConnectionDto.Attempt::result).containsExactly(ExternalConnectionDto.Result.FAILED);
     }
 
@@ -444,7 +444,7 @@ class AiProviderIntegrationTest {
         // 같은 Provider 의 일반 호출(RestClient 경로)은 SEC-1 전송으로 나간다
         assertThat(clients.prompt(provider.id(), new AiProviderDto.PromptRequest("hi", null), admin).success()).isTrue();
         assertThat(ollama.requests).hasSize(1);
-        assertThat(rules.attempts("AI_HTTP", null, "127.0.0.1", null, null, null, 0, 100).rows()).filteredOn(a -> a.port() == ollama.port())
+        assertThat(localAttempts(null)).filteredOn(a -> a.port() == ollama.port())
                 .extracting(ExternalConnectionDto.Attempt::result).as("일반 호출은 한 시도 한 행 (CONNECTED)").containsExactly(ExternalConnectionDto.Result.CONNECTED);
     }
 
@@ -566,11 +566,24 @@ class AiProviderIntegrationTest {
     }
 
     private long attempts(FakeOllama ollama) {
-        return rules.attempts("AI_HTTP", null, "127.0.0.1", null, null, null, 0, 100).rows().stream().filter(a -> a.port() == ollama.port()).count();
+        return localAttempts(null).stream().filter(a -> a.port() == ollama.port()).count();
     }
 
     private void assertInvalid(ProviderRequest request, ErrorCode code) {
         assertThatThrownBy(() -> service.create(request)).as(String.valueOf(request)).isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(code);
+    }
+
+    /**
+     * 127.0.0.1 로의 AI HTTP 연결 시도 전부 (모든 페이지). 목록은 ID 내림차순인데, 테스트 컨텍스트가 여럿이면 Hibernate 가 시퀀스를 블록으로 받아
+     * 나중에 기록한 행의 ID 가 더 작을 수 있어 첫 페이지에 없을 수 있다
+     */
+    private List<ExternalConnectionDto.Attempt> localAttempts(String result) {
+        List<ExternalConnectionDto.Attempt> all = new ArrayList<>();
+        for (int page = 0; ; page++) {
+            var rows = rules.attempts("AI_HTTP", result, "127.0.0.1", null, null, null, page, 100).rows();
+            all.addAll(rows);
+            if (rows.size() < 100) return all;
+        }
     }
 
     private Account account(String role) {

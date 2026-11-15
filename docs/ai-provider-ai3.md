@@ -2,6 +2,7 @@
 
 > 상태 : **완료 (2026-11-14, 후속 안정화 포함 — 12장)**. 등록 : [AI 로드맵 3단계](ai-metadata-roadmap.md#3단계-ollama-연결-및-provider-추상화). 마이그레이션 V8 (`V8__ai_provider.sql`).
 > 후속 : **시스템 기본 AI Provider** (V9, 13장).
+> 이 Provider 계층을 쓰는 첫 기능 : **AI-4 Tool Calling 기반** ([ai-tool-calling-ai4.md](ai-tool-calling-ai4.md)) — `callDefault` 로 읽기 전용 메타데이터 Tool 을 붙여 부른다. AI-4 가 어댑터에 더한 것은 Tool 미지원 거절 판별(`AiProviderAdapter.isToolCallingUnsupported`, `call` 이 `AI_TOOL_CALLING_UNSUPPORTED` 로 바꾼다) 하나다.
 > 실제 업무 AI 기능(데이터 사전 생성·품질 점검·관계 추정·Tool Calling·MCP)·스트리밍·OpenAI 호환 Provider 는 구현하지 않았다.
 
 ## 1. 결정 요약
@@ -200,3 +201,14 @@
 - **화면** : AI Provider 관리 목록에 "시스템 기본" 열, 행마다 "기본으로 지정/변경"·"기본 해제" (비활성·기본 모델 없음이면 버튼을 막고 이유를 보인다), 상태 안내(미지정·비활성·모델 없음), 기본 Provider 삭제 시 안내, 요청 중 중복 클릭 방지.
 - **확장** : 프로젝트별 Provider (U-04 의 프로젝트 부분)는 만들지 않았다. 더할 때는 "프로젝트 지정 → 없으면 시스템 기본" 순서로 `resolve` 앞에 한 단계를 두면 된다 (설정 행·API 는 그대로). API Key 가 필요한 유형도 같은 정책을 쓴다 (인증 정보는 그 유형을 더할 때).
 - **테스트** : `AiDefaultProviderIntegrationTest` (H2·PostgreSQL) — 정책(미지정·자동 지정 없음·지정·변경·멱등·해제·지정 조건), 관리 과정의 외부 연결 없음(시도 기록·서버 요청·허용 규칙 변화 0), `callDefault`(변경·모델 변경 즉시 반영, 비활성 시 지정 유지·호출 차단·다른 Provider 로 안 바꿈, 재활성, 모델 삭제 시 실패), 삭제(서비스·FK·CHECK), 동시성(지정 대 지정 15회·지정 대 해제 15회·지정 대 삭제 8회·지정 대 비활성화 8회 — 매번 행 하나·참조 무결성), 업그레이드(V8 에 Provider 가 있어도 V9 뒤 미지정), 권한(비 ADMIN 403).
+
+## 14. AI-4 에서 더한 호출 계약 (2026-11-15)
+
+AI-4 잔여([ai-tool-calling-ai4.md](ai-tool-calling-ai4.md) 12장)에서 Provider 계층에 더한 것. 기존 `call`·`callDefault` 는 그대로 동작한다.
+
+- `AiProviderClients.callWith` / `callDefaultWith(context, Function<AiCall, T>)` : work 가 `AiCall` 을 받는다 — `client()`(ChatClient), `modelInfo()`(모델 정보, 호출 안에서 한 번), `options(context, output)`(요청 옵션), `usage(response)`(AI 서버가 알려 준 토큰), `isToolCallingUnsupported(error)`. 모두 **같은 SEC-1 대상**(질의당 판정·연결 시도 기록 한 번)으로 보낸다.
+- `AiProviderAdapter` 기본 메서드 3개 (유형별 구현, 기본값은 "모름") :
+  - `modelInfo` → `AiProviderDto.ModelInfo(toolCalling, contextLength)`. Ollama : `/api/show` 의 `capabilities` 에 `tools` 가 있는지, `model_info."<아키텍처>.context_length"`. 서버가 오류 상태로 답하면(404 등) 모름 — 연결 실패·SEC-1 차단은 그대로 던진다.
+  - `chatOptions(model, contextTokens, maxOutputTokens)` → Ollama `num_ctx`·`num_predict` (`OllamaChatOptions`).
+  - `usage(response)` → `AiProviderDto.TokenUsage(promptTokens, completionTokens)`. Spring AI 2.0.2 는 없는 값을 0 으로 채우므로 Ollama 는 "0 이고 그 소요 시간도 없음" 을 알려 주지 않은 것(null)으로 본다.
+- 새 유형(OpenAI 호환 등)을 더할 때 이 세 메서드를 그 유형의 공식 기능으로 구현하지 않으면 모델 정보는 "모름"(Tool Calling 을 시도하고 명시적 거절로만 대체 흐름), 토큰 한도는 `maxTokens` 만, 사용량은 "미측정" 이 된다.

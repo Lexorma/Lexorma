@@ -79,6 +79,24 @@ public final class AiProviderDto {
     public record DefaultTarget(Long providerId, AiProviderType type, String baseUrl, String model, boolean enabled) {
     }
 
+    /**
+     * 모델 정보 (AI-4) : AI 서버가 알려 준 것만 (Ollama /api/show). 모르면 null — 추측해서 채우지 않는다.
+     *
+     * @param toolCalling   Tool Calling 지원 여부 (Ollama capabilities 의 tools). null 이면 알 수 없다
+     * @param contextLength 모델의 최대 컨텍스트 길이(토큰). null 이면 알 수 없다
+     */
+    public record ModelInfo(Boolean toolCalling, Integer contextLength) {
+        public static final ModelInfo UNKNOWN = new ModelInfo(null, null);
+    }
+
+    /**
+     * 모델 호출 한 번의 토큰 사용량 (AI-4) : AI 서버가 응답에 실어 준 값만. 없으면 null — 0 으로 바꾸지 않는다.
+     * Ollama 는 이번에 평가한 프롬프트 토큰(prompt_eval_count)·생성 토큰(eval_count)이다 (캐시로 재사용한 앞부분은 프롬프트 토큰에 들지 않을 수 있다)
+     */
+    public record TokenUsage(Integer promptTokens, Integer completionTokens) {
+        public static final TokenUsage UNKNOWN = new TokenUsage(null, null);
+    }
+
     public record PromptResult(boolean success, String model, String content, long elapsedMillis, Integer promptTokens, Integer completionTokens, Error error) {
     }
 }

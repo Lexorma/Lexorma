@@ -114,7 +114,7 @@ public class AiProviderClients {
             return new AiProviderDto.PromptResult(false, null, null, 0, null, null, error(Failure.MODEL_REQUIRED, null, null, Messages.get("기본 모델이 없습니다. 모델을 지정하세요.")));
         }
         try {
-            ChatResponse response = run(provider, model, context, client -> client.prompt().user(prompt).call().chatResponse());
+            ChatResponse response = run(provider, model, context, call -> call.client().prompt().user(prompt).call().chatResponse());
             if (response == null || response.getResult() == null) throw new IllegalStateException("empty chat response");
             String content = response.getResult().getOutput().getText();
             if (content != null && content.length() > CONTENT_MAX) content = content.substring(0, CONTENT_MAX);
@@ -130,11 +130,17 @@ public class AiProviderClients {
     /**
      * 이후 AI 기능(AI-4~)이 쓰는 호출 경로 : 활성화된 Provider 의 Spring AI {@link ChatClient} 로 work 를 실행한다. ChatClient 는 work 안에서만 쓴다 (끝나면 연결을 닫는다).
      * 실패는 {@link ErrorCode#AI_PROVIDER_CALL_FAILED} (분류한 문구), 지원하지 않는 기능(스트리밍 등)은 {@link ErrorCode#AI_PROVIDER_UNSUPPORTED},
-     * SEC-1 차단은 {@link ErrorCode#EXTERNAL_CONNECTION_BLOCKED}.
+     * SEC-1 차단은 {@link ErrorCode#EXTERNAL_CONNECTION_BLOCKED}, 모델이 Tool Calling 을 지원하지 않아 거절하면 {@link ErrorCode#AI_TOOL_CALLING_UNSUPPORTED}.
+     * work 가 던진 {@link CustomException}(Tool 실행 경계의 권한·범위 오류 등)은 그대로 나간다.
      *
      * @param model 비우면 Provider 의 기본 모델
      */
     public <T> T call(Long providerId, String model, ExecutionContext context, Function<ChatClient, T> work) {
+        return callWith(providerId, model, context, call -> work.apply(call.client()));
+    }
+
+    /** {@link #call} 과 같다. work 는 같은 SEC-1 대상으로 모델 정보도 물을 수 있는 {@link AiCall} 을 받는다 (AI-4) */
+    public <T> T callWith(Long providerId, String model, ExecutionContext context, Function<AiCall, T> work) {
         AiProvider provider = enabled(providerId);
         String chosen = model(provider, model);
         if (chosen == null) throw new CustomException(ErrorCode.AI_PROVIDER_CALL_FAILED, "기본 모델이 없습니다. 모델을 지정하세요.");
@@ -144,6 +150,7 @@ public class AiProviderClients {
             throw e;
         } catch (IOException | RuntimeException e) {
             if (e instanceof CustomException custom) throw custom;
+            if (providers.adapter(provider.getType()).isToolCallingUnsupported(e)) throw new CustomException(ErrorCode.AI_TOOL_CALLING_UNSUPPORTED);
             AiProviderDto.Error error = classify(e, true);
             throw new CustomException(error.failure() == Failure.UNSUPPORTED ? ErrorCode.AI_PROVIDER_UNSUPPORTED : ErrorCode.AI_PROVIDER_CALL_FAILED, "{0}", error.message());
         }
@@ -158,14 +165,20 @@ public class AiProviderClients {
      * 기본 Provider 가 없거나 쓸 수 없으면 {@link AiDefaultProviderService#resolve} 의 오류 — 다른 Provider 로 바꿔 부르지 않는다
      */
     public <T> T callDefault(ExecutionContext context, Function<ChatClient, T> work) {
-        AiProviderDto.DefaultTarget target = defaults.resolve();
-        return call(target.providerId(), target.model(), context, work);
+        return callDefaultWith(context, call -> work.apply(call.client()));
     }
 
-    private <T> T run(AiProvider provider, String model, ExecutionContext context, Function<ChatClient, T> work) throws IOException {
+    /** {@link #callDefault} 와 같다. work 는 {@link AiCall} (모델 정보·요청 옵션)을 받는다 */
+    public <T> T callDefaultWith(ExecutionContext context, Function<AiCall, T> work) {
+        AiProviderDto.DefaultTarget target = defaults.resolve();
+        return callWith(target.providerId(), target.model(), context, work);
+    }
+
+    private <T> T run(AiProvider provider, String model, ExecutionContext context, Function<AiCall, T> work) throws IOException {
         AiProviderAdapter adapter = providers.adapter(provider.getType());
         try (LazyTarget target = new LazyTarget(provider, context)) {
-            return work.apply(ChatClient.create(adapter.chatModel(provider, model, target.requestFactory())));
+            ClientHttpRequestFactory factory = target.requestFactory();
+            return work.apply(new AiCall(ChatClient.create(adapter.chatModel(provider, model, factory)), model, provider, adapter, factory));
         }
     }
 

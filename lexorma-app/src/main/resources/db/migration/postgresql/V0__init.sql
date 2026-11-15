@@ -5,6 +5,9 @@
 --  * COMMENT : 테이블 = 한글명, 컬럼 = 한글 용어 (V1 의 예제 물리 모델과 같다)
 -- PostgreSQL / H2 양쪽에 같이 반영한다 (세션 속성 컬럼 타입만 다르다).
 -- 2026-11-13 : 예전 V2~V6 의 스키마 변경(원본 인덱스 표현식, 인덱스 관리 M-14, VIEW 관리 M-15)을 이 파일에 합쳤다.
+-- 2026-11-15 : Flyway 초기화 — 그 뒤의 V2~V10 (원본 매핑 M-4c, 가져오기 M-4e, SEC-1, 매핑 예외 M-4g, FK 규칙·IDENTITY, AI-3, 기본 AI Provider, AI-5)을 다시 이 파일에 합쳤다.
+--   추가된 컬럼은 해당 create table 에 넣었고(예전 ALTER 와 같은 컬럼 순서), 새 테이블·시퀀스·인덱스·FK·COMMENT 는 맨 끝의 '예전 Vn' 구간에 그 순서대로 있다.
+--   이전 V0~V10 으로 만든 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다.
 --   TABLE·VIEW 이름은 스키마 안에서 하나다 (UX_TBL_01·UX_VIEW_01 = SCHM_SN + 이름, 같은 스키마의 TABLE·VIEW 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 막는다).
 -- =====================================================================
 
@@ -319,6 +322,8 @@ create table TB_TBL (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    SRC_ANTN_CN TEXT,
+    TASK_EXPLN TEXT,
     constraint PK_TBL primary key (TBL_SN)
 );
 
@@ -352,6 +357,9 @@ create table TB_COL (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    SRC_ANTN_CN TEXT,
+    AUTO_CRT_MTHD_CD varchar(20),
+    TASK_EXPLN TEXT,
     constraint PK_COL primary key (COL_SN)
 );
 
@@ -388,6 +396,8 @@ create table TB_TBL_REL (
     MDFCN_DT timestamp(6),
     RGTR_ID varchar(255),
     MDFR_ID varchar(255),
+    DEL_RULE_CD varchar(20),
+    MDFCN_RULE_CD varchar(20),
     constraint PK_TBL_REL primary key (REL_SN)
 );
 
@@ -1932,3 +1942,437 @@ comment on column TB_SRC_CHG_HSTRY.CHG_TYPE_CD is '변경 유형 코드';
 comment on column TB_SRC_CHG_HSTRY.CHG_ARTCL_CN is '변경 항목 내용';
 comment on column TB_SRC_CHG_HSTRY.CHG_BFR_CN is '변경 이전 내용';
 comment on column TB_SRC_CHG_HSTRY.CHG_AFTR_CN is '변경 이후 내용';
+
+-- ---------- 예전 V2 : M-4c : 원본(출처) DB 스키마·테이블 매핑 (docs/source-mapping-m4c.md, 정책 docs/m4-foundation.md 5장) ----------
+
+create sequence SQ_PRJ_SRC_CNTN start with 1 increment by 50;
+create sequence SQ_SRC_SCHM_MPNG start with 1 increment by 50;
+create sequence SQ_SRC_TBL_MPNG start with 1 increment by 50;
+-- 프로젝트의 가져오기 기준 원본 연결 (없으면 기준 연결이 없다). 매핑 변경은 이 행을 잠가 프로젝트 안에서 한 번에 하나씩 한다
+create table TB_PRJ_SRC_CNTN (
+    PRJ_SRC_CNTN_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PRJ_SRC_CNTN primary key (PRJ_SRC_CNTN_SN)
+);
+-- 원본 스키마 ↔ 모델 스키마. PATH_CN·SCHM_NM·CRT_CYCL·RFLT_ORD : 확정할 때의 원본 식별 정보와 반영 순서
+create table TB_SRC_SCHM_MPNG (
+    SRC_SCHM_MPNG_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_SCHM_SN bigint not null,
+    PATH_CN varchar(1000) not null,
+    SCHM_NM varchar(255) not null,
+    CRT_CYCL integer not null,
+    RFLT_ORD integer not null,
+    SCHM_SN bigint,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_SCHM_MPNG primary key (SRC_SCHM_MPNG_SN)
+);
+-- 원본 TABLE ↔ 모델 TABLE. CMPR_NM : 확정할 때의 원본 비교 이름 (DBMS 규칙으로 정규화)
+create table TB_SRC_TBL_MPNG (
+    SRC_TBL_MPNG_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_SCHM_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    PATH_CN varchar(1000) not null,
+    CMPR_NM varchar(255) not null,
+    CRT_CYCL integer not null,
+    RFLT_ORD integer not null,
+    TBL_SN bigint,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    MPNG_EXCL_YN boolean default false not null,
+    constraint PK_SRC_TBL_MPNG primary key (SRC_TBL_MPNG_SN)
+);
+create unique index UX_PRJ_SRC_CNTN_01 on TB_PRJ_SRC_CNTN (PRJ_SN);
+create index IX_PRJ_SRC_CNTN_01 on TB_PRJ_SRC_CNTN (SRC_CNTN_SN);
+create unique index UX_SRC_SCHM_MPNG_01 on TB_SRC_SCHM_MPNG (SRC_CNTN_SN, SRC_SCHM_SN);
+create unique index UX_SRC_SCHM_MPNG_02 on TB_SRC_SCHM_MPNG (SRC_CNTN_SN, SCHM_SN);
+create index IX_SRC_SCHM_MPNG_01 on TB_SRC_SCHM_MPNG (PRJ_SN);
+create index IX_SRC_SCHM_MPNG_02 on TB_SRC_SCHM_MPNG (SCHM_SN);
+create unique index UX_SRC_TBL_MPNG_01 on TB_SRC_TBL_MPNG (SRC_CNTN_SN, SRC_TBL_SN);
+create unique index UX_SRC_TBL_MPNG_02 on TB_SRC_TBL_MPNG (SRC_CNTN_SN, TBL_SN);
+create index IX_SRC_TBL_MPNG_01 on TB_SRC_TBL_MPNG (PRJ_SN);
+create index IX_SRC_TBL_MPNG_02 on TB_SRC_TBL_MPNG (TBL_SN);
+-- 모델 쪽만 FK : 모델 스키마·테이블을 지우면 매핑은 남고 모델 쪽이 비어 "모델 없음" 이 된다
+alter table TB_SRC_SCHM_MPNG add constraint FK_SRC_SCHM_MPNG_01 foreign key (SCHM_SN) references TB_SCHM on delete set null;
+alter table TB_SRC_TBL_MPNG add constraint FK_SRC_TBL_MPNG_01 foreign key (TBL_SN) references TB_TBL on delete set null;
+comment on table TB_PRJ_SRC_CNTN is '프로젝트 출처 접속';
+comment on column TB_PRJ_SRC_CNTN.PRJ_SRC_CNTN_SN is '프로젝트 출처 접속 일련번호';
+comment on column TB_PRJ_SRC_CNTN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_PRJ_SRC_CNTN.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_PRJ_SRC_CNTN.REG_DT is '등록 일시';
+comment on column TB_PRJ_SRC_CNTN.MDFCN_DT is '수정 일시';
+comment on column TB_PRJ_SRC_CNTN.RGTR_ID is '등록자 아이디';
+comment on column TB_PRJ_SRC_CNTN.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_SCHM_MPNG is '출처 스키마 매핑';
+comment on column TB_SRC_SCHM_MPNG.SRC_SCHM_MPNG_SN is '출처 스키마 매핑 일련번호';
+comment on column TB_SRC_SCHM_MPNG.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_SCHM_MPNG.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_SCHM_MPNG.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_SCHM_MPNG.PATH_CN is '경로 내용';
+comment on column TB_SRC_SCHM_MPNG.SCHM_NM is '스키마 명';
+comment on column TB_SRC_SCHM_MPNG.CRT_CYCL is '생성 차수';
+comment on column TB_SRC_SCHM_MPNG.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_SCHM_MPNG.SCHM_SN is '스키마 일련번호';
+comment on column TB_SRC_SCHM_MPNG.REG_DT is '등록 일시';
+comment on column TB_SRC_SCHM_MPNG.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_SCHM_MPNG.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_SCHM_MPNG.MDFR_ID is '수정자 아이디';
+comment on table TB_SRC_TBL_MPNG is '출처 테이블 매핑';
+comment on column TB_SRC_TBL_MPNG.SRC_TBL_MPNG_SN is '출처 테이블 매핑 일련번호';
+comment on column TB_SRC_TBL_MPNG.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_TBL_MPNG.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_TBL_MPNG.SRC_SCHM_SN is '출처 스키마 일련번호';
+comment on column TB_SRC_TBL_MPNG.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_TBL_MPNG.PATH_CN is '경로 내용';
+comment on column TB_SRC_TBL_MPNG.CMPR_NM is '비교 명';
+comment on column TB_SRC_TBL_MPNG.CRT_CYCL is '생성 차수';
+comment on column TB_SRC_TBL_MPNG.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_TBL_MPNG.TBL_SN is '테이블 일련번호';
+comment on column TB_SRC_TBL_MPNG.REG_DT is '등록 일시';
+comment on column TB_SRC_TBL_MPNG.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_TBL_MPNG.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_TBL_MPNG.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 V3 : M-4e : 원본(출처) 메타데이터 선택 가져오기 (docs/source-import-m4e.md, 정책 docs/m4-foundation.md 5.5·5.10) ----------
+
+create sequence SQ_SRC_IMPRT_EXCN start with 1 increment by 50;
+-- 가져오기 실행 (성공한 가져오기만 남는다 : 실패하면 모델 변경과 함께 롤백된다). CHG_GROUP_ID = 요청 식별자 = 모델 변경 이력의 변경 그룹 (같은 요청을 두 번 적용하지 않는다)
+create table TB_SRC_IMPRT_EXCN (
+    SRC_IMPRT_EXCN_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_CLCT_EXCN_SN bigint,
+    RFLT_ORD integer not null,
+    CHG_GROUP_ID varchar(255) not null,
+    IMPRT_CN TEXT,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_IMPRT_EXCN primary key (SRC_IMPRT_EXCN_SN)
+);
+create unique index UX_SRC_IMPRT_EXCN_01 on TB_SRC_IMPRT_EXCN (CHG_GROUP_ID);
+create index IX_SRC_IMPRT_EXCN_01 on TB_SRC_IMPRT_EXCN (PRJ_SN);
+comment on column TB_TBL.SRC_ANTN_CN is '출처 주석 내용';
+comment on column TB_COL.SRC_ANTN_CN is '출처 주석 내용';
+comment on table TB_SRC_IMPRT_EXCN is '출처 가져오기 실행';
+comment on column TB_SRC_IMPRT_EXCN.SRC_IMPRT_EXCN_SN is '출처 가져오기 실행 일련번호';
+comment on column TB_SRC_IMPRT_EXCN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_IMPRT_EXCN.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_IMPRT_EXCN.SRC_CLCT_EXCN_SN is '출처 수집 실행 일련번호';
+comment on column TB_SRC_IMPRT_EXCN.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_IMPRT_EXCN.CHG_GROUP_ID is '변경 그룹 아이디';
+comment on column TB_SRC_IMPRT_EXCN.IMPRT_CN is '가져오기 내용';
+comment on column TB_SRC_IMPRT_EXCN.REG_DT is '등록 일시';
+comment on column TB_SRC_IMPRT_EXCN.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_IMPRT_EXCN.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_IMPRT_EXCN.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 V4 : SEC-1 : 외부 연결 보안 정책·관리자 허용 목록 (docs/external-connection-security-sec1.md) ----------
+
+create sequence SQ_EXTRL_CNTN_RULE start with 1 increment by 50;
+create sequence SQ_EXTRL_CNTN_RULE_HSTRY start with 1 increment by 50;
+create sequence SQ_EXTRL_CNTN_HSTRY start with 1 increment by 50;
+create table TB_EXTRL_CNTN_RULE (
+    EXTRL_CNTN_RULE_SN bigint not null,
+    CNTN_TYPE_CD varchar(20) not null,
+    HOST_NM varchar(255),
+    ALWNC_ADDR varchar(255) not null,
+    PORT_NO integer not null,
+    ACTVTN_YN boolean not null,
+    RULE_EXPLN varchar(1000),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_EXTRL_CNTN_RULE primary key (EXTRL_CNTN_RULE_SN)
+);
+create table TB_EXTRL_CNTN_RULE_HSTRY (
+    EXTRL_CNTN_RULE_HSTRY_SN bigint not null,
+    EXTRL_CNTN_RULE_SN bigint not null,
+    CHG_TYPE_CD varchar(20) not null,
+    CHG_BFR_CN TEXT,
+    CHG_AFTR_CN TEXT,
+    DMND_ID varchar(255),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_EXTRL_CNTN_RULE_HSTRY primary key (EXTRL_CNTN_RULE_HSTRY_SN)
+);
+create table TB_EXTRL_CNTN_HSTRY (
+    EXTRL_CNTN_HSTRY_SN bigint not null,
+    CNTN_TYPE_CD varchar(20) not null,
+    HOST_NM varchar(255) not null,
+    PORT_NO integer not null,
+    CNTN_ADDR_CN varchar(1000),
+    EXTRL_CNTN_RULE_SN bigint,
+    RSLT_CD varchar(20) not null,
+    RSN_CD varchar(20),
+    EXCN_TYPE_CD varchar(20),
+    DMND_ID varchar(255),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_EXTRL_CNTN_HSTRY primary key (EXTRL_CNTN_HSTRY_SN)
+);
+create index IX_EXTRL_CNTN_RULE_01 on TB_EXTRL_CNTN_RULE (CNTN_TYPE_CD, PORT_NO);
+create index IX_EXTRL_CNTN_RULE_HSTRY_01 on TB_EXTRL_CNTN_RULE_HSTRY (EXTRL_CNTN_RULE_SN);
+create index IX_EXTRL_CNTN_HSTRY_01 on TB_EXTRL_CNTN_HSTRY (REG_DT);
+create index IX_EXTRL_CNTN_HSTRY_02 on TB_EXTRL_CNTN_HSTRY (CNTN_TYPE_CD, RSLT_CD);
+comment on table TB_EXTRL_CNTN_RULE is '외부 접속 규칙';
+comment on column TB_EXTRL_CNTN_RULE.EXTRL_CNTN_RULE_SN is '외부 접속 규칙 일련번호';
+comment on column TB_EXTRL_CNTN_RULE.CNTN_TYPE_CD is '접속 유형 코드';
+comment on column TB_EXTRL_CNTN_RULE.HOST_NM is '호스트 명';
+comment on column TB_EXTRL_CNTN_RULE.ALWNC_ADDR is '허용 주소';
+comment on column TB_EXTRL_CNTN_RULE.PORT_NO is '포트 번호';
+comment on column TB_EXTRL_CNTN_RULE.ACTVTN_YN is '활성 여부';
+comment on column TB_EXTRL_CNTN_RULE.RULE_EXPLN is '규칙 설명';
+comment on column TB_EXTRL_CNTN_RULE.REG_DT is '등록 일시';
+comment on column TB_EXTRL_CNTN_RULE.MDFCN_DT is '수정 일시';
+comment on column TB_EXTRL_CNTN_RULE.RGTR_ID is '등록자 아이디';
+comment on column TB_EXTRL_CNTN_RULE.MDFR_ID is '수정자 아이디';
+comment on table TB_EXTRL_CNTN_RULE_HSTRY is '외부 접속 규칙 이력';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.EXTRL_CNTN_RULE_HSTRY_SN is '외부 접속 규칙 이력 일련번호';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.EXTRL_CNTN_RULE_SN is '외부 접속 규칙 일련번호';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.CHG_AFTR_CN is '변경 이후 내용';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.DMND_ID is '요청 아이디';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.REG_DT is '등록 일시';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_EXTRL_CNTN_RULE_HSTRY.MDFR_ID is '수정자 아이디';
+comment on table TB_EXTRL_CNTN_HSTRY is '외부 접속 이력';
+comment on column TB_EXTRL_CNTN_HSTRY.EXTRL_CNTN_HSTRY_SN is '외부 접속 이력 일련번호';
+comment on column TB_EXTRL_CNTN_HSTRY.CNTN_TYPE_CD is '접속 유형 코드';
+comment on column TB_EXTRL_CNTN_HSTRY.HOST_NM is '호스트 명';
+comment on column TB_EXTRL_CNTN_HSTRY.PORT_NO is '포트 번호';
+comment on column TB_EXTRL_CNTN_HSTRY.CNTN_ADDR_CN is '접속 주소 내용';
+comment on column TB_EXTRL_CNTN_HSTRY.EXTRL_CNTN_RULE_SN is '외부 접속 규칙 일련번호';
+comment on column TB_EXTRL_CNTN_HSTRY.RSLT_CD is '결과 코드';
+comment on column TB_EXTRL_CNTN_HSTRY.RSN_CD is '사유 코드';
+comment on column TB_EXTRL_CNTN_HSTRY.EXCN_TYPE_CD is '실행 유형 코드';
+comment on column TB_EXTRL_CNTN_HSTRY.DMND_ID is '요청 아이디';
+comment on column TB_EXTRL_CNTN_HSTRY.REG_DT is '등록 일시';
+comment on column TB_EXTRL_CNTN_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_EXTRL_CNTN_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_EXTRL_CNTN_HSTRY.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 V5 : M-4g : 원본 TABLE 매핑 예외 (docs/source-mapping-m4c.md 13장) ----------
+
+comment on column TB_SRC_TBL_MPNG.MPNG_EXCL_YN is '매핑 예외 여부';
+
+-- ---------- 예전 V7 : FK 삭제·수정 규칙과 컬럼 IDENTITY (docs/lexorma-example-sync.md 2장) ----------
+
+comment on column TB_TBL_REL.DEL_RULE_CD is '삭제 규칙 코드';
+comment on column TB_TBL_REL.MDFCN_RULE_CD is '수정 규칙 코드';
+comment on column TB_COL.AUTO_CRT_MTHD_CD is '자동 생성 방법 코드';
+
+-- ---------- 예전 V8 : AI-3 : AI Provider 관리 (docs/ai-provider-ai3.md) ----------
+
+create sequence SQ_AI_PRVDR start with 1 increment by 50;
+create table TB_AI_PRVDR (
+    AI_PRVDR_SN bigint not null,
+    PRVDR_NM varchar(100) not null,
+    PRVDR_TYPE_CD varchar(20) not null,
+    BSC_URL_ADDR varchar(255) not null,
+    BSC_MDL_NM varchar(255),
+    ACTVTN_YN boolean not null,
+    PRVDR_EXPLN varchar(1000),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_PRVDR primary key (AI_PRVDR_SN)
+);
+create unique index UX_AI_PRVDR_01 on TB_AI_PRVDR (PRVDR_NM);
+comment on table TB_AI_PRVDR is 'AI 제공자';
+comment on column TB_AI_PRVDR.AI_PRVDR_SN is 'AI 제공자 일련번호';
+comment on column TB_AI_PRVDR.PRVDR_NM is '제공자 명';
+comment on column TB_AI_PRVDR.PRVDR_TYPE_CD is '제공자 유형 코드';
+comment on column TB_AI_PRVDR.BSC_URL_ADDR is '기본 URL 주소';
+comment on column TB_AI_PRVDR.BSC_MDL_NM is '기본 모델 명';
+comment on column TB_AI_PRVDR.ACTVTN_YN is '활성 여부';
+comment on column TB_AI_PRVDR.PRVDR_EXPLN is '제공자 설명';
+comment on column TB_AI_PRVDR.REG_DT is '등록 일시';
+comment on column TB_AI_PRVDR.MDFCN_DT is '수정 일시';
+comment on column TB_AI_PRVDR.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_PRVDR.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 V9 : 시스템 기본 AI Provider (docs/ai-provider-ai3.md 13장) ----------
+
+create table TB_AI_STNG (
+    AI_STNG_SN bigint not null,
+    BSC_AI_PRVDR_SN bigint,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_STNG primary key (AI_STNG_SN),
+    constraint CK_AI_STNG_01 check (AI_STNG_SN = 1),
+    constraint FK_AI_STNG_01 foreign key (BSC_AI_PRVDR_SN) references TB_AI_PRVDR (AI_PRVDR_SN)
+);
+comment on table TB_AI_STNG is 'AI 설정';
+comment on column TB_AI_STNG.AI_STNG_SN is 'AI 설정 일련번호';
+comment on column TB_AI_STNG.BSC_AI_PRVDR_SN is '기본 AI 제공자 일련번호';
+comment on column TB_AI_STNG.REG_DT is '등록 일시';
+comment on column TB_AI_STNG.MDFCN_DT is '수정 일시';
+comment on column TB_AI_STNG.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_STNG.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 V10 : AI-5 : AI 데이터 사전 초안 생성 및 승인 (docs/ai-dictionary-draft-ai5.md) ----------
+
+create sequence SQ_AI_EXPLN_SGSTN start with 1 increment by 50;
+create sequence SQ_AI_EXPLN_SGSTN_HSTRY start with 1 increment by 50;
+create sequence SQ_AI_EXPLN_CRT_EXCN start with 1 increment by 50;
+create table TB_AI_EXPLN_SGSTN (
+    AI_EXPLN_SGSTN_SN bigint not null,
+    PRJ_SN bigint not null,
+    TRGT_TYPE_CD varchar(20) not null,
+    TBL_SN bigint not null,
+    COL_SN bigint,
+    TRGT_NM varchar(255) not null,
+    SGSTN_CYCL integer not null,
+    SGSTN_EXPLN TEXT not null,
+    CRTNTY_CD varchar(20) not null,
+    RVW_STTS_CD varchar(20) not null,
+    SGSTN_DTL_CN TEXT,
+    EVDNC_CN TEXT,
+    CRTR_VER_CN TEXT not null,
+    AI_PRVDR_SN bigint,
+    MDL_NM varchar(255),
+    PRMPT_VER_NM varchar(30) not null,
+    PRMPT_HASH_VL varchar(255) not null,
+    CRT_MTHD_CD varchar(20) not null,
+    AI_EXPLN_CRT_EXCN_SN bigint,
+    RVWR_ID varchar(255),
+    RVW_DT timestamp(6),
+    CFMTN_EXPLN TEXT,
+    RVW_RSN_CN varchar(1000),
+    RRVW_NEED_YN boolean not null,
+    VER_NO bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_SGSTN primary key (AI_EXPLN_SGSTN_SN)
+);
+create index IX_AI_EXPLN_SGSTN_01 on TB_AI_EXPLN_SGSTN (PRJ_SN, TBL_SN, COL_SN);
+create index IX_AI_EXPLN_SGSTN_02 on TB_AI_EXPLN_SGSTN (PRJ_SN, RVW_STTS_CD);
+create table TB_AI_EXPLN_SGSTN_HSTRY (
+    AI_EXPLN_SGSTN_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    AI_EXPLN_SGSTN_SN bigint not null,
+    PRCS_TYPE_CD varchar(20) not null,
+    BFR_STTS_CD varchar(20),
+    AFTR_STTS_CD varchar(20) not null,
+    PRCR_ID varchar(255),
+    PRCS_DT timestamp(6) not null,
+    PRCS_RSN_CN varchar(1000),
+    CFMTN_EXPLN TEXT,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_SGSTN_HSTRY primary key (AI_EXPLN_SGSTN_HSTRY_SN)
+);
+create index IX_AI_EXPLN_SGSTN_HSTRY_01 on TB_AI_EXPLN_SGSTN_HSTRY (AI_EXPLN_SGSTN_SN);
+create table TB_AI_EXPLN_CRT_EXCN (
+    AI_EXPLN_CRT_EXCN_SN bigint not null,
+    PRJ_SN bigint not null,
+    ACNT_SN bigint not null,
+    EXCN_STTS_CD varchar(20) not null,
+    TRGT_CN TEXT not null,
+    TRGT_CNT integer not null,
+    CMPTN_CNT integer not null,
+    FAIL_CNT integer not null,
+    SKIP_CNT integer not null,
+    BGNG_DT timestamp(6),
+    END_DT timestamp(6),
+    ERR_CN TEXT,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_CRT_EXCN primary key (AI_EXPLN_CRT_EXCN_SN)
+);
+create index IX_AI_EXPLN_CRT_EXCN_01 on TB_AI_EXPLN_CRT_EXCN (PRJ_SN, EXCN_STTS_CD);
+comment on column TB_TBL.TASK_EXPLN is '업무 설명';
+comment on column TB_COL.TASK_EXPLN is '업무 설명';
+comment on table TB_AI_EXPLN_SGSTN is 'AI 설명 제안';
+comment on column TB_AI_EXPLN_SGSTN.AI_EXPLN_SGSTN_SN is 'AI 설명 제안 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.TRGT_TYPE_CD is '대상 유형 코드';
+comment on column TB_AI_EXPLN_SGSTN.TBL_SN is '테이블 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.COL_SN is '컬럼 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.TRGT_NM is '대상 명';
+comment on column TB_AI_EXPLN_SGSTN.SGSTN_CYCL is '제안 차수';
+comment on column TB_AI_EXPLN_SGSTN.SGSTN_EXPLN is '제안 설명';
+comment on column TB_AI_EXPLN_SGSTN.CRTNTY_CD is '확실성 코드';
+comment on column TB_AI_EXPLN_SGSTN.RVW_STTS_CD is '검토 상태 코드';
+comment on column TB_AI_EXPLN_SGSTN.SGSTN_DTL_CN is '제안 상세 내용';
+comment on column TB_AI_EXPLN_SGSTN.EVDNC_CN is '근거 내용';
+comment on column TB_AI_EXPLN_SGSTN.CRTR_VER_CN is '기준 버전 내용';
+comment on column TB_AI_EXPLN_SGSTN.AI_PRVDR_SN is 'AI 제공자 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.MDL_NM is '모델 명';
+comment on column TB_AI_EXPLN_SGSTN.PRMPT_VER_NM is '프롬프트 버전 명';
+comment on column TB_AI_EXPLN_SGSTN.PRMPT_HASH_VL is '프롬프트 해시 값';
+comment on column TB_AI_EXPLN_SGSTN.CRT_MTHD_CD is '생성 방법 코드';
+comment on column TB_AI_EXPLN_SGSTN.AI_EXPLN_CRT_EXCN_SN is 'AI 설명 생성 실행 일련번호';
+comment on column TB_AI_EXPLN_SGSTN.RVWR_ID is '검토자 아이디';
+comment on column TB_AI_EXPLN_SGSTN.RVW_DT is '검토 일시';
+comment on column TB_AI_EXPLN_SGSTN.CFMTN_EXPLN is '확정 설명';
+comment on column TB_AI_EXPLN_SGSTN.RVW_RSN_CN is '검토 사유 내용';
+comment on column TB_AI_EXPLN_SGSTN.RRVW_NEED_YN is '재검토 필요 여부';
+comment on column TB_AI_EXPLN_SGSTN.VER_NO is '버전 번호';
+comment on column TB_AI_EXPLN_SGSTN.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_SGSTN.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_SGSTN.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_SGSTN.MDFR_ID is '수정자 아이디';
+comment on table TB_AI_EXPLN_SGSTN_HSTRY is 'AI 설명 제안 이력';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.AI_EXPLN_SGSTN_HSTRY_SN is 'AI 설명 제안 이력 일련번호';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.AI_EXPLN_SGSTN_SN is 'AI 설명 제안 일련번호';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.PRCS_TYPE_CD is '처리 유형 코드';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.BFR_STTS_CD is '이전 상태 코드';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.AFTR_STTS_CD is '이후 상태 코드';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.PRCR_ID is '처리자 아이디';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.PRCS_DT is '처리 일시';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.PRCS_RSN_CN is '처리 사유 내용';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.CFMTN_EXPLN is '확정 설명';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_SGSTN_HSTRY.MDFR_ID is '수정자 아이디';
+comment on table TB_AI_EXPLN_CRT_EXCN is 'AI 설명 생성 실행';
+comment on column TB_AI_EXPLN_CRT_EXCN.AI_EXPLN_CRT_EXCN_SN is 'AI 설명 생성 실행 일련번호';
+comment on column TB_AI_EXPLN_CRT_EXCN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_CRT_EXCN.ACNT_SN is '계정 일련번호';
+comment on column TB_AI_EXPLN_CRT_EXCN.EXCN_STTS_CD is '실행 상태 코드';
+comment on column TB_AI_EXPLN_CRT_EXCN.TRGT_CN is '대상 내용';
+comment on column TB_AI_EXPLN_CRT_EXCN.TRGT_CNT is '대상 수';
+comment on column TB_AI_EXPLN_CRT_EXCN.CMPTN_CNT is '완료 수';
+comment on column TB_AI_EXPLN_CRT_EXCN.FAIL_CNT is '실패 수';
+comment on column TB_AI_EXPLN_CRT_EXCN.SKIP_CNT is '건너뜀 수';
+comment on column TB_AI_EXPLN_CRT_EXCN.BGNG_DT is '시작 일시';
+comment on column TB_AI_EXPLN_CRT_EXCN.END_DT is '종료 일시';
+comment on column TB_AI_EXPLN_CRT_EXCN.ERR_CN is '오류 내용';
+comment on column TB_AI_EXPLN_CRT_EXCN.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_CRT_EXCN.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_CRT_EXCN.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_CRT_EXCN.MDFR_ID is '수정자 아이디';

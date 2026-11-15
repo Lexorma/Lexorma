@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lexorma description draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetType", "targetId", "description", "certainty", "evidence", "unknowns", "questions"],
+  "$defs": {
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "name"],
+      "properties": {
+        "type": {
+          "description": "SCHEMA (schemaId), TABLE (tableId), COLUMN (columnId), RELATION (relationId), TERM (termId), WORD (wordId), DOMAIN (domainId), HISTORY (historyId)",
+          "enum": ["SCHEMA", "TABLE", "COLUMN", "RELATION", "TERM", "WORD", "DOMAIN", "HISTORY"]
+        },
+        "id": {"description": "The id exactly as given in the metadata", "type": "integer", "minimum": 0},
+        "name": {"description": "The name exactly as given in the metadata", "type": "string", "minLength": 1, "maxLength": 200},
+        "tableId": {"description": "COLUMN only: the tableId of its table", "type": ["integer", "null"], "minimum": 0},
+        "kind": {"description": "RELATION only: FK or LOGICAL", "enum": ["FK", "LOGICAL", null]}
+      }
+    },
+    "recommendation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "name", "reason"],
+      "properties": {
+        "id": {"description": "termId or domainId exactly as given in the metadata", "type": "integer", "minimum": 0},
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 500}
+      }
+    }
+  },
+  "properties": {
+    "targetType": {"description": "TABLE or COLUMN : the target given in the request", "enum": ["TABLE", "COLUMN"]},
+    "targetId": {"description": "tableId (TABLE) or columnId (COLUMN) of the target given in the request", "type": "integer", "minimum": 0},
+    "description": {"description": "Proposed business description of the target, in the requested language. State only what the metadata supports; mark guesses as guesses.", "type": "string", "minLength": 1, "maxLength": 2000},
+    "certainty": {"description": "VERIFIED: every statement is stated in the metadata. INFERRED: partly inferred from names and structure. UNKNOWN: the meaning cannot be determined from the metadata.", "enum": ["VERIFIED", "INFERRED", "UNKNOWN"]},
+    "nameInterpretation": {"description": "How the physical name and abbreviations read, word by word, based on the standard words given (null if not applicable)", "type": ["string", "null"], "maxLength": 500},
+    "termRecommendation": {"description": "COLUMN only: an existing standard term from the metadata that fits the column (null if none fits)", "$ref": "#/$defs/recommendation"},
+    "domainRecommendation": {"description": "COLUMN only: an existing standard domain from the metadata that fits the column (null if none fits)", "$ref": "#/$defs/recommendation"},
+    "related": {
+      "description": "Related tables or columns from the metadata and why (at most 10)",
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["type", "id", "name", "note"],
+        "properties": {
+          "type": {"enum": ["TABLE", "COLUMN"]},
+          "id": {"type": "integer", "minimum": 0},
+          "name": {"type": "string", "minLength": 1, "maxLength": 200},
+          "note": {"type": "string", "minLength": 1, "maxLength": 300}
+        }
+      }
+    },
+    "evidence": {"description": "Every metadata item the description relies on (at most 30)", "type": "array", "maxItems": 30, "items": {"$ref": "#/$defs/evidenceItem"}},
+    "unknowns": {"description": "What cannot be determined from the metadata (code value meanings, tax inclusion, currency, date basis, personal data, processing order, actual usage)", "type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 300}},
+    "questions": {"description": "Questions to ask the data owner to confirm the description", "type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 300}}
+  }
+}

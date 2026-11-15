@@ -287,26 +287,23 @@ class AiDefaultProviderIntegrationTest {
         }
     }
 
-    @ParameterizedTest(name = "업그레이드 {0} : V8 에 Provider 가 있어도 V9 뒤 기본 Provider 는 미지정, Provider 는 그대로")
+    @ParameterizedTest(name = "신규 설치 {0} : 기본 Provider 는 미지정, Provider 는 없다 (자동 등록 없음)")
     @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeStartsUnset(String vendor) {
+    void freshInstallStartsUnset(String vendor) {
         String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
         assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
         String schema = "ai_default_" + UUID.randomUUID().toString().replace("-", "");
         String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway v8 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target("8").cleanDisabled(false).load();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            v8.migrate();
+            flyway.migrate();
             JdbcTemplate db = new JdbcTemplate(dataSource);
             String s = "\"" + schema + "\".";
-            db.update("insert into " + s + "TB_AI_PRVDR(AI_PRVDR_SN, PRVDR_NM, PRVDR_TYPE_CD, BSC_URL_ADDR, BSC_MDL_NM, ACTVTN_YN) values (1, 'existing', 'OLLAMA', 'http://127.0.0.1:11434', 'llama3.2', true)");
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
-            assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
             assertThat(db.queryForList("select BSC_AI_PRVDR_SN from " + s + "TB_AI_STNG", Long.class)).containsExactly((Long) null);
-            assertThat(db.queryForObject("select PRVDR_NM from " + s + "TB_AI_PRVDR where AI_PRVDR_SN = 1", String.class)).isEqualTo("existing");
+            assertThat(db.queryForObject("select count(*) from " + s + "TB_AI_PRVDR", Long.class)).isZero();
         } finally {
-            v8.clean();
+            flyway.clean();
         }
     }
 

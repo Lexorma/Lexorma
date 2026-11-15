@@ -99,10 +99,10 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
 
     private static final Map<Class<?>, Tracked> TRACKED = Map.ofEntries(
             Map.entry(TableInfo.class, new Tracked(TargetType.PHYSICAL_TABLE, "tableName", null,
-                    List.of("tableName", "tableKorName", "tableDescription", "sourceComment", "isMasterTable", "sortOrder", APPROVAL, "schema"))),
+                    List.of("tableName", "tableKorName", "tableDescription", "sourceComment", "bizDescription", "isMasterTable", "sortOrder", APPROVAL, "schema"))),
             // PK·고유값·인덱스 여부는 컬럼 속성이므로 컬럼 이력에만 남는다
             Map.entry(ColumnInfo.class, new Tracked(TargetType.PHYSICAL_COLUMN, "columnName", null,
-                    List.of("tableInfo", "tableName", "columnName", "columnDesc", "sourceComment", "dataType", "maxLength", "precision", "scale", "isNullable", "defaultValue",
+                    List.of("tableInfo", "tableName", "columnName", "columnDesc", "sourceComment", "bizDescription", "dataType", "maxLength", "precision", "scale", "isNullable", "defaultValue",
                             "identity", "sortOrder", "isMasterData", "refTableName", "isRequired", "isSensitive", "isPk", "isUnique", "isIndex", "isEncrypted", "example",
                             APPROVAL, "standardTerms"))),
             Map.entry(TableRelation.class, new Tracked(TargetType.PHYSICAL_RELATION, "relationName", null,

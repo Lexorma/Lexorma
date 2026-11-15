@@ -178,6 +178,12 @@ export function DictionaryPage({ table }: { table: DictionaryTable }) {
 /** 예전 주소 /dataDictionary?tab=standardTerms&searchColumn=… → 해당 화면 (검색 조건 유지). tab 이 없으면 표준 도메인 */
 export function DictionaryRedirect() {
   const params = new URLSearchParams(window.location.search);
+  // AI 설명 제안 (AI-5) : ?tab=aiDescriptions&proposal=… / &tableId=…&columnId=…
+  if (params.get('tab') === 'aiDescriptions') {
+    params.delete('tab');
+    const query = params.toString();
+    return <Navigate to={`/aiDictionary${query ? `?${query}` : ''}`} replace />;
+  }
   const tab = TABS.find((candidate) => candidate.id === params.get('tab')) ?? TABS[0];
   params.delete('tab');
   const search = params.toString();

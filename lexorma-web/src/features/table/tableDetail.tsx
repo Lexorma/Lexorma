@@ -1,4 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { BizDescriptionInfo, useObjectStatuses } from '../dictionary/ai/BizDescriptionInfo';
+import { proposalPath, STATUS_CLASS, STATUS_LABEL, type ObjectStatus } from '../dictionary/ai/aiDictionary';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import type { Row } from '../../components/grid/Grid';
@@ -125,6 +128,8 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
   onApproval?: () => void;
 }) {
   const approved = row.isApproval === 'Y';
+  const { canView } = useAuth();
+  const statuses = useObjectStatuses(row.id as number);
   const { data, error } = useQuery({
     queryKey: ['table-columns', row.id],
     queryFn: () => api<{ columnInfos?: ColumnInfo[] }>(`/api/selectColumn/tableColumn/${enc(row.id)}`, { silent: true }),
@@ -166,6 +171,9 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
         })}
       </dl>
 
+      {/* 업무 설명과 AI 설명 제안 상태 (AI-5) */}
+      <BizDescriptionInfo status={statuses.data?.find((s) => s.columnId == null)} tableId={row.id as number} />
+
       <div className="dict-detail-columns">
         <h4>{data && columns.length > 0 ? t('컬럼 목록 ({0})', columns.length) : t('컬럼 목록')}</h4>
         {error ? (
@@ -179,7 +187,7 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
             <table>
               <thead>
                 <tr>
-                  {['#', t('컬럼명'), t('컬럼 설명'), t('데이터 타입'), 'PK', 'NULL', t('승인')].map((h) => <th key={h}>{h}</th>)}
+                  {['#', t('컬럼명'), t('컬럼 설명'), t('데이터 타입'), 'PK', 'NULL', t('승인'), ...(canView('ai-dictionary') ? [t('업무 설명')] : [])].map((h) => <th key={h}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -192,6 +200,7 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
                     <td className="text-center">{ynLabel(col.isPk, 'PK')}</td>
                     <td className="text-center">{ynLabel(col.isNullable, 'Y')}</td>
                     <td className="text-center">{ynLabel(col.isApproval, t('승인'), 'success')}</td>
+                    {canView('ai-dictionary') && <td><ColumnBizCell status={statuses.data?.find((s) => s.columnId === col.id)} tableId={row.id as number} columnId={col.id as number} /></td>}
                   </tr>
                 ))}
               </tbody>
@@ -221,5 +230,17 @@ function TableDetail({ row, columnId, onEditColumns, onDdl, onEdit, onErd, onMap
         {onEdit && <button type="button" className="btn" onClick={onEdit}>{t('수정')}</button>}
       </div>
     </div>
+  );
+}
+
+/** 컬럼 목록의 업무 설명 칸 : 업무 설명(줄임) + AI 제안 상태 링크 (AI-5) */
+function ColumnBizCell({ status, tableId, columnId }: { status: ObjectStatus | undefined; tableId: number; columnId: number }) {
+  return (
+    <span className="ai-dict-cell">
+      {status?.bizDescription ? <span className="ai-dict-cell-text" title={status.bizDescription}>{status.bizDescription}</span> : <span className="gh-muted">-</span>}
+      {status?.proposalStatus && (
+        <Link to={proposalPath({ proposalId: status.proposalId, tableId, columnId })} className={`gh-label ${STATUS_CLASS[status.proposalStatus]}`}>{STATUS_LABEL[status.proposalStatus]}</Link>
+      )}
+    </span>
   );
 }

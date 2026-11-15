@@ -43,6 +43,9 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
   const [korName, setKorName] = useState(row.tableKorName ?? '');
   const [tableName, setTableName] = useState(originalTableName);
   const [description, setDescription] = useState(row.tableDescription ?? '');
+  // 업무 설명 (AI-5) : 담당자가 확정한 설명. DDL COMMENT(테이블 설명)·원본 COMMENT 와 따로 둔다
+  const originalBizDescription = String((row as { bizDescription?: string | null }).bizDescription ?? '');
+  const [bizDescription, setBizDescription] = useState(originalBizDescription);
   const [isMaster, setIsMaster] = useState(row.isMasterTable === 'Y');
   const [sortOrder, setSortOrder] = useState(row.sortOrder ?? '');
   // 등록 : 스키마를 고른다 (고르지 않으면 기본 스키마). 수정 : 스키마를 보내지 않아 현재 스키마를 유지한다 (이동은 제공하지 않음)
@@ -110,6 +113,8 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
       tableKorName: sendKorName,
       tableName,
       tableDescription: description,
+      // 수정 : 고쳤을 때만 보낸다 (안 보내면 서버가 그대로 둔다). 읽은 값을 함께 보내 그 사이 다른 사용자·AI 제안 승인이 바꾼 업무 설명을 덮어쓰지 않는다
+      ...(type === 'C' ? { bizDescription } : bizDescription !== originalBizDescription ? { bizDescription, bizDescriptionBase: originalBizDescription } : {}),
       isMasterTable: isMaster ? 'Y' : 'N',
       sortOrder: parseInt(String(sortOrder)) || 0,
       ...(type === 'C' && selectedSchemaId ? { schemaId: Number(selectedSchemaId) } : {}),
@@ -174,6 +179,12 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
       <div className="form-group">
         <label htmlFor="tableDescription">{t('테이블 설명')}</label>
         <input type="text" className="form-control" id="tableDescription" placeholder={t('비워두면 한글명으로 채웁니다.')} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="bizDescription">{t('업무 설명')}</label>
+        <textarea className="form-control" id="bizDescription" rows={3} maxLength={4000} placeholder={t('테이블의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)')}
+                  value={bizDescription} onChange={(e) => setBizDescription(e.target.value)} />
       </div>
 
       <div className="form-check" style={{ margin: '10px 0' }}>

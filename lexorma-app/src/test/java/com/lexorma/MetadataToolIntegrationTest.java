@@ -280,7 +280,10 @@ class MetadataToolIntegrationTest {
                 assertThat(code).as(file.getFileName().toString())
                         .doesNotContain("JdbcTemplate", "EntityManager", "createNativeQuery", "createQuery", "com.lexorma.source", "java.io.File", "java.nio.file",
                                 "RestClient", "HttpClient", "WebClient");
-                // 기존 서비스·저장소의 쓰기 계열 메서드(save·insert·update·delete·approval·upload·process…)를 부르지 않는다
+                // 기존 서비스·저장소의 쓰기 계열 메서드(save·insert·update·delete·approval·upload·process…)를 부르지 않는다.
+                // AI-5 데이터 사전 초안(ai/dictionary)은 제안·검토 이력을 저장하고 승인으로 업무 설명을 쓰는 기능이라 이 규칙에서 뺀다 (SQL·원본 DB·파일·HTTP 금지는 그대로).
+                // AI 가 부르는 Tool·질의 경로(tool·context·answer·evidence·budget·service)는 그대로 읽기 전용이다
+                if (file.toString().contains("/ai/dictionary/")) continue;
                 assertThat(code).as(file.getFileName().toString())
                         .doesNotContainPattern("\\.(save|insert|update|delete|remove|approval|upload|process|generate|syncReference|releaseColumns)(?!Rule\\(|d\\()\\w*\\(");
             }

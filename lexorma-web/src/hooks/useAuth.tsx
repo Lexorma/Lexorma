@@ -24,6 +24,15 @@ export type MenuId =
   | 'dictionary-edit'
   /** 화면이 아니라 데이터 사전 승인·승인취소 버튼 노출 여부 (approvalAvailable 과 함께 본다) */
   | 'dictionary-approve'
+  /** 데이터 사전 › AI 설명 제안 (AI-5) : 조회 VIEWER */
+  | 'ai-dictionary'
+  /** 화면이 아니라 AI 설명 제안 생성·근거 변경 확인 버튼 노출 여부 (USER) */
+  | 'ai-dictionary-generate'
+  /** 화면이 아니라 AI 설명 제안 승인·반려·보류 버튼 노출 여부 (approvalAvailable 과 함께 본다) */
+  | 'ai-dictionary-review'
+  | 'ai-dictionary-evaluate'
+  | 'ai-evaluation'
+  | 'ai-management'
   | 'data-quality'
   | 'logical-model'
   | 'logical-erd'

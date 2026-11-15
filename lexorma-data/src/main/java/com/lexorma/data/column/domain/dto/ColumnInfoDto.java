@@ -39,6 +39,12 @@ public class ColumnInfoDto {
     /** 컬럼 설명 */
     private String columnDesc;
 
+    /** 업무 설명 (AI-5) */
+    private String bizDescription;
+
+    /** 원본 COMMENT (읽기 전용 : 가져오기만 쓴다) */
+    private String sourceComment;
+
     /** 데이터 타입 */
     private String dataType;
 
@@ -108,6 +114,8 @@ public class ColumnInfoDto {
                 .tableName(entity.getTableName())
                 .columnName(entity.getColumnName())
                 .columnDesc(entity.getColumnDesc())
+                .bizDescription(entity.getBizDescription())
+                .sourceComment(entity.getSourceComment())
                 .dataType(entity.getDataType())
                 .maxLength(entity.getMaxLength())
                 .precision(entity.getPrecision())
@@ -137,6 +145,7 @@ public class ColumnInfoDto {
                 .tableName(this.tableName)
                 .columnName(this.columnName)
                 .columnDesc(this.columnDesc)
+                .bizDescription(this.bizDescription == null || this.bizDescription.isBlank() ? null : this.bizDescription.strip())
                 .dataType(this.dataType)
                 .maxLength(this.maxLength)
                 .precision(this.precision)

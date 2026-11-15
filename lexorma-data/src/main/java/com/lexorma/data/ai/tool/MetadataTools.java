@@ -98,7 +98,8 @@ public class MetadataTools {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record TableItem(Long tableId, String schemaName, String tableName, String tableComment, String description, boolean approved) {
+    public record TableItem(Long tableId, String schemaName, String tableName, String tableComment, String description, String businessDescription,
+                            String sourceComment, boolean approved) {
     }
 
     public record TableList(String keyword, List<TableItem> tables, boolean truncated) {
@@ -116,7 +117,8 @@ public class MetadataTools {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record ColumnItem(Long columnId, String columnName, String description, String dataType, Integer length, String precision, Integer scale,
+    public record ColumnItem(Long columnId, String columnName, String description, String businessDescription, String sourceComment, String dataType,
+                             Integer length, String precision, Integer scale,
                              boolean primaryKey, boolean nullable, boolean unique, String defaultValue, String identity,
                              String referencedTable, String standardTerm, boolean sensitive, boolean approved) {
     }
@@ -329,7 +331,8 @@ public class MetadataTools {
         AccountDto scope = scope(toolContext);
         TableInfoDto table = table(scope, input);
         List<ColumnInfoDto> columns = columnManageService.selectTableColumn(scope, table.getId());
-        List<ColumnItem> items = columns.stream().limit(MAX_COLUMNS).map(c -> new ColumnItem(c.getId(), c.getColumnName(), text(c.getColumnDesc()), c.getDataType(),
+        List<ColumnItem> items = columns.stream().limit(MAX_COLUMNS).map(c -> new ColumnItem(c.getId(), c.getColumnName(), text(c.getColumnDesc()),
+                text(c.getBizDescription()), text(c.getSourceComment()), c.getDataType(),
                 c.getMaxLength(), c.getPrecision() == null ? null : c.getPrecision().toPlainString(), c.getScale(),
                 yes(c.getIsPk()), !"N".equals(c.getIsNullable()), yes(c.getIsUnique()), text(c.getDefaultValue()), c.getIdentity(),
                 c.getRefTableName(), c.getStandardTerms() == null ? null : c.getStandardTerms().getCommonStandardTermName(),
@@ -601,7 +604,8 @@ public class MetadataTools {
     }
 
     private static TableItem table(TableInfoDto t) {
-        return new TableItem(t.getId(), t.getSchemaName(), t.getTableName(), text(t.getTableKorName()), text(t.getTableDescription()), yes(t.getIsApproval()));
+        return new TableItem(t.getId(), t.getSchemaName(), t.getTableName(), text(t.getTableKorName()), text(t.getTableDescription()), text(t.getBizDescription()),
+                text(t.getSourceComment()), yes(t.getIsApproval()));
     }
 
     private static RelationItem relation(PhysicalModelDto.Relation r) {

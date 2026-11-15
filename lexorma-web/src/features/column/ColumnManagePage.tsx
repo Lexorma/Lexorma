@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { ObjectBizInfo } from '../dictionary/ai/BizDescriptionInfo';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
@@ -162,6 +163,8 @@ export function ColumnManagePage() {
           </dl>
           {/* 논리 속성에 매핑된 컬럼이면 표준 용어 기준의 추천 컬럼명을 보여 준다 (조회만, 이름은 바꾸지 않는다) */}
           <ColumnRecommendationNote columnId={row.id} onNavigate={(path) => { close(); navigate(path); }} />
+          {/* 업무 설명과 AI 설명 제안 상태 (AI-5) — 제안으로 이동하면 그 컬럼이 선택된다 */}
+          <ObjectBizInfo tableId={row.tableInfoId as number | undefined} columnId={row.id as number} />
           <div className="gh-dialog-actions">
             {canView('physical-erd') && row.tableInfoId != null && (
               <button type="button" className="btn" onClick={() => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.tableInfoId)}`); }}>

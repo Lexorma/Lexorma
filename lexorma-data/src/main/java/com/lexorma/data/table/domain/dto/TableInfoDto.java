@@ -22,6 +22,15 @@ public class TableInfoDto {
     /** 테이블 설명 */
     private String tableDescription;
 
+    /** 업무 설명 (AI-5). 수정 요청에서 null 이면 바꾸지 않는다 (빈 문자열이면 지운다) */
+    private String bizDescription;
+
+    /** 수정 요청 : 화면이 읽은 업무 설명 (빈 문자열 = 없었음). 보내면 그 사이 바뀐 업무 설명을 덮어쓰지 않는다 (BIZ_DESCRIPTION_CONFLICT) */
+    private String bizDescriptionBase;
+
+    /** 원본 COMMENT (읽기 전용 : 가져오기만 쓴다) */
+    private String sourceComment;
+
     /** 테이블 한글명 (예: 사용 내역 관리) - 입력 시 _ 또는 공백 구분, 표준 단어 기준 테이블명 생성에 사용 */
     private String tableKorName;
 
@@ -46,6 +55,8 @@ public class TableInfoDto {
                 .projectId(entity.getProjectId())
                 .tableName(entity.getTableName())
                 .tableDescription(entity.getTableDescription())
+                .bizDescription(entity.getBizDescription())
+                .sourceComment(entity.getSourceComment())
                 .tableKorName(entity.getTableKorName())
                 .isMasterTable(toYN(entity.getIsMasterTable()))
                 .sortOrder(entity.getSortOrder())
@@ -60,6 +71,7 @@ public class TableInfoDto {
                 .projectId(this.projectId)
                 .tableName(this.tableName.toUpperCase())
                 .tableDescription(this.tableDescription)
+                .bizDescription(this.bizDescription == null || this.bizDescription.isBlank() ? null : this.bizDescription.strip())
                 .tableKorName(this.tableKorName)
                 .isMasterTable(fromYN(this.isMasterTable))
                 .sortOrder(this.sortOrder)

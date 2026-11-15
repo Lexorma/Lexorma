@@ -518,10 +518,61 @@ public enum ErrorCode {
     AI_STRUCTURED_OUTPUT_INVALID(HttpStatus.BAD_GATEWAY, "AI_STRUCTURED_OUTPUT_INVALID"),
 
     /**
+     * AI 설명 초안의 문구에 AI 의 자기 평가나 Lexorma 내부 ID 가 들어 있다. 한 번 다시 요청해도 남으면 제안을 만들지 않는다 (서버가 문구를 고치지 않는다, AI-5 프롬프트 v2).
+     */
+    AI_DESCRIPTION_TEXT_INVALID(HttpStatus.BAD_GATEWAY, "AI_DESCRIPTION_TEXT_INVALID"),
+
+    /**
      * AI 요청이 토큰 예산(모델 입력 한도·응답 한도·질의 전체 누적)을 넘는다 (AI-4). 프롬프트를 잘라 보내지 않고 요청 전에 끝내거나,
      * 응답이 출력 한도에서 잘렸으면 결과를 쓰지 않는다. Provider 오류와 다르다.
      */
-    AI_TOKEN_BUDGET_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "AI_TOKEN_BUDGET_EXCEEDED");
+    AI_TOKEN_BUDGET_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "AI_TOKEN_BUDGET_EXCEEDED"),
+
+    /**
+     * AI 설명 제안이 없다 (다른 프로젝트의 제안도 없는 것과 같다, AI-5).
+     */
+    AI_PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "AI_PROPOSAL_NOT_FOUND"),
+
+    /**
+     * AI 설명 제안을 다른 사용자가 먼저 처리했다 (화면이 본 버전과 다르다, AI-5). 다시 열어 확인한다.
+     */
+    AI_PROPOSAL_CONFLICT(HttpStatus.CONFLICT, "AI_PROPOSAL_CONFLICT"),
+    BIZ_DESCRIPTION_CONFLICT(HttpStatus.CONFLICT, "BIZ_DESCRIPTION_CONFLICT"),
+
+    /**
+     * 지금 상태에서는 할 수 없는 검토다 (이미 승인·반려됨, 재검토 필요 제안의 승인 등, AI-5).
+     */
+    AI_PROPOSAL_INVALID_STATE(HttpStatus.CONFLICT, "AI_PROPOSAL_INVALID_STATE"),
+
+    /**
+     * 이 프로젝트에서 AI 설명 생성 실행이 이미 진행 중이다 (프로젝트당 하나, AI-5).
+     */
+    AI_JOB_ALREADY_RUNNING(HttpStatus.CONFLICT, "AI_JOB_ALREADY_RUNNING"),
+
+    /**
+     * AI 설명 생성 실행 요청이 올바르지 않다 (대상 범위·개수, AI-5).
+     */
+    AI_JOB_INVALID(HttpStatus.BAD_REQUEST, "AI_JOB_INVALID"),
+
+    /**
+     * 서버의 AI 설명 생성 실행기가 가득 찼다 (다른 프로젝트의 실행이 끝난 뒤 다시 시도, AI-5).
+     */
+    AI_JOB_BUSY(HttpStatus.SERVICE_UNAVAILABLE, "AI_JOB_BUSY"),
+
+    /**
+     * AI 설명 평가 대상·판정을 찾을 수 없다 (다른 프로젝트 포함, AI-5 품질 평가).
+     */
+    AI_EVALUATION_NOT_FOUND(HttpStatus.NOT_FOUND, "AI_EVALUATION_NOT_FOUND"),
+
+    /**
+     * 다른 사용자가 평가 대상·판정을 먼저 고쳤다 (버전 불일치, AI-5 품질 평가).
+     */
+    AI_EVALUATION_CONFLICT(HttpStatus.CONFLICT, "AI_EVALUATION_CONFLICT"),
+
+    /**
+     * 평가 요청이 올바르지 않다 (실제 의미를 확인하지 않은 대상의 정확성 판정, 다른 대상의 제안 등, AI-5 품질 평가).
+     */
+    AI_EVALUATION_INVALID(HttpStatus.BAD_REQUEST, "AI_EVALUATION_INVALID");
 
     private final HttpStatus httpStatus;
     private final String code;

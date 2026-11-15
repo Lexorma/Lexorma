@@ -3,12 +3,15 @@ import { t } from '../../lib/i18n';
 
 /**
  * 메뉴 / 화면 경로 (예전 URL 그대로) - 노출 여부는 서버 MenuAuthorization(/api/auth/me 의 menus) 기준.
- * 1뎁스는 하위 메뉴가 있는 그룹이다 (하위 없이 화면으로 바로 가는 단일 메뉴도 둘 수 있다). 순서 : 운영 → 시스템 → 사전 → 논리 → 물리 → 원본 DB → 품질.
+ * 1뎁스는 하위 메뉴가 있는 그룹이다 (하위 없이 화면으로 바로 가는 단일 메뉴도 둘 수 있다). 순서 : 운영 → 시스템 → 사전 → 논리 → 물리 → 원본 DB → 품질 → AI.
+ * 그룹은 보이는 하위 메뉴가 하나라도 있을 때만 보인다.
  */
 export interface MenuItem {
   id: MenuId;
   label: string;
   path: string;
+  /** 역할 말고 더 필요한 조건 : 'ai' = 시스템 기본 AI Provider 가 정해져 있을 때만 사이드바에 보인다 (화면 경로·API 권한은 그대로) */
+  requires?: 'ai';
 }
 
 export interface MenuGroup {
@@ -36,7 +39,6 @@ export const MENU: MenuEntry[] = [
       { id: 'project-manage', label: t('프로젝트 관리'), path: '/projectManage' },
       { id: 'system-log', label: t('시스템 로그'), path: '/systemLog' },
       { id: 'connection-security', label: t('외부 연결 보안'), path: '/connectionSecurity' },
-      { id: 'ai-provider', label: t('AI Provider 관리'), path: '/aiProvider' },
     ],
   },
   {
@@ -90,6 +92,16 @@ export const MENU: MenuEntry[] = [
       { id: 'standardization-quality', label: t('표준화 품질 진단'), path: '/standardizationQuality' },
       { id: 'model-history', label: t('모델 변경 이력'), path: '/modelHistory' },
       { id: 'model-version', label: t('모델 버전 관리'), path: '/modelVersion' },
+    ],
+  },
+  // AI 관리 : AI 기능 화면을 한 그룹에 모은다 (각 화면은 따로). 기본 Provider 가 없으면 Provider 설정(ADMIN)만 보인다
+  {
+    id: 'ai-management',
+    label: t('AI 관리'),
+    items: [
+      { id: 'ai-provider', label: t('AI Provider 설정'), path: '/aiProvider' },
+      { id: 'ai-dictionary', label: t('AI 설명 제안'), path: '/aiDictionary', requires: 'ai' },
+      { id: 'ai-evaluation', label: t('AI 품질 평가'), path: '/aiEvaluation', requires: 'ai' },
     ],
   },
 ];

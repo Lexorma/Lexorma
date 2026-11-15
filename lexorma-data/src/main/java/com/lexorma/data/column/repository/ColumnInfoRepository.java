@@ -5,12 +5,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, JpaSpecificationExecutor<ColumnInfo> {
@@ -54,4 +57,9 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     /** 관계 동기화 : 참조 테이블명(대소문자·앞뒤 공백 무시)이 names 중 하나인 컬럼 */
     @Query("select c from ColumnInfo c where c.projectId = :projectId and upper(trim(c.refTableName)) in :names")
     List<ColumnInfo> findAllReferencing(@Param("projectId") Long projectId, @Param("names") Collection<String> names);
+
+    /** 컬럼 행 잠금 : AI 설명 제안 승인이 업무 설명을 쓰기 전에 잡는다 (AI-5) */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from ColumnInfo c where c.id = :id and c.projectId = :projectId")
+    Optional<ColumnInfo> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
 }

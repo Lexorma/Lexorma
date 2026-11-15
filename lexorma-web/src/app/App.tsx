@@ -40,6 +40,8 @@ import { t } from '../lib/i18n';
 
 const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
 const LogicalErdPage = lazy(() => import('../features/logical/LogicalErdPage'));
+const AiDescriptionPage = lazy(() => import('../features/dictionary/ai/AiDescriptionPage'));
+const AiEvaluationPage = lazy(() => import('../features/dictionary/ai/AiEvaluationPage'));
 const SourceErdPage = lazy(() => import('../features/source/SourceErdPage'));
 
 const queryClient = new QueryClient({
@@ -111,6 +113,8 @@ export function App() {
                 <Route path="/standardDomain" element={<RequireMenu menuId="standard-domain"><DictionaryPage key="standardDomains" table="standardDomains" /></RequireMenu>} />
                 <Route path="/standardWord" element={<RequireMenu menuId="standard-word"><DictionaryPage key="standardWords" table="standardWords" /></RequireMenu>} />
                 <Route path="/standardTerm" element={<RequireMenu menuId="standard-term"><DictionaryPage key="standardTerms" table="standardTerms" /></RequireMenu>} />
+                <Route path="/aiDictionary" element={<RequireMenu menuId="ai-dictionary"><AiDictionaryRoute /></RequireMenu>} />
+                <Route path="/aiEvaluation" element={<RequireMenu menuId="ai-evaluation"><Suspense fallback={<p>{t('불러오는 중…')}</p>}><AiEvaluationPage /></Suspense></RequireMenu>} />
                 {/* 예전 주소 (/dataDictionary?tab=…) : 탭에 해당하는 화면으로 옮긴다 */}
                 <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DictionaryRedirect /></RequireMenu>} />
                 <Route path="/logicalModel" element={<RequireMenu menuId="logical-model"><LogicalModelPage /></RequireMenu>} />
@@ -142,4 +146,10 @@ export function App() {
       </BrowserRouter>
     </QueryClientProvider>
   );
+}
+
+/** AI 설명 제안 (/aiDictionary). 예전 품질 평가 탭 주소 ?tab=evaluation 은 AI 관리 › AI 품질 평가(/aiEvaluation)로 옮긴다 */
+function AiDictionaryRoute() {
+  if (new URLSearchParams(window.location.search).get('tab') === 'evaluation') return <Navigate to="/aiEvaluation" replace />;
+  return <Suspense fallback={<p>{t('불러오는 중…')}</p>}><AiDescriptionPage /></Suspense>;
 }

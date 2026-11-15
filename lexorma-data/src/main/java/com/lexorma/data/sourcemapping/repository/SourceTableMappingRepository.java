@@ -32,4 +32,7 @@ public interface SourceTableMappingRepository extends JpaRepository<SourceTableM
     @Modifying
     @Query("delete from SourceTableMapping m where m.projectId = :projectId and m.connectionId = :connectionId")
     int deleteByConnection(@Param("projectId") Long projectId, @Param("connectionId") Long connectionId);
+
+    /** 모델 테이블 하나에 매핑된 원본 테이블 (연결마다 하나, AI-5 승인 재검증) */
+    List<SourceTableMapping> findAllByProjectIdAndTableId(Long projectId, Long tableId);
 }

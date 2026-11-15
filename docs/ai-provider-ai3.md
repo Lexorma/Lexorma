@@ -22,7 +22,7 @@
 ## 2. 구조
 
 ```text
-관리자 화면 (시스템 관리 › AI Provider 관리)
+관리자 화면 (AI 관리 › AI Provider 설정 — 2026-11-15 시스템 관리에서 옮김)
   └─ /api/ai/providers/**  (AiProviderRestController, ADMIN, 요청 로그 본문 [PROTECTED])
         ├─ AiProviderService      설정 저장·검증 (연결하지 않는다)
         └─ AiProviderClients      연결 테스트 · 모델 목록 · 테스트 프롬프트 · call(이후 AI 기능)
@@ -114,7 +114,7 @@
 | `POST /{id}/prompt` | 테스트 프롬프트 (4000자, 응답 20000자까지, 모델·토큰 수·경과 시간). 이력 없음 |
 
 - 모두 `@PreAuthorize("hasRole('ADMIN')")`, 메뉴 `ai-provider` ADMIN (`MenuAuthorization`, [UI 권한 감사](ui-action-authorization-audit.md)).
-- 화면 : 시스템 관리 › AI Provider 관리 (`/aiProvider`). 목록·등록/수정 대화상자·점검 대화상자(연결 테스트 / 모델 목록 — 기본 모델로 지정 / 테스트 프롬프트). 차단이면 외부 연결 보안 화면으로 안내한다.
+- 화면 : AI 관리 › AI Provider 설정 (`/aiProvider`, 2026-11-15 전에는 시스템 관리 › AI Provider 관리). 목록·등록/수정 대화상자·점검 대화상자(연결 테스트 / 모델 목록 — 기본 모델로 지정 / 테스트 프롬프트). 차단이면 외부 연결 보안 화면으로 안내한다.
 
 ## 8. 운영 안내
 

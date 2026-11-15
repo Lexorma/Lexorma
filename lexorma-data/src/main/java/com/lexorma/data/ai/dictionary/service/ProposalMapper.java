@@ -27,7 +27,20 @@ final class ProposalMapper {
         return new AiDictionaryDto.ProposalSummary(p.getId(), p.getTargetType(), p.getTableId(), p.getColumnId(), p.getTargetName(), p.getCycle(), p.getStatus(),
                 p.getCertainty(), p.getProposedDescription(), p.getConfirmedDescription(), p.getModel(), p.getPromptVersion(), p.getCreationMethod(), p.getJobId(),
                 p.audit() == null ? null : p.audit().created(), p.getReviewerId(), p.getReviewedAt(), p.getReviewReason(), Boolean.TRUE.equals(p.getRecheckNeeded()),
-                p.getVersion() == null ? 0 : p.getVersion(), total, verified);
+                p.getVersion() == null ? 0 : p.getVersion(), total, verified, replaces(p));
+    }
+
+    /** 생성 때 업무 설명이 있었고 제안 문구와 다르다 (승인하면 교체) */
+    private static boolean replaces(AiDescriptionProposal p) {
+        String base = baseBizDescription(p);
+        return base != null && !base.equals(p.getProposedDescription() == null ? null : p.getProposedDescription().strip());
+    }
+
+    /** 생성 때(AI 를 부르기 전) 대상의 업무 설명 (없으면 null) */
+    static String baseBizDescription(AiDescriptionProposal p) {
+        if (p.getBaseVersions() == null) return null;
+        String base = ProposalVersions.read(p.getBaseVersions()).bizDescription();
+        return base == null || base.isBlank() ? null : base.strip();
     }
 
     static AiDictionaryDto.HistoryItem history(AiDescriptionProposalHistory h) {

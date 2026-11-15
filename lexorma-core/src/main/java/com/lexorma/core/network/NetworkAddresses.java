@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * 외부 연결 목적지의 주소 규칙 (SEC-1, docs/external-connection-security-sec1.md). JDBC·AI HTTP 가 같이 쓴다.
+ * 외부 연결 목적지의 주소 규칙 (SEC-1, docs/reference/external-connection-security-sec1.md). JDBC·AI HTTP 가 같이 쓴다.
  * <ul>
  *   <li><b>절대 차단</b> : 관리자 허용 규칙으로도 열리지 않는다. 미지정(0.0.0.0/8, ::), 링크 로컬(169.254.0.0/16 — 클라우드 메타데이터 169.254.169.254 포함, fe80::/10),
  *       멀티캐스트, 예약·브로드캐스트(240.0.0.0/4), 클라우드 메타데이터 주소(fd00:ec2::254, 100.100.100.200, 168.63.129.16), Teredo(2001::/32),

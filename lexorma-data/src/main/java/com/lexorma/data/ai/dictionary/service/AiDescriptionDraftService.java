@@ -171,12 +171,13 @@ public class AiDescriptionDraftService {
         else verifiedColumnNames(verified).forEach(sourceColumns::add);
         EvidenceType targetType = target.type() == TargetType.TABLE ? EvidenceType.TABLE : EvidenceType.COLUMN;
         Long targetId = target.columnId() != null ? target.columnId() : target.tableId();
-        // 기준 버전 : 맥락을 모은 시점(세션 스냅숏)의 버전. 그 사이 대상이 바뀌었으면 처음부터 재검토 필요
+        // 기준 버전 : 맥락을 모은 시점(세션 스냅숏)의 버전. 기준 업무 설명은 AI 를 부르기 전에 읽은 값이다 (AI 를 기다리는 동안 누가 고친 값을 기준으로 삼으면
+        // 그 수정을 모르는 제안이 승인으로 덮어쓴다). 그 사이 대상(업무 설명 포함)이 바뀌었으면 처음부터 재검토 필요
         record Captured(ProposalVersions.Base base, boolean changed) {
         }
         Captured captured = readOnly.execute(tx -> {
-            ProposalVersions.Base base = versions.capture(session, targetType, targetId, target.name(), current(projectId, target), verified, target.tableId(), sourceColumns);
-            boolean changed = !versions.changes(projectId, base, null, false).stream().filter(c -> c.type() == targetType && Objects.equals(c.id(), targetId)).toList().isEmpty();
+            ProposalVersions.Base base = versions.capture(session, targetType, targetId, target.name(), target.bizDescription(), verified, target.tableId(), sourceColumns);
+            boolean changed = !versions.changes(projectId, base, current(projectId, target), true).stream().filter(c -> c.type() == targetType && Objects.equals(c.id(), targetId)).toList().isEmpty();
             return new Captured(base, changed);
         });
 

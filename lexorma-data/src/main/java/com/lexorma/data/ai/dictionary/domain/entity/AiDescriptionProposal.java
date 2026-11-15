@@ -44,10 +44,12 @@ public class AiDescriptionProposal extends BaseEntity {
 
     /**
      * 검토 상태. PROPOSED → (REVIEWED) → APPROVED · REJECTED · ON_HOLD, 근거가 바뀌면 REVIEW_REQUIRED.
-     * SUPERSEDED : 같은 대상을 다시 만들어 새 제안으로 대체됨 (반려와 구분해 반려율을 왜곡하지 않는다). APPROVED·REJECTED·SUPERSEDED 는 끝 상태다
+     * SUPERSEDED : 같은 대상을 다시 만들어 새 제안으로 대체됨 (반려와 구분해 반려율을 왜곡하지 않는다).
+     * CLOSED : 적용하지 않고 종결 (업무 설명을 직접 고쳤거나 대상이 없어지는 등 더 쓸 데가 없음 — 반려와 구분해 품질 지표를 왜곡하지 않는다, 사유 필수).
+     * APPROVED·REJECTED·SUPERSEDED·CLOSED 는 끝 상태다
      */
     public enum ReviewStatus {
-        PROPOSED, REVIEWED, APPROVED, REJECTED, ON_HOLD, REVIEW_REQUIRED, SUPERSEDED;
+        PROPOSED, REVIEWED, APPROVED, REJECTED, ON_HOLD, REVIEW_REQUIRED, SUPERSEDED, CLOSED;
 
         public boolean open() {
             return this == PROPOSED || this == REVIEWED || this == ON_HOLD || this == REVIEW_REQUIRED;

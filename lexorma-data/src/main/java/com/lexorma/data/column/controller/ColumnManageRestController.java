@@ -2,8 +2,10 @@ package com.lexorma.data.column.controller;
 
 import com.lexorma.data.column.domain.dto.ColumnBulkSaveDto;
 import com.lexorma.data.column.domain.dto.ColumnInfoDto;
+import com.lexorma.data.column.domain.dto.ColumnTermDto;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.column.service.ColumnManageService;
+import com.lexorma.data.column.service.ColumnTermService;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -36,6 +38,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class ColumnManageRestController {
 
     private final ColumnManageService columnManageService;
+    private final ColumnTermService columnTermService;
 
     @Operation(summary = "테이블 내 데이터 조회", description = "테이블 내 데이터를 조회합니다.")
     @PreAuthorize("hasRole('VIEWER')") // 조회 전용 : 물리 ERD(VIEWER)가 보여주는 것과 같은 컬럼 정보
@@ -149,6 +152,13 @@ public class ColumnManageRestController {
         columnManageService.updateSortOrder(accountDto, columnInfoDtos);
 
         return ResponseEntity.ok(Map.of("result", true));
+    }
+
+    @Operation(summary = "표준 용어 재연결", description = "기존 컬럼의 표준 용어 연결만 바꿉니다 (컬럼명·타입·설명 등은 그대로). baseTermId 는 화면이 읽은 지금 연결 — 그 사이 바뀌었으면 409 COLUMN_TERM_CONFLICT. 승인된 컬럼은 바꿀 수 없습니다")
+    @PutMapping(value = "/saveColumn/{id}/term")
+    public ResponseEntity<ColumnTermDto.Result> relinkTerm(@PathVariable(value = "id") Long id, @RequestBody ColumnTermDto.Request request,
+                                                           @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(columnTermService.relink(accountDto, id, request));
     }
 
     @Operation(summary = "컬럼 일괄 저장", description = "테이블의 컬럼을 한 번에 추가/수정/삭제하고 화면 순서대로 정렬 순서를 저장합니다. 검증 오류가 있으면 아무것도 저장하지 않고 행별 오류를 돌려줍니다.")

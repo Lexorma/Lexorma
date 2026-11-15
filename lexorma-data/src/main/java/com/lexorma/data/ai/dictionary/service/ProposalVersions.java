@@ -28,7 +28,7 @@ import java.util.Set;
  * AI 설명 제안의 기준 버전 (AI-5) : 생성할 때 대상과 <b>실제로 쓴(검증된) 근거</b>의 버전을 남기고, 승인·재확인 때 지금과 비교해 제안에 영향을 주는 변경만 골라낸다.
  * <ul>
  *   <li>물리 모델(테이블·컬럼·관계) : 수정 일시(MDFCN_DT) + 그 객체의 모델 변경 이력 마지막 ID. 수정 일시가 다르면 그 뒤의 변경 이력에서 바뀐 필드를 보고,
- *       업무 설명·승인 여부·정렬 순서만 바뀌었으면 영향 없음으로 본다. 수정 일시가 바뀌었는데 이력이 없으면(직접 DB 수정 등) 알 수 없으므로 영향 있음으로 본다</li>
+ *       업무 설명·승인 여부·정렬 순서만 바뀌었으면 영향 없음으로 본다. 컬럼의 표준 용어 연결은 따로(TERM_LINK_CHANGED) 알린다. 수정 일시가 바뀌었는데 이력이 없으면(직접 DB 수정 등) 알 수 없으므로 영향 있음으로 본다</li>
  *   <li>표준 용어·단어·도메인·스키마 : 변경 이력이 없어 수정 일시만 본다 (바뀌었으면 영향 있음 — 안전한 쪽)</li>
  *   <li>변경 이력 근거(HISTORY) : 추가만 하는 기록이라 있는지만 본다</li>
  *   <li>원본 카탈로그 : 대상 테이블이 원본 테이블과 매핑되어 있으면 반영 순서와 대상(컬럼이면 그 컬럼, 테이블이면 테이블 COMMENT 와 근거로 쓴 컬럼)의
@@ -43,6 +43,11 @@ public class ProposalVersions {
     private static final JsonMapper JSON = JsonMapper.shared();
     /** 바뀌어도 설명의 근거에 영향이 없는 필드 (업무 설명 자체는 따로 비교한다) */
     static final Set<String> IGNORED_FIELDS = Set.of("bizDescription", "isApproval", "sortOrder");
+    /**
+     * 컬럼의 표준 용어 연결 : 모델 변경 이력이 연관(standardTerms)을 남기는 키 그대로 (ID 와 커밋 때 이름). 이 필드만 따로 TERM_LINK_CHANGED 로 알린다
+     * — 필드 이름이 정확히 같을 때만 (이름에 standardTerms 가 들어 있다고 분류하지 않는다)
+     */
+    static final Set<String> TERM_LINK_FIELDS = Set.of("standardTermsId", "standardTermsName");
 
     /**
      * @param version   수정 일시 (없으면 null)
@@ -64,13 +69,18 @@ public class ProposalVersions {
     /**
      * 영향을 주는 변경 하나
      *
-     * @param kind   TARGET_DELETED · OBJECT_DELETED · MODIFIED · MODIFIED_UNKNOWN · BIZ_DESCRIPTION_CHANGED · SOURCE_CHANGED · SOURCE_TABLE_MISSING
-     * @param fields 바뀐 필드 (알 때만)
-     * @param diffs  바뀐 필드의 생성 때 값 → 지금 값 (알 때만 : 원본은 기준 버전과 지금 카탈로그, 물리 모델은 그 뒤의 변경 이력, 업무 설명은 기준과 지금 값)
+     * @param kind      TARGET_DELETED · OBJECT_DELETED · MODIFIED · TERM_LINK_CHANGED · MODIFIED_UNKNOWN · BIZ_DESCRIPTION_CHANGED · SOURCE_CHANGED · SOURCE_TABLE_MISSING
+     * @param fields    바뀐 필드 (알 때만)
+     * @param diffs     바뀐 필드의 생성 때 값 → 지금 값 (알 때만 : 원본은 기준 버전과 지금 카탈로그, 물리 모델은 그 뒤의 변경 이력, 업무 설명은 기준과 지금 값)
+     * @param changedAt 마지막으로 바뀐 때 (물리 모델 변경 이력으로 알 때만)
      */
-    public record Change(String kind, EvidenceType type, Long id, String name, List<String> fields, List<Diff> diffs) {
+    public record Change(String kind, EvidenceType type, Long id, String name, List<String> fields, List<Diff> diffs, LocalDateTime changedAt) {
         public Change(String kind, EvidenceType type, Long id, String name, List<String> fields) {
-            this(kind, type, id, name, fields, List.of());
+            this(kind, type, id, name, fields, List.of(), null);
+        }
+
+        public Change(String kind, EvidenceType type, Long id, String name, List<String> fields, List<Diff> diffs) {
+            this(kind, type, id, name, fields, diffs, null);
         }
     }
 
@@ -127,34 +137,60 @@ public class ProposalVersions {
             changes.add(new Change("BIZ_DESCRIPTION_CHANGED", target.type(), target.id(), target.name(), List.of("bizDescription"),
                     List.of(new Diff("bizDescription", blank(base.bizDescription()), blank(currentBizDescription)))));
         }
-        modified(projectId, target, now.get(), base.capturedAt()).ifPresent(changes::add);
+        changes.addAll(modified(projectId, target, now.get(), base.capturedAt()));
         for (Ref object : base.objects()) {
             Optional<EvidenceCatalog.Snapshot> current = current(projectId, object);
             if (current.isEmpty()) {
                 changes.add(new Change("OBJECT_DELETED", object.type(), object.id(), object.name(), List.of()));
                 continue;
             }
-            modified(projectId, object, current.get(), base.capturedAt()).ifPresent(changes::add);
+            changes.addAll(modified(projectId, object, current.get(), base.capturedAt()));
         }
         changes.addAll(sourceChanges(projectId, base));
         return changes;
+    }
+
+    /** 재검증에서 기준을 옮기지 못하게 하는 변경 : 대상·근거·원본 테이블이 없어졌거나 다른 사람이 업무 설명을 고쳤다 (재생성 또는 종결) */
+    static final Set<String> BLOCKING = Set.of("TARGET_DELETED", "OBJECT_DELETED", "SOURCE_TABLE_MISSING", "BIZ_DESCRIPTION_CHANGED");
+
+    /**
+     * 기준 버전을 지금으로 옮긴다 (재검증에서 검토자가 바뀐 내용을 확인했을 때) : 같은 대상·근거 객체·원본 테이블의 지금 버전·이력 ID·원본 값과 지금 업무 설명.
+     * 근거 목록은 바꾸지 않는다 (AI 가 든 근거 그대로 — 새 근거가 필요하면 다시 만든다). 대상·근거·원본 테이블이 없으면 옮기지 않는다 (empty)
+     */
+    public Optional<Base> rebase(Long projectId, Base base, String currentBizDescription) {
+        List<Ref> refs = new ArrayList<>();
+        for (Ref ref : java.util.stream.Stream.concat(java.util.stream.Stream.of(base.target()), base.objects().stream()).toList()) {
+            Optional<EvidenceCatalog.Snapshot> now = current(projectId, ref);
+            if (now.isEmpty()) return Optional.empty();
+            ModelChangeHistory.TargetType physical = physical(ref.type());
+            refs.add(new Ref(ref.type(), ref.id(), ref.name(), now.get().version(), physical == null ? null : histories.lastId(projectId, physical, ref.id())));
+        }
+        List<SourceRef> sources = new ArrayList<>();
+        for (SourceRef was : base.sources()) {
+            Optional<SourceRef> now = source(projectId, was.connectionId(), was.sourceTableId(), was.columns().stream().map(SourceColumn::name).toList());
+            if (now.isEmpty()) return Optional.empty();
+            sources.add(now.get());
+        }
+        return Optional.of(new Base(refs.getFirst(), currentBizDescription, List.copyOf(refs.subList(1, refs.size())), sources, LocalDateTime.now()));
     }
 
     private Optional<EvidenceCatalog.Snapshot> current(Long projectId, Ref ref) {
         return catalog.load(ref.type(), List.of(ref.id())).values().stream().filter(s -> projectId.equals(s.projectId())).findFirst();
     }
 
-    private Optional<Change> modified(Long projectId, Ref ref, EvidenceCatalog.Snapshot now, LocalDateTime since) {
-        if (ref.type() == EvidenceType.HISTORY || Objects.equals(ref.version(), now.version())) return Optional.empty();
+    /** 근거 객체 하나의 변경 : 표준 용어 연결(컬럼)은 TERM_LINK_CHANGED, 나머지 필드는 MODIFIED 로 나눠 돌려준다 (둘 다 바뀌었으면 둘 다) */
+    private List<Change> modified(Long projectId, Ref ref, EvidenceCatalog.Snapshot now, LocalDateTime since) {
+        if (ref.type() == EvidenceType.HISTORY || Objects.equals(ref.version(), now.version())) return List.of();
         ModelChangeHistory.TargetType physical = physical(ref.type());
-        if (physical == null) return Optional.of(new Change("MODIFIED_UNKNOWN", ref.type(), ref.id(), ref.name(), List.of()));
+        if (physical == null) return List.of(new Change("MODIFIED_UNKNOWN", ref.type(), ref.id(), ref.name(), List.of()));
         List<ModelChangeHistory> after = histories.changesAfter(projectId, physical, ref.id(), ref.historyId() == null ? 0L : ref.historyId(),
                 since == null ? LocalDateTime.MIN : since);
-        if (after.isEmpty()) return Optional.of(new Change("MODIFIED_UNKNOWN", ref.type(), ref.id(), ref.name(), List.of()));
+        if (after.isEmpty()) return List.of(new Change("MODIFIED_UNKNOWN", ref.type(), ref.id(), ref.name(), List.of()));
         Set<String> fields = new LinkedHashSet<>();
-        // 필드마다 처음 바뀌기 전 값과 마지막 값 (이력은 오래된 것부터)
+        // 필드마다 처음 바뀌기 전 값과 마지막 값, 마지막으로 바뀐 때 (이력은 오래된 것부터)
         Map<String, String> first = new LinkedHashMap<>();
         Map<String, String> last = new LinkedHashMap<>();
+        Map<String, LocalDateTime> at = new LinkedHashMap<>();
         for (ModelChangeHistory h : after) {
             if (h.getAction() == ModelChangeHistory.Action.DELETE) fields.add("DELETE");
             JsonNode before = h.getBeforeData() == null ? null : JSON.readTree(h.getBeforeData());
@@ -163,11 +199,24 @@ public class ProposalVersions {
                 fields.add(field);
                 if (before != null) first.putIfAbsent(field, value(before.get(field)));
                 if (afterData != null) last.put(field, value(afterData.get(field)));
+                if (h.getChangedAt() != null) at.put(field, h.getChangedAt());
             }
         }
         fields.removeAll(IGNORED_FIELDS);
-        List<Diff> diffs = fields.stream().filter(f -> first.containsKey(f) || last.containsKey(f)).map(f -> new Diff(f, first.get(f), last.get(f))).toList();
-        return fields.isEmpty() ? Optional.empty() : Optional.of(new Change("MODIFIED", ref.type(), ref.id(), ref.name(), List.copyOf(fields), diffs));
+        List<String> termFields = ref.type() == EvidenceType.COLUMN ? fields.stream().filter(TERM_LINK_FIELDS::contains).toList() : List.of();
+        List<String> otherFields = fields.stream().filter(f -> !termFields.contains(f)).toList();
+        List<Change> changes = new ArrayList<>();
+        if (!otherFields.isEmpty()) changes.add(new Change("MODIFIED", ref.type(), ref.id(), ref.name(), otherFields, diffs(otherFields, first, last), latest(otherFields, at)));
+        if (!termFields.isEmpty()) changes.add(new Change("TERM_LINK_CHANGED", ref.type(), ref.id(), ref.name(), termFields, diffs(termFields, first, last), latest(termFields, at)));
+        return changes;
+    }
+
+    private static List<Diff> diffs(List<String> fields, Map<String, String> first, Map<String, String> last) {
+        return fields.stream().filter(f -> first.containsKey(f) || last.containsKey(f)).map(f -> new Diff(f, first.get(f), last.get(f))).toList();
+    }
+
+    private static LocalDateTime latest(List<String> fields, Map<String, LocalDateTime> at) {
+        return fields.stream().map(at::get).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null);
     }
 
     private static Set<String> changedFields(ModelChangeHistory h) {

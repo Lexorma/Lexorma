@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * h2-local 프로필의 H2 파일 DB 영속성. 전체 애플리케이션을 이 테스트 JVM 에서 두 번 띄우면 공유되는 정적 상태(AuthUtil 등)가 캐시된 다른 테스트 컨텍스트를
- * 흔들므로, 실제 프로필 설정의 JDBC URL·Flyway 마이그레이션·H2 파일로 확인한다 (애플리케이션 재시작 검증은 단일 JAR 로 따로 했다 : docs/h2-file-storage.md).
+ * 흔들므로, 실제 프로필 설정의 JDBC URL·Flyway 마이그레이션·H2 파일로 확인한다 (애플리케이션 재시작 검증은 단일 JAR 로 따로 했다 : docs/reference/h2-file-storage.md).
  * 임시 디렉터리만 쓰고 사용자의 H2 파일(~/.lexorma)은 열지 않는다.
  */
 class H2FilePersistenceTest {

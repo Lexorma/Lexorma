@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  *   <li>일반 호출(/api/chat)·모델 목록(/api/tags)은 Spring AI 가 RestClient 로 보낸다 → SEC-1 요청 팩토리를 넣는다</li>
  *   <li>스트리밍(/api/chat stream)·모델 내려받기(/api/pull)는 Spring AI 가 WebClient 로 보낸다. SEC-1 의 주소 고정 전송은 동기(classic) 클라이언트뿐이라
  *       WebClient 에는 <b>모든 요청을 거부하는 교환 함수</b>를 넣는다 — 기본 커넥터(JDK HttpClient 등)로 SEC-1 을 거치지 않고 나가는 경로를 막는다.
- *       스트리밍은 AI-3 에서 지원하지 않는다 (docs/ai-provider-ai3.md)</li>
+ *       스트리밍은 AI-3 에서 지원하지 않는다 (docs/completed/ai-provider-ai3.md)</li>
  *   <li>모델을 자동으로 내려받지 않는다 (PullModelStrategy.NEVER), 자동 재시도 없음</li>
  * </ul>
  */

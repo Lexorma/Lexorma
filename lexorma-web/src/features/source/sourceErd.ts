@@ -78,7 +78,7 @@ export const tableIdOf = (nodeId: string) => Number(nodeId.slice(1));
 
 /**
  * 한 번에 그리는 테이블·VIEW 수의 한도. 넘으면 스키마를 줄이거나 객체 중심(FK 이웃)으로 보게 한다.
- * 값은 측정으로 정했다 (docs/source-erd-m4b.md 7장 : 자동 배치·그리기 시간).
+ * 값은 측정으로 정했다 (docs/completed/source-erd-m4b.md 7장 : 자동 배치·그리기 시간).
  */
 export const RENDER_LIMIT = 1000;
 

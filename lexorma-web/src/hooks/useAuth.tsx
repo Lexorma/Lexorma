@@ -33,6 +33,7 @@ export type MenuId =
   | 'ai-dictionary-evaluate'
   | 'ai-evaluation'
   | 'ai-management'
+  | 'biz-description-edit'
   | 'data-quality'
   | 'logical-model'
   | 'logical-erd'

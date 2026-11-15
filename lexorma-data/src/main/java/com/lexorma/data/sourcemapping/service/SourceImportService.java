@@ -82,7 +82,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * 원본 메타데이터 선택 가져오기 (M-4e, docs/source-import-m4e.md). 원본 DB 에 접속하지 않고 저장된 마지막 반영 수집을, 사용자가 고른 항목만 물리 모델에 반영한다.
+ * 원본 메타데이터 선택 가져오기 (M-4e, docs/completed/source-import-m4e.md). 원본 DB 에 접속하지 않고 저장된 마지막 반영 수집을, 사용자가 고른 항목만 물리 모델에 반영한다.
  * <ul>
  *   <li>대상 = M-4d 비교 결과(SourceModelComparator) 그대로 : 원본에만 있는 객체는 추가, 다른 속성은 고른 속성만 수정. 판단 불가·이름 변경 후보·충돌·교체가 필요한 것·
  *       모델에만 있는 것은 고를 수 없다. 삭제·이름 변경·기존 객체 교체는 하지 않는다</li>
@@ -101,7 +101,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class SourceImportService {
 
-    /** 한 요청의 TABLE 수 (측정 근거 : docs/source-import-m4e.md 9장) */
+    /** 한 요청의 TABLE 수 (측정 근거 : docs/completed/source-import-m4e.md 9장) */
     static final int MAX_TABLES = 50;
     /** 가져오기 직전 모델 버전의 이름 앞부분 (뒤에 요청 식별자 : 요청마다 하나, 같은 요청은 다시 적용되지 않는다) */
     static final String VERSION_PREFIX = "IMPORT-";
@@ -471,7 +471,7 @@ public class SourceImportService {
     }
 
     /**
-     * 재가져오기 기준값 (M-4f, docs/source-reimport-m4f.md) : 저장된 실행 이력과 변경 이력만으로 만든다 (새 저장 구조 없음).
+     * 재가져오기 기준값 (M-4f, docs/completed/source-reimport-m4f.md) : 저장된 실행 이력과 변경 이력만으로 만든다 (새 저장 구조 없음).
      * 같은 기준 연결의 실행을 최근 것부터 읽어, TABLE(key)·항목 ID 마다 그 항목을 고른 가장 최근 실행의 변경 그룹을 정하고, 그 그룹의 IMPORT 이력(변경 후 상태)을
      * 대상 ID 로 찾는다. 기준 연결이 바뀌었거나(다른 연결의 실행은 보지 않는다) 다시 매핑해 모델 객체가 다르면(그 ID 의 이력이 없다) 기준값이 없다.
      */

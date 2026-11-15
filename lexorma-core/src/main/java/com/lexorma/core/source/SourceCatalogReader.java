@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 읽기 전용 원본 카탈로그 계약 (M-4c, docs/m4-foundation.md 5.1). lexorma-source 가 구현하고 lexorma-data(원본 매핑)가 쓴다 —
+ * 읽기 전용 원본 카탈로그 계약 (M-4c, docs/reference/m4-foundation.md 5.1). lexorma-source 가 구현하고 lexorma-data(원본 매핑)가 쓴다 —
  * 두 모듈이 서로를 직접 참조하지 않도록 값(record)만 오간다. 원본 DB 에 접속하지 않고 Lexorma 에 저장된 카탈로그만 읽는다.
  * <p>
  * 프로젝트 범위는 부르는 쪽이 로그인 정보(검증된 실행 컨텍스트)에서 꺼내 넘긴다. 다른 프로젝트의 연결은 없는 것과 같다.

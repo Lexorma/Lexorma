@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * LEXORMA 예제 인덱스 (V1 의 9)·10)) : 개수가 아니라 인덱스별 정의를 비교한다 (docs/index-management-m14.md 13).
+ * LEXORMA 예제 인덱스 (V1 의 9)·10)) : 개수가 아니라 인덱스별 정의를 비교한다 (docs/completed/index-management-m14.md 13).
  * 예전 V3~V6 은 2026-11-13 에, 예전 V2~V10 은 2026-11-15 Flyway 초기화 때 V0·V1 로 합쳤다 (예전 설치의 업그레이드 경로는 없다).
  * 정의 = 인덱스명 → "테이블|UNIQUE 여부|컬럼,컬럼(순서대로)". 정규화는 식별자 대문자뿐이다.
  * PostgreSQL 은 LEXORMA_TEST_POSTGRES_URL 이 있을 때만 (UUID 스키마를 만들고 지운다).

@@ -14,6 +14,7 @@ import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalHistoryRep
 import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
+import com.lexorma.data.history.record.ModelChangeRecorder;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -58,10 +59,12 @@ public class AiDescriptionReviewService {
     private final ProposalVersions versions;
     private final ExecutionContextVerifier verifier;
     private final TransactionTemplate tx;
+    private final ModelChangeRecorder recorder;
 
     public AiDescriptionReviewService(AiDescriptionProposalRepository proposals, AiDescriptionProposalHistoryRepository histories, TableInfoRepository tables,
                                       ColumnInfoRepository columns, ProposalVersions versions, ExecutionContextVerifier verifier,
-                                      PlatformTransactionManager transactionManager) {
+                                      PlatformTransactionManager transactionManager, ModelChangeRecorder recorder) {
+        this.recorder = recorder;
         this.proposals = proposals;
         this.histories = histories;
         this.tables = tables;
@@ -93,6 +96,8 @@ public class AiDescriptionReviewService {
             }
             String finalText = edited != null ? edited : p.getProposedDescription();
             boolean modified = edited != null && !edited.equals(p.getProposedDescription().strip());
+            // 모델 변경 이력에 "AI 제안 승인" 으로 남긴다 (사람이 업무 설명을 직접 고친 것은 USER)
+            recorder.markAiApproval();
             setBizDescription(target, finalText);
             p.setConfirmedDescription(finalText);
             p.setRecheckNeeded(false);
@@ -111,6 +116,61 @@ public class AiDescriptionReviewService {
     public AiDictionaryDto.ReviewResult hold(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
         return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.REVIEW_REQUIRED),
                 ReviewStatus.ON_HOLD, Action.HOLD, reasonOf(request));
+    }
+
+    /**
+     * 종결 (적용하지 않음) : 업무 설명을 직접 고쳤거나 대상이 없어지는 등 더 쓸 데가 없는 제안을 사유와 함께 닫는다. 업무 설명은 건드리지 않는다.
+     * 반려(제안이 틀림)와 구분해 품질 지표(승인율·반려율)에 넣지 않는다
+     */
+    public AiDictionaryDto.ReviewResult close(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
+        String reason = reasonOf(request);
+        if (reason == null) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "종결 사유를 입력해주세요.");
+        return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.ON_HOLD, ReviewStatus.REVIEW_REQUIRED),
+                ReviewStatus.CLOSED, Action.CLOSE, reason);
+    }
+
+    /**
+     * 근거 재검증 (REVIEW_REQUIRED) : 생성 때 기준과 지금 메타데이터를 다시 비교한다 (승인 때와 같은 비교 — 대상·근거 객체의 존재·변경 이력, 원본 값, 업무 설명).
+     * <ul>
+     *   <li>남은 변경이 없으면 검토 중(REVIEWED)으로 — 승인은 따로 한다 (자동 승인 없음)</li>
+     *   <li>대상·근거·원본 테이블이 없어졌거나 업무 설명을 누가 고쳤으면 그대로 둔다 → 다시 만들거나 종결</li>
+     *   <li>내용 변경뿐이면 검토자가 확인(acknowledge + 사유)했을 때만 기준 버전을 지금으로 옮기고 검토 중으로 (그 뒤 바뀌면 승인 때 다시 걸린다)</li>
+     * </ul>
+     * AI 서버를 부르지 않으므로 Provider 가 없거나 멈춰도 된다. 권한은 검토(승인) 권한
+     */
+    public AiDictionaryDto.RevalidateResult revalidate(ExecutionContext context, Long id, AiDictionaryDto.RevalidateRequest request) {
+        VerifiedExecution approver = approver(context);
+        boolean acknowledge = request != null && Boolean.TRUE.equals(request.acknowledge());
+        String reason = request == null || request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
+        if (reason != null && reason.length() > REASON_MAX) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "사유는 {0}자까지 입력할 수 있습니다.", REASON_MAX);
+        if (acknowledge && reason == null) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "확인한 변경과 계속 검토하는 이유를 입력해주세요.");
+        return tx.execute(status -> {
+            AiDescriptionProposal p = locked(context.projectId(), id, request == null ? null : request.version());
+            if (p.getStatus() != ReviewStatus.REVIEW_REQUIRED) throw new CustomException(ErrorCode.AI_PROPOSAL_INVALID_STATE);
+            Object target = lockTarget(p);
+            ProposalVersions.Base base = ProposalVersions.read(p.getBaseVersions());
+            List<ProposalVersions.Change> changes = target == null
+                    ? List.of(new ProposalVersions.Change("TARGET_DELETED", base.target().type(), base.target().id(), base.target().name(), List.of()))
+                    : versions.changes(context.projectId(), base, bizDescription(target), true);
+            LocalDateTime now = LocalDateTime.now();
+            if (changes.isEmpty()) {
+                transition(p, ReviewStatus.REVIEWED, Action.REVALIDATE, approver.username(), now, "근거 재검증 : 생성 때와 달라진 근거가 없습니다", null);
+                return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, ProposalMapper.summary(p), List.of());
+            }
+            boolean acknowledgeable = changes.stream().noneMatch(c -> ProposalVersions.BLOCKING.contains(c.kind()));
+            if (acknowledgeable && acknowledge) {
+                var rebased = versions.rebase(context.projectId(), base, bizDescription(target));
+                if (rebased.isPresent()) {
+                    p.setBaseVersions(ProposalVersions.write(rebased.get()));
+                    String note = ("근거 재검증 : 변경 확인 후 계속 검토 (" + reason(changes) + ") — " + reason);
+                    transition(p, ReviewStatus.REVIEWED, Action.REVALIDATE, approver.username(), now, note.length() > REASON_MAX ? note.substring(0, REASON_MAX) : note, null);
+                    log.info("AI 설명 제안 근거 재검증 (변경 확인) : project={} proposal={} changes={}", context.projectId(), id, changes.size());
+                    return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, ProposalMapper.summary(p), changes);
+                }
+                acknowledgeable = false;
+            }
+            return new AiDictionaryDto.RevalidateResult("STILL_REQUIRED", acknowledgeable, ProposalMapper.summary(p), changes);
+        });
     }
 
     /** 검토함 표시 (PROPOSED → REVIEWED). 보류한 제안을 다시 검토 대기로 돌릴 때도 쓴다 */

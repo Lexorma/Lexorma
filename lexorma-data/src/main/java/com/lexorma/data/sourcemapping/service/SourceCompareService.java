@@ -34,7 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 원본 ↔ 물리 모델 비교 (M-4d, docs/source-compare-m4d.md). <b>읽기 전용</b> : 원본 DB 에 접속하지 않고 저장된 마지막 반영 수집만 읽으며, 물리 모델·매핑을 바꾸지 않고
+ * 원본 ↔ 물리 모델 비교 (M-4d, docs/completed/source-compare-m4d.md). <b>읽기 전용</b> : 원본 DB 에 접속하지 않고 저장된 마지막 반영 수집만 읽으며, 물리 모델·매핑을 바꾸지 않고
  * 결과를 저장하지 않는다 (요청마다 계산).
  * <ul>
  *   <li>기준 : M-4c 의 확정 매핑(매핑 화면과 같은 상태 계산). 미매핑 TABLE 은 이어 보지 않고, 재확인 필요·충돌·원본 없음·모델 없음을 그대로 반영한다</li>

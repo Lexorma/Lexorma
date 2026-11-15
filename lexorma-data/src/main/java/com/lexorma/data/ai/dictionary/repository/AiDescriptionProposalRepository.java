@@ -32,4 +32,7 @@ public interface AiDescriptionProposalRepository extends JpaRepository<AiDescrip
     List<AiDescriptionProposal> findAllByProjectIdAndStatusIn(Long projectId, Collection<AiDescriptionProposal.ReviewStatus> statuses);
 
     List<AiDescriptionProposal> findAllByProjectId(Long projectId);
+
+    /** 테이블 대상 제안 (대상 목록 한 쪽의 테이블들, 컬럼 제안 제외) */
+    List<AiDescriptionProposal> findAllByProjectIdAndTableIdInAndColumnIdIsNull(Long projectId, Collection<Long> tableIds);
 }

@@ -48,7 +48,7 @@ export const ACTIONS: [string, string][] = [
   ['REVOKE', t('승인취소')],
 ];
 
-const SOURCES: Record<string, string> = { USER: t('사용자'), AUTO_SYNC: t('자동 동기화'), IMPORT: t('원본 가져오기') };
+const SOURCES: Record<string, string> = { USER: t('사용자'), AUTO_SYNC: t('자동 동기화'), IMPORT: t('원본 가져오기'), AI_APPROVAL: t('AI 제안 승인') };
 
 /** 모르는 코드는 그대로 보여 준다 (나중에 대상·작업이 늘어도 화면이 깨지지 않는다) */
 export const targetTypeLabel = (code: string) => TARGET_TYPES.find(([value]) => value === code)?.[1] ?? code;

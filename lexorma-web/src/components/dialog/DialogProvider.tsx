@@ -163,7 +163,7 @@ function DialogView({
 
   if (entry.kind === 'alert') {
     return (
-      <dialog ref={ref} onCancel={onCancel}>
+      <dialog ref={ref} className="dialog-message" onCancel={onCancel}>
         <h3>{t('알림')}</h3>
         <p style={{ whiteSpace: 'pre-line' }}>{entry.message}</p>
         <div className="popup-button-container">
@@ -177,7 +177,7 @@ function DialogView({
 
   if (entry.kind === 'confirm') {
     return (
-      <dialog ref={ref} onCancel={onCancel}>
+      <dialog ref={ref} className="dialog-message" onCancel={onCancel}>
         <h3>{t('알림')}</h3>
         <p style={{ whiteSpace: 'pre-line' }}>{entry.message}</p>
         <div className="popup-button-container">
@@ -227,6 +227,11 @@ function DialogView({
 
 /**
  * 다이얼로그 끌어서 옮기기 (예전 makeDialogDraggable) : 입력 요소 위에서는 끌지 않는다
+ * <p>
+ * 위치는 CSS 그대로 뷰포트 기준(`position: fixed`, 가운데 + translate)이다. 예전처럼 열 때 `absolute` 로 바꾸면 최상위 레이어(showModal)의
+ * absolute 는 문서 첫 화면 기준이라, 스크롤한 화면에서 연 다이얼로그가 화면 밖에 놓였다. 끌기를 시작할 때만 지금 보이는 자리(getBoundingClientRect,
+ * 뷰포트 좌표)를 left/top 으로 옮기고 translate 를 끈다 — 같은 좌표계(clientX/Y)로 옮기므로 튀지 않는다.
+ * 옮긴 다이얼로그는 뷰포트 안에 머물게 하고(창 크기가 바뀌어도), 새로 연 다이얼로그는 늘 가운데에서 시작한다 (요소마다 인라인 위치).
  */
 function useDraggable(ref: React.RefObject<HTMLDialogElement | null>, enabled: boolean) {
   useEffect(() => {
@@ -234,39 +239,64 @@ function useDraggable(ref: React.RefObject<HTMLDialogElement | null>, enabled: b
     if (!dialog || !enabled) return;
 
     let dragging = false;
+    let moved = false;
     let offsetX = 0;
     let offsetY = 0;
 
     dialog.style.cursor = 'move';
-    dialog.style.position = 'absolute';
-    dialog.style.margin = '0';
+
+    // 뷰포트 안으로 : 다이얼로그가 뷰포트보다 크면 왼쪽·위를 맞춘다 (제목·닫기 버튼이 보이게, 내용은 안에서 스크롤)
+    const place = (left: number, top: number) => {
+      // 뷰포트 = 스크롤바를 뺀 보이는 영역 (fixed 의 기준과 같다)
+      const maxLeft = Math.max(0, document.documentElement.clientWidth - dialog.offsetWidth);
+      const maxTop = Math.max(0, document.documentElement.clientHeight - dialog.offsetHeight);
+      dialog.style.left = `${Math.min(Math.max(0, left), maxLeft)}px`;
+      dialog.style.top = `${Math.min(Math.max(0, top), maxTop)}px`;
+    };
 
     const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
       const tag = (e.target as HTMLElement).tagName.toLowerCase();
       if (['input', 'textarea', 'select', 'button', 'label', 'option'].includes(tag)) return;
       if ((e.target as HTMLElement).closest('input, textarea, select, button, label, table, a')) return;
+      const rect = dialog.getBoundingClientRect();
+      if (!moved) {
+        // 가운데 정렬(translate)에서 지금 보이는 자리의 좌표로 바꾼다
+        dialog.style.transform = 'none';
+        dialog.style.left = `${rect.left}px`;
+        dialog.style.top = `${rect.top}px`;
+        moved = true;
+      }
       dragging = true;
-      offsetX = e.clientX - dialog.offsetLeft;
-      offsetY = e.clientY - dialog.offsetTop;
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
       document.body.style.userSelect = 'none';
     };
     const onMove = (e: MouseEvent) => {
       if (!dragging) return;
-      dialog.style.left = `${e.clientX - offsetX}px`;
-      dialog.style.top = `${e.clientY - offsetY}px`;
+      place(e.clientX - offsetX, e.clientY - offsetY);
     };
     const onUp = () => {
+      if (!dragging) return;
       dragging = false;
       document.body.style.userSelect = '';
+    };
+    const onResize = () => {
+      if (!moved) return;
+      const rect = dialog.getBoundingClientRect();
+      place(rect.left, rect.top);
     };
 
     dialog.addEventListener('mousedown', onDown);
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+    window.addEventListener('resize', onResize);
     return () => {
       dialog.removeEventListener('mousedown', onDown);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      window.removeEventListener('resize', onResize);
+      if (dragging) document.body.style.userSelect = '';
     };
   }, [ref, enabled]);
 }

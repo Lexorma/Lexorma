@@ -62,4 +62,13 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from ColumnInfo c where c.id = :id and c.projectId = :projectId")
     Optional<ColumnInfo> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
+
+    /** 프로젝트의 테이블별 컬럼 수와 업무 설명이 없는 컬럼 수 [테이블 ID, 컬럼 수, 업무 설명 없는 수] (AI 설명 제안 대상 목록) — 업무 설명은 비면 null 로 저장한다 */
+    @Query("select c.tableInfo.id, count(c), sum(case when c.bizDescription is null then 1 else 0 end) from ColumnInfo c where c.projectId = :projectId group by c.tableInfo.id")
+    List<Object[]> countBizDescriptionsByTable(@Param("projectId") Long projectId);
+
+    /** 같은 집계를 고른 테이블에만 (AI 설명 제안 대상 목록의 한 쪽) */
+    @Query("select c.tableInfo.id, count(c), sum(case when c.bizDescription is null then 1 else 0 end) from ColumnInfo c"
+            + " where c.projectId = :projectId and c.tableInfo.id in :tableIds group by c.tableInfo.id")
+    List<Object[]> countBizDescriptionsByTables(@Param("projectId") Long projectId, @Param("tableIds") Collection<Long> tableIds);
 }

@@ -417,6 +417,13 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         pending.importGroupId = groupId;
     }
 
+    /** 이 트랜잭션을 AI 설명 제안 승인으로 표시한다 : 업무 설명 변경의 출처를 AI_APPROVAL 로 남긴다 (사람이 직접 고친 USER 와 구분). 쓰기 트랜잭션 안에서만 */
+    public void markAiApproval() {
+        Pending pending = current();
+        if (pending == null) throw new IllegalStateException("쓰기 트랜잭션 안에서 불러야 합니다.");
+        pending.aiApproval = true;
+    }
+
     private static Pending current() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) return null;
         for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
@@ -456,6 +463,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         private final Map<String, Entry> entries = new LinkedHashMap<>();
         /** 가져오기 트랜잭션이면 그 요청 식별자 (변경 그룹 ID 로 쓴다) */
         private String importGroupId;
+        /** AI 설명 제안 승인 트랜잭션 */
+        private boolean aiApproval;
 
         Entry entry(Class<?> entityClass, Long id) {
             return entries.computeIfAbsent(entityClass.getSimpleName() + ":" + id, key -> new Entry(entityClass, id));
@@ -531,7 +540,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                         .action(action)
                         .beforeData(before == null ? null : JSON.writeValueAsString(before))
                         .afterData(after == null ? null : JSON.writeValueAsString(after))
-                        .source(derived ? Source.AUTO_SYNC : importGroupId != null ? Source.IMPORT : Source.USER)
+                        .source(derived ? Source.AUTO_SYNC : importGroupId != null ? Source.IMPORT : aiApproval ? Source.AI_APPROVAL : Source.USER)
                         .userId(userId)
                         .changedAt(now)
                         .build());

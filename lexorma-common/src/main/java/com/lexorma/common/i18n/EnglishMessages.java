@@ -59,6 +59,11 @@ final class EnglishMessages {
         add("{0} : 같은 컬럼이 두 번 들어 있습니다.", "{0}: the same column is included twice.");
         add("표준용어를 찾을 수 없습니다.", "The standard term could not be found.");
         add("{0} : 이 테이블에 이미 같은 컬럼명이 있습니다.", "{0}: this table already has a column with the same name.");
+        add("대상과 업무 설명, 화면이 읽은 업무 설명이 필요합니다.", "The target, the business description and the business description the screen loaded are required.");
+        add("바꿀 표준 용어와 화면이 읽은 표준 용어가 필요합니다.", "The new standard term and the standard term the screen loaded are required.");
+        add("표준 용어가 연결되지 않은 컬럼은 표준 용어를 바꿀 수 없습니다.", "The standard term cannot be changed for a column that has no standard term.");
+        add("종결 사유를 입력해주세요.", "Enter a reason for closing.");
+        add("확인한 변경과 계속 검토하는 이유를 입력해주세요.", "Enter the changes you checked and why the review continues.");
         add("{0} : 다른 사용자가 업무 설명을 수정했습니다. 화면을 새로 열어 확인하세요.", "{0}: another user changed the business description. Open the screen again and check.");
         add("{0} : {1}을(를) 입력해주세요.", "{0}: enter the {1}.");
         add("{0} : 길이/정밀도/소수 자릿수는 0 이상이어야 합니다.", "{0}: length, precision and scale must be 0 or greater.");

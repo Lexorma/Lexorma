@@ -11,6 +11,8 @@ import { api, download, enc } from '../../lib/api';
 import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
+import { TermRelink, type TermRelinkColumn } from './TermRelink';
+import { termLabel } from './terms';
 import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { columnColumns } from './columns';
 import { t } from '../../lib/i18n';
@@ -127,9 +129,21 @@ export function ColumnManagePage() {
     });
   };
 
+  // 표준 용어 재연결 (COL-TERM) : 승인 전 컬럼, 용어가 연결된 컬럼만. 연결만 바꾸고 컬럼 속성은 그대로
+  const openTermRelink = (row: Row) => {
+    dialog.popup({
+      title: t('표준 용어 변경 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
+      content: ({ close }: DialogControls) => (
+        <TermRelink column={row as unknown as TermRelinkColumn} onCancel={close}
+                    onChanged={(changed) => { close(); reload(); dialog.alert(changed ? t('표준 용어 연결을 바꿨습니다.') : t('같은 표준 용어라 바꾸지 않았습니다.')); }} />
+      ),
+    });
+  };
+
   // 행 선택 : 그리드에서 숨긴 항목까지 상세로 보여주고, 승인 전 컬럼은 [컬럼 순서 변경]
   const openDetail = (row: Row) => {
     const approved = row.isApproval === 'Y';
+    const term = row.standardTerms as TermRelinkColumn['standardTerms'] | null | undefined;
     dialog.open({
       title: t('컬럼 상세 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
       content: ({ close }: DialogControls) => (
@@ -149,6 +163,10 @@ export function ColumnManagePage() {
                 </dd>,
               ];
             })}
+            <dt>{t('표준 용어')}</dt>
+            <dd className={term?.id ? undefined : 'gh-muted'}>
+              {term?.id ? <>{termLabel(term)} <span className="gh-mono gh-muted">{term.commonStandardTermAbbreviation}</span>{term.commonStandardDomainName && <span className="gh-muted"> · {term.commonStandardDomainName}</span>}</> : '-'}
+            </dd>
             <dt>{t('속성')}</dt>
             <dd>
               <div className="dict-detail-flags">
@@ -170,6 +188,9 @@ export function ColumnManagePage() {
               <button type="button" className="btn" onClick={() => { close(); navigate(`/physicalErd?schemaId=${enc(row.schemaId)}&tableId=${enc(row.tableInfoId)}`); }}>
                 {t('ERD 에서 보기')}
               </button>
+            )}
+            {!approved && canView('physical-model-edit') && term?.id != null && (
+              <button type="button" className="btn" onClick={() => { close(); openTermRelink(row); }}>{t('표준 용어 변경')}</button>
             )}
             {!approved && <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>{t('컬럼 순서 변경')}</button>}
           </div>

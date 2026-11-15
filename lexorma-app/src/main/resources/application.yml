@@ -59,7 +59,7 @@ spring:
 # 사설·루프백 주소의 상한 (CIDR, 쉼표). 설정하면 사설·루프백 주소는 관리자 규칙과 이 대역 둘 다에 맞아야 한다
 #   LEXORMA_SOURCE_ALLOWED_NETWORKS=10.20.0.0/16,192.168.1.10
 # 외부 HTTP 연결 시간 (AI HTTP) : lexorma.external.http.connect-timeout-seconds=10 / response-timeout-seconds=120
-# 수집 실행 제한 (기본값) : 접속 10초, 조회 30초, 수집 전체 10분, 작업 스레드 2·대기열 10, 연결 테스트 계정당 1분 10번 — docs/source-postgresql-collection-ai2b.md 10장
+# 수집 실행 제한 (기본값) : 접속 10초, 조회 30초, 수집 전체 10분, 작업 스레드 2·대기열 10, 연결 테스트 계정당 1분 10번 — docs/completed/source-postgresql-collection-ai2b.md 10장
 #   lexorma.source.jdbc.connect-timeout-seconds=10 / query-timeout-seconds=30, lexorma.source.collection.timeout=PT10M / workers=2 / queue-capacity=10
 
 # 운영 기본 로그 레벨 : 필요 시 환경변수로 조정 (예: LOGGING_LEVEL_COM_LEXORMA=DEBUG)
@@ -74,7 +74,7 @@ server:
   forward-headers-strategy: native
   # 응답 압축 (gzip, 요청에 Accept-Encoding: gzip 이 있을 때만) : JSON API(원본 ERD 3,000 테이블 ≈ 4.5MB)와 React 정적 파일.
   # 4KB 보다 작은 응답(CSRF 토큰·로그인 결과 등 비밀값이 든 짧은 응답)은 압축하지 않는다. 엑셀(xlsx)·이미지는 이미 압축된 형식이라 목록에 없다.
-  # 측정·결정 근거 : docs/m4-foundation.md 3장
+  # 측정·결정 근거 : docs/reference/m4-foundation.md 3장
   compression:
     enabled: true
     mime-types: application/json,application/problem+json,text/html,text/css,text/javascript,application/javascript,text/plain,text/markdown,image/svg+xml

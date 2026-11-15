@@ -8,7 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 원본(PostgreSQL) ↔ 모델 비교의 타입·식 정규화 (M-4d, docs/source-compare-m4d.md 4장). PostgreSQL 원본 → PostgreSQL 대상 모델만 다룬다 (정책 5.8).
+ * 원본(PostgreSQL) ↔ 모델 비교의 타입·식 정규화 (M-4d, docs/completed/source-compare-m4d.md 4장). PostgreSQL 원본 → PostgreSQL 대상 모델만 다룬다 (정책 5.8).
  * <ul>
  *   <li>타입 : 원본의 format_type 표현과 모델 타입을 PostgreSQL DDL 로 바꾼 표현(TableDdlGenerator.mapType)을 같은 규칙으로 (기본 타입, 길이, 정밀도, 소수 자릿수) 로 나눈다.
  *       별칭(int4·character varying …)만 같게 보고, 의미가 다른 타입(REAL ↔ DOUBLE PRECISION, TIMESTAMP ↔ TIMESTAMPTZ)은 다르게 본다. 모르는 타입은 known = false</li>

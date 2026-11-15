@@ -12,6 +12,7 @@ import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionJob.Status;
 import com.lexorma.data.ai.dictionary.repository.AiDescriptionJobRepository;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
+import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -73,9 +74,12 @@ public class AiDescriptionJobService {
     private final ThreadPoolTaskExecutor executor;
     private final TransactionTemplate tx;
 
+    private final com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository proposals;
+
     public AiDescriptionJobService(AiDescriptionJobRepository jobs, AiDescriptionDraftService drafts, ExecutionContextVerifier verifier,
                                    ProjectWriteGuard projectWriteGuard, TableInfoRepository tables, ColumnInfoRepository columns,
-                                   PlatformTransactionManager transactionManager) {
+                                   PlatformTransactionManager transactionManager, com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository proposals) {
+        this.proposals = proposals;
         this.jobs = jobs;
         this.drafts = drafts;
         this.verifier = verifier;
@@ -105,7 +109,7 @@ public class AiDescriptionJobService {
             if (!jobs.findAllByProjectIdAndStatusIn(projectId, EnumSet.of(Status.PENDING, Status.RUNNING)).isEmpty()) {
                 throw new CustomException(ErrorCode.AI_JOB_ALREADY_RUNNING);
             }
-            List<AiDictionaryDto.Target> targets = targets(projectId, request);
+            List<AiDictionaryDto.Target> targets = runnable(resolve(projectId, request));
             AiDescriptionJob saved = jobs.save(AiDescriptionJob.builder().projectId(projectId).accountId(context.accountId()).status(Status.PENDING)
                     .targets(JSON.writeValueAsString(targets)).targetCount(targets.size()).completedCount(0).failedCount(0).skippedCount(0).build());
             Long id = saved.getId();
@@ -244,26 +248,73 @@ public class AiDescriptionJobService {
                         .forEach(c -> targets.add(new AiDictionaryDto.Target(request.tableId(), c.getId())));
             }
             case "SELECTED" -> {
+                // 고른 테이블 : tables(기본 true) 면 그 테이블, columns 면 그 테이블의 컬럼도. 고른 컬럼 : 그 컬럼. onlyMissing 이면 업무 설명 있는 것은 뺀다(미리 보기에 DESCRIBED)
                 if (request.targets() == null) throw new CustomException(ErrorCode.AI_JOB_INVALID, "대상을 고르세요.");
-                Set<String> seen = new LinkedHashSet<>();
+                boolean withTable = !Boolean.FALSE.equals(request.tables());
+                boolean withColumns = Boolean.TRUE.equals(request.columns());
                 for (AiDictionaryDto.Target t : request.targets()) {
                     if (t == null || (t.tableId() == null && t.columnId() == null)) continue;
-                    if (!seen.add(t.tableId() + ":" + t.columnId())) continue;
                     if (t.columnId() != null) {
                         ColumnInfo c = columns.findAllByProjectIdAndId(projectId, t.columnId()).stream().findFirst()
                                 .orElseThrow(() -> new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED));
                         targets.add(new AiDictionaryDto.Target(c.getTableInfo().getId(), c.getId()));
-                    } else {
-                        tables.findById(t.tableId()).filter(x -> projectId.equals(x.getProjectId())).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
-                        targets.add(new AiDictionaryDto.Target(t.tableId(), null));
+                        continue;
+                    }
+                    tables.findById(t.tableId()).filter(x -> projectId.equals(x.getProjectId())).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
+                    if (withTable) targets.add(new AiDictionaryDto.Target(t.tableId(), null));
+                    if (withColumns) {
+                        columns.findAllByTableInfo_IdIn(List.of(t.tableId())).stream().filter(c -> projectId.equals(c.getProjectId()))
+                                .sorted(Comparator.comparing((ColumnInfo c) -> c.getSortOrder() == null ? Integer.MAX_VALUE : c.getSortOrder()))
+                                .forEach(c -> targets.add(new AiDictionaryDto.Target(t.tableId(), c.getId())));
                     }
                 }
             }
             default -> throw new CustomException(ErrorCode.AI_JOB_INVALID, "대상 범위가 올바르지 않습니다.");
         }
+        return targets;
+    }
+
+    /** 실행·미리 보기가 함께 쓰는 대상 판정 : 중복을 빼고, 대상마다 만든다 · 검토 대기 제안 있음(실행 때 건너뜀) · 업무 설명 있음(onlyMissing 이면 뺌) */
+    private List<AiDictionaryDto.PreviewItem> resolve(Long projectId, AiDictionaryDto.JobRequest request) {
+        boolean onlyMissing = Boolean.TRUE.equals(request == null ? null : request.onlyMissing());
+        Set<String> seen = new LinkedHashSet<>();
+        List<AiDictionaryDto.Target> unique = targets(projectId, request).stream().filter(t -> seen.add(t.tableId() + ":" + t.columnId())).toList();
+        Set<Long> tableIds = unique.stream().map(AiDictionaryDto.Target::tableId).collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, TableInfo> tableById = new java.util.HashMap<>();
+        tables.findAllById(tableIds).forEach(t -> tableById.put(t.getId(), t));
+        java.util.Map<Long, ColumnInfo> columnById = new java.util.HashMap<>();
+        columns.findAllByTableInfo_IdIn(tableIds).forEach(c -> columnById.put(c.getId(), c));
+        Set<String> open = new java.util.HashSet<>();
+        proposals.findAllByProjectIdAndStatusIn(projectId, EnumSet.of(AiDescriptionProposal.ReviewStatus.PROPOSED, AiDescriptionProposal.ReviewStatus.REVIEWED,
+                AiDescriptionProposal.ReviewStatus.ON_HOLD, AiDescriptionProposal.ReviewStatus.REVIEW_REQUIRED)).forEach(p -> open.add(p.getTableId() + ":" + p.getColumnId()));
+        List<AiDictionaryDto.PreviewItem> items = new ArrayList<>();
+        for (AiDictionaryDto.Target t : unique) {
+            TableInfo table = tableById.get(t.tableId());
+            ColumnInfo column = t.columnId() == null ? null : columnById.get(t.columnId());
+            String biz = column != null ? column.getBizDescription() : table == null ? null : table.getBizDescription();
+            String name = table == null ? String.valueOf(t.tableId()) : column == null ? table.getTableName() : table.getTableName() + "." + column.getColumnName();
+            String outcome = onlyMissing && biz != null && !biz.isBlank() ? "DESCRIBED" : open.contains(t.tableId() + ":" + t.columnId()) ? "OPEN_PROPOSAL" : "CREATE";
+            items.add(new AiDictionaryDto.PreviewItem(column == null ? AiDescriptionProposal.TargetType.TABLE : AiDescriptionProposal.TargetType.COLUMN, t.tableId(),
+                    t.columnId(), name, outcome));
+        }
+        return items;
+    }
+
+    private static List<AiDictionaryDto.Target> runnable(List<AiDictionaryDto.PreviewItem> items) {
+        List<AiDictionaryDto.Target> targets = items.stream().filter(i -> !"DESCRIBED".equals(i.outcome())).map(i -> new AiDictionaryDto.Target(i.tableId(), i.columnId())).toList();
         if (targets.isEmpty()) throw new CustomException(ErrorCode.AI_JOB_INVALID, "만들 대상이 없습니다.");
         if (targets.size() > MAX_TARGETS) throw new CustomException(ErrorCode.AI_JOB_INVALID, "한 번에 {0}개까지 만들 수 있습니다. 범위를 좁혀주세요.", MAX_TARGETS);
         return targets;
+    }
+
+    /** 생성 대상 미리 보기 (실행과 같은 판정, 아무것도 만들지 않는다) */
+    public AiDictionaryDto.JobPreview preview(ExecutionContext context, AiDictionaryDto.JobRequest request) {
+        verifier.verify(context, "USER");
+        List<AiDictionaryDto.PreviewItem> items = tx.execute(s -> resolve(context.projectId(), request));
+        int create = (int) items.stream().filter(i -> "CREATE".equals(i.outcome())).count();
+        int open = (int) items.stream().filter(i -> "OPEN_PROPOSAL".equals(i.outcome())).count();
+        int described = (int) items.stream().filter(i -> "DESCRIBED".equals(i.outcome())).count();
+        return new AiDictionaryDto.JobPreview(items.size() > 300 ? items.subList(0, 300) : items, create, open, described, create + open, MAX_TARGETS);
     }
 
     static AiDictionaryDto.JobSummary summary(AiDescriptionJob j) {

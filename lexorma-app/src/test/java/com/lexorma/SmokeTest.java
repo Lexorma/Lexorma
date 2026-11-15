@@ -528,7 +528,7 @@ class SmokeTest {
 
         var summary = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
         assertThat(summary.path("totalColumns").asLong()).as("V0 예제 물리 모델").isPositive();
-        // V0 예제는 용어의 도메인을 실제 컬럼 정의에 맞춰 두었다 (docs/db-naming-standard.md) : 진단 결과가 없어야 한다
+        // V0 예제는 용어의 도메인을 실제 컬럼 정의에 맞춰 두었다 (docs/reference/db-naming-standard.md) : 진단 결과가 없어야 한다
         assertThat(summary.path("issueColumns").asLong()).as(get("/api/standardizationQuality/data?page=0&size=20", true).body()).isZero();
         long byType = 0;
         for (var type : Map.of("TERM_NOT_LINKED", "termNotLinked", "COLUMN_NAME_MISMATCH", "columnNameMismatch",
@@ -1005,6 +1005,11 @@ class SmokeTest {
         var tables = mapper.readTree(get("/api/ai/dictionary/targets?onlyMissing=false&keyword=TB_AI", true).body());
         assertThat(tables.isArray()).isTrue();
         long tableId = tables.get(0).path("tableId").asLong();
+        // 대상 테이블 목록 쪽 단위 (AI-5-PAGE) : 검색·쪽 번호·크기가 묶이고 전체 건수를 준다
+        var tablePage = mapper.readTree(get("/api/ai/dictionary/targets/tables?onlyMissing=false&keyword=tb_ai&page=1&size=2", true).body());
+        assertThat(tablePage.path("content").size()).isLessThanOrEqualTo(2);
+        assertThat(tablePage.path("totalElements").asLong()).isEqualTo(tables.size());
+        assertThat(tablePage.path("number").asInt()).isEqualTo(1);
         assertThat(get("/api/ai/dictionary/targets?tableId=" + tableId + "&onlyMissing=true", true).statusCode()).isEqualTo(200);
         assertThat(get("/api/ai/dictionary/objects/" + tableId, true).statusCode()).isEqualTo(200);
         var page = mapper.readTree(get("/api/ai/dictionary/proposals?status=OPEN&targetType=&tableId=&keyword=&page=0&size=20", true).body());
@@ -1017,6 +1022,16 @@ class SmokeTest {
         // 선택 필드(onlyMissing·regenerate)를 빼고 보내도 묶인다 (기본형이 아니다)
         assertThat(postJson("/api/ai/dictionary/jobs", "{\"scope\":\"EVERYTHING\"}").body()).contains("AI_JOB_INVALID");
         assertThat(postJson("/api/ai/dictionary/proposals/generate", "{\"tableId\":" + tableId + "}").body()).contains("AI_DEFAULT_PROVIDER_NOT_CONFIGURED");
+        // 생성 대상 미리 보기(선택 필드 생략), 종결·근거 재검증(경로 변수 — 없는 제안 404), 업무 설명 직접 수정(기준 값 다르면 409, 같으면 저장 후 되돌림)
+        assertThat(postJson("/api/ai/dictionary/jobs/preview", "{\"scope\":\"SELECTED\",\"targets\":[{\"tableId\":" + tableId + "}]}").body()).contains("\"limit\":100");
+        assertThat(postJson("/api/ai/dictionary/proposals/999999999/close", "{\"version\":0,\"reason\":\"x\"}").statusCode()).isEqualTo(404);
+        assertThat(postJson("/api/ai/dictionary/proposals/999999999/revalidate", "{\"version\":0}").statusCode()).isEqualTo(404);
+        String before = tables.get(0).path("hasBizDescription").asBoolean() ? null : "";
+        if (before != null) {
+            assertThat(putJson("/api/bizDescription", "{\"tableId\":" + tableId + ",\"bizDescription\":\"스모크\",\"base\":\"다른 값\"}").body()).contains("BIZ_DESCRIPTION_CONFLICT");
+            assertThat(putJson("/api/bizDescription", "{\"tableId\":" + tableId + ",\"bizDescription\":\"스모크\",\"base\":\"\"}").body()).contains("\"bizDescription\":\"스모크\"");
+            assertThat(putJson("/api/bizDescription", "{\"tableId\":" + tableId + ",\"bizDescription\":\"\",\"base\":\"스모크\"}").statusCode()).isEqualTo(200);
+        }
 
         // 품질 평가 (AI-5 후속) : 후보(조회 파라미터) → 등록(선택 필드 생략) → 목록·상세(경로 변수) → 판정(없는 제안) → 지표 → 삭제. 기준 데이터는 남기지 않는다
         assertThat(mapper.readTree(get("/api/ai/dictionary/evaluation/candidates?tableId=" + tableId, true).body()).isArray()).isTrue();

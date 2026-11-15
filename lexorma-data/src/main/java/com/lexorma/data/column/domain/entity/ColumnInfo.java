@@ -55,7 +55,7 @@ public class ColumnInfo extends BaseEntity {
 
     /**
      * 업무 설명 (AI-5, V10) : 담당자가 확정한 업무 설명. 컬럼 설명(columnDesc — DDL COMMENT·논리명)·원본 COMMENT 와 따로 둔다.
-     * 최신화·가져오기는 바꾸지 않는다. AI 제안은 승인으로만 여기에 반영된다 (객체 승인 상태와 무관 — docs/ai-dictionary-draft-ai5.md)
+     * 최신화·가져오기는 바꾸지 않는다. AI 제안은 승인으로만 여기에 반영된다 (객체 승인 상태와 무관 — docs/completed/ai-dictionary-draft-ai5.md)
      */
     @Column(name = "TASK_EXPLN", columnDefinition = "TEXT")
     private String bizDescription;

@@ -5,8 +5,8 @@ import { useDialog } from '../../../components/dialog/DialogProvider';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiError } from '../../../lib/api';
-import { t } from '../../../lib/i18n';
-import { aiDictionary, CERTAINTY_LABEL, JOB_LABEL, STATUS_CLASS, STATUS_LABEL, type JobSummary, type ProposalSummary } from './aiDictionary';
+import { t, tc } from '../../../lib/i18n';
+import { aiDictionary, BLIND_NOTICE, CERTAINTY_LABEL, JOB_LABEL, STATUS_CLASS, STATUS_LABEL, type JobSummary, type ProposalSummary } from './aiDictionary';
 import { AiStatusNotice } from './AiStatusNotice';
 import { ProposalDetailView } from './ProposalDetailView';
 import { ReviewReasonSummary } from './ReasonView';
@@ -217,11 +217,15 @@ export default function AiDescriptionPage() {
                   <span className="ai-dict-proposal-head">
                     <span className={`gh-label ${STATUS_CLASS[p.status]}`}>{STATUS_LABEL[p.status]}</span>
                     <span className="ai-dict-name">{p.targetName}</span>
-                    <span className="gh-muted ai-dict-small">{CERTAINTY_LABEL[p.certainty]} · {t('근거 {0}/{1}', p.evidenceVerified, p.evidenceTotal)} · {p.model ?? '-'}</span>
+                    {p.blind
+                      ? <span className="gh-label gh-label-attention" title={BLIND_NOTICE}>{t('평가 블라인드')}</span>
+                      : <span className="gh-muted ai-dict-small">{p.certainty ? CERTAINTY_LABEL[p.certainty] : '-'} · {t('근거 {0}/{1}', p.evidenceVerified, p.evidenceTotal)} · {p.model ?? '-'}</span>}
                     {p.recheckNeeded && <span className="gh-label gh-label-attention">{t('근거 변경')}</span>}
                     {p.replacesBizDescription && OPEN_REVIEWABLE.has(p.status) && <span className="gh-label" title={t('승인하면 기존 업무 설명을 교체합니다')}>{t('기존 설명 교체')}</span>}
                   </span>
-                  <span className="ai-dict-proposal-text">{p.confirmedDescription ?? p.proposedDescription}</span>
+                  {p.blind
+                    ? <span className="ai-dict-proposal-text gh-muted">{BLIND_NOTICE}</span>
+                    : <span className="ai-dict-proposal-text">{p.confirmedDescription ?? p.proposedDescription}</span>}
                   {p.status === 'REVIEW_REQUIRED' && <span className="ai-dict-small gh-muted">{t('재검토 사유')} : <ReviewReasonSummary raw={p.reviewReason} action="REVIEW_REQUIRED" /> — {t('열어서 근거 재검증·새 초안·종결')}</span>}
                 </button>
               </li>
@@ -247,7 +251,7 @@ function ReasonForm({ required, onSubmit }: { required: boolean; onSubmit: (reas
       <textarea className="ai-dict-textarea" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder={required ? t('반려 사유 (필수)') : t('보류 사유 (선택)')} aria-label={t('사유')} autoFocus />
       <div className="ai-dict-buttons">
-        <button type="submit" className="btn btn-primary" disabled={required && !reason.trim()}>{t('확인')}</button>
+        <button type="submit" className="btn btn-primary" disabled={required && !reason.trim()}>{tc('버튼', '확인')}</button>
       </div>
     </form>
   );

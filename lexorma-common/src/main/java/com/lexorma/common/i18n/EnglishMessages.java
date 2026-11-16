@@ -244,6 +244,7 @@ final class EnglishMessages {
         add("만들 대상이 없습니다.", "There is nothing to generate.");
         add("반려 사유를 입력해주세요.", "Enter the reason for rejection.");
         add("사유는 {0}자까지 입력할 수 있습니다.", "The reason can be up to {0} characters.");
+        add("실제 의미를 확인한 평가 대상만 판정할 수 있습니다.", "Only evaluation targets whose actual meaning is confirmed can be judged.");
         add("실행을 찾을 수 없습니다.", "The job was not found.");
         add("업무 설명은 {0}자까지 입력할 수 있습니다.", "The business description can be up to {0} characters.");
         add("일괄 처리는 승인·반려·보류만 할 수 있습니다.", "Bulk review supports only approve, reject and hold.");
@@ -261,7 +262,7 @@ final class EnglishMessages {
         add("같은 이름의 테이블이 여러 스키마에 있습니다. tableId 로 지정하세요 : {0}", "Tables with this name exist in several schemas. Specify the tableId : {0}");
 
         // ---------------------------------------------------------------- 공지사항
-        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지(V3__notice_ai_menu.sql 로 AI 절을 고친 뒤)와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
+        // 기본 안내 공지 : 제목·본문이 V1__seed_data.sql 의 공지와 한 글자라도 다르면 영어판이 연결되지 않는다. (V0SeedMigrationTest 에서 확인)
         add("[안내] Lexorma에 오신 것을 환영합니다.", "[Notice] Welcome to Lexorma");
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.

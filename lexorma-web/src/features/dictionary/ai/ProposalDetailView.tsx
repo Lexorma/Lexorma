@@ -5,7 +5,7 @@ import { useAiStatus } from '../../../hooks/useAiStatus';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiError } from '../../../lib/api';
 import { t, tc } from '../../../lib/i18n';
-import { aiDictionary, CERTAINTY_LABEL, CHANGE_LABEL, OBJECT_TYPE_LABEL, STATUS_CLASS, STATUS_LABEL, type Change, type ProposalDetail, type ReviewResult } from './aiDictionary';
+import { aiDictionary, APPROVAL_HOLD_LABEL, BLIND_NOTICE, CERTAINTY_LABEL, CHANGE_LABEL, OBJECT_TYPE_LABEL, STATUS_CLASS, STATUS_LABEL, type Change, type ProposalDetail, type ReviewResult } from './aiDictionary';
 import { ACTION_LABEL, ReviewReasonDetail, reasonFieldLabel, reasonFieldLabels } from './ReasonView';
 
 const EVIDENCE_STATUS: Record<string, string> = {
@@ -17,6 +17,7 @@ const OPEN = new Set(['PROPOSED', 'REVIEWED', 'ON_HOLD', 'REVIEW_REQUIRED']);
  * AI 설명 제안 상세 (AI-5) : 원본 COMMENT · 지금 설명(DDL COMMENT) · 지금 업무 설명 · AI 제안을 나란히 보이고, 근거(검증 결과) · 불확실한 부분 · 확인 질문 ·
  * 표준 용어·도메인 추천 · 생성 뒤 변경 · 이력과 함께 승인 · 수정 후 승인 · 반려 · 보류 · 검토함 · 다시 만들기를 한다.
  * "확인됨" 은 근거 객체의 존재·범위·버전을 확인했다는 뜻이고 설명 문장 전체가 맞다는 뜻이 아니다.
+ * 평가 블라인드(AI-5-EVAL 2차) : 평가 대상의 실제 의미를 확인하기 전에는 서버가 AI 내용을 보내지 않는다 — 안내와 메타데이터·상태·승인 제한 사유만 보인다.
  */
 export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: number; onChanged: () => void; onRegenerated: (newId: number) => void }) {
   const { canView, approvalAvailable } = useAuth();
@@ -34,12 +35,13 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
   if (query.isError || !query.data) return <p className="gh-muted">{t('제안을 불러오지 못했습니다.')}</p>;
   const d: ProposalDetail = query.data;
   const p = d.proposal;
-  const draft = text ?? p.proposedDescription;
+  const proposed = p.proposedDescription ?? '';
+  const draft = text ?? proposed;
   const open = OPEN.has(p.status);
   // 생성 뒤 다른 사용자가 업무 설명을 고쳤다 : 서버가 승인을 막는다 (확인을 다시 눌러도 반영되지 않는다) → 최신 설명으로 새 초안
   const bizConflict = open && d.changes.some((c) => c.kind === 'BIZ_DESCRIPTION_CHANGED');
   // 지금 업무 설명이 있고 승인할 문구와 다르면 승인은 교체다
-  const replaces = open && !bizConflict && !!d.current.bizDescription && d.current.bizDescription.trim() !== draft.trim();
+  const replaces = open && !p.blind && !bizConflict && !!d.current.bizDescription && d.current.bizDescription.trim() !== draft.trim();
 
   const run = async (action: 'approve' | 'reject' | 'hold' | 'review' | 'close') => {
     if (action === 'reject' && !reason.trim()) {
@@ -53,7 +55,7 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
     setBusy(true);
     setMessage(null);
     try {
-      const edited = action === 'approve' && draft.trim() !== p.proposedDescription.trim() ? draft.trim() : null;
+      const edited = action === 'approve' && draft.trim() !== proposed.trim() ? draft.trim() : null;
       const result: ReviewResult = await aiDictionary.review(p.id, action, { version: p.version, description: edited, reason: reason.trim() || null });
       if (result.outcome === 'REVIEW_REQUIRED') {
         const biz = result.changes.some((c) => c.kind === 'BIZ_DESCRIPTION_CHANGED');
@@ -135,17 +137,23 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
         <dt>{p.targetType === 'TABLE' ? t('테이블 코멘트') : t('컬럼 설명')}</dt>
         <dd>{d.current.description ?? <span className="gh-muted">{t('없음')}</span>}</dd>
         <dt>{t('현재 업무 설명')}</dt>
-        <dd>{d.current.bizDescription ?? <span className="gh-muted">{t('없음')}</span>}{!d.current.exists && <span className="gh-label gh-label-danger">{t('대상이 삭제됨')}</span>}</dd>
+        <dd>{d.bizDescriptionHidden
+          ? <span className="gh-muted">{t('AI 제안 승인으로 들어간 값이라 실제 의미를 확인하기 전에는 보이지 않습니다.')}</span>
+          : (d.current.bizDescription ?? <span className="gh-muted">{t('없음')}</span>)}{!d.current.exists && <span className="gh-label gh-label-danger">{t('대상이 삭제됨')}</span>}</dd>
         <dt><Sparkles size={13} aria-hidden="true" /> {t('AI 제안')}</dt>
         <dd>
-          {open && canReview ? (
-            <textarea className="ai-dict-textarea" value={draft} maxLength={4000} rows={5} aria-label={t('AI 제안 (고치면 수정 후 승인)')}
-                      onChange={(e) => setText(e.target.value)} />
-          ) : <p className="ai-dict-text">{p.confirmedDescription ?? p.proposedDescription}</p>}
-          <div className="gh-muted ai-dict-small">
-            {t('확실성')} : {CERTAINTY_LABEL[p.certainty]}
-            {detail.claimedCertainty && detail.claimedCertainty !== p.certainty && ` (${t('AI 는 {0} 라고 했지만 근거 검증으로 낮춤', CERTAINTY_LABEL[detail.claimedCertainty])})`}
-          </div>
+          {p.blind ? (
+            <div className="ai-dict-callout is-warn" role="note"><AlertTriangle size={14} aria-hidden="true" /> {BLIND_NOTICE}</div>
+          ) : <>
+            {open && canReview ? (
+              <textarea className="ai-dict-textarea" value={draft} maxLength={4000} rows={5} aria-label={t('AI 제안 (고치면 수정 후 승인)')}
+                        onChange={(e) => setText(e.target.value)} />
+            ) : <p className="ai-dict-text">{p.confirmedDescription ?? p.proposedDescription}</p>}
+            <div className="gh-muted ai-dict-small">
+              {t('확실성')} : {p.certainty ? CERTAINTY_LABEL[p.certainty] : '-'}
+              {detail.claimedCertainty && detail.claimedCertainty !== p.certainty && ` (${t('AI 는 {0} 라고 했지만 근거 검증으로 낮춤', CERTAINTY_LABEL[detail.claimedCertainty])})`}
+            </div>
+          </>}
         </dd>
       </dl>
       {replaces && canReview && (
@@ -159,7 +167,7 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
           <dl className="ai-dict-compare">
             <dt>{t('제안 생성 당시 업무 설명')}</dt><dd>{d.baseBizDescription ?? <span className="gh-muted">{t('없음')}</span>}</dd>
             <dt>{t('현재 업무 설명')}</dt><dd>{d.current.bizDescription ?? <span className="gh-muted">{t('없음')}</span>}</dd>
-            <dt>{t('AI 제안 설명')}</dt><dd>{p.proposedDescription}</dd>
+            <dt>{t('AI 제안 설명')}</dt><dd>{p.blind ? <span className="gh-muted">{BLIND_NOTICE}</span> : p.proposedDescription}</dd>
           </dl>
           <p className="ai-dict-small">{t('제안을 만든 뒤 다른 사용자가 업무 설명을 수정했습니다. 이 제안으로 승인하면 그 수정이 사라지므로 반영하지 않습니다. 최신 업무 설명을 기준으로 새 초안을 만들거나 제안을 종결하세요.')}</p>
           {canGenerate && d.current.exists && p.status !== 'REVIEW_REQUIRED' && (
@@ -207,6 +215,7 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
         );
       })()}
 
+      {!p.blind && <>
       {detail.nameInterpretation && <Section title={t('이름 해석')}><p>{detail.nameInterpretation}</p></Section>}
       {(detail.termRecommendation || detail.domainRecommendation) && (
         <Section title={t('표준 추천 (참고 — 승인해도 연결을 바꾸지 않습니다)')}>
@@ -241,6 +250,7 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
       <Section title={t('담당자에게 확인할 질문')}>
         {(detail.questions ?? []).length === 0 ? <p className="gh-muted">{t('없음')}</p> : <ul className="ai-dict-list">{(detail.questions ?? []).map((q, i) => <li key={i}>{q}</li>)}</ul>}
       </Section>
+      </>}
 
       <Section title={t('생성 정보')}>
         <p className="gh-muted ai-dict-small">
@@ -267,17 +277,18 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
           {message.changes && <ChangeList changes={message.changes} />}
         </div>
       )}
+      {open && d.evaluationHold && <div className="ai-dict-callout is-warn" role="note">{APPROVAL_HOLD_LABEL[d.evaluationHold]} {t('AI 관리 › AI 품질 평가에서 평가를 마치세요.')}</div>}
       {(open && canReview) && (
         <div className="ai-dict-actions">
-          <input className="search-input ai-dict-reason" value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)}
-                 placeholder={t('사유 (반려·종결·계속 검토는 필수, 보류는 선택)')} aria-label={t('사유')} />
+          <textarea className="ai-dict-textarea ai-dict-reason" rows={2} value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)}
+                    placeholder={t('사유 (반려·종결·계속 검토는 필수, 보류는 선택)')} aria-label={t('사유')} />
           <div className="ai-dict-buttons">
             {p.status !== 'REVIEW_REQUIRED' && (
-              <button type="button" className="btn btn-primary" disabled={busy || !draft.trim() || bizConflict} onClick={() => run('approve')}
-                      title={bizConflict ? t('제안을 만든 뒤 업무 설명이 바뀌어 승인할 수 없습니다') : undefined}>
-                {draft.trim() !== p.proposedDescription.trim()
+              <button type="button" className="btn btn-primary" disabled={busy || !draft.trim() || bizConflict || !!d.evaluationHold} onClick={() => run('approve')}
+                      title={d.evaluationHold ? APPROVAL_HOLD_LABEL[d.evaluationHold] : bizConflict ? t('제안을 만든 뒤 업무 설명이 바뀌어 승인할 수 없습니다') : undefined}>
+                {draft.trim() !== proposed.trim()
                   ? (replaces ? t('수정 후 승인 및 교체') : t('수정 후 승인'))
-                  : (replaces ? t('승인 및 교체') : t('승인'))}
+                  : (replaces ? t('승인 및 교체') : tc('버튼', '승인'))}
               </button>
             )}
             <button type="button" className="btn" disabled={busy} onClick={() => run('reject')}>{tc('버튼', '반려')}</button>

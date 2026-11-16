@@ -577,7 +577,17 @@ public enum ErrorCode {
     /**
      * 평가 요청이 올바르지 않다 (실제 의미를 확인하지 않은 대상의 정확성 판정, 다른 대상의 제안 등, AI-5 품질 평가).
      */
-    AI_EVALUATION_INVALID(HttpStatus.BAD_REQUEST, "AI_EVALUATION_INVALID");
+    AI_EVALUATION_INVALID(HttpStatus.BAD_REQUEST, "AI_EVALUATION_INVALID"),
+
+    /**
+     * 판정이 있는 평가 대상의 실제 의미·확인 상태는 바꿀 수 없다 (판정 기준 고정, AI-5-EVAL).
+     */
+    AI_EVALUATION_MEANING_LOCKED(HttpStatus.CONFLICT, "AI_EVALUATION_MEANING_LOCKED"),
+
+    /**
+     * 평가 대상으로 등록된 제안은 평가(실제 의미 확인 + 정확성 판정)를 마치기 전에 승인할 수 없다 (AI-5-EVAL).
+     */
+    AI_PROPOSAL_EVALUATION_PENDING(HttpStatus.CONFLICT, "AI_PROPOSAL_EVALUATION_PENDING");
 
     private final HttpStatus httpStatus;
     private final String code;

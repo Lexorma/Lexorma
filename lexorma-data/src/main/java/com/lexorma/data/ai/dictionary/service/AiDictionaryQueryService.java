@@ -36,6 +36,7 @@ import java.util.Objects;
 
 /**
  * AI 설명 제안 조회 (AI-5) : 목록·상세(변경 미리 보기)·생성 대상 후보·테이블/컬럼 상태·품질 지표. 모두 로그인 프로젝트만, VIEWER 부터. 쓰지 않는다.
+ * 제안 내용을 보내는 목록·상세·생성 응답은 평가 블라인드({@link ProposalEvaluationGate#blind})를 따른다.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +50,7 @@ public class AiDictionaryQueryService {
     private final com.lexorma.data.physical.repository.TableRelationRepository relations;
     private final ProposalVersions versions;
     private final ExecutionContextVerifier verifier;
+    private final ProposalEvaluationGate evaluationGate;
 
     /**
      * @param status  검토 상태 (비면 전체, OPEN 이면 검토 대기 전체)
@@ -70,11 +72,16 @@ public class AiDictionaryQueryService {
             if (Boolean.TRUE.equals(recheck)) p.add(cb.isTrue(root.get("recheckNeeded")));
             return cb.and(p.toArray(Predicate[]::new));
         };
-        return proposals.findAll(where, PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Order.desc("id"))))
-                .map(ProposalMapper::summary);
+        Page<AiDescriptionProposal> found = proposals.findAll(where, PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Order.desc("id"))));
+        // 실제 의미를 확인하기 전인 평가 대상의 제안은 AI 내용을 비운다 (AI-5-EVAL 2차 블라인드)
+        java.util.Set<Long> blind = evaluationGate.blindIds(projectId, found.getContent());
+        return found.map(p -> ProposalMapper.summary(p, blind.contains(p.getId())));
     }
 
-    /** 상세 : 저장한 내용 + 대상의 지금 값 + 생성 뒤의 변경(미리 보기, 상태를 바꾸지 않는다) + 이력 */
+    /**
+     * 상세 : 저장한 내용 + 대상의 지금 값 + 생성 뒤의 변경(미리 보기, 상태를 바꾸지 않는다) + 이력.
+     * 블라인드면 AI 가 만든 내용(제안 문구·확실성·근거·이름 해석·추천·질문, 이력의 확정 문구)을 보내지 않는다 — 대상의 지금 메타데이터·변경·승인 제한 사유는 보낸다
+     */
     public AiDictionaryDto.ProposalDetail detail(ExecutionContext context, Long id) {
         verifier.verify(context, "VIEWER");
         Long projectId = context.projectId();
@@ -84,9 +91,29 @@ public class AiDictionaryQueryService {
         // 승인된 제안은 승인으로 업무 설명이 바뀌었으므로 업무 설명은 비교하지 않는다. 끝난 제안(반려·대체)은 비교하지 않는다
         List<ProposalVersions.Change> changes = p.getStatus().open() || p.getStatus() == ReviewStatus.APPROVED
                 ? versions.changes(projectId, base, current.bizDescription(), p.getStatus().open()) : List.of();
-        List<AiDictionaryDto.HistoryItem> history = histories.findAllByProjectIdAndProposalIdOrderByIdAsc(projectId, id).stream().map(ProposalMapper::history).toList();
-        return new AiDictionaryDto.ProposalDetail(ProposalMapper.summary(p), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), current, changes, history,
-                ProposalMapper.baseBizDescription(p));
+        boolean blind = evaluationGate.blind(p);
+        List<AiDictionaryDto.HistoryItem> history = histories.findAllByProjectIdAndProposalIdOrderByIdAsc(projectId, id).stream().map(h -> ProposalMapper.history(h, blind)).toList();
+        String baseBiz = ProposalMapper.baseBizDescription(p);
+        // 블라인드인데 지금 업무 설명이 그 대상의 승인된 AI 제안 문구면 그 문구가 보이는 곳(현재 값·생성 당시 값)을 비우고 그 값이 든 변경 전후는 뺀다
+        String aiText = blind && ProposalEvaluationGate.fromAi(current.bizDescription(), proposals.findTarget(projectId, p.getTableId(), p.getColumnId()))
+                ? current.bizDescription().strip() : null;
+        if (aiText != null) {
+            current = new AiDictionaryDto.Current(current.exists(), current.name(), current.description(), current.sourceComment(), null, current.approved());
+            if (aiText.equals(baseBiz)) baseBiz = null;
+            changes = changes.stream().map(c -> new ProposalVersions.Change(c.kind(), c.type(), c.id(), c.name(), c.fields(),
+                    c.diffs() == null ? null : c.diffs().stream().filter(x -> !aiText.equals(text(x.before())) && !aiText.equals(text(x.after()))).toList(),
+                    c.changedAt())).toList();
+        }
+        return new AiDictionaryDto.ProposalDetail(ProposalMapper.summary(p, blind), blind ? null : ProposalMapper.node(p.getDetail()), blind ? null : ProposalMapper.node(p.getEvidence()),
+                current, changes, history, baseBiz, evaluationHold(p), aiText != null);
+    }
+
+
+    /** 승인 제한 사유 (열린 제안만 — 끝난 제안은 승인할 일이 없다) */
+    private String evaluationHold(AiDescriptionProposal p) {
+        if (!p.getStatus().open()) return null;
+        ProposalEvaluationGate.Hold hold = evaluationGate.hold(p, false);
+        return hold == null ? null : hold.name();
     }
 
     private AiDictionaryDto.Current current(Long projectId, AiDescriptionProposal p) {
@@ -312,9 +339,9 @@ public class AiDictionaryQueryService {
         return new AiDictionaryDto.Metrics(models, "업무적 정확성은 사람이 판정한 기준 데이터가 있어야 해서 계산하지 않습니다. 목표치는 정하지 않았습니다 (U-20).");
     }
 
-    /** 생성 결과 응답 */
+    /** 생성 결과 응답 (평가 대상이면 블라인드 판단을 거친다) */
     public AiDictionaryDto.GenerateResult generated(AiDescriptionDraftService.Result result) {
-        return new AiDictionaryDto.GenerateResult(result.outcome().name(), ProposalMapper.summary(result.proposal()));
+        return new AiDictionaryDto.GenerateResult(result.outcome().name(), ProposalMapper.summary(result.proposal(), evaluationGate.blind(result.proposal())));
     }
 
     // ------------------------------------------------------------------ 공통

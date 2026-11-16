@@ -1,115 +1,44 @@
 package com.lexorma.home.repository.impl;
 
-import com.lexorma.operation.board.domain.dto.BoardDto;
-import com.lexorma.operation.board.domain.dto.BoardViewDto;
-import com.lexorma.operation.board.domain.entity.Board;
-import com.lexorma.operation.board.domain.entity.QBoard;
+import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.data.column.domain.entity.QColumnInfo;
 import com.lexorma.data.dictionary.domain.entity.QStandardDomain;
 import com.lexorma.data.dictionary.domain.entity.QStandardTerm;
 import com.lexorma.data.dictionary.domain.entity.QStandardWord;
+import com.lexorma.data.physical.domain.entity.QTableConstraint;
+import com.lexorma.data.physical.domain.entity.QTableIndex;
+import com.lexorma.data.physical.domain.entity.QTableRelation;
+import com.lexorma.data.physical.domain.entity.TableConstraint;
+import com.lexorma.data.physical.domain.entity.TableRelation;
+import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
-import com.lexorma.home.domain.dto.DashboardDto;
-import com.lexorma.home.domain.dto.RecentChangeDto;
-import com.lexorma.core.security.domain.entity.Account;
+import com.lexorma.home.domain.dto.DashboardStatsDto;
 import com.lexorma.home.repository.DashboardRepositoryCustom;
+import com.lexorma.operation.board.domain.dto.BoardViewDto;
+import com.lexorma.operation.board.domain.entity.QBoard;
+import com.querydsl.core.Tuple;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.BooleanPath;
 import com.querydsl.core.types.dsl.CaseBuilder;
-import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.core.types.dsl.EntityPathBase;
+import com.querydsl.core.types.dsl.NumberPath;
+import com.querydsl.core.types.dsl.StringPath;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
+/**
+ * 대시보드 조회. 통계는 모두 DB 의 count·group by 로 센다 (엔티티를 읽어 메모리에서 세지 않는다).
+ */
 @Repository
 @RequiredArgsConstructor
 public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
 
     private final JPAQueryFactory query;
-
-    public List<RecentChangeDto> findRecentChanges(Long projectId, int limit) {
-        QStandardWord word = QStandardWord.standardWord;
-        QStandardTerm term = QStandardTerm.standardTerm;
-        QStandardDomain domain = QStandardDomain.standardDomain;
-        QTableInfo tableInfo = QTableInfo.tableInfo;
-        QColumnInfo columnInfo = QColumnInfo.columnInfo;
-
-        List<RecentChangeDto> wordChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("표준단어"),
-                        word.commonStandardWordName,
-                        word.updatedBy,
-                        word.updated
-                ))
-                .from(word)
-                .where(word.projectId.eq(projectId))
-                .orderBy(word.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> termChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("표준용어"),
-                        term.commonStandardTermName,
-                        term.updatedBy,
-                        term.updated
-                ))
-                .from(term)
-                .where(term.projectId.eq(projectId))
-                .orderBy(term.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> domainChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("표준도메인"),
-                        domain.commonStandardDomainName,
-                        domain.updatedBy,
-                        domain.updated
-                ))
-                .from(domain)
-                .where(domain.projectId.eq(projectId))
-                .orderBy(domain.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> tableChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("테이블관리"),
-                        tableInfo.tableName,
-                        tableInfo.updatedBy,
-                        tableInfo.updated
-                ))
-                .from(tableInfo)
-                .where(tableInfo.projectId.eq(projectId))
-                .orderBy(tableInfo.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        List<RecentChangeDto> columnChanges = query
-                .select(Projections.constructor(RecentChangeDto.class,
-                        Expressions.constant("컬럼관리"),
-                        columnInfo.columnName,
-                        columnInfo.updatedBy,
-                        columnInfo.updated
-                ))
-                .from(columnInfo)
-                .where(columnInfo.projectId.eq(projectId))
-                .orderBy(columnInfo.updated.desc())
-                .limit(limit)
-                .fetch();
-
-        return Stream.of(wordChanges, termChanges, domainChanges, tableChanges, columnChanges)
-                .flatMap(Collection::stream)
-                .sorted(Comparator.comparing(RecentChangeDto::modifiedAt).reversed())
-                .limit(limit)
-                .toList();
-    }
 
     @Override
     public List<BoardViewDto> findNotice(Long projectId, int limit, Account account) {
@@ -135,30 +64,119 @@ public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
     }
 
     @Override
-    public DashboardDto findDataCount(Long projectId) {
-
+    public DashboardStatsDto.Counts countAll(Long projectId) {
         QStandardWord word = QStandardWord.standardWord;
-        QStandardTerm term = QStandardTerm.standardTerm;
         QStandardDomain domain = QStandardDomain.standardDomain;
+        QStandardTerm term = QStandardTerm.standardTerm;
+        QSchemaInfo schema = QSchemaInfo.schemaInfo;
+        QTableInfo table = QTableInfo.tableInfo;
+        QColumnInfo column = QColumnInfo.columnInfo;
+        QTableRelation relation = QTableRelation.tableRelation;
+        QTableIndex index = QTableIndex.tableIndex;
+        QTableConstraint constraint = QTableConstraint.tableConstraint;
 
-        int wordData = query.selectFrom(word).where(word.projectId.eq(projectId)).where(word.isApproval.eq(false)).fetch().size();
-        int termData = query.selectFrom(term).where(term.projectId.eq(projectId)).where(term.isApproval.eq(false)).fetch().size();
-        int domainData = query.selectFrom(domain).where(domain.projectId.eq(projectId)).where(domain.isApproval.eq(false)).fetch().size();
+        long fk = 0, logical = 0;
+        for (Tuple t : query.select(relation.relationType, relation.count()).from(relation).where(relation.projectId.eq(projectId)).groupBy(relation.relationType).fetch()) {
+            if (t.get(relation.relationType) == TableRelation.Type.FK) fk = t.get(relation.count());
+            else logical += t.get(relation.count());
+        }
+        long unique = 0, check = 0;
+        for (Tuple t : query.select(constraint.constraintType, constraint.count()).from(constraint).where(constraint.projectId.eq(projectId)).groupBy(constraint.constraintType).fetch()) {
+            if (t.get(constraint.constraintType) == TableConstraint.Type.UNIQUE) unique = t.get(constraint.count());
+            else check += t.get(constraint.count());
+        }
+        return new DashboardStatsDto.Counts(
+                count(word, word.projectId, projectId), count(domain, domain.projectId, projectId), count(term, term.projectId, projectId),
+                count(schema, schema.projectId, projectId), count(table, table.projectId, projectId), count(column, column.projectId, projectId),
+                fk + logical, fk, logical, count(index, index.projectId, projectId), unique + check, unique, check);
+    }
 
+    @Override
+    public List<DashboardStatsDto.Approval> countApprovals(Long projectId) {
+        QStandardWord word = QStandardWord.standardWord;
+        QStandardDomain domain = QStandardDomain.standardDomain;
+        QStandardTerm term = QStandardTerm.standardTerm;
+        QTableInfo table = QTableInfo.tableInfo;
+        QColumnInfo column = QColumnInfo.columnInfo;
+        return List.of(
+                approval("WORD", word, word.projectId, word.isApproval, projectId),
+                approval("DOMAIN", domain, domain.projectId, domain.isApproval, projectId),
+                approval("TERM", term, term.projectId, term.isApproval, projectId),
+                approval("TABLE", table, table.projectId, table.isApproval, projectId),
+                approval("COLUMN", column, column.projectId, column.isApproval, projectId));
+    }
 
+    @Override
+    public long[] countLinkedColumns(Long projectId) {
+        QColumnInfo column = QColumnInfo.columnInfo;
+        QStandardTerm term = QStandardTerm.standardTerm;
+        Long linked = query.select(column.count()).from(column).where(column.projectId.eq(projectId), column.standardTerms.isNotNull()).fetchOne();
+        Long approved = query.select(column.count()).from(column).join(column.standardTerms, term)
+                .where(column.projectId.eq(projectId), term.isApproval.isTrue()).fetchOne();
+        return new long[]{nz(linked), nz(approved)};
+    }
 
-        QTableInfo tableInfo = QTableInfo.tableInfo;
+    @Override
+    public long[] countMissingDescriptions(Long projectId) {
+        QTableInfo table = QTableInfo.tableInfo;
+        QColumnInfo column = QColumnInfo.columnInfo;
+        return new long[]{
+                nz(query.select(table.count()).from(table).where(table.projectId.eq(projectId), blank(table.tableKorName)).fetchOne()),
+                nz(query.select(column.count()).from(column).where(column.projectId.eq(projectId), blank(column.columnDesc)).fetchOne()),
+                nz(query.select(table.count()).from(table).where(table.projectId.eq(projectId), blank(table.bizDescription)).fetchOne()),
+                nz(query.select(column.count()).from(column).where(column.projectId.eq(projectId), blank(column.bizDescription)).fetchOne())};
+    }
 
-        int tableSize = query.selectFrom(tableInfo).where(tableInfo.projectId.eq(projectId)).where(tableInfo.isApproval.eq(false)).fetch().size();
+    @Override
+    public List<DashboardStatsDto.SchemaTables> countTablesBySchema(Long projectId) {
+        QSchemaInfo schema = QSchemaInfo.schemaInfo;
+        QTableInfo table = QTableInfo.tableInfo;
+        return query.select(Projections.constructor(DashboardStatsDto.SchemaTables.class, schema.id, schema.schemaName, table.id.count()))
+                .from(schema)
+                .leftJoin(table).on(table.schema.id.eq(schema.id), table.projectId.eq(projectId))
+                .where(schema.projectId.eq(projectId))
+                .groupBy(schema.id, schema.schemaName)
+                .orderBy(schema.schemaName.asc(), schema.id.asc())
+                .fetch();
+    }
 
-        QColumnInfo columnInfo = QColumnInfo.columnInfo;
+    @Override
+    public List<Long> columnCountsPerTable(Long projectId) {
+        QColumnInfo column = QColumnInfo.columnInfo;
+        return query.select(column.count()).from(column).where(column.projectId.eq(projectId)).groupBy(column.tableInfo.id).fetch();
+    }
 
-        int columnSize = query.selectFrom(columnInfo).where(columnInfo.projectId.eq(projectId)).where(columnInfo.isApproval.eq(false)).fetch().size();
+    @Override
+    public long countTablesWithoutRelation(Long projectId) {
+        QTableInfo table = QTableInfo.tableInfo;
+        QTableRelation relation = QTableRelation.tableRelation;
+        // 프로젝트 단위 비상관 IN 두 개 (테이블마다 다시 훑지 않게)
+        return nz(query.select(table.count()).from(table)
+                .where(table.projectId.eq(projectId),
+                        table.id.notIn(JPAExpressions.select(relation.sourceTable.id).from(relation).where(relation.projectId.eq(projectId))),
+                        table.id.notIn(JPAExpressions.select(relation.targetTable.id).from(relation).where(relation.projectId.eq(projectId))))
+                .fetchOne());
+    }
 
-        return DashboardDto.builder()
-                .pendingStandardCount(wordData + termData + domainData)
-                .pendingTableCount(tableSize)
-                .pendingColumnCount(columnSize)
-                .build();
+    private long count(EntityPathBase<?> entity, NumberPath<Long> projectPath, Long projectId) {
+        return nz(query.select(projectPath.count()).from(entity).where(projectPath.eq(projectId)).fetchOne());
+    }
+
+    /** 승인 = true, 승인 대기 = 그 밖 (false·null) */
+    private DashboardStatsDto.Approval approval(String type, EntityPathBase<?> entity, NumberPath<Long> projectPath, BooleanPath approvalPath, Long projectId) {
+        long approved = 0, pending = 0;
+        for (Tuple t : query.select(approvalPath, projectPath.count()).from(entity).where(projectPath.eq(projectId)).groupBy(approvalPath).fetch()) {
+            if (Boolean.TRUE.equals(t.get(approvalPath))) approved += t.get(projectPath.count());
+            else pending += t.get(projectPath.count());
+        }
+        return new DashboardStatsDto.Approval(type, approved, pending);
+    }
+
+    private static BooleanExpression blank(StringPath path) {
+        return path.isNull().or(path.trim().isEmpty());
+    }
+
+    private static long nz(Long value) {
+        return value == null ? 0 : value;
     }
 }

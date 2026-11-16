@@ -36,6 +36,8 @@ public class MenuAuthorization {
     /** 메뉴 ID(사이드바 data-menu-id / data-submenu-id) → 최소 권한 */
     public static final Map<String, String> MENU_ROLES = Map.ofEntries(
             Map.entry("dashboard", "NOT_APPROVE"),
+            // 대시보드 통계 영역 (GET /api/dashboard/stats 의 VIEWER) — 승인 전 회원(NOT_APPROVE)은 공지만 본다
+            Map.entry("dashboard-stats", "VIEWER"),
 
             // 시스템 관리
             Map.entry("user-manage", "ADMIN"),

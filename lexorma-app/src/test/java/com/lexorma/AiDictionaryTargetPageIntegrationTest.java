@@ -12,6 +12,8 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.data.ai.dictionary.domain.dto.AiDictionaryDto;
+import com.lexorma.data.ai.dictionary.domain.dto.AiEvaluationDto;
+import com.lexorma.data.ai.dictionary.service.AiDescriptionEvaluationService;
 import com.lexorma.data.ai.dictionary.service.AiDescriptionJobService;
 import com.lexorma.data.ai.dictionary.service.AiDictionaryQueryService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
@@ -55,6 +57,7 @@ class AiDictionaryTargetPageIntegrationTest {
 
     @Autowired AiDictionaryQueryService queries;
     @Autowired AiDescriptionJobService jobs;
+    @Autowired AiDescriptionEvaluationService evaluation;
     @Autowired ProjectRepository projectRepository;
     @Autowired ProjectMemberRepository projectMemberRepository;
     @Autowired AccountRepository accountRepository;
@@ -201,6 +204,38 @@ class AiDictionaryTargetPageIntegrationTest {
         AiDictionaryDto.JobPreview preview = jobs.preview(user(owner), new AiDictionaryDto.JobRequest("SELECTED", null, false, picked.subList(0, 3), true, false));
         assertThat(preview.items()).extracting(AiDictionaryDto.PreviewItem::tableId).containsExactlyInAnyOrder(a, b, c);
         assertThat(preview.create()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("품질 평가 (AI-5-EVAL) : 예전 500개 밖 테이블을 쪽 목록 검색으로 찾아 평가 후보 조회 → 등록 → 상세까지 이어짐. 다른 프로젝트 테이블은 후보·등록 거부, VIEWER 는 등록 불가")
+    void evaluationBeyondOldLimit() {
+        // 평가 화면이 고르는 길 : /targets/tables 검색 → tableId
+        Long far = expectedOrder.get(1000);
+        String farName = tableRepository.findById(far).orElseThrow().getTableName();
+        Page<AiDictionaryDto.TargetRow> found = page(false, farName, 0, 30);
+        assertThat(found.getContent()).extracting(AiDictionaryDto.TargetRow::tableId).contains(far);
+        assertThat(queries.targets(user(viewer), null, false, null)).extracting(AiDictionaryDto.TargetRow::tableId).doesNotContain(far);
+
+        List<AiEvaluationDto.Candidate> candidates = evaluation.candidates(user(viewer), far);
+        assertThat(candidates).first().satisfies(c -> {
+            assertThat(c.tableId()).isEqualTo(far);
+            assertThat(c.columnId()).isNull();
+            assertThat(c.registered()).isFalse();
+        });
+        assertThatThrownBy(() -> evaluation.register(user(viewer), new AiEvaluationDto.RegisterRequest(List.of(new AiEvaluationDto.RegisterItem(far, null, List.of())))))
+                .isInstanceOf(CustomException.class);
+        AiEvaluationDto.RegisterResult registered = evaluation.register(user(owner), new AiEvaluationDto.RegisterRequest(List.of(new AiEvaluationDto.RegisterItem(far, null, List.of()))));
+        assertThat(registered.created()).isEqualTo(1);
+        AiEvaluationDto.TargetRow target = evaluation.list(user(viewer)).stream().filter(r -> far.equals(r.tableId())).findFirst().orElseThrow();
+        assertThat(evaluation.detail(user(viewer), target.id()).target().targetName()).isEqualTo(farName);
+        assertThat(evaluation.candidates(user(viewer), far).getFirst().registered()).isTrue();
+
+        // 다른 프로젝트의 테이블 ID 를 직접 보내도 후보·등록 모두 거부, 등록된 것도 없다
+        Long foreign = tableRepository.findAll().stream().filter(t -> other.getId().equals(t.getProjectId())).findFirst().orElseThrow().getId();
+        assertThatThrownBy(() -> evaluation.candidates(user(owner), foreign)).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> evaluation.register(user(owner), new AiEvaluationDto.RegisterRequest(List.of(new AiEvaluationDto.RegisterItem(foreign, null, List.of())))))
+                .isInstanceOf(CustomException.class);
+        assertThat(evaluation.list(user(owner))).extracting(AiEvaluationDto.TargetRow::tableId).containsExactly(far);
     }
 
     // ------------------------------------------------------------------ 준비

@@ -11,12 +11,14 @@ export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL_FAILED' |
 
 export interface ProposalSummary {
   id: number; targetType: TargetType; tableId: number; columnId: number | null; targetName: string; cycle: number;
-  status: ReviewStatus; certainty: Certainty; proposedDescription: string; confirmedDescription: string | null;
+  status: ReviewStatus; certainty: Certainty | null; proposedDescription: string | null; confirmedDescription: string | null;
   model: string | null; promptVersion: string; creationMethod: string; jobId: number | null; createdAt: string | null;
   reviewerId: string | null; reviewedAt: string | null; reviewReason: string | null; recheckNeeded: boolean; version: number;
   evidenceTotal: number; evidenceVerified: number;
   /** 생성 때 이 제안과 다른 업무 설명이 있었다 — 승인하면 교체한다 */
   replacesBizDescription: boolean;
+  /** 평가 대상의 실제 의미를 확인하기 전이라 서버가 AI 내용(확실성·제안·확정 문구·근거 수)을 비워 보냈다 (AI-5-EVAL 2차) */
+  blind: boolean;
 }
 
 export interface EvidenceItem { type: string; id: number; name: string | null; status: string; reason: string | null; source: string | null }
@@ -38,7 +40,21 @@ export interface ProposalDetail {
   changes: Change[]; history: HistoryItem[];
   /** 제안을 만들 때(AI 를 부르기 전) 대상의 업무 설명 — 승인은 지금 값이 이와 같을 때만 반영된다 */
   baseBizDescription: string | null;
+  /** 평가 대상으로 등록돼 평가를 마치기 전이라 승인할 수 없는 사유 (서버가 승인도 막는다) */
+  evaluationHold: ApprovalHold | null;
+  /** 블라인드인데 지금 업무 설명이 승인된 AI 제안 문구라 서버가 그 값을 비웠다 */
+  bizDescriptionHidden: boolean;
 }
+
+/** 평가 중 승인 제한 사유 (AI-5-EVAL) : 실제 의미 미확인 · 확인 불가 · 정확성 판정 없음 */
+export type ApprovalHold = 'MEANING_PENDING' | 'MEANING_UNCONFIRMABLE' | 'NOT_JUDGED';
+export const APPROVAL_HOLD_LABEL: Record<ApprovalHold, string> = {
+  MEANING_PENDING: t('품질 평가 대상입니다. 실제 의미를 확인하고 정확성을 판정하기 전에는 승인할 수 없습니다.'),
+  MEANING_UNCONFIRMABLE: t('품질 평가 대상이지만 실제 의미를 확인할 수 없어(확인 불가) 승인할 수 없습니다.'),
+  NOT_JUDGED: t('품질 평가 대상입니다. 이 제안의 정확성(맞음·일부 맞음·틀림)을 판정하기 전에는 승인할 수 없습니다.'),
+};
+/** 일반 제안 화면의 블라인드 안내 (평가 상세와 같은 기준 — 서버가 내용을 보내지 않는다) */
+export const BLIND_NOTICE = t('평가 대상의 실제 업무 의미가 확정되기 전까지 AI 제안 내용은 표시되지 않습니다.');
 export interface ReviewResult { outcome: string; proposal: ProposalSummary; changes: Change[] }
 export interface TargetRow {
   targetType: TargetType; tableId: number; columnId: number | null; name: string; description: string | null;

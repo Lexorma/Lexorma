@@ -104,7 +104,7 @@ function Reason({ part, compact }: { part: ReasonPart; compact: boolean }) {
       {part.type === 'revalidatedAck' && (
         <>
           {part.changes.length > 0 && <ul className="ai-dict-reasons">{part.changes.map((c, i) => <Reason key={i} part={c} compact />)}</ul>}
-          {part.note && <div className="ai-dict-small">{t('검토자 사유')} : {part.note}</div>}
+          {part.note && <div className="ai-dict-small ai-dict-reason-text">{t('검토자 사유')} : {part.note}</div>}
         </>
       )}
     </li>

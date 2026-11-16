@@ -6,7 +6,6 @@ import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.execution.ExecutionContextVerifier;
 import com.lexorma.core.execution.ExecutionType;
 import com.lexorma.core.execution.VerifiedExecution;
-import com.lexorma.core.project.guard.ProjectWriteGuard;
 import com.lexorma.data.ai.dictionary.domain.dto.AiEvaluationDto;
 import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluation;
 import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluation.Judgment;
@@ -59,7 +58,10 @@ import java.util.stream.Collectors;
  *   <li><b>AI 가 판정하지 않는다</b> : 정확성·근거 없는 주장·누락·불확실성 처리·추천 적절성은 사람이 적은 값만 쓴다. AI 의 확실성이나 근거 검증(VERIFIED)을 정확성으로 보지 않는다.
  *       허구 객체 비율만 서버의 근거 검증 결과(존재하지 않음·범위 밖·불일치)로 센다 — AI 의 판단이 아니라 DB 조회 결과다</li>
  *   <li>실제 의미는 AI 에 보내지 않는다 (생성 경로는 이 테이블을 읽지 않는다)</li>
- *   <li>정확성 판정은 실제 의미를 확인한(CONFIRMED) 대상에만. 확인 불가 대상은 정확성 분모에서 빼고 따로 센다</li>
+ *   <li>판정은 실제 의미를 확인한(CONFIRMED) 대상에만 (미확인·확인 불가는 판정 자체를 받지 않는다 — 사용자 결정 2026-11-16). 확인 불가 대상은 정확성 분모에서 빼고 따로 센다</li>
+ *   <li>판정 기준 고정 (AI-5-EVAL) : 판정이 하나라도 있는 대상의 실제 의미·확인 상태는 바꿀 수 없다. 판정은 화면이 본 대상 버전과 같을 때만 저장한다.
+ *       둘 다 대상 행을 잠그므로 어느 쪽이 먼저든 판정은 그 판정자가 본 의미를 기준으로 남는다</li>
+ *   <li>블라인드 (AI-5-EVAL) : 실제 의미를 확인하기 전에는 평가 상세에 AI 제안·판정 내용과 AI 승인으로 들어간 업무 설명을 보내지 않는다</li>
  *   <li>권한 : 조회 VIEWER, 기준 데이터·판정 작성 USER (로그인 실행만). 작성자를 남긴다</li>
  * </ul>
  */
@@ -75,7 +77,6 @@ public class AiDescriptionEvaluationService {
     private static final Set<String> DATE_TYPES = Set.of("DATE", "TIME", "TIMESTAMP", "DATETIME", "TIMESTAMPTZ");
 
     private final ExecutionContextVerifier verifier;
-    private final ProjectWriteGuard projectWriteGuard;
     private final AiDescriptionEvaluationTargetRepository targets;
     private final AiDescriptionEvaluationRepository judgments;
     private final AiDescriptionProposalRepository proposals;
@@ -85,6 +86,7 @@ public class AiDescriptionEvaluationService {
     private final TableRelationRepository relations;
     private final EvidenceCatalog catalog;
     private final ModelChangeHistoryRepository modelHistories;
+    private final ProposalEvaluationGate evaluationGate;
 
     /** 등록 시점 대상의 메타데이터 버전 */
     public record BaseVersion(LocalDateTime version, Long historyId) {
@@ -119,19 +121,31 @@ public class AiDescriptionEvaluationService {
         return rows;
     }
 
-    /** 평가 대상 등록 (최대 100개). 이미 등록된 대상은 건너뛴다. 범주를 비우면 규칙으로 고른 범주를 쓴다 */
+    /**
+     * 평가 대상 등록 (최대 100개). 이미 등록된 대상은 건너뛴다. 범주를 비우면 규칙으로 고른 범주를 쓴다.
+     * 등록할 모델 대상 행(테이블 대상은 테이블, 컬럼 대상은 컬럼 — 승인이 잠그는 행과 같다)을 ID 순으로 잠근 뒤 이미 등록됐는지 본다 (AI-5-EVAL 2차) :
+     * <ul>
+     *   <li>승인과 줄 선다 : 등록이 먼저 커밋되면 그 행을 기다린 승인이 평가 대상을 보고 막히고, 승인이 먼저면 등록이 승인 커밋 뒤에 들어간다 (이미 된 승인은 그대로)</li>
+     *   <li>같은 대상의 동시 등록이 둘 다 만들지 않는다 (프로젝트 행은 공유 잠금이라 등록끼리 줄 세우지 못한다 — PostgreSQL)</li>
+     * </ul>
+     * 잠금 순서 : 테이블 → 컬럼 (ID 순), 프로젝트 행은 다른 모델 저장처럼 커밋 직전에 공유 잠금(ProjectWriteGuard 자동). 승인은 제안 → 테이블 또는 컬럼 하나 → 평가 대상이고
+     * 등록은 제안을 잠그지 않아 서로 엇갈리지 않는다. 프로젝트 행을 먼저 잡지 않는다 : H2 는 그 공유 잠금을 배타로 잡아, 같은 행을 쥔 승인이 커밋 때 프로젝트를 기다리면 교착한다
+     */
     @Transactional
     public AiEvaluationDto.RegisterResult register(ExecutionContext context, AiEvaluationDto.RegisterRequest request) {
         VerifiedExecution execution = writer(context);
         Long projectId = execution.context().projectId();
         List<AiEvaluationDto.RegisterItem> items = request == null || request.items() == null ? List.of() : request.items();
         if (items.isEmpty() || items.size() > MAX_REGISTER) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
-        // 같은 대상을 동시에 두 번 등록하지 않도록 프로젝트 단위로 줄 세운다
-        projectWriteGuard.lock(projectId);
+        if (items.stream().anyMatch(i -> i.tableId() == null)) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
+        items.stream().filter(i -> i.columnId() == null).map(AiEvaluationDto.RegisterItem::tableId).distinct().sorted()
+                .forEach(id -> tables.findForUpdate(id, projectId).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED)));
+        items.stream().map(AiEvaluationDto.RegisterItem::columnId).filter(Objects::nonNull).distinct().sorted()
+                .forEach(id -> columns.findForUpdate(id, projectId).orElseThrow(() -> new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED)));
+        // 잠근 뒤에 읽는다 : 먼저 커밋한 등록이 보인다
         Set<String> registered = targets.findAllByProjectIdOrderByIdAsc(projectId).stream().map(t -> key(t.getTableId(), t.getColumnId())).collect(Collectors.toCollection(HashSet::new));
         int created = 0, skipped = 0;
         for (AiEvaluationDto.RegisterItem item : items) {
-            if (item.tableId() == null) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
             TableInfo table = table(projectId, item.tableId());
             ColumnInfo column = null;
             if (item.columnId() != null) {
@@ -166,14 +180,11 @@ public class AiDescriptionEvaluationService {
         if (request == null || request.version() == null || !request.version().equals(target.getVersion())) throw new CustomException(ErrorCode.AI_EVALUATION_CONFLICT);
         MeaningStatus status = request.status() == null ? target.getMeaningStatus() : parse(MeaningStatus.class, request.status());
         String meaning = request.actualMeaning() == null ? target.getActualMeaning() : blank(request.actualMeaning());
+        boolean meaningChanged = !Objects.equals(meaning, blank(target.getActualMeaning())) || status != target.getMeaningStatus();
+        // 판정은 그때의 실제 의미를 기준으로 했다 : 판정이 있으면 의미 문구·확인 상태를 바꾸지 않는다 (같은 값 저장·범주 수정은 된다). 대상 행을 잠근 뒤 보므로 판정 저장과 엇갈리지 않는다
+        if (meaningChanged && judgments.existsByProjectIdAndTargetId(projectId, id)) throw new CustomException(ErrorCode.AI_EVALUATION_MEANING_LOCKED);
         if (status == MeaningStatus.CONFIRMED && meaning == null) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
-        // 확인한 의미를 지우거나 확인 불가로 바꾸면 그 대상의 정확성 판정은 기준을 잃는다 : 판정이 있으면 막는다
-        if (status != MeaningStatus.CONFIRMED && target.getMeaningStatus() == MeaningStatus.CONFIRMED
-                && judgments.findAllByProjectIdAndTargetIdOrderByIdAsc(projectId, id).stream().anyMatch(j -> j.getJudgment() != Judgment.NOT_EVALUABLE)) {
-            throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
-        }
         if (request.categories() != null) target.setCategories(JSON.writeValueAsString(parseCategories(request.categories())));
-        boolean meaningChanged = !Objects.equals(meaning, target.getActualMeaning()) || status != target.getMeaningStatus();
         target.setActualMeaning(meaning);
         target.setMeaningStatus(status);
         if (meaningChanged) {
@@ -214,19 +225,50 @@ public class AiDescriptionEvaluationService {
 
     private AiEvaluationDto.TargetDetail detailOf(Long projectId, AiDescriptionEvaluationTarget t) {
         List<AiDescriptionProposal> ps = proposals.findTarget(projectId, t.getTableId(), t.getColumnId());
+        List<AiDescriptionEvaluation> js = judgments.findAllByProjectIdAndTargetIdOrderByIdAsc(projectId, t.getId());
+        AiEvaluationDto.TargetRow row = row(projectId, t, ps.size(), js.size());
+        // 블라인드 : 실제 의미를 확인하기 전에는 AI 가 만든 내용(제안·근거·확실성·질문·추천, 그것을 적은 판정)을 보내지 않는다
+        boolean blind = ProposalEvaluationGate.blind(t);
+        AiEvaluationDto.Metadata metadata = metadata(projectId, t, ps, blind);
+        if (blind) return new AiEvaluationDto.TargetDetail(row, t.getActualMeaning(), t.getReviewerId(), t.getReviewedAt(), List.of(), List.of(), true, metadata);
         Set<Long> edited = editedProposals(projectId);
         BaseVersion base = JSON.readValue(t.getBaseVersion(), BaseVersion.class);
         List<AiEvaluationDto.ProposalItem> items = ps.stream().map(p -> new AiEvaluationDto.ProposalItem(p.getId(), p.getModel(), p.getPromptVersion(),
                 p.audit() == null ? null : p.audit().created(), p.getStatus(), edited.contains(p.getId()), p.getCertainty(), p.getProposedDescription(),
-                p.getConfirmedDescription(), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), sameMetadata(base, p), invalidReferences(p))).toList();
-        List<AiDescriptionEvaluation> js = judgments.findAllByProjectIdAndTargetIdOrderByIdAsc(projectId, t.getId());
-        return new AiEvaluationDto.TargetDetail(row(projectId, t, ps.size(), js.size()), t.getActualMeaning(), t.getReviewerId(), t.getReviewedAt(), items,
-                js.stream().map(AiDescriptionEvaluationService::judgmentRow).toList());
+                p.getConfirmedDescription(), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), sameMetadata(base, p), invalidReferences(p),
+                approvalHold(p))).toList();
+        return new AiEvaluationDto.TargetDetail(row, t.getActualMeaning(), t.getReviewerId(), t.getReviewedAt(), items,
+                js.stream().map(AiDescriptionEvaluationService::judgmentRow).toList(), false, metadata);
+    }
+
+    /** 대상의 지금 메타데이터. 업무 설명이 승인된 AI 제안의 확정 문구와 같으면 AI 에서 온 값으로 표시하고, 블라인드에는 보내지 않는다 */
+    private AiEvaluationDto.Metadata metadata(Long projectId, AiDescriptionEvaluationTarget t, List<AiDescriptionProposal> ps, boolean blind) {
+        TableInfo table = tables.findByIdAndProjectId(t.getTableId(), projectId);
+        ColumnInfo column = t.getColumnId() == null ? null : columns.findById(t.getColumnId()).filter(c -> projectId.equals(c.getProjectId())).orElse(null);
+        if (table == null || (t.getColumnId() != null && column == null)) {
+            return new AiEvaluationDto.Metadata(false, null, null, null, null, null, null, null, null, false, false);
+        }
+        String biz = blank(column == null ? table.getBizDescription() : column.getBizDescription());
+        boolean fromAi = ProposalEvaluationGate.fromAi(biz, ps);
+        boolean hidden = blind && fromAi;
+        if (column == null) {
+            return new AiEvaluationDto.Metadata(true, table.getTableName(), null, table.getTableKorName(), table.getTableDescription(), null, null,
+                    table.getSourceComment(), hidden ? null : biz, fromAi, hidden);
+        }
+        String type = column.getDataType() == null ? null : column.getDataType() + (column.getMaxLength() == null ? "" : "(" + column.getMaxLength() + ")");
+        return new AiEvaluationDto.Metadata(true, table.getTableName(), column.getColumnName(), column.getColumnDesc(), null, type,
+                column.getStandardTerms() == null ? null : column.getStandardTerms().getCommonStandardTermName(), column.getSourceComment(), hidden ? null : biz, fromAi, hidden);
+    }
+
+    private String approvalHold(AiDescriptionProposal p) {
+        if (!p.getStatus().open()) return null;
+        ProposalEvaluationGate.Hold hold = evaluationGate.hold(p, false);
+        return hold == null ? null : hold.name();
     }
 
     // ------------------------------------------------------------------ 판정
 
-    /** 판정 저장 (검토자당 제안 하나에 하나). 정확성(맞음·일부·틀림)은 실제 의미를 확인한 대상에만 */
+    /** 판정 저장 (검토자당 제안 하나에 하나). 실제 의미를 확인한 대상에만, 화면이 본 대상 버전일 때만 */
     @Transactional
     public AiEvaluationDto.JudgmentRow judge(ExecutionContext context, AiEvaluationDto.JudgmentRequest request) {
         VerifiedExecution execution = writer(context);
@@ -238,8 +280,10 @@ public class AiDescriptionEvaluationService {
         if (!proposal.getTableId().equals(target.getTableId()) || !Objects.equals(proposal.getColumnId(), target.getColumnId())) {
             throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
         }
+        // 블라인드라 확인 전 대상의 제안은 볼 수 없다 : 판정도 받지 않는다 (평가할 수 없음 포함)
+        if (target.getMeaningStatus() != MeaningStatus.CONFIRMED) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID, "실제 의미를 확인한 평가 대상만 판정할 수 있습니다.");
+        if (request.targetVersion() == null || !request.targetVersion().equals(target.getVersion())) throw new CustomException(ErrorCode.AI_EVALUATION_CONFLICT);
         Judgment judgment = parse(Judgment.class, request.judgment());
-        if (judgment != Judgment.NOT_EVALUABLE && target.getMeaningStatus() != MeaningStatus.CONFIRMED) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
         if (request.unfoundedClaim() == null) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);
         if ((request.reviewMinutes() != null && request.reviewMinutes() < 0) || (request.writingMinutes() != null && request.writingMinutes() < 0)) {
             throw new CustomException(ErrorCode.AI_EVALUATION_INVALID);

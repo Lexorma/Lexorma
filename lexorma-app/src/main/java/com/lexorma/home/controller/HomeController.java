@@ -2,6 +2,7 @@ package com.lexorma.home.controller;
 
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.home.domain.dto.DashboardDto;
+import com.lexorma.home.domain.dto.DashboardStatsDto;
 import com.lexorma.home.service.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,15 +17,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api")
-@Tag(name = "Dashboard API", description = "대시보드 (승인 대기 건수 / 최근 활동 / 공지사항)")
+@Tag(name = "Dashboard API", description = "대시보드 (공지사항 / 표준·모델·승인·품질 통계)")
 public class HomeController {
 
     private final DashboardService dashboardService;
 
-    @Operation(summary = "대시보드 데이터", description = "현재 프로젝트의 승인 대기 건수, 최근 변경 이력, 공지사항")
+    @Operation(summary = "대시보드 데이터", description = "현재 프로젝트의 공지사항 (승인 전 회원 포함, 통계는 /dashboard/stats)")
     @PreAuthorize("hasRole('NOT_APPROVE')")
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardDto> dashboard(@AuthenticationPrincipal AccountDto accountDto) {
         return ResponseEntity.ok(dashboardService.selectDashboardData(accountDto));
+    }
+
+    @Operation(summary = "대시보드 통계", description = "현재 프로젝트의 등록 수·승인 상태·표준 연결률·표준화 품질 진단·모델 구성 (DB 집계, VIEWER 이상)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/dashboard/stats")
+    public ResponseEntity<DashboardStatsDto> stats(@AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(dashboardService.selectStats(accountDto));
     }
 }

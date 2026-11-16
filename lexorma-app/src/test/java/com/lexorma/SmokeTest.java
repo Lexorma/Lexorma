@@ -868,7 +868,7 @@ class SmokeTest {
     }
 
     @ParameterizedTest(name = "API {0}")
-    @ValueSource(strings = {"/api/dashboard", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
+    @ValueSource(strings = {"/api/dashboard", "/api/dashboard/stats", "/api/commonColumn", "/api/getProject/managed", "/api/selectUser/roles", "/api/auth/signup/projects", "/v3/api-docs"})
     @Order(21)
     @DisplayName("기타 주요 API")
     void apis(String path) throws Exception {
@@ -1038,8 +1038,13 @@ class SmokeTest {
         assertThat(postJson("/api/ai/dictionary/evaluation/targets", "{\"items\":[{\"tableId\":" + tableId + "}]}").body()).contains("\"created\":1");
         var evalTargets = mapper.readTree(get("/api/ai/dictionary/evaluation/targets", true).body());
         long evalId = evalTargets.get(0).path("id").asLong();
-        assertThat(mapper.readTree(get("/api/ai/dictionary/evaluation/targets/" + evalId, true).body()).path("target").path("meaningStatus").asString()).isEqualTo("PENDING");
-        assertThat(postJson("/api/ai/dictionary/evaluation/judgments", "{\"targetId\":" + evalId + ",\"proposalId\":999999999,\"judgment\":\"CORRECT\",\"unfoundedClaim\":false}").body())
+        var evalDetail = mapper.readTree(get("/api/ai/dictionary/evaluation/targets/" + evalId, true).body());
+        assertThat(evalDetail.path("target").path("meaningStatus").asString()).isEqualTo("PENDING");
+        // 블라인드 : 실제 의미 확인 전에는 제안을 보내지 않고 메타데이터만
+        assertThat(evalDetail.path("blind").asBoolean()).isTrue();
+        assertThat(evalDetail.path("proposals").isEmpty()).isTrue();
+        assertThat(evalDetail.path("metadata").path("exists").asBoolean()).isTrue();
+        assertThat(postJson("/api/ai/dictionary/evaluation/judgments", "{\"targetId\":" + evalId + ",\"proposalId\":999999999,\"targetVersion\":0,\"judgment\":\"CORRECT\",\"unfoundedClaim\":false}").body())
                 .contains("AI_PROPOSAL_NOT_FOUND");
         var evalMetrics = mapper.readTree(get("/api/ai/dictionary/evaluation/metrics", true).body());
         assertThat(evalMetrics.path("evaluated").asBoolean()).isFalse();

@@ -1,6 +1,6 @@
 import { api } from '../../../lib/api';
 import { t, tc } from '../../../lib/i18n';
-import type { Certainty, DraftDetail, EvidenceItem, ReviewStatus, TargetType } from './aiDictionary';
+import type { ApprovalHold, Certainty, DraftDetail, EvidenceItem, ReviewStatus, TargetType } from './aiDictionary';
 
 /**
  * AI 설명 품질 평가 (AI-5 후속) API 와 형식. 기준 데이터(평가 대상·실제 의미)와 판정은 사람이 적는다 — AI 가 판정하지 않는다.
@@ -19,15 +19,26 @@ export interface EvaluationTarget {
 export interface EvaluationProposal {
   id: number; model: string | null; promptVersion: string; createdAt: string | null; status: ReviewStatus; edited: boolean; certainty: Certainty;
   proposedDescription: string; confirmedDescription: string | null; detail: DraftDetail | null; evidence: EvidenceItem[] | null; sameMetadata: boolean; invalidReferences: number;
+  /** 열린 제안을 아직 승인할 수 없는 사유 (평가 미완료) */
+  approvalHold: ApprovalHold | null;
+}
+/** 대상의 지금 메타데이터. comment : 테이블 코멘트(테이블) · 컬럼 설명(컬럼). AI 승인으로 들어간 업무 설명은 블라인드에 값을 보내지 않는다 */
+export interface TargetMetadata {
+  exists: boolean; tableName: string | null; columnName: string | null; comment: string | null; description: string | null; dataType: string | null; standardTerm: string | null;
+  sourceComment: string | null; bizDescription: string | null; bizDescriptionFromAi: boolean; bizDescriptionHidden: boolean;
 }
 export interface JudgmentRow {
   id: number; proposalId: number; model: string | null; promptVersion: string; judgment: Judgment; unfoundedClaim: boolean; missingInformation: string | null;
   uncertainty: UncertaintyJudgment; termRecommendation: RecommendationJudgment; domainRecommendation: RecommendationJudgment; requiredEdits: string | null;
   reviewMinutes: number | null; writingMinutes: number | null; reviewerId: string; reviewedAt: string; version: number;
 }
-export interface TargetDetail { target: EvaluationTarget; actualMeaning: string | null; meaningReviewerId: string | null; meaningReviewedAt: string | null; proposals: EvaluationProposal[]; judgments: JudgmentRow[] }
+/** blind : 실제 의미 확인 전이라 서버가 AI 제안·판정 내용을 보내지 않았다 */
+export interface TargetDetail {
+  target: EvaluationTarget; actualMeaning: string | null; meaningReviewerId: string | null; meaningReviewedAt: string | null; proposals: EvaluationProposal[]; judgments: JudgmentRow[];
+  blind: boolean; metadata: TargetMetadata;
+}
 export interface JudgmentRequest {
-  targetId: number; proposalId: number; version: number | null; judgment: Judgment; unfoundedClaim: boolean; missingInformation: string | null; uncertainty: UncertaintyJudgment;
+  targetId: number; proposalId: number; version: number | null; targetVersion: number; judgment: Judgment; unfoundedClaim: boolean; missingInformation: string | null; uncertainty: UncertaintyJudgment;
   termRecommendation: RecommendationJudgment; domainRecommendation: RecommendationJudgment; requiredEdits: string | null; reviewMinutes: number | null; writingMinutes: number | null;
 }
 export interface Rate { value: number | null; count: number; base: number }

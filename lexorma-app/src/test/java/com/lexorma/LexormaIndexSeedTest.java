@@ -38,7 +38,7 @@ class LexormaIndexSeedTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, vendor, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2); // V0·V1
             var jdbc = new JdbcTemplate(dataSource);
             Map<String, String> declared = declaredIndexes(vendor);
             Map<String, String> model = modelIndexes(jdbc, s);

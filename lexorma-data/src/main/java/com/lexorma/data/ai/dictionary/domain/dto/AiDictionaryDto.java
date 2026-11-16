@@ -29,12 +29,15 @@ public final class AiDictionaryDto {
     public record GenerateResult(String outcome, ProposalSummary proposal) {
     }
 
-    /** replacesBizDescription : 생성 때 대상에 이 제안과 다른 업무 설명이 있었다 — 승인하면 그 설명을 교체한다 (생성 뒤 바뀌었으면 승인이 막힌다) */
+    /**
+     * replacesBizDescription : 생성 때 대상에 이 제안과 다른 업무 설명이 있었다 — 승인하면 그 설명을 교체한다 (생성 뒤 바뀌었으면 승인이 막힌다).
+     * blind : 평가 대상의 실제 의미를 확인하기 전이라 AI 가 만든 내용(확실성·제안·확정 문구·근거 수·교체 여부)을 비워 보냈다 (AI-5-EVAL 2차)
+     */
     public record ProposalSummary(Long id, AiDescriptionProposal.TargetType targetType, Long tableId, Long columnId, String targetName, int cycle,
                                   AiDescriptionProposal.ReviewStatus status, AiDescriptionProposal.Certainty certainty, String proposedDescription,
                                   String confirmedDescription, String model, String promptVersion, AiDescriptionProposal.CreationMethod creationMethod,
                                   Long jobId, LocalDateTime createdAt, String reviewerId, LocalDateTime reviewedAt, String reviewReason, boolean recheckNeeded,
-                                  long version, int evidenceTotal, int evidenceVerified, boolean replacesBizDescription) {
+                                  long version, int evidenceTotal, int evidenceVerified, boolean replacesBizDescription, boolean blind) {
     }
 
     /** 대상의 지금 값 (비교용). exists=false 면 대상이 지워졌다 */
@@ -51,8 +54,13 @@ public final class AiDictionaryDto {
      * @param changes 생성 뒤 지금까지 제안에 영향을 주는 변경 (미리 보기 : 상태는 바꾸지 않는다)
      * @param baseBizDescription 제안을 만들 때(AI 를 부르기 전) 대상의 업무 설명 — 승인은 지금 값이 이 값과 같을 때만 반영한다
      */
+    /**
+     * evaluationHold : 평가 대상으로 등록돼 평가를 마치기 전이라 승인할 수 없는 사유 (MEANING_PENDING · MEANING_UNCONFIRMABLE · NOT_JUDGED, 아니면 null).
+     * 블라인드(proposal.blind)면 detail·evidence 는 null, 이력의 확정 문구는 비운다. bizDescriptionHidden : 블라인드인데 지금 업무 설명이 승인된 AI 제안 문구라
+     * 그 값(현재 값·생성 당시 값)을 비우고 그 값이 든 변경 전후는 뺐다 — 평가 상세와 같은 규칙
+     */
     public record ProposalDetail(ProposalSummary proposal, JsonNode detail, JsonNode evidence, Current current, List<ProposalVersions.Change> changes,
-                                 List<HistoryItem> history, String baseBizDescription) {
+                                 List<HistoryItem> history, String baseBizDescription, String evaluationHold, boolean bizDescriptionHidden) {
     }
 
     /** 검토 요청 : version 은 화면이 본 제안 버전 (다르면 충돌). 승인의 description 은 수정 후 승인 문구 (비면 제안 문구 그대로) */

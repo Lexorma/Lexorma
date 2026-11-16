@@ -40,10 +40,22 @@ public final class AiEvaluationDto {
                             int proposalCount, int judgmentCount, long version) {
     }
 
-    /** 평가 대상의 제안 하나 : 같은 메타데이터(등록 시점 버전)로 만든 제안인지와 판정 */
+    /**
+     * 평가 대상의 제안 하나 : 같은 메타데이터(등록 시점 버전)로 만든 제안인지와 판정.
+     * approvalHold : 열린 제안을 아직 승인할 수 없는 사유 (MEANING_PENDING · MEANING_UNCONFIRMABLE · NOT_JUDGED, 승인할 수 있거나 끝난 제안이면 null)
+     */
     public record ProposalItem(Long id, String model, String promptVersion, LocalDateTime createdAt, AiDescriptionProposal.ReviewStatus status, boolean edited,
                                AiDescriptionProposal.Certainty certainty, String proposedDescription, String confirmedDescription, JsonNode detail, JsonNode evidence,
-                               boolean sameMetadata, int invalidReferences) {
+                               boolean sameMetadata, int invalidReferences, String approvalHold) {
+    }
+
+    /**
+     * 평가 대상의 지금 메타데이터 (실제 의미를 적을 때 보는 것). comment : 테이블은 테이블 코멘트(TBL_KORN_NM), 컬럼은 컬럼 설명(COL_EXPLN) — DDL COMMENT 로 나가는 값.
+     * bizDescriptionFromAi : 지금 업무 설명이 AI 제안 승인으로 들어간 값이다 (승인된 제안의 확정 문구와 같다).
+     * 블라인드(실제 의미 확인 전)에는 그 값을 보내지 않고 bizDescriptionHidden 만 true 로 둔다
+     */
+    public record Metadata(boolean exists, String tableName, String columnName, String comment, String description, String dataType, String standardTerm,
+                           String sourceComment, String bizDescription, boolean bizDescriptionFromAi, boolean bizDescriptionHidden) {
     }
 
     public record JudgmentRow(Long id, Long proposalId, String model, String promptVersion, AiDescriptionEvaluation.Judgment judgment, boolean unfoundedClaim,
@@ -52,12 +64,16 @@ public final class AiEvaluationDto {
                               String requiredEdits, Integer reviewMinutes, Integer writingMinutes, String reviewerId, LocalDateTime reviewedAt, long version) {
     }
 
+    /**
+     * 평가 대상 상세. blind : 실제 의미를 확인(CONFIRMED)하기 전이라 AI 제안·판정 내용을 보내지 않았다 (proposals·judgments 가 비고, 수는 target 에 있다) —
+     * AI 설명을 먼저 보고 기준 의미를 적지 않게 한다 (AI-5-EVAL). 일반 제안 검토 API 는 그대로다
+     */
     public record TargetDetail(TargetRow target, String actualMeaning, String meaningReviewerId, LocalDateTime meaningReviewedAt, List<ProposalItem> proposals,
-                               List<JudgmentRow> judgments) {
+                               List<JudgmentRow> judgments, boolean blind, Metadata metadata) {
     }
 
-    /** 판정 저장 : 같은 검토자의 판정이 있으면 고친다 (version 필요) */
-    public record JudgmentRequest(Long targetId, Long proposalId, Long version, String judgment, Boolean unfoundedClaim, String missingInformation, String uncertainty,
+    /** 판정 저장 : 같은 검토자의 판정이 있으면 고친다 (version 필요). targetVersion 은 화면이 본 평가 대상 버전 (다르면 충돌 — 다른 기준 의미로 판정하지 않게) */
+    public record JudgmentRequest(Long targetId, Long proposalId, Long version, Long targetVersion, String judgment, Boolean unfoundedClaim, String missingInformation, String uncertainty,
                                   String termRecommendation, String domainRecommendation, String requiredEdits, Integer reviewMinutes, Integer writingMinutes) {
     }
 

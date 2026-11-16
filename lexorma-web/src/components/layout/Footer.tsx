@@ -9,8 +9,8 @@ export function Footer() {
         <span className="app-footer-sep" aria-hidden="true">·</span>
         <span>
           Made by{' '}
-          <a className="app-footer-link" href="https://github.com/koboolean" target="_blank" rel="noopener noreferrer">
-            koboolean
+          <a className="app-footer-link" href="https://github.com/Lexorma" target="_blank" rel="noopener noreferrer">
+            Lexorma
           </a>
         </span>
       </div>

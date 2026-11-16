@@ -5,7 +5,7 @@ import { useDialog } from '../../../components/dialog/DialogProvider';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiError } from '../../../lib/api';
-import { t } from '../../../lib/i18n';
+import { t, tc } from '../../../lib/i18n';
 import { aiDictionary, BLIND_NOTICE, CERTAINTY_LABEL, JOB_LABEL, STATUS_CLASS, STATUS_LABEL, type JobSummary, type ProposalSummary } from './aiDictionary';
 import { AiStatusNotice } from './AiStatusNotice';
 import { ProposalDetailView } from './ProposalDetailView';
@@ -251,7 +251,7 @@ function ReasonForm({ required, onSubmit }: { required: boolean; onSubmit: (reas
       <textarea className="ai-dict-textarea" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder={required ? t('반려 사유 (필수)') : t('보류 사유 (선택)')} aria-label={t('사유')} autoFocus />
       <div className="ai-dict-buttons">
-        <button type="submit" className="btn btn-primary" disabled={required && !reason.trim()}>{t('확인')}</button>
+        <button type="submit" className="btn btn-primary" disabled={required && !reason.trim()}>{tc('버튼', '확인')}</button>
       </div>
     </form>
   );

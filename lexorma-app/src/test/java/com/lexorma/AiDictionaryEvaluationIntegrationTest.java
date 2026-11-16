@@ -47,6 +47,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -59,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.byLessThan;
 
 /**
  * AI 설명 품질 평가 (AI-5 후속) : 기준 데이터(평가 대상·사람이 확인한 실제 의미)와 사람의 판정을 저장하고 모델·프롬프트 버전별 지표를 낸다.
@@ -298,7 +300,9 @@ class AiDictionaryEvaluationIntegrationTest {
         AiEvaluationDto.TargetDetail same = evaluations.updateTarget(user(owner), a.id(), new AiEvaluationDto.TargetUpdate(version, List.of("AMOUNT", "CLEAR"), " " + MEANING + " ", "CONFIRMED"));
         assertThat(same.actualMeaning()).isEqualTo(MEANING);
         assertThat(same.target().categories()).containsExactlyInAnyOrder(Category.AMOUNT, Category.CLEAR);
-        assertThat(same.meaningReviewedAt()).isEqualTo(edited.meaningReviewedAt());
+        // 확인 시각은 그대로 : 앞 응답은 메모리 값(OS 시계 정밀도 — Linux·Windows 는 마이크로초보다 촘촘), 뒤 응답은 DB(timestamp(6))에서 읽은 값이다.
+        // DB·드라이버가 마이크로초로 자르든 반올림하든 차이는 1마이크로초 미만이다
+        assertThat(same.meaningReviewedAt()).isCloseTo(edited.meaningReviewedAt(), byLessThan(1, ChronoUnit.MICROS));
         assertThat(evaluations.detail(user(owner), a.id()).judgments()).singleElement().extracting(AiEvaluationDto.JudgmentRow::judgment).hasToString("CORRECT");
 
         // 판정이 없는 다른 대상은 그대로 고칠 수 있다

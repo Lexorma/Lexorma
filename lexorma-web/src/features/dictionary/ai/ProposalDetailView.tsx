@@ -280,15 +280,15 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
       {open && d.evaluationHold && <div className="ai-dict-callout is-warn" role="note">{APPROVAL_HOLD_LABEL[d.evaluationHold]} {t('AI 관리 › AI 품질 평가에서 평가를 마치세요.')}</div>}
       {(open && canReview) && (
         <div className="ai-dict-actions">
-          <input className="search-input ai-dict-reason" value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)}
-                 placeholder={t('사유 (반려·종결·계속 검토는 필수, 보류는 선택)')} aria-label={t('사유')} />
+          <textarea className="ai-dict-textarea ai-dict-reason" rows={2} value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)}
+                    placeholder={t('사유 (반려·종결·계속 검토는 필수, 보류는 선택)')} aria-label={t('사유')} />
           <div className="ai-dict-buttons">
             {p.status !== 'REVIEW_REQUIRED' && (
               <button type="button" className="btn btn-primary" disabled={busy || !draft.trim() || bizConflict || !!d.evaluationHold} onClick={() => run('approve')}
                       title={d.evaluationHold ? APPROVAL_HOLD_LABEL[d.evaluationHold] : bizConflict ? t('제안을 만든 뒤 업무 설명이 바뀌어 승인할 수 없습니다') : undefined}>
                 {draft.trim() !== proposed.trim()
                   ? (replaces ? t('수정 후 승인 및 교체') : t('수정 후 승인'))
-                  : (replaces ? t('승인 및 교체') : t('승인'))}
+                  : (replaces ? t('승인 및 교체') : tc('버튼', '승인'))}
               </button>
             )}
             <button type="button" className="btn" disabled={busy} onClick={() => run('reject')}>{tc('버튼', '반려')}</button>

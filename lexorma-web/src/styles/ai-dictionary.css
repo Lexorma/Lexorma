@@ -51,7 +51,8 @@
 .ai-dict-type { color: var(--gh-fg-muted); font-size: 12px; }
 .ai-dict-history li { font-size: 12px; }
 .ai-dict-actions { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--gh-border-muted); }
-.ai-dict-reason { width: 100%; box-sizing: border-box; border-radius: 6px; }
+/* 제안 상세의 사유 칸 : 여러 줄 입력(textarea). 예전 input.search-input 은 세로 flex(.ai-dict-actions) 안에서 flex-basis 400px 이 높이가 되어 400px 로 늘어났다 */
+.ai-dict-reason { flex: none; width: 100%; max-width: 100%; box-sizing: border-box; min-height: 52px; max-height: 40vh; border-radius: 6px; overflow-wrap: anywhere; }
 .ai-dict-reason-form { display: flex; flex-direction: column; gap: 8px; min-width: min(420px, 80vw); }
 .ai-dict-info { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--gh-border-muted); border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
 .ai-dict-info.is-compact { padding: 6px 8px; font-size: 12px; }

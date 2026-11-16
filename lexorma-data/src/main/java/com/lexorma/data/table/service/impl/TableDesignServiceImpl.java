@@ -131,6 +131,7 @@ public class TableDesignServiceImpl implements TableDesignService {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableName);
         }
 
+        BizDescriptions.requireLength(tableInfoDto.getBizDescription(), null);
         TableInfo tableInfo = tableInfoDto.toEntity();
         tableInfo.setProjectId(projectId);
         tableInfo.setSchema(schema);
@@ -312,6 +313,7 @@ public class TableDesignServiceImpl implements TableDesignService {
         if (BizDescriptions.conflict(tableInfo.getBizDescription(), tableInfoDto.getBizDescription(), tableInfoDto.getBizDescriptionBase())) {
             throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
         }
+        BizDescriptions.requireLength(tableInfoDto.getBizDescription(), tableInfo.getBizDescription());
         if (tableInfoDto.getBizDescription() != null) tableInfo.setBizDescription(BizDescriptions.normalize(tableInfoDto.getBizDescription()));
         tableInfo.setIsMasterTable(tableInfoDto.getIsMasterTable().equals("Y"));
         tableInfo.setSortOrder(tableInfoDto.getSortOrder());
@@ -388,7 +390,9 @@ public class TableDesignServiceImpl implements TableDesignService {
                 "tableName",
                 "tableDescription",
                 "isMasterTable",
-                "sortOrder"
+                "sortOrder",
+                // E열 업무 설명 (AI-1d) : 예전 4열 파일은 빈 값으로 읽힌다. 등록(INSERT)만 하므로 비면 NULL, 이미 있는 테이블은 예전처럼 건너뛰어 업무 설명도 그대로다
+                "bizDescription"
         );
 
         // 업로드 템플릿에는 스키마가 없으므로 프로젝트 기본 스키마에 등록한다 (청크마다 영속성 컨텍스트를 비우므로 ID 로 참조)
@@ -430,6 +434,8 @@ public class TableDesignServiceImpl implements TableDesignService {
                 if(tableName.isEmpty() || existingTableNames.contains(tableName) || !uploadedTableNames.add(tableName)){
                     continue;
                 }
+                // 업무 설명 길이 초과 : 업로드 전체를 취소한다 (건너뛰는 행은 보지 않는다)
+                if (BizDescriptions.tooLong(map.get("bizDescription"), null)) throw BizDescriptions.tooLong(tableName);
 
                 tableInfos.add(TableInfo.builder()
                         .projectId(projectId)
@@ -437,6 +443,7 @@ public class TableDesignServiceImpl implements TableDesignService {
                         .tableDescription(map.get("tableDescription"))
                         .isMasterTable(map.get("isMasterTable").equals("Y"))
                         .sortOrder(Integer.parseInt(s))
+                        .bizDescription(BizDescriptions.normalize(map.get("bizDescription")))
                         .isApproval(isApprovalAvailable)
                         .schema(entityManager.getReference(SchemaInfo.class, defaultSchemaId))
                         .build());

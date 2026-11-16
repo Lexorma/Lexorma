@@ -10,6 +10,7 @@ import { RefTableLookup } from './RefTableLookup';
 import { applyRecommendation } from './recommend';
 import { searchTerms, termLabel, type Term, type TermSearchType } from './terms';
 import { t, tc } from '../../lib/i18n';
+import { BIZ_DESCRIPTION_MAX, BizLength } from '../dictionary/ai/BizDescriptionInfo';
 
 /**
  * 컬럼 일괄 편집 (테이블 관리 > 테이블 상세 > 컬럼 편집)
@@ -55,6 +56,9 @@ const FIELD_KEYS = ['columnDesc', 'dataType', 'maxLength', 'precision', 'scale',
 
 const NUMBER_KEYS = ['maxLength', 'precision', 'scale'];
 
+// 업무 설명 (AI-5 · AI-1d) : 다른 항목과 따로 보낸다 — 기존 컬럼은 고쳤을 때만 읽은 값(base)과 함께 보내고, 안 보내면 서버가 그대로 둔다
+const BIZ_KEY = 'bizDescription';
+
 type Fields = Record<string, string | null>;
 
 interface BulkRow {
@@ -92,6 +96,7 @@ function normalize(key: string, value: unknown): string | null {
 function fromExisting(col: ColumnInfo): BulkRow {
   const fields: Fields = {};
   FIELD_KEYS.forEach((key) => (fields[key] = normalize(key, col[key])));
+  fields[BIZ_KEY] = normalize(BIZ_KEY, col[BIZ_KEY]);
   return {
     key: String(col.id),
     id: col.id,
@@ -143,6 +148,7 @@ function fromCommonColumn(item: CommonColumnItem, key: string): BulkRow {
 /** 다른 테이블의 컬럼을 복사 : 이 테이블에 이미 PK 가 있으면 복사한 PK 는 풀어 둔다. (의도하지 않은 복합 PK 방지) */
 function fromCopiedColumn(col: ColumnInfo, key: string, sourceTableName: string, targetHasPk: boolean): BulkRow {
   const fields: Fields = {};
+  // 업무 설명은 복사하지 않는다 : 같은 용어라도 테이블마다 업무적 의미가 다를 수 있다
   FIELD_KEYS.forEach((k) => (fields[k] = normalize(k, col[k])));
   const notes = [t('{0} 에서 복사', sourceTableName)];
   if (targetHasPk && fields.isPk === 'Y') {
@@ -171,12 +177,19 @@ function toPayloadRow(row: BulkRow) {
     else if (key.startsWith('is')) payload[key] = value === 'Y' ? 'Y' : 'N';
     else payload[key] = value === null ? null : String(value);
   });
+  const biz = row.fields[BIZ_KEY] ?? '';
+  if (row.isNew) payload[BIZ_KEY] = biz;
+  else if (bizChanged(row)) Object.assign(payload, { [BIZ_KEY]: biz, bizDescriptionBase: row.original?.[BIZ_KEY] ?? '' });
   return payload;
+}
+
+function bizChanged(row: BulkRow) {
+  return !!row.original && String(row.fields[BIZ_KEY] ?? '').trim() !== String(row.original[BIZ_KEY] ?? '').trim();
 }
 
 function isModified(row: BulkRow) {
   if (!row.original) return false;
-  return FIELD_KEYS.some((key) => String(row.fields[key] ?? '').trim() !== String(row.original![key] ?? '').trim());
+  return bizChanged(row) || FIELD_KEYS.some((key) => String(row.fields[key] ?? '').trim() !== String(row.original![key] ?? '').trim());
 }
 
 /**
@@ -966,6 +979,12 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                               <option value="BY_DEFAULT">BY DEFAULT</option>
                               <option value="ALWAYS">ALWAYS</option>
                             </select>
+                          </label>
+                          {/* 업무 설명 : 승인된 컬럼은 여기서 잠기고 컬럼 상세의 업무 설명 칸에서 고친다 */}
+                          <label className="col-bulk-field col-bulk-field-wide"><span>{t('업무 설명')}</span>
+                            <textarea className="form-control" aria-label={BIZ_KEY} rows={2} maxLength={BIZ_DESCRIPTION_MAX} value={row.fields[BIZ_KEY] ?? ''} disabled={locked}
+                              placeholder={t('컬럼의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)')} onChange={(e) => setFieldValue(row, BIZ_KEY, e.target.value)} />
+                            {!locked && <BizLength value={row.fields[BIZ_KEY] ?? ''} />}
                           </label>
                         </div>
                         <div className="col-bulk-flags">

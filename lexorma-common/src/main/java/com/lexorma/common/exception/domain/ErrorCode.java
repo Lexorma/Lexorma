@@ -540,6 +540,11 @@ public enum ErrorCode {
     BIZ_DESCRIPTION_CONFLICT(HttpStatus.CONFLICT, "BIZ_DESCRIPTION_CONFLICT"),
 
     /**
+     * 업무 설명(TASK_EXPLN)이 길이 상한(4,000자)을 넘는다 (AI-1d). 모든 저장 경로가 같은 코드 — 대상(테이블·컬럼명)은 사유 칸에 붙인다.
+     */
+    BIZ_DESCRIPTION_TOO_LONG(HttpStatus.BAD_REQUEST, "BIZ_DESCRIPTION_TOO_LONG"),
+
+    /**
      * 컬럼의 표준 용어 연결을 화면을 연 뒤 다른 사용자가 바꿨다 (COL-TERM). 다시 열어 확인한다.
      */
     COLUMN_TERM_CONFLICT(HttpStatus.CONFLICT, "COLUMN_TERM_CONFLICT"),

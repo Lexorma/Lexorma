@@ -5,6 +5,7 @@ import { api, enc } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
 import type { Schema } from '../schema/schemas';
 import { t } from '../../lib/i18n';
+import { BIZ_DESCRIPTION_MAX, BizLength } from '../dictionary/ai/BizDescriptionInfo';
 
 interface TableNameResult {
   valid: boolean;
@@ -183,8 +184,9 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
 
       <div className="form-group">
         <label htmlFor="bizDescription">{t('업무 설명')}</label>
-        <textarea className="form-control" id="bizDescription" rows={3} maxLength={4000} placeholder={t('테이블의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)')}
+        <textarea className="form-control" id="bizDescription" rows={3} maxLength={BIZ_DESCRIPTION_MAX} placeholder={t('테이블의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)')}
                   value={bizDescription} onChange={(e) => setBizDescription(e.target.value)} />
+        <BizLength value={bizDescription} />
       </div>
 
       <div className="form-check" style={{ margin: '10px 0' }}>

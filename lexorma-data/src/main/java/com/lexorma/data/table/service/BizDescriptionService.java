@@ -8,7 +8,6 @@ import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.table.domain.dto.BizDescriptionDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,17 +21,18 @@ import java.util.Objects;
  *       BIZ_DESCRIPTION_CONFLICT — 같은 값으로 바꾸는 것은 충돌이 아니다. AI 제안 승인도 대상 행을 잠그고 생성 때 값과 비교하므로 오래된 제안이 이 값을 덮어쓰지 못한다</li>
  *   <li>업무 설명만 바꾼다 (@DynamicUpdate). 객체 승인 여부와 무관하다 (AI 제안 승인과 같은 결정 — 다른 속성의 승인 잠금은 그대로)</li>
  *   <li>모델 변경 이력에 출처 USER 로 남는다 (AI 제안 승인은 AI_APPROVAL)</li>
+ *   <li>잠근 뒤 엔터티를 {@code refresh} 하지 않고 업무 설명만 DB 에서 다시 읽는다 (AI-1d 후속) : 테이블 refresh 는 {@code TableInfo.columns}(cascade ALL)를 따라
+ *       같은 트랜잭션에서 아직 flush 하지 않은 컬럼 변경까지 되돌렸다. 이 트랜잭션이 먼저 읽어 둔 엔터티가 그 사이 다른 트랜잭션의 커밋으로 낡았으면
+ *       (엔터티 값 ≠ DB 값) 더티 체킹·변경 이력의 변경 전 값이 낡은 값을 기준으로 하므로 쓰지 않고 BIZ_DESCRIPTION_CONFLICT 로 거부한다
+ *       — API 는 요청마다 새 트랜잭션에서 잠그며 읽으므로 이 경우가 없다</li>
  * </ul>
  */
 @Service
 @RequiredArgsConstructor
 public class BizDescriptionService {
 
-    static final int MAX = 4000;
-
     private final TableInfoRepository tables;
     private final ColumnInfoRepository columns;
-    private final EntityManager entityManager;
 
     @Transactional
     public BizDescriptionDto.Result update(AccountDto account, BizDescriptionDto.Request request) {
@@ -41,20 +41,27 @@ public class BizDescriptionService {
             throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "대상과 업무 설명, 화면이 읽은 업무 설명이 필요합니다.");
         }
         String next = BizDescriptions.normalize(request.bizDescription());
-        if (next != null && next.length() > MAX) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "업무 설명은 {0}자까지 입력할 수 있습니다.", MAX);
         if (request.columnId() != null) {
             ColumnInfo column = columns.findForUpdate(request.columnId(), projectId)
                     .filter(c -> c.getTableInfo() != null && c.getTableInfo().getId().equals(request.tableId()))
                     .orElseThrow(() -> new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED));
-            entityManager.refresh(column);
-            if (BizDescriptions.conflict(column.getBizDescription(), request.bizDescription(), request.base())) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
-            if (!Objects.equals(BizDescriptions.normalize(column.getBizDescription()), next)) column.setBizDescription(next);
+            String current = latest(column.getBizDescription(), columns.findBizDescription(column.getId()));
+            BizDescriptions.requireLength(request.bizDescription(), current);
+            if (BizDescriptions.conflict(current, request.bizDescription(), request.base())) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
+            if (!Objects.equals(BizDescriptions.normalize(current), next)) column.setBizDescription(next);
             return new BizDescriptionDto.Result(request.tableId(), column.getId(), column.getBizDescription());
         }
         TableInfo table = tables.findForUpdate(request.tableId(), projectId).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
-        entityManager.refresh(table);
-        if (BizDescriptions.conflict(table.getBizDescription(), request.bizDescription(), request.base())) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
-        if (!Objects.equals(BizDescriptions.normalize(table.getBizDescription()), next)) table.setBizDescription(next);
+        String current = latest(table.getBizDescription(), tables.findBizDescription(table.getId()));
+        BizDescriptions.requireLength(request.bizDescription(), current);
+        if (BizDescriptions.conflict(current, request.bizDescription(), request.base())) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
+        if (!Objects.equals(BizDescriptions.normalize(current), next)) table.setBizDescription(next);
         return new BizDescriptionDto.Result(table.getId(), null, table.getBizDescription());
+    }
+
+    /** 잠근 행의 지금 업무 설명 (DB 값). 엔터티 값과 다르면 이 트랜잭션의 엔터티가 낡은 것이라 거부한다 (클래스 설명) */
+    private static String latest(String entityValue, String databaseValue) {
+        if (!Objects.equals(entityValue, databaseValue)) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_CONFLICT);
+        return databaseValue;
     }
 }

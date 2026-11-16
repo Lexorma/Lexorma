@@ -5,6 +5,7 @@ import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
 import { RefTableLookup, refName } from './RefTableLookup';
 import { searchTerms, type Term, type TermSearchType } from './terms';
 import { t } from '../../lib/i18n';
+import { BIZ_DESCRIPTION_MAX, BizLength } from '../dictionary/ai/BizDescriptionInfo';
 
 const DATA_TYPES = ['VARCHAR', 'CHAR', 'NUMBER', 'DATE', 'TIMESTAMP', 'BOOLEAN', 'CLOB', 'BLOB'];
 
@@ -49,7 +50,7 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   // 컬럼명 중복
   const [duplicate, setDuplicate] = useState<{ duplicated: boolean; message: Message; ok?: string }>({ duplicated: false, message: null });
 
-  const [fields, setFields] = useState<Record<string, string>>({ dataType: '', columnDesc: '', maxLength: '', precision: '', scale: '', defaultValue: '', identity: '', sortOrder: '', refTableName: '', example: '' });
+  const [fields, setFields] = useState<Record<string, string>>({ dataType: '', columnDesc: '', bizDescription: '', maxLength: '', precision: '', scale: '', defaultValue: '', identity: '', sortOrder: '', refTableName: '', example: '' });
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [showExtra, setShowExtra] = useState(false);
 
@@ -253,6 +254,8 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       columnName: term.commonStandardTermAbbreviation,
       dataType: fields.dataType.trim(),
       columnDesc: fields.columnDesc.trim(),
+      // 업무 설명 (AI-1d) : 선택 입력, 비우면 저장하지 않는다 (서버가 앞뒤 공백을 빼고 빈 값은 NULL)
+      bizDescription: fields.bizDescription,
       maxLength: num(fields.maxLength),
       precision: num(fields.precision),
       scale: num(fields.scale),
@@ -350,6 +353,13 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
       <div className="form-group">
         <label htmlFor="columnDesc">{t('컬럼 설명')}</label>
         <input type="text" className="form-control" id="columnDesc" value={fields.columnDesc} onChange={(e) => setField('columnDesc', e.target.value)} />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="bizDescription">{t('업무 설명')}</label>
+        <textarea className="form-control" id="bizDescription" rows={3} maxLength={BIZ_DESCRIPTION_MAX} placeholder={t('컬럼의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)')}
+                  value={fields.bizDescription} onChange={(e) => setField('bizDescription', e.target.value)} />
+        <BizLength value={fields.bizDescription} />
       </div>
 
       {check('isNullable', t('NULL 허용 여부'))}

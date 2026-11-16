@@ -63,6 +63,10 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     @Query("select c from ColumnInfo c where c.id = :id and c.projectId = :projectId")
     Optional<ColumnInfo> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
 
+    /** 업무 설명만 DB 에서 다시 읽는다 (스칼라 조회). 행은 {@link #findForUpdate} 로 먼저 잠근다 — TableInfoRepository.findBizDescription 과 같은 용도 */
+    @Query("select c.bizDescription from ColumnInfo c where c.id = :id")
+    String findBizDescription(@Param("id") Long id);
+
     /** 프로젝트의 테이블별 컬럼 수와 업무 설명이 없는 컬럼 수 [테이블 ID, 컬럼 수, 업무 설명 없는 수] (AI 설명 제안 대상 목록) — 업무 설명은 비면 null 로 저장한다 */
     @Query("select c.tableInfo.id, count(c), sum(case when c.bizDescription is null then 1 else 0 end) from ColumnInfo c where c.projectId = :projectId group by c.tableInfo.id")
     List<Object[]> countBizDescriptionsByTable(@Param("projectId") Long projectId);

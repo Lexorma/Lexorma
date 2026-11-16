@@ -15,6 +15,7 @@ import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.history.record.ModelChangeRecorder;
+import com.lexorma.data.table.service.BizDescriptions;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +49,7 @@ import java.util.Set;
 public class AiDescriptionReviewService {
 
     static final int REASON_MAX = 1000;
-    static final int DESCRIPTION_MAX = 4000;
+    static final int DESCRIPTION_MAX = BizDescriptions.MAX; // 업무 설명 상한 (모든 저장 경로와 같다)
     static final int BULK_MAX = 100;
     static final int RECHECK_MAX = 500;
     private static final Set<ReviewStatus> APPROVABLE = EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.ON_HOLD);
@@ -82,7 +83,7 @@ public class AiDescriptionReviewService {
     public AiDictionaryDto.ReviewResult approve(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
         VerifiedExecution approver = approver(context);
         String edited = request == null || request.description() == null || request.description().isBlank() ? null : request.description().strip();
-        if (edited != null && edited.length() > DESCRIPTION_MAX) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "업무 설명은 {0}자까지 입력할 수 있습니다.", DESCRIPTION_MAX);
+        if (edited != null && edited.length() > DESCRIPTION_MAX) throw new CustomException(ErrorCode.BIZ_DESCRIPTION_TOO_LONG);
         return tx.execute(status -> {
             AiDescriptionProposal p = locked(context.projectId(), id, request == null ? null : request.version());
             if (!APPROVABLE.contains(p.getStatus())) throw new CustomException(ErrorCode.AI_PROPOSAL_INVALID_STATE);

@@ -8,6 +8,22 @@ import { t } from '../../../lib/i18n';
 import { aiDictionary, proposalPath, STATUS_CLASS, STATUS_LABEL, type ObjectStatus } from './aiDictionary';
 import '../../../styles/ai-dictionary.css';
 
+/**
+ * 업무 설명 길이 상한 : 서버(BizDescriptions.MAX)와 같은 4,000자. 길이는 JS 문자열 length(UTF-16 단위) — 입력칸 maxLength·서버의 String.length 와 같은 기준이다
+ * (이모지 등은 2자, 줄바꿈은 1자). 서버는 앞뒤 공백을 뺀 값으로 센다
+ */
+export const BIZ_DESCRIPTION_MAX = 4000;
+
+/** 업무 설명 입력칸 아래의 글자 수 (상한에 닿으면 강조) — 모든 업무 설명 입력칸이 같이 쓴다 */
+export function BizLength({ value }: { value: string }) {
+  const n = value.length;
+  return (
+    <span className={`biz-length${n >= BIZ_DESCRIPTION_MAX ? ' is-full' : ''}`}>
+      {t('{0} / {1}자', n.toLocaleString(), BIZ_DESCRIPTION_MAX.toLocaleString())}
+    </span>
+  );
+}
+
 /** 테이블의 업무 설명·AI 제안 상태 (테이블·컬럼 관리 화면, ERD 상세 패널). 한 테이블에 한 번 조회해 테이블·컬럼이 같이 쓴다 */
 export function useObjectStatuses(tableId: number | null | undefined) {
   const { canView } = useAuth();
@@ -68,9 +84,10 @@ export function BizDescriptionInfo({ status, tableId, columnId, compact = false 
       </div>
       {editing != null && (
         <div className="ai-dict-info-editor">
-          <textarea className="ai-dict-textarea" rows={compact ? 3 : 4} maxLength={4000} value={editing} autoFocus
+          <textarea className="ai-dict-textarea" rows={compact ? 3 : 4} maxLength={BIZ_DESCRIPTION_MAX} value={editing} autoFocus
                     aria-label={t('업무 설명')} placeholder={t('테이블·컬럼의 업무적 의미 (DDL COMMENT·원본 COMMENT 와 따로 관리합니다)')}
                     onChange={(e) => setEditing(e.target.value)} />
+          <BizLength value={editing} />
           <div className="ai-dict-buttons">
             <button type="button" className="btn btn-sm btn-primary" disabled={busy || editing.trim() === base.trim()} onClick={() => void save(editing)}>{t('저장')}</button>
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => setEditing(null)}>{t('취소')}</button>

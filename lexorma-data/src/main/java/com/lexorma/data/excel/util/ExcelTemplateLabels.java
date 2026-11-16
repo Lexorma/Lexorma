@@ -68,6 +68,10 @@ public final class ExcelTemplateLabels {
             entry("마스터테이블여부", "Master table"),
             entry("정렬순서", "Sort order"),
             entry("예제 테이블입니다.", "This is an example table."),
+            // tableTemplate.xlsx · columnTemplate.xlsx : 업무 설명 (AI-1d, TASK_EXPLN — DDL COMMENT 가 아니다)
+            entry("업무 설명", "Business description"),
+            entry("예제 테이블의 업무 설명입니다.", "Business description of the example table."),
+            entry("사용자가 로그인하고 알림을 받는 이메일 주소입니다.", "Email address the user signs in with and receives notifications at."),
             // columnTemplate.xlsx
             entry("컬럼명", "Column name"),
             entry("컬럼 설명", "Column description"),

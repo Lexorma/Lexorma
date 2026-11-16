@@ -2090,6 +2090,8 @@ export const en = {
   '확인됨은 근거의 존재·프로젝트 범위·조회 결과와의 일치·버전을 확인했다는 뜻이며, 답변 문장 전체의 정확성을 뜻하지 않습니다.': 'Confirmed means that the item exists, is in this project, matches what the tools returned and has not changed since. It does not confirm every sentence of the answer.',
   // AI 설명 제안 (AI-5)
   '테이블의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)': 'What the table means for the business (not written as the DDL COMMENT)',
+  '{0} / {1}자': '{0} / {1} characters',
+  '컬럼의 업무적 의미 (DDL COMMENT 로 나가지 않습니다)': 'What the column means for the business (not written as the DDL COMMENT)',
   'AI 설명 제안': 'AI description proposals',
   '처리하지 못했습니다.': 'Could not process the request.',
   '검토 대기 중인 제안이 있어 새로 만들지 않았습니다. 다시 만들려면 상세에서 다시 만드세요.': 'A proposal is already waiting for review, so no new one was made. To make a new one, regenerate it from the details.',

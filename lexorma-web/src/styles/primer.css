@@ -1935,6 +1935,17 @@ dialog .col-bulk-field {
     color: var(--gh-fg-muted);
 }
 
+dialog .col-bulk-field-wide {
+    grid-column: 1 / -1;
+}
+
+/* 표 칸의 고정 높이(28px)를 풀어 여러 줄 업무 설명이 보이게 한다 */
+.main-dialog-content .col-bulk-table .col-bulk-field-wide textarea.form-control {
+    height: auto;
+    min-height: 52px;
+    resize: vertical;
+}
+
 dialog .col-bulk-flags {
     display: flex;
     flex-wrap: wrap;
@@ -2091,4 +2102,18 @@ dialog .col-bulk-table .col-num {
 /* 테이블 상세 : 컬럼 목록 표가 가로 스크롤되지 않게 넓힌다 (table-manage.js 에서 열 때만 붙인다) */
 dialog.dialog-table-detail {
     width: min(720px, calc(100vw - 32px));
+}
+
+/* 업무 설명 글자 수 (BizLength) : 입력칸 아래 오른쪽, 상한에 닿으면 강조 */
+.biz-length {
+    display: block;
+    margin-top: 2px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--gh-fg-muted);
+}
+
+.biz-length.is-full {
+    color: var(--gh-attention);
+    font-weight: 600;
 }

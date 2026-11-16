@@ -7,6 +7,7 @@ import { ApiError } from '../../../lib/api';
 import { t, tc } from '../../../lib/i18n';
 import { aiDictionary, APPROVAL_HOLD_LABEL, BLIND_NOTICE, CERTAINTY_LABEL, CHANGE_LABEL, OBJECT_TYPE_LABEL, STATUS_CLASS, STATUS_LABEL, type Change, type ProposalDetail, type ReviewResult } from './aiDictionary';
 import { ACTION_LABEL, ReviewReasonDetail, reasonFieldLabel, reasonFieldLabels } from './ReasonView';
+import { BIZ_DESCRIPTION_MAX, BizLength } from './BizDescriptionInfo';
 
 const EVIDENCE_STATUS: Record<string, string> = {
   VERIFIED: t('확인됨'), NOT_FOUND: t('없음'), OUT_OF_SCOPE: t('범위 밖'), MISMATCH: t('불일치'), STALE: t('조회 후 변경됨'), UNVERIFIABLE: t('확인 불가'),
@@ -146,8 +147,11 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
             <div className="ai-dict-callout is-warn" role="note"><AlertTriangle size={14} aria-hidden="true" /> {BLIND_NOTICE}</div>
           ) : <>
             {open && canReview ? (
-              <textarea className="ai-dict-textarea" value={draft} maxLength={4000} rows={5} aria-label={t('AI 제안 (고치면 수정 후 승인)')}
-                        onChange={(e) => setText(e.target.value)} />
+              <>
+                <textarea className="ai-dict-textarea" value={draft} maxLength={BIZ_DESCRIPTION_MAX} rows={5} aria-label={t('AI 제안 (고치면 수정 후 승인)')}
+                          onChange={(e) => setText(e.target.value)} />
+                <BizLength value={draft} />
+              </>
             ) : <p className="ai-dict-text">{p.confirmedDescription ?? p.proposedDescription}</p>}
             <div className="gh-muted ai-dict-small">
               {t('확실성')} : {p.certainty ? CERTAINTY_LABEL[p.certainty] : '-'}

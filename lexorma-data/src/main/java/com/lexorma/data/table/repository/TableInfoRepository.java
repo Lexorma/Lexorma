@@ -47,6 +47,13 @@ public interface TableInfoRepository extends JpaRepository<TableInfo, Long>, Jpa
     @Query("select t from TableInfo t where t.id = :id and t.projectId = :projectId")
     Optional<TableInfo> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
 
+    /**
+     * 업무 설명만 DB 에서 다시 읽는다 (스칼라 조회 — 영속성 컨텍스트의 엔터티 값이 아니라 DB 값). 행은 {@link #findForUpdate} 로 먼저 잠근다.
+     * 같은 트랜잭션에서 반영 전인 테이블 변경이 있으면 조회 전에 자동 flush 되어 그 값이 보인다.
+     */
+    @Query("select t.bizDescription from TableInfo t where t.id = :id")
+    String findBizDescription(@Param("id") Long id);
+
     /** 스키마 삭제 가능 여부 */
     boolean existsBySchema_Id(Long schemaId);
 }

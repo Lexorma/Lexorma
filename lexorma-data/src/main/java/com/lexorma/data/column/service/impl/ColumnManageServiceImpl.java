@@ -135,6 +135,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         String identityProblem = identityProblem(columnInfoDto.getIdentity(), columnInfoDto.getDataType(), columnInfoDto.getScale(), columnInfoDto.getDefaultValue());
         if (identityProblem != null) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "{0} : {1}", columnInfoDto.getColumnName(), identityProblem);
+        BizDescriptions.requireLength(columnInfoDto.getBizDescription(), null);
         ColumnInfo columnInfo = columnInfoDto.toEntity();
         rejectAmbiguousReferences(projectId, tableInfo, java.util.Collections.singleton(columnInfo.getRefTableName()));
         columnInfo.setTableInfo(tableInfo);
@@ -261,7 +262,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 "isUnique",
                 "isIndex",
                 "isEncrypted",
-                "example"
+                // S열 "엑셀 컬럼 헤더 표시명" : 담는 모델 속성이 없어 읽기만 하고 저장하지 않는다.
+                // 예전에는 이 열을 example 로 읽어 템플릿의 T열 "데이터 예시" 가 버려졌다 (AI-1d 에서 T열로 바로잡음, 이미 저장된 값은 그대로)
+                "excelHeaderLabel",
+                "example",
+                // U열 업무 설명 (AI-1d) : 열이 없는 예전 파일은 빈 값으로 읽힌다. 등록(INSERT)만 하므로 비면 NULL (이미 있는 컬럼은 예전처럼 업로드 전체를 막는다)
+                "bizDescription"
         );
 
         // 파일 안 중복 확인용 : "테이블ID|컬럼명"
@@ -339,6 +345,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableName + "." + columnName);
                 }
 
+                // 업무 설명 길이 초과 : 업로드 전체를 취소한다 (자르지 않는다)
+                if (BizDescriptions.tooLong(map.get("bizDescription"), null)) throw BizDescriptions.tooLong(tableName + "." + columnName);
+
                 if (map.get("refTableName") != null && !map.get("refTableName").isBlank()) {
                     TableInfo owner = entityManager.find(TableInfo.class, tableInfoId);
                     rejectAmbiguousReferences(projectId, owner, java.util.Collections.singleton(map.get("refTableName")));
@@ -366,6 +375,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                         .isIndex(map.get("isIndex").equals("Y"))
                         .isEncrypted(map.get("isEncrypted").equals("Y"))
                         .example(map.get("example"))
+                        .bizDescription(BizDescriptions.normalize(map.get("bizDescription")))
                         .standardTerms(entityManager.getReference(StandardTerm.class, termId))
                         .tableInfo(entityManager.getReference(TableInfo.class, tableInfoId))
                         .isApproval(isApprovalAvailable)
@@ -607,6 +617,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     validateRowFields(row, column.getColumnName(), errors);
                     if (BizDescriptions.conflict(column.getBizDescription(), row.getBizDescription(), row.getBizDescriptionBase())) {
                         errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 다른 사용자가 업무 설명을 수정했습니다. 화면을 새로 열어 확인하세요.", column.getColumnName())));
+                    } else if (BizDescriptions.tooLong(row.getBizDescription(), column.getBizDescription())) {
+                        errors.add(new ColumnBulkSaveDto.RowError(key, BizDescriptions.tooLongRowMessage(column.getColumnName())));
                     }
                     String reference = trimToNull(row.getRefTableName());
                     if (reference != null && !reference.equalsIgnoreCase(String.valueOf(column.getRefTableName()))) changedReferences.put(key, reference);
@@ -626,6 +638,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 continue;
             }
             validateRowFields(row, columnName, errors);
+            if (BizDescriptions.tooLong(row.getBizDescription(), null)) errors.add(new ColumnBulkSaveDto.RowError(key, BizDescriptions.tooLongRowMessage(columnName)));
             if (trimToNull(row.getRefTableName()) != null) changedReferences.put(key, trimToNull(row.getRefTableName()));
             termByRowKey.put(key, term);
         }

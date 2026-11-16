@@ -246,7 +246,6 @@ final class EnglishMessages {
         add("사유는 {0}자까지 입력할 수 있습니다.", "The reason can be up to {0} characters.");
         add("실제 의미를 확인한 평가 대상만 판정할 수 있습니다.", "Only evaluation targets whose actual meaning is confirmed can be judged.");
         add("실행을 찾을 수 없습니다.", "The job was not found.");
-        add("업무 설명은 {0}자까지 입력할 수 있습니다.", "The business description can be up to {0} characters.");
         add("일괄 처리는 승인·반려·보류만 할 수 있습니다.", "Bulk review supports only approve, reject and hold.");
         add("조회 조건이 올바르지 않습니다.", "The search conditions are not valid.");
         add("처리할 제안을 고르세요.", "Choose the proposals to process.");

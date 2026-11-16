@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  * 등록된 내부 도구 (Spring 빈으로 만든 {@link SourceMetadataTool} 전부). 이름과 DBMS 로 찾는다.
  * 같은 이름·같은 DBMS 를 맡는 구현이 둘이면 어느 것이 실행될지 알 수 없으므로 기동할 때 막는다.
- * 지금은 등록된 도구가 없다 (구현은 AI-2). 도구가 하나도 없어도 애플리케이션은 그대로 뜬다.
+ * 지금은 PostgreSQL 도구만 있다 (AI-2b, {@code PostgresSourceTools}). 도구가 하나도 없어도 애플리케이션은 그대로 뜬다.
  */
 @Component
 public class SourceToolRegistry {

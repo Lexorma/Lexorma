@@ -38,6 +38,7 @@ import java.util.Set;
  *       (잠금 순서 : 제안 → 대상). 상태 변경·업무 설명 반영·이력은 한 트랜잭션이다</li>
  *   <li>승인 시 재검증 : 업무 설명이 생성 때와 다르면(다른 사용자의 수정), 대상이 지워졌으면, 근거로 쓴 객체·매핑된 원본 값이 바뀌었으면({@link ProposalVersions})
  *       반영하지 않고 REVIEW_REQUIRED 로 바꿔 변경 내용을 돌려준다. 근거와 무관한 변경은 승인을 막지 않는다</li>
+ *   <li>평가 대상으로 등록된 테이블·컬럼의 제안은 평가(실제 의미 확인 + 정확성 판정)를 마친 뒤에만 승인한다 ({@link ProposalEvaluationGate}, AI-5-EVAL)</li>
  *   <li>승인은 업무 설명(TASK_EXPLN)만 쓴다 : 객체의 승인 여부와 무관하고(사용자 결정 2026-11-15), 원본 COMMENT·DDL COMMENT(설명)·표준 용어 연결은 바꾸지 않는다.
  *       표준 용어·도메인 추천은 참고로만 보이고 반영하지 않는다 (기존 컬럼 화면의 용어 연결로 바꾼다)</li>
  * </ul>
@@ -60,11 +61,13 @@ public class AiDescriptionReviewService {
     private final ExecutionContextVerifier verifier;
     private final TransactionTemplate tx;
     private final ModelChangeRecorder recorder;
+    private final ProposalEvaluationGate evaluationGate;
 
     public AiDescriptionReviewService(AiDescriptionProposalRepository proposals, AiDescriptionProposalHistoryRepository histories, TableInfoRepository tables,
                                       ColumnInfoRepository columns, ProposalVersions versions, ExecutionContextVerifier verifier,
-                                      PlatformTransactionManager transactionManager, ModelChangeRecorder recorder) {
+                                      PlatformTransactionManager transactionManager, ModelChangeRecorder recorder, ProposalEvaluationGate evaluationGate) {
         this.recorder = recorder;
+        this.evaluationGate = evaluationGate;
         this.proposals = proposals;
         this.histories = histories;
         this.tables = tables;
@@ -84,6 +87,8 @@ public class AiDescriptionReviewService {
             AiDescriptionProposal p = locked(context.projectId(), id, request == null ? null : request.version());
             if (!APPROVABLE.contains(p.getStatus())) throw new CustomException(ErrorCode.AI_PROPOSAL_INVALID_STATE);
             Object target = lockTarget(p);
+            // 평가 대상의 제안은 평가를 마친 뒤에만 (AI-5-EVAL F4, 일괄 승인·API 직접 호출 포함). 평가 대상이 아니면 그대로
+            if (evaluationGate.hold(p, true) != null) throw new CustomException(ErrorCode.AI_PROPOSAL_EVALUATION_PENDING);
             ProposalVersions.Base base = ProposalVersions.read(p.getBaseVersions());
             List<ProposalVersions.Change> changes = target == null
                     ? List.of(new ProposalVersions.Change("TARGET_DELETED", base.target().type(), base.target().id(), base.target().name(), List.of()))
@@ -92,7 +97,7 @@ public class AiDescriptionReviewService {
             if (!changes.isEmpty()) {
                 transition(p, ReviewStatus.REVIEW_REQUIRED, Action.REVIEW_REQUIRED, approver.username(), now, reason(changes), null);
                 log.info("AI 설명 제안 재검토 필요 (승인 시 변경 감지) : project={} proposal={} changes={}", context.projectId(), id, changes);
-                return new AiDictionaryDto.ReviewResult("REVIEW_REQUIRED", ProposalMapper.summary(p), changes);
+                return new AiDictionaryDto.ReviewResult("REVIEW_REQUIRED", summary(p), changes);
             }
             String finalText = edited != null ? edited : p.getProposedDescription();
             boolean modified = edited != null && !edited.equals(p.getProposedDescription().strip());
@@ -102,7 +107,7 @@ public class AiDescriptionReviewService {
             p.setConfirmedDescription(finalText);
             p.setRecheckNeeded(false);
             transition(p, ReviewStatus.APPROVED, modified ? Action.APPROVE_EDITED : Action.APPROVE, approver.username(), now, null, finalText);
-            return new AiDictionaryDto.ReviewResult("APPROVED", ProposalMapper.summary(p), List.of());
+            return new AiDictionaryDto.ReviewResult("APPROVED", summary(p), List.of());
         });
     }
 
@@ -155,7 +160,7 @@ public class AiDescriptionReviewService {
             LocalDateTime now = LocalDateTime.now();
             if (changes.isEmpty()) {
                 transition(p, ReviewStatus.REVIEWED, Action.REVALIDATE, approver.username(), now, "근거 재검증 : 생성 때와 달라진 근거가 없습니다", null);
-                return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, ProposalMapper.summary(p), List.of());
+                return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, summary(p), List.of());
             }
             boolean acknowledgeable = changes.stream().noneMatch(c -> ProposalVersions.BLOCKING.contains(c.kind()));
             if (acknowledgeable && acknowledge) {
@@ -165,11 +170,11 @@ public class AiDescriptionReviewService {
                     String note = ("근거 재검증 : 변경 확인 후 계속 검토 (" + reason(changes) + ") — " + reason);
                     transition(p, ReviewStatus.REVIEWED, Action.REVALIDATE, approver.username(), now, note.length() > REASON_MAX ? note.substring(0, REASON_MAX) : note, null);
                     log.info("AI 설명 제안 근거 재검증 (변경 확인) : project={} proposal={} changes={}", context.projectId(), id, changes.size());
-                    return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, ProposalMapper.summary(p), changes);
+                    return new AiDictionaryDto.RevalidateResult("REVIEWABLE", false, summary(p), changes);
                 }
                 acknowledgeable = false;
             }
-            return new AiDictionaryDto.RevalidateResult("STILL_REQUIRED", acknowledgeable, ProposalMapper.summary(p), changes);
+            return new AiDictionaryDto.RevalidateResult("STILL_REQUIRED", acknowledgeable, summary(p), changes);
         });
     }
 
@@ -254,7 +259,7 @@ public class AiDescriptionReviewService {
             AiDescriptionProposal p = locked(context.projectId(), id, request == null ? null : request.version());
             if (!from.contains(p.getStatus())) throw new CustomException(ErrorCode.AI_PROPOSAL_INVALID_STATE);
             transition(p, to, action, approver.username(), LocalDateTime.now(), reason, null);
-            return new AiDictionaryDto.ReviewResult(to.name(), ProposalMapper.summary(p), List.of());
+            return new AiDictionaryDto.ReviewResult(to.name(), summary(p), List.of());
         });
     }
 
@@ -280,6 +285,11 @@ public class AiDescriptionReviewService {
         p.setReviewReason(reason);
         proposals.saveAndFlush(p);
         histories.save(ProposalWriter.history(p, action, before, user, at, reason, confirmed));
+    }
+
+    /** 처리 결과의 제안 (평가 블라인드면 AI 내용을 비운다 — 조회와 같은 판단) */
+    private AiDictionaryDto.ProposalSummary summary(AiDescriptionProposal p) {
+        return ProposalMapper.summary(p, evaluationGate.blind(p));
     }
 
     /** 대상 행을 잠그고 돌려준다 (지워졌으면 null) */

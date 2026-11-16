@@ -15,4 +15,6 @@ public interface AiDescriptionEvaluationRepository extends JpaRepository<AiDescr
     Optional<AiDescriptionEvaluation> findByProposalIdAndReviewerId(Long proposalId, String reviewerId);
 
     boolean existsByProjectIdAndTargetId(Long projectId, Long targetId);
+
+    List<AiDescriptionEvaluation> findAllByProjectIdAndProposalId(Long projectId, Long proposalId);
 }

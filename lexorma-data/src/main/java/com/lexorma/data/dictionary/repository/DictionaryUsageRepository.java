@@ -1,11 +1,14 @@
 package com.lexorma.data.dictionary.repository;
 
 import com.lexorma.data.column.domain.entity.QColumnInfo;
+import com.lexorma.data.dictionary.domain.dto.ColumnSuggestionDto;
 import com.lexorma.data.dictionary.domain.dto.DictionaryUsageDto;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto;
+import com.lexorma.data.dictionary.domain.dto.TermQualityDto;
 import com.lexorma.data.dictionary.domain.entity.QStandardDomain;
 import com.lexorma.data.dictionary.domain.entity.QStandardTerm;
 import com.lexorma.data.dictionary.domain.entity.QStandardTermWordMapping;
+import com.lexorma.data.dictionary.domain.entity.QStandardWord;
 import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
 import com.querydsl.core.BooleanBuilder;
@@ -13,6 +16,8 @@ import com.querydsl.core.types.Expression;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.ComparableExpressionBase;
+import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.core.types.dsl.StringPath;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -46,6 +51,7 @@ public class DictionaryUsageRepository {
     private static final QStandardTerm term = QStandardTerm.standardTerm;
     private static final QStandardDomain domain = QStandardDomain.standardDomain;
     private static final QStandardTermWordMapping mapping = QStandardTermWordMapping.standardTermWordMapping;
+    private static final QStandardWord word = QStandardWord.standardWord;
 
     /** 그리드 정렬 필드 → 조회 컬럼 (목록에 없는 필드는 무시한다) */
     private static final Map<String, ComparableExpressionBase<?>> COLUMN_SORTS = Map.of(
@@ -152,6 +158,17 @@ public class DictionaryUsageRepository {
 
     /** 표준화 품질 진단용 : 프로젝트의 모든 컬럼과 연결된 표준 용어·도메인 (용어 없는 컬럼 포함, 조회 1번·엔티티를 읽지 않는다) */
     public List<StandardizationQualityDto.ColumnRow> findQualityColumns(Long projectId) {
+        return qualityColumns(projectId)
+                .orderBy(table.tableName.asc(), column.sortOrder.asc().nullsLast(), column.id.asc())
+                .fetch();
+    }
+
+    /** 컬럼 1개 (개선 후보). 다른 프로젝트의 컬럼이면 null */
+    public StandardizationQualityDto.ColumnRow findQualityColumn(Long projectId, Long columnId) {
+        return qualityColumns(projectId).where(column.id.eq(columnId)).fetchFirst();
+    }
+
+    private JPAQuery<StandardizationQualityDto.ColumnRow> qualityColumns(Long projectId) {
         return query.select(Projections.constructor(StandardizationQualityDto.ColumnRow.class,
                         column.id, table.id, schema.id, schema.schemaName, table.tableName, table.tableKorName,
                         column.columnName, column.columnDesc, column.dataType, column.maxLength, column.precision, column.scale,
@@ -163,8 +180,121 @@ public class DictionaryUsageRepository {
                 .join(table.schema, schema)
                 .leftJoin(column.standardTerms, term)
                 .leftJoin(term.standardDomain, domain)
-                .where(column.projectId.eq(projectId), table.projectId.eq(projectId))
-                .orderBy(table.tableName.asc(), column.sortOrder.asc().nullsLast(), column.id.asc())
+                .where(column.projectId.eq(projectId), table.projectId.eq(projectId));
+    }
+
+    // ------------------------------------------------------------------ 컬럼명 개선 후보 (컬럼 1개 단위)
+
+    /** 후보 용어 : 프로젝트의 용어 전체와 도메인 정의 */
+    public List<ColumnSuggestionDto.TermCandidateRow> findSuggestionTerms(Long projectId) {
+        return query.select(Projections.constructor(ColumnSuggestionDto.TermCandidateRow.class,
+                        term.id, term.commonStandardTermName, term.commonStandardTermAbbreviation, term.isApproval,
+                        domain.id, domain.commonStandardDomainName, domain.dataType, domain.dataLength, domain.dataDecimalLength))
+                .from(term)
+                .leftJoin(term.standardDomain, domain)
+                .where(term.projectId.eq(projectId))
+                .orderBy(term.id.asc())
+                .fetch();
+    }
+
+    /**
+     * 논리명이 같은 다른 컬럼이 쓰는 용어 → 그 컬럼 수. 논리명은 소문자로 바꾸고 공백·'_' 를 뺀 값으로 비교한다
+     * (normalizedDesc 도 같은 규칙으로 만든 값이어야 한다 — 탭·줄바꿈은 SQL 쪽에서 빼지 않는다)
+     */
+    public Map<Long, Long> countSameDescColumnsByTerm(Long projectId, String normalizedDesc, Long excludeColumnId) {
+        return counts(query.select(column.standardTerms.id, column.count())
+                .from(column)
+                .where(column.projectId.eq(projectId), column.id.ne(excludeColumnId), column.standardTerms.isNotNull(),
+                        Expressions.stringTemplate("replace(replace(lower({0}), ' ', ''), '_', '')", column.columnDesc).eq(normalizedDesc))
+                .groupBy(column.standardTerms.id)
+                .fetch().stream().map(row -> new Object[]{row.get(0, Long.class), row.get(1, Long.class)}).toList());
+    }
+
+    /** 같은 테이블의 컬럼 이름과 연결된 용어의 약어 (이름 충돌) */
+    public List<ColumnSuggestionDto.TableColumnRow> findTableColumns(Long projectId, Long tableId) {
+        return query.select(Projections.constructor(ColumnSuggestionDto.TableColumnRow.class,
+                        column.id, column.columnName, term.id, term.commonStandardTermAbbreviation))
+                .from(column)
+                .leftJoin(column.standardTerms, term)
+                .where(column.projectId.eq(projectId), column.tableInfo.id.eq(tableId))
+                .orderBy(column.sortOrder.asc().nullsLast(), column.id.asc())
+                .fetch();
+    }
+
+    /** 테이블명 진단 : 프로젝트의 테이블 전체 (VIEW 는 TB_VIEW 라 들어오지 않는다), 테이블명 → ID 순 */
+    public List<StandardizationQualityDto.TableRow> findQualityTables(Long projectId) {
+        return query.select(Projections.constructor(StandardizationQualityDto.TableRow.class,
+                        table.id, schema.id, schema.schemaName, table.tableName, table.tableKorName, table.isApproval))
+                .from(table)
+                .join(table.schema, schema)
+                .where(table.projectId.eq(projectId))
+                .orderBy(table.tableName.asc(), table.id.asc())
+                .fetch();
+    }
+
+    /** 테이블명 진단 : 프로젝트의 표준 단어 약어·승인 여부 전체 (테이블마다 조회하지 않는다) */
+    public List<StandardizationQualityDto.WordAbbreviation> findWordAbbreviations(Long projectId) {
+        return query.select(Projections.constructor(StandardizationQualityDto.WordAbbreviation.class,
+                        word.commonStandardWordAbbreviation, word.isApproval))
+                .from(word)
+                .where(word.projectId.eq(projectId), word.commonStandardWordAbbreviation.isNotNull())
+                .fetch();
+    }
+
+    // ------------------------------------------------------------------ 표준 용어 중복·유사어 진단 (프로젝트 단위 6번, 용어 수와 무관)
+
+    public List<TermQualityDto.TermRow> findQualityTerms(Long projectId) {
+        return query.select(Projections.constructor(TermQualityDto.TermRow.class,
+                        term.id, term.commonStandardTermName, term.commonStandardTermAbbreviation, domain.id, domain.commonStandardDomainName, term.isApproval))
+                .from(term)
+                .leftJoin(term.standardDomain, domain)
+                .where(term.projectId.eq(projectId))
+                .orderBy(term.id.asc())
+                .fetch();
+    }
+
+    public List<TermQualityDto.TermWordRow> findQualityTermWords(Long projectId) {
+        return query.select(Projections.constructor(TermQualityDto.TermWordRow.class, mapping.standardTerm.id, mapping.standardWord.id, mapping.orderIndex))
+                .from(mapping)
+                .where(mapping.standardTerm.projectId.eq(projectId))
+                .fetch();
+    }
+
+    public List<TermQualityDto.WordRow> findQualityWords(Long projectId) {
+        return query.select(Projections.constructor(TermQualityDto.WordRow.class,
+                        word.id, word.commonStandardWordName, word.commonStandardWordAbbreviation, word.isApproval))
+                .from(word)
+                .where(word.projectId.eq(projectId))
+                .fetch();
+    }
+
+    /** TB_STD_TRM_SYNM */
+    public List<TermQualityDto.NameRow> findTermSynonyms(Long projectId) {
+        StringPath synonym = Expressions.stringPath("termSynonym");
+        return query.select(Projections.constructor(TermQualityDto.NameRow.class, term.id, synonym))
+                .from(term)
+                .join(term.synonymList, synonym)
+                .where(term.projectId.eq(projectId))
+                .fetch();
+    }
+
+    /** TB_STD_WORD_SYNM */
+    public List<TermQualityDto.NameRow> findWordSynonyms(Long projectId) {
+        StringPath synonym = Expressions.stringPath("wordSynonym");
+        return query.select(Projections.constructor(TermQualityDto.NameRow.class, word.id, synonym))
+                .from(word)
+                .join(word.synonymList, synonym)
+                .where(word.projectId.eq(projectId))
+                .fetch();
+    }
+
+    /** TB_STD_WORD_PRHBT */
+    public List<TermQualityDto.NameRow> findRestrictedWords(Long projectId) {
+        StringPath restricted = Expressions.stringPath("restrictedWord");
+        return query.select(Projections.constructor(TermQualityDto.NameRow.class, word.id, restricted))
+                .from(word)
+                .join(word.restrictedWords, restricted)
+                .where(word.projectId.eq(projectId))
                 .fetch();
     }
 

@@ -42,6 +42,35 @@ final class EnglishMessages {
         add("표준 용어가 연결되지 않았습니다.", "No standard term is linked.");
         add("컬럼명이 표준 용어의 영문약어와 다릅니다.", "The column name differs from the abbreviation of its standard term.");
         add("표준 도메인 정의와 다릅니다 : {0}", "Differs from the standard domain definition: {0}");
+        add("테이블명이 프로젝트 접두어({0})로 시작하지 않습니다.", "The table name does not start with the project prefix ({0}).");
+        add("표준 단어로 등록되지 않은 약어 : {0}", "Abbreviations not registered as standard words: {0}");
+        add("승인되지 않은 표준 단어 약어 : {0}", "Abbreviations of unapproved standard words: {0}");
+        add("비어 있는 약어가 있습니다 ('_' 가 연달아 있거나 앞뒤에 있음).", "There is an empty abbreviation (consecutive, leading or trailing '_').");
+        add("바꾼 단어 : {0}", "Replaced words: {0}");
+        add("이음동의어 : {0}", "Synonym: {0}");
+        add("금칙어 → 표준 단어 : {0}", "Restricted word → standard word: {0}");
+        add("영문약어와 도메인이 같은 표준 용어가 {0}개 있습니다.", "{0} standard terms have the same abbreviation and domain.");
+        add("용어명이 같은 표준 용어가 {0}개 있습니다 (공백·'_'·대소문자 무시).", "{0} standard terms have the same name (ignoring spaces, '_' and case).");
+        add("도메인이 서로 다릅니다.", "Their domains differ.");
+        add("영문약어가 같고 도메인이 다른 표준 용어가 {0}개 있습니다. 컬럼명 생성·엑셀 업로드에서 용어를 구분할 수 없습니다.",
+                "{0} standard terms share an abbreviation with different domains. Column name generation and Excel upload cannot tell them apart.");
+        add("같은 표준 단어로 이루어진 용어가 {0}개 있습니다.", "{0} terms consist of the same standard words.");
+        add("단어 순서가 다릅니다.", "The word order differs.");
+        add("표준 단어의 이음동의어를 대표 단어로 바꾸면 단어 구성이 같습니다 : {0}", "Replacing standard-word synonyms with their main words gives the same words: {0}");
+        add("용어명이 다른 표준 용어의 이음동의어({0})와 같습니다.", "The term name equals a synonym ({0}) of another standard term.");
+        add("다른 표준 단어의 금칙어가 쓰였습니다 : {0}", "A restricted word of another standard word is used: {0}");
+        add("표준 용어가 연결되어 있고 컬럼명이 영문약어와 같아 개선 후보를 계산하지 않습니다.",
+                "The column is linked to a standard term and its name equals the abbreviation, so no suggestions are calculated.");
+        add("표준 사전에서 이 컬럼에 맞는 후보를 찾지 못했습니다. 표준 용어를 직접 찾거나 새 용어 등록을 검토하세요.",
+                "No matching candidate was found in the standard dictionary. Search the standard terms yourself or consider registering a new term.");
+        add("연결된 표준 용어의 영문약어로 컬럼명을 바꾸는 후보입니다.", "Rename the column to the abbreviation of the linked standard term.");
+        add("컬럼명이 이 표준 용어의 영문약어와 같습니다. 용어만 연결하면 됩니다.", "The column name equals this term's abbreviation. Linking the term is enough.");
+        add("컬럼 논리명이 이 표준 용어의 용어명과 같습니다.", "The column's logical name equals this term's name.");
+        add("컬럼 논리명이 이 표준 용어의 이음동의어와 같습니다.", "The column's logical name equals a synonym of this term.");
+        add("컬럼명의 약어가 이 표준 용어의 단어 구성과 같습니다.", "The abbreviations in the column name match this term's words.");
+        add("논리명이 같은 다른 컬럼 {0}개가 이 표준 용어를 씁니다.", "{0} other columns with the same logical name use this term.");
+        add("컬럼명의 약어가 모두 표준 단어이지만 그 단어 구성의 표준 용어가 없습니다. 새 용어 등록을 검토하세요.",
+                "Every abbreviation in the column name is a standard word, but no standard term has these words. Consider registering a new term.");
         add("길이", "length");
         add("정밀도", "precision");
         add("소수 자릿수", "scale");

@@ -3,6 +3,29 @@
 > 컨텍스트 한도로 진행 상황이 사라지지 않게 하는 작업 메모다. **구현 완료 보고서가 아니다** — 완료 기록은 `completed-work.md`, 남은 작업은 `pending-work.md`.
 > 새 세션 재개 순서 : `CLAUDE.md` → 이 문서 → `pending-work.md` 7.2·7.3 → 실제 코드·Git 상태. 체크포인트와 코드가 다르면 코드를 기준으로 고친다.
 
+## 8차 마무리 · 로드맵 정합성 정리 (2026-11-17)
+
+- 8차 변경 검증 : 삭제 78 = 옮긴 원래 파일 77(76개는 패키지 치환 외 동일, `AiDescriptionReviewService` 만 의도한 수정) + 예전부터의 `docker-compose.secrets.yml`(AD). 의도하지 않은 삭제 없음. `CLAUDE.md` 는 `.gitignore` 대상이라 커밋에 들어가지 않는다
+- 문서 정합성 정리 : pending-work 의 [AI-3]·[AI-2]·[M-7]·[M-8]·[M-15]·[M-11]·[M-4]·[AI-MCP]·[UI-HELP]·[AI-5-EVAL] 에 '정합성 정리 (2026-11-17)' 줄, [AUTH-1]·[PRJ-1]·[M-3] 상태, 2장 상태별 건수, 7.2·7.3 보충. reference/ 로드맵은 고치지 않음
+- 스테이징 : 8차 파일만 (사용자 지시), `docker/` 제외 — 커밋은 사용자 승인 뒤 `git commit -- <같은 경로>` 로 secrets.yml 을 빼고 한다. push 없음
+- 다음 후보 : [M-5] 분석만 (구현은 승인 뒤)
+
+## 8차 인증 안정화 · AI/MCP 모듈 분리 (2026-11-17)
+
+지시 : Part A 재로그인 결함 → Part B AI·MCP 조사 → Part C `lexorma-ai` 신설·이관 → Part D 검증·문서. add·commit·push 금지, 마이그레이션 필요 시 V7.
+시작 Git : HEAD `e56e2b7` (7차까지 커밋됨), 남은 변경은 `docker/lexorma/docker-compose.secrets.yml` AD 1개 (예전부터).
+
+### 진행
+
+- Part A **완료** : 원인 = Spring Security `ConcurrentSessionControlAuthenticationStrategy.allowableSessionsExceeded` 가 유효 세션이 한도보다 많으면 "남은 수 − 한도 + 1" 개(= 전부)를 만료 — 로그인하는 지금 세션도 목록에 있으면(재로그인) 자기까지 만료. 유효 세션이 여럿 남는 원인 = 동시 로그인 경쟁. 두 번째 결함 : 동시 로그인이 같은 세션을 함께 만료시키면 만료 속성 INSERT 중복 키 → 로그인 500. 수정 `core/security/conf/LatestLoginSessionControlStrategy` (SecurityConfig ObjectPostProcessor). 테스트 `SessionReloginHttpTest` 6건 (수정 전 5건 실패 확인) H2·PG, 브라우저 두 개 E2E `pw/e2e8a.mjs`
+- Part B **완료** (조사) : AI 코드 = data `ai/`(43)·`mcp/`(11), core `core/ai`(14, Provider·Spring AI), system `system/ai`(컨트롤러 3), 리소스 data `ai/`(스키마·프롬프트), 단위 테스트 data 2개, app 통합 테스트 21개. data 의 다른 코드는 ai·mcp 를 import 하지 않는다. 숨은 결합 2 : `ProjectDataCleanup` 의 AI·MCP 테이블 삭제(문자열 SQL), `SourceDeletionService` 의 `AiDescriptionProposal` JPQL. OpenAI 호환 Provider 는 코드에 없다(OLLAMA 만)
+- Part C 계획 : `core.ai` → `ai.provider`(`core.ai.provider` → `ai.provider.adapter`), `system.ai` → `ai.provider.controller`, `data.ai` → `ai`, `data.mcp` → `ai.mcp`, 리소스 `ai/` 경로 그대로. 일반 mv (git mv 금지)
+- Part C **완료** : 77개 파일 이동·참조 93개, `lexorma-ai/build.gradle`, settings·app·core·루트 빌드, `ai/hook/AiProjectDataCleanup`, data 계약 `RelatedRecordCounter` ← `ai/hook/AiProposalRecordCounter`, `BizDescriptionService.writeAiApproval`, `ModuleBoundaryTest`(ai 규칙), 경로 테스트 2개. 문서 [ai-module-extraction.md](completed/ai-module-extraction.md)
+- Part D **완료** : 전체 H2 899·실패 0·건너뜀 39, PG 899·실패 0·건너뜀 9. 단일 JAR 내용 확인, AI 미설정 기동 H2·PG(`pw/e2e8c.mjs`), 실제 Ollama·MCP·Claude Code HTTP/HTTPS(`pw/e2e8b.mjs`·`e2e8d.mjs`), 재로그인 두 브라우저(`pw/e2e8a.mjs`), React 타입 검사. Docker 멀티스테이지 빌드(`Dockerfile`) 성공·이미지로 h2-docker 기동(V0~V6 적용, `/mcp` 404) 확인
+- 임시 환경 정리함 : 앱 9951·9955·9956, 프록시 8443, DB `lexorma_dec8_app`·`_test`·`_full`·`_noai`(7차 잔여 `lexorma_dec7_app`·`dec7_src` 포함), 컨테이너·이미지, JAR·TLS 키·H2 폴더 삭제. 사용자 앱 9940·개발 DB `lexorma` 손대지 않음
+- 끝 Git : HEAD `e56e2b7`, 스테이징 그대로(AD 1개), 작업 트리 ` D` 77(옮긴 원래 파일)·` M` 39·`??` 5(lexorma-ai/, 새 파일 4)
+- **8차 종료 상태** : 남은 것 pending-work 7.3 재로그인 세션 행(동시 로그인 경쟁 직후 잠깐 유효 세션 둘 이상 — 정책 결정 필요). 다음 작업은 사용자와 정한다. 다음 마이그레이션 V7
+
 ## 7차 통합 품질 개선 · DEC-22 보완 (2026-11-17)
 
 지시 : 요청 로그 상태 코드(P0) → `searchTables` 검색 방식 표시(P1) → DEC-22 모델 VIEW·ERD 배치 교환 → DEC-05 UNKNOWN 정책 → 대형 ERD 이미지 측정 → H2·PG 전체 → 문서. 커밋·인덱스 변경 금지, 마이그레이션 필요 시 V7.

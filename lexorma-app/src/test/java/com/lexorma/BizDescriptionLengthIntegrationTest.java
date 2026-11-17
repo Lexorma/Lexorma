@@ -76,7 +76,7 @@ class BizDescriptionLengthIntegrationTest {
     @Autowired TableDesignService tableDesign;
     @Autowired BizDescriptionService bizDescriptions;
     @Autowired BizDescriptionRestController bizDescriptionApi;
-    @Autowired com.lexorma.data.ai.dictionary.service.AiDescriptionReviewService reviews;
+    @Autowired com.lexorma.ai.dictionary.service.AiDescriptionReviewService reviews;
     @Autowired com.lexorma.common.exception.GlobalExceptionHandler exceptionHandler;
     @Autowired ProjectRepository projectRepository;
     @Autowired ProjectMemberRepository projectMemberRepository;
@@ -148,7 +148,7 @@ class BizDescriptionLengthIntegrationTest {
         // AI 제안 승인 (고친 문구) : 같은 코드·문구, 제안 조회 전에 거부
         // 승인자 = 이 프로젝트의 관리자(owner)
         CustomException ai = catchCustom(() -> reviews.approve(com.lexorma.core.execution.ExecutionContext.user(login()), Long.MAX_VALUE,
-                new com.lexorma.data.ai.dictionary.domain.dto.AiDictionaryDto.ReviewRequest(0L, over, null)));
+                new com.lexorma.ai.dictionary.domain.dto.AiDictionaryDto.ReviewRequest(0L, over, null)));
         assertThat(ai.getErrorCode()).isEqualTo(ErrorCode.BIZ_DESCRIPTION_TOO_LONG);
         assertThat(ai.getCustomMessage()).isEqualTo(KO);
 

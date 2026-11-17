@@ -1,0 +1,16 @@
+// AI·MCP (8차에 lexorma-data·core·system 에서 옮김) : AI Provider(AI-3)·메타데이터 Tool Calling(AI-4)·AI 설명 제안·평가(AI-5)·내장 MCP(DEC-31).
+// data 의 조회·쓰기 서비스를 쓰고, data 는 이 모듈을 참조하지 않는다 (ModuleBoundaryTest). 실행 JAR 이 아니라 lexorma-app 에 들어가는 라이브러리다.
+
+dependencies {
+    api project(':lexorma-data')
+    // AI Provider : Spring AI 의 모델 모듈만 쓴다 (starter·autoconfigure 를 넣지 않는다 → 기본 ChatModel Bean·Ollama 접속 설정이 생기지 않는다).
+    // 모델 객체는 관리자가 등록한 Provider 로 요청 때마다 만들고, HTTP 는 core 의 SEC-1 전송(ExternalHttpClients)으로만 나간다
+    // ChatClient(spring-ai-client-chat)는 AiProviderClients.call 의 공개 타입이라 api, Ollama 구현은 이 모듈 안에서만 쓰므로 implementation
+    implementation 'org.springframework.ai:spring-ai-ollama'
+    api 'org.springframework.ai:spring-ai-client-chat'
+    // AI 구조화 응답의 JSON Schema 검증기 (JsonSchemaOutput 이 직접 쓴다). Spring AI 도 같은 버전을 가져오지만 전이 의존성에 기대지 않도록 직접 선언한다
+    // — Spring AI 를 올릴 때 이 버전과 맞는지 확인한다
+    implementation libs.json.schema.validator
+
+    testImplementation testFixtures(project(':lexorma-core'))
+}

@@ -2,11 +2,11 @@ package com.lexorma;
 
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
-import com.lexorma.core.ai.domain.dto.AiProviderDto;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.Failure;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.ProviderRequest;
-import com.lexorma.core.ai.service.AiProviderClients;
-import com.lexorma.core.ai.service.AiProviderService;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.Failure;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.ProviderRequest;
+import com.lexorma.ai.provider.service.AiProviderClients;
+import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.Reason;
@@ -22,7 +22,7 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
-import com.lexorma.system.ai.controller.AiProviderRestController;
+import com.lexorma.ai.provider.controller.AiProviderRestController;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -146,7 +146,7 @@ class AiProviderIntegrationTest {
     @Autowired ExternalConnectionSecurityIntegrationTest.FakeResolver dns;
     @Autowired ApplicationContext context;
     @Autowired AiProviderService service;
-    @Autowired com.lexorma.core.ai.service.AiDefaultProviderService defaults;
+    @Autowired com.lexorma.ai.provider.service.AiDefaultProviderService defaults;
     @Autowired AiProviderClients clients;
     @Autowired AiProviderRestController api;
     @Autowired ExternalConnectionRuleService rules;
@@ -222,7 +222,7 @@ class AiProviderIntegrationTest {
         AiProviderDto.Provider created = api.create(new ProviderRequest(name, "ollama", "HTTP://127.0.0.1:11434/", " llama3.2:3b ", null, " 설명 ")).getBody();
         createdProviders.add(created.id());
         assertThat(created).extracting(AiProviderDto.Provider::type, AiProviderDto.Provider::baseUrl, AiProviderDto.Provider::defaultModel,
-                AiProviderDto.Provider::enabled, AiProviderDto.Provider::description).containsExactly(com.lexorma.core.ai.AiProviderType.OLLAMA,
+                AiProviderDto.Provider::enabled, AiProviderDto.Provider::description).containsExactly(com.lexorma.ai.provider.AiProviderType.OLLAMA,
                 "http://127.0.0.1:11434", "llama3.2:3b", true, "설명");
         assertThat(created.createdBy()).isNotBlank();
         assertInvalid(new ProviderRequest(name.toUpperCase(), "OLLAMA", url, null, true, null), ErrorCode.AI_PROVIDER_INVALID);
@@ -231,7 +231,7 @@ class AiProviderIntegrationTest {
         assertThat(updated).extracting(AiProviderDto.Provider::baseUrl, AiProviderDto.Provider::defaultModel, AiProviderDto.Provider::enabled)
                 .containsExactly("https://ollama.internal.test/base", null, false);
         assertThat(api.types().getBody()).extracting(AiProviderDto.TypeInfo::type, AiProviderDto.TypeInfo::defaultBaseUrl)
-                .containsExactly(org.assertj.core.groups.Tuple.tuple(com.lexorma.core.ai.AiProviderType.OLLAMA, "http://127.0.0.1:11434"));
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(com.lexorma.ai.provider.AiProviderType.OLLAMA, "http://127.0.0.1:11434"));
 
         api.delete(created.id());
         assertThatThrownBy(() -> api.get(created.id())).extracting("errorCode").isEqualTo(ErrorCode.AI_PROVIDER_NOT_FOUND);

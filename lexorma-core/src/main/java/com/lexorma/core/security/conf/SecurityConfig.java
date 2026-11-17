@@ -29,7 +29,9 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.session.Session;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.web.authentication.session.ConcurrentSessionControlAuthenticationStrategy;
 import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.session.security.SpringSessionBackedSessionRegistry;
 
@@ -56,6 +58,9 @@ public class SecurityConfig {
     private final CustomOncePerRequestFilter customOncePerRequestFilter;
     // 웹 서버 없이 띄우는 테스트 컨텍스트(web-application-type=none)에는 세션 저장소가 없다
     private final ObjectProvider<FindByIndexNameSessionRepository<? extends Session>> sessionRepository;
+
+    /** 계정당 동시 로그인 수 */
+    static final int MAXIMUM_SESSIONS = 1;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -107,8 +112,16 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionFixation(SessionManagementConfigurer.SessionFixationConfigurer::changeSessionId)
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        // 동시 로그인 제한 전략 : 로그인하는 지금 세션은 만료시키지 않는다 (기본 전략은 유효 세션이 여럿 남은 계정의 재로그인에서 자기 세션까지 만료시켰다, 8차)
+                        .withObjectPostProcessor(new ObjectPostProcessor<ConcurrentSessionControlAuthenticationStrategy>() {
+                            @Override
+                            @SuppressWarnings("unchecked")
+                            public <O extends ConcurrentSessionControlAuthenticationStrategy> O postProcess(O strategy) {
+                                return (O) new LatestLoginSessionControlStrategy(sessionRegistry(), MAXIMUM_SESSIONS);
+                            }
+                        })
                         // 계정당 세션 1개 : 새로 로그인하면 먼저 로그인한 세션을 만료시킨다 (나중 로그인 우선)
-                        .maximumSessions(1)
+                        .maximumSessions(MAXIMUM_SESSIONS)
                         .maxSessionsPreventsLogin(false)
                         // 동시 세션 제한도 세션 DB 기준 (재시작/여러 인스턴스에서도 같은 기준)
                         .sessionRegistry(sessionRegistry())

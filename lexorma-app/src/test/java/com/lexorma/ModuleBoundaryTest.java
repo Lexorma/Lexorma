@@ -23,12 +23,15 @@ class ModuleBoundaryTest {
 
     /** 모듈 → 참조하면 안 되는 패키지 */
     private static final Map<String, List<String>> FORBIDDEN = Map.of(
-            "lexorma-common", List.of("com.lexorma.core.", "com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source."),
-            "lexorma-core", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source."),
-            "lexorma-system", List.of("com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source."),
-            "lexorma-operation", List.of("com.lexorma.system.", "com.lexorma.data.", "com.lexorma.source."),
-            "lexorma-data", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.source."),
-            "lexorma-source", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data."));
+            "lexorma-common", List.of("com.lexorma.core.", "com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source.", "com.lexorma.ai."),
+            "lexorma-core", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source.", "com.lexorma.ai."),
+            "lexorma-system", List.of("com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.source.", "com.lexorma.ai."),
+            "lexorma-operation", List.of("com.lexorma.system.", "com.lexorma.data.", "com.lexorma.source.", "com.lexorma.ai."),
+            // data 는 ai 를 모른다 (8차 : ai → data 한 방향, 역방향이 필요하면 data 의 계약 인터페이스를 ai 가 구현한다)
+            "lexorma-data", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.source.", "com.lexorma.ai."),
+            "lexorma-source", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.data.", "com.lexorma.ai."),
+            // ai 는 data·core·common 위에 있다. 원본 DB 도구(source)는 AI 에 노출하지 않는다
+            "lexorma-ai", List.of("com.lexorma.system.", "com.lexorma.operation.", "com.lexorma.source."));
 
     private static final Pattern IMPORT = Pattern.compile("^import\\s+(?:static\\s+)?(com\\.lexorma\\.[\\w.]+)", Pattern.MULTILINE);
     private static final Pattern PROJECT_DEPENDENCY = Pattern.compile("project\\(':([\\w-]+)'\\)");
@@ -105,9 +108,9 @@ class ModuleBoundaryTest {
     }
 
     @Test
-    @DisplayName("빌드 파일 : data·source 는 서로를 의존하지 않고, 같은 층의 모듈은 core 만 받는다. app 이 넷을 모두 조립한다")
+    @DisplayName("빌드 파일 : data·source 는 서로를 의존하지 않고, 같은 층의 모듈은 core 만 받는다. ai 는 data 위의 라이브러리 (data → ai 없음). app 이 모두 조립한다")
     void gradle() throws IOException {
-        for (String module : List.of("lexorma-common", "lexorma-core", "lexorma-system", "lexorma-operation", "lexorma-data", "lexorma-source")) {
+        for (String module : List.of("lexorma-common", "lexorma-core", "lexorma-system", "lexorma-operation", "lexorma-data", "lexorma-source", "lexorma-ai")) {
             Path build = root().resolve(module).resolve("build.gradle");
             if (!Files.exists(build)) continue; // system·operation·data·source 는 루트 build.gradle 이 설정한다
             Matcher matcher = PROJECT_DEPENDENCY.matcher(Files.readString(build));
@@ -119,6 +122,11 @@ class ModuleBoundaryTest {
         String rootBuild = Files.readString(root().resolve("build.gradle"));
         assertThat(rootBuild).contains("it.name in ['lexorma-system', 'lexorma-operation', 'lexorma-data', 'lexorma-source']").contains("api project(':lexorma-core')");
         assertThat(Files.readString(root().resolve("lexorma-app/build.gradle")))
-                .contains("project(':lexorma-system')", "project(':lexorma-operation')", "project(':lexorma-data')", "project(':lexorma-source')");
+                .contains("project(':lexorma-system')", "project(':lexorma-operation')", "project(':lexorma-data')", "project(':lexorma-source')", "project(':lexorma-ai')");
+        // ai 는 data 위의 라이브러리 모듈 : 실행 JAR 을 따로 만들지 않고, data 의 빌드 설정은 ai 를 받지 않는다
+        String aiBuild = Files.readString(root().resolve("lexorma-ai/build.gradle"));
+        assertThat(aiBuild).contains("api project(':lexorma-data')").doesNotContain("org.springframework.boot'").doesNotContain("bootJar");
+        assertThat(rootBuild).doesNotContain("project(':lexorma-ai')");
+        assertThat(Files.readString(root().resolve("settings.gradle"))).contains("include 'lexorma-ai'");
     }
 }

@@ -1,5 +1,7 @@
 # AI-3 — Spring AI 기반 AI Provider 관리 · Ollama 연동
 
+> **8차 (2026-11-17)** : 코드는 `lexorma-ai` 모듈로 옮겼다 — `core/ai` → `com.lexorma.ai.provider`(어댑터 `ai.provider.adapter`), `system/ai` 컨트롤러 → `ai.provider.controller`, Spring AI 의존성도 core 에서 ai 로. 아래의 `core/ai`·`system/ai` 경로는 그 위치를 뜻한다. API·DB·동작은 그대로 ([ai-module-extraction.md](ai-module-extraction.md)).
+
 > 상태 : **완료 (2026-11-14, 후속 안정화 포함 — 12장)**. 등록 : [AI 로드맵 3단계](../reference/ai-metadata-roadmap.md#3단계-ollama-연결-및-provider-추상화). 마이그레이션 V8 (`V8__ai_provider.sql`).
 > 후속 : **시스템 기본 AI Provider** (V9, 13장).
 > 이 Provider 계층을 쓰는 첫 기능 : **AI-4 Tool Calling 기반** ([ai-tool-calling-ai4.md](ai-tool-calling-ai4.md)) — `callDefault` 로 읽기 전용 메타데이터 Tool 을 붙여 부른다. AI-4 가 어댑터에 더한 것은 Tool 미지원 거절 판별(`AiProviderAdapter.isToolCallingUnsupported`, `call` 이 `AI_TOOL_CALLING_UNSUPPORTED` 로 바꾼다) 하나다.

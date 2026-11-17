@@ -35,7 +35,7 @@
 
 - 조건 : **활성 프로젝트가 하나도 없고**, 계정에 **실제로 부여된 역할이 `ROLE_ADMIN`** (역할 계층으로 얻은 상위 권한이 아니라 `TB_ACNT_ROLE`). 프로젝트 관리자·MANAGER·DBA·USER·VIEWER·NOT_APPROVE 는 불가.
 - 인증은 기존 체계 그대로 : 같은 계정·비밀번호·`PasswordEncoder`·활성 계정 확인·초기 비밀번호 차단(`PASSWORD_CHANGE_REQUIRED`, 로그인 전 변경 API 는 프로젝트 없이 동작). 복구 전용 계정·공통 비밀번호 없음.
-- 요청 : 기존 `POST /api/auth/login` 에 `recovery=true` (`project_id` 없음). 같은 Security 필터를 타므로 세션 고정 방어(`changeSessionId`), CSRF, 계정당 세션 1개(나중 로그인 우선)가 그대로 적용된다.
+- 요청 : 기존 `POST /api/auth/login` 에 `recovery=true` (`project_id` 없음). 같은 Security 필터를 타므로 세션 고정 방어(`changeSessionId`), CSRF, 계정당 세션 1개(나중 로그인 우선)가 그대로 적용된다. (8차 : 동시 로그인 제한 전략을 `LatestLoginSessionControlStrategy` 로 바꿨다 — 로그인하는 지금 세션은 만료시키지 않고 같은 계정의 다른 유효 세션을 모두 만료. 유효 세션이 여럿 남은 계정의 재로그인이 200 인데 미인증 세션이 되던 결함과 동시 로그인 500 수정, `SessionReloginHttpTest`)
 - 실패 응답 (401) : 아이디 없음·비밀번호 불일치·비활성 계정 → `INVALID_CREDENTIALS` (기존과 같음). 비밀번호는 맞지만 조건 불충족 → `RECOVERY_LOGIN_DENIED` — ADMIN 이 아닌지 활성 프로젝트가 있는지는 구분해 알리지 않는다.
 
 ## 3. 복구 세션

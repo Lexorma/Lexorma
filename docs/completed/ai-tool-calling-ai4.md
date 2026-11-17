@@ -1,5 +1,7 @@
 # AI-4 Lexorma DB 기반 AI Tool Calling — 읽기 전용 메타데이터 조회 Tool
 
+> **8차 (2026-11-17)** : 코드는 `lexorma-ai` 모듈로 옮겼다 — `lexorma-data` `ai/…` → `com.lexorma.ai.…`(tool·context·answer·evidence·budget·service·controller), 리소스 `ai/` 경로 그대로. API·도구 계약은 그대로 ([ai-module-extraction.md](ai-module-extraction.md)).
+
 > **상태 : AI-4 전체 완료 (2026-11-15).** 기반(2026-11-14) → 후속 : 구조화 응답·근거 검증([11장](#11-ai-4-후속--구조화-응답근거-검증)) → 잔여 : `findSimilarColumns`·`getMetadataHistory`·토큰 예산·Tool Calling 미지원 모델의 서버 맥락 대체 흐름([12장](#12-ai-4-잔여--유사-컬럼변경-이력토큰-예산미지원-모델-대체-흐름)).
 > 로드맵 [4단계](../reference/ai-metadata-roadmap.md#4단계-lexorma-db-기반-ai-tool-calling)의 완료 조건 점검은 [12.9](#129-로드맵-4단계-완료-조건-점검), 남은 기술적 제약은 [8장](#8-남은-작업과-제약). 앞 단계 : [AI-3 Provider](ai-provider-ai3.md), [SEC-1](../reference/external-connection-security-sec1.md).
 

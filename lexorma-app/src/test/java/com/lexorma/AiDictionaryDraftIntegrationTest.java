@@ -3,10 +3,10 @@ package com.lexorma;
 import com.lexorma.MetadataToolIntegrationTest.ScriptedOllama;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
-import com.lexorma.core.ai.domain.dto.AiProviderDto;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.ProviderRequest;
-import com.lexorma.core.ai.service.AiDefaultProviderService;
-import com.lexorma.core.ai.service.AiProviderService;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.ProviderRequest;
+import com.lexorma.ai.provider.service.AiDefaultProviderService;
+import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.RuleRequest;
 import com.lexorma.core.network.service.ExternalConnectionRuleService;
@@ -20,18 +20,18 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
-import com.lexorma.data.ai.dictionary.domain.dto.AiDictionaryDto;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionJob;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal.ReviewStatus;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposalHistory;
-import com.lexorma.data.ai.dictionary.repository.AiDescriptionJobRepository;
-import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalHistoryRepository;
-import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionDraftService;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionJobService;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionReviewService;
-import com.lexorma.data.ai.dictionary.service.AiDictionaryQueryService;
+import com.lexorma.ai.dictionary.domain.dto.AiDictionaryDto;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionJob;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposal;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposal.ReviewStatus;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposalHistory;
+import com.lexorma.ai.dictionary.repository.AiDescriptionJobRepository;
+import com.lexorma.ai.dictionary.repository.AiDescriptionProposalHistoryRepository;
+import com.lexorma.ai.dictionary.repository.AiDescriptionProposalRepository;
+import com.lexorma.ai.dictionary.service.AiDescriptionDraftService;
+import com.lexorma.ai.dictionary.service.AiDescriptionJobService;
+import com.lexorma.ai.dictionary.service.AiDescriptionReviewService;
+import com.lexorma.ai.dictionary.service.AiDictionaryQueryService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
@@ -391,21 +391,21 @@ class AiDictionaryDraftIntegrationTest {
         tx.executeWithoutResult(s -> relationRepository.findById(fk.getId()).orElseThrow().setDeleteRule(TableRelation.Rule.CASCADE));
         var relResult = reviews.approve(user(owner), rel.getId(), req(rel));
         assertThat(relResult.outcome()).isEqualTo("REVIEW_REQUIRED");
-        assertThat(relResult.changes()).anySatisfy(change -> assertThat(change.type()).isEqualTo(com.lexorma.data.ai.evidence.EvidenceType.RELATION));
+        assertThat(relResult.changes()).anySatisfy(change -> assertThat(change.type()).isEqualTo(com.lexorma.ai.evidence.EvidenceType.RELATION));
 
         // 다른 사용자가 업무 설명을 먼저 고쳤다 → 덮어쓰지 않는다
         AiDescriptionProposal biz = generate("TABLE", member.getId(), null, "회원 테이블", List.of(ev("TABLE", member.getId(), "TB_MBR")));
         tx.executeWithoutResult(s -> tableInfoRepository.findById(member.getId()).orElseThrow().setBizDescription("사람이 쓴 설명"));
         var bizResult = reviews.approve(user(owner), biz.getId(), req(biz));
         assertThat(bizResult.outcome()).isEqualTo("REVIEW_REQUIRED");
-        assertThat(bizResult.changes()).extracting(com.lexorma.data.ai.dictionary.service.ProposalVersions.Change::kind).contains("BIZ_DESCRIPTION_CHANGED");
+        assertThat(bizResult.changes()).extracting(com.lexorma.ai.dictionary.service.ProposalVersions.Change::kind).contains("BIZ_DESCRIPTION_CHANGED");
         assertThat(tableInfoRepository.findById(member.getId()).orElseThrow().getBizDescription()).isEqualTo("사람이 쓴 설명");
 
         // 대상 삭제
         ColumnInfo name = columns.get("TB_MBR.MBR_NM");
         AiDescriptionProposal gone = generate("COLUMN", member.getId(), name.getId(), "회원 이름", List.of(ev("COLUMN", name.getId(), "MBR_NM")));
         tx.executeWithoutResult(s -> columnInfoRepository.deleteById(name.getId()));
-        assertThat(reviews.approve(user(owner), gone.getId(), req(gone)).changes()).extracting(com.lexorma.data.ai.dictionary.service.ProposalVersions.Change::kind)
+        assertThat(reviews.approve(user(owner), gone.getId(), req(gone)).changes()).extracting(com.lexorma.ai.dictionary.service.ProposalVersions.Change::kind)
                 .containsExactly("TARGET_DELETED");
         assertThat(proposalRepository.findById(gone.getId())).as("대상이 지워져도 제안·이력은 남는다").isPresent();
 

@@ -12,6 +12,7 @@ import java.util.List;
 
 /**
  * 프로젝트 영구 삭제 : 이 모듈이 가진 프로젝트 데이터를 모두 지운다 (데이터 사전, 물리·논리 모델·VIEW, 매핑·원본 매핑, ERD 배치, 변경 이력, 모델 버전).
+ * AI·MCP 데이터는 lexorma-ai 가 같은 이벤트로 지운다 (모델 테이블로 가는 FK 가 없어 순서가 필요 없다).
  * <p>
  * 프로젝트 삭제 서비스가 프로젝트 행을 지우기 전에 발행하는 이벤트를 같은 스레드·같은 트랜잭션에서 받는다 ({@link EventListener} 는 동기 실행) :
  * 여기서 실패하면 예외가 그대로 올라가 프로젝트 삭제 전체가 롤백되고, 프로젝트 삭제가 롤백되면 여기서 지운 것도 되돌아간다.
@@ -30,19 +31,7 @@ public class ProjectDataCleanup {
     private static final List<String> DELETES = List.of(
             // 논리 ↔ 물리 매핑
             // 원본 매핑 (M-4c) : 모델 스키마·테이블로 가는 FK 가 있어 먼저 지운다
-            // AI 설명 제안 (AI-5) : 모델 테이블에 FK 가 없어 순서는 상관없지만 모델보다 먼저 지운다
-            "delete from TB_AI_EXPLN_EVL_HSTRY where PRJ_SN = :projectId",
-            // 내장 MCP (DEC-31) : 호출 이력·토큰·프로젝트 설정 (FK_MCP_TKN_01·FK_PRJ_MCP_STNG_01 → TB_PRJ)
-            "delete from TB_MCP_CALL_HSTRY where PRJ_SN = :projectId",
-            "delete from TB_MCP_TKN where PRJ_SN = :projectId",
-            "delete from TB_PRJ_MCP_STNG where PRJ_SN = :projectId",
-            // 프로젝트 AI Provider 지정 (DEC-18, FK_PRJ_AI_STNG_01 → TB_PRJ)
-            "delete from TB_PRJ_AI_STNG where PRJ_SN = :projectId",
-            "delete from TB_AI_EXPLN_EVL where PRJ_SN = :projectId",
-            "delete from TB_AI_EXPLN_EVL_TRGT where PRJ_SN = :projectId",
-            "delete from TB_AI_EXPLN_SGSTN_HSTRY where PRJ_SN = :projectId",
-            "delete from TB_AI_EXPLN_SGSTN where PRJ_SN = :projectId",
-            "delete from TB_AI_EXPLN_CRT_EXCN where PRJ_SN = :projectId",
+            // AI 설명 제안·평가·프로젝트 AI 설정·내장 MCP 의 프로젝트 데이터는 lexorma-ai 의 AiProjectDataCleanup 이 지운다 (8차 모듈 분리)
             "delete from TB_SRC_IMPRT_EXCN where PRJ_SN = :projectId",
             // 출처 컬럼 매핑·매핑 이력 (DEC-06, V4) : 컬럼 매핑은 테이블 매핑·모델 컬럼으로 가는 FK 가 있어 그보다 먼저, 이력은 FK 가 없다
             "delete from TB_SRC_COL_MPNG where PRJ_SN = :projectId",

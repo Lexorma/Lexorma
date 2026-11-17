@@ -20,7 +20,7 @@ import java.util.Objects;
  *   <li>행을 잠그고 다시 읽은 지금 값과 화면이 읽은 값(base, 필수)을 비교한다 ({@link BizDescriptions}) : 그 사이 다른 사용자나 AI 제안 승인이 바꿨으면
  *       BIZ_DESCRIPTION_CONFLICT — 같은 값으로 바꾸는 것은 충돌이 아니다. AI 제안 승인도 대상 행을 잠그고 생성 때 값과 비교하므로 오래된 제안이 이 값을 덮어쓰지 못한다</li>
  *   <li>업무 설명만 바꾼다 (@DynamicUpdate). 객체 승인 여부와 무관하다 (AI 제안 승인과 같은 결정 — 다른 속성의 승인 잠금은 그대로)</li>
- *   <li>모델 변경 이력에 출처 USER 로 남는다 (AI 제안 승인은 AI_APPROVAL)</li>
+ *   <li>모델 변경 이력에 출처 USER 로 남는다 (AI 제안 승인은 AI_APPROVAL — {@link #writeAiApproval})</li>
  *   <li>잠근 뒤 엔터티를 {@code refresh} 하지 않고 업무 설명만 DB 에서 다시 읽는다 (AI-1d 후속) : 테이블 refresh 는 {@code TableInfo.columns}(cascade ALL)를 따라
  *       같은 트랜잭션에서 아직 flush 하지 않은 컬럼 변경까지 되돌렸다. 이 트랜잭션이 먼저 읽어 둔 엔터티가 그 사이 다른 트랜잭션의 커밋으로 낡았으면
  *       (엔터티 값 ≠ DB 값) 더티 체킹·변경 이력의 변경 전 값이 낡은 값을 기준으로 하므로 쓰지 않고 BIZ_DESCRIPTION_CONFLICT 로 거부한다
@@ -33,6 +33,25 @@ public class BizDescriptionService {
 
     private final TableInfoRepository tables;
     private final ColumnInfoRepository columns;
+    private final com.lexorma.data.history.record.ModelChangeRecorder recorder;
+
+    /**
+     * AI 설명 제안 승인의 최종 쓰기 (lexorma-ai 의 승인 서비스가 부른다, 8차 모듈 분리) : 모델 데이터의 변경은 이 모듈이 한다.
+     * 부르는 쪽이 이미 시작한 쓰기 트랜잭션 안에서, 대상 행을 잠그고 제안의 기준 버전을 확인한 뒤에 부른다 (잠금 순서 제안 → 모델 행은 그쪽 계약).
+     * 업무 설명만 쓰고(객체 승인 상태와 무관) 모델 변경 이력의 출처를 AI_APPROVAL 로 남긴다.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void writeAiApproval(TableInfo lockedTable, String text) {
+        recorder.markAiApproval();
+        lockedTable.setBizDescription(text);
+    }
+
+    /** 컬럼 : {@link #writeAiApproval(TableInfo, String)} 와 같다 */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void writeAiApproval(ColumnInfo lockedColumn, String text) {
+        recorder.markAiApproval();
+        lockedColumn.setBizDescription(text);
+    }
 
     @Transactional
     public BizDescriptionDto.Result update(AccountDto account, BizDescriptionDto.Request request) {

@@ -3,10 +3,10 @@ package com.lexorma;
 import com.lexorma.MetadataToolIntegrationTest.ScriptedOllama;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
-import com.lexorma.core.ai.domain.dto.AiProviderDto;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.ProviderRequest;
-import com.lexorma.core.ai.service.AiDefaultProviderService;
-import com.lexorma.core.ai.service.AiProviderService;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.ProviderRequest;
+import com.lexorma.ai.provider.service.AiDefaultProviderService;
+import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.RuleRequest;
 import com.lexorma.core.network.service.ExternalConnectionRuleService;
@@ -20,15 +20,15 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
-import com.lexorma.data.ai.dictionary.domain.dto.AiDictionaryDto;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal.ReviewStatus;
-import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalHistoryRepository;
-import com.lexorma.data.ai.dictionary.repository.AiDescriptionProposalRepository;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionDraftService;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionJobService;
-import com.lexorma.data.ai.dictionary.service.AiDescriptionReviewService;
-import com.lexorma.data.ai.dictionary.service.AiDictionaryQueryService;
+import com.lexorma.ai.dictionary.domain.dto.AiDictionaryDto;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposal;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposal.ReviewStatus;
+import com.lexorma.ai.dictionary.repository.AiDescriptionProposalHistoryRepository;
+import com.lexorma.ai.dictionary.repository.AiDescriptionProposalRepository;
+import com.lexorma.ai.dictionary.service.AiDescriptionDraftService;
+import com.lexorma.ai.dictionary.service.AiDescriptionJobService;
+import com.lexorma.ai.dictionary.service.AiDescriptionReviewService;
+import com.lexorma.ai.dictionary.service.AiDictionaryQueryService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.schema.domain.entity.SchemaInfo;
@@ -371,8 +371,8 @@ class AiDictionaryWorkflowIntegrationTest {
     private AiDictionaryDto.JobSummary awaitJob(Long id) throws InterruptedException {
         for (int i = 0; i < 200; i++) {
             AiDictionaryDto.JobSummary s = jobs.get(user(owner), id);
-            if (s.status() != com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionJob.Status.PENDING
-                    && s.status() != com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionJob.Status.RUNNING) return s;
+            if (s.status() != com.lexorma.ai.dictionary.domain.entity.AiDescriptionJob.Status.PENDING
+                    && s.status() != com.lexorma.ai.dictionary.domain.entity.AiDescriptionJob.Status.RUNNING) return s;
             Thread.sleep(50);
         }
         throw new AssertionError("실행이 끝나지 않았습니다");

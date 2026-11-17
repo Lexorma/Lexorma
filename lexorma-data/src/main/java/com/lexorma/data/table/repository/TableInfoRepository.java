@@ -54,6 +54,10 @@ public interface TableInfoRepository extends JpaRepository<TableInfo, Long>, Jpa
     @Query("select t.bizDescription from TableInfo t where t.id = :id")
     String findBizDescription(@Param("id") Long id);
 
+    /** 프로젝트 안에서 여러 스키마에 있는 테이블명 : 엑셀 다운로드가 컬럼의 테이블명을 "스키마명.테이블명" 으로 적을 대상 (M-11) */
+    @Query("select t.tableName from TableInfo t where t.projectId = :projectId group by t.tableName having count(t) > 1")
+    List<String> findDuplicatedTableNames(@Param("projectId") Long projectId);
+
     /** 스키마 삭제 가능 여부 */
     boolean existsBySchema_Id(Long schemaId);
 }

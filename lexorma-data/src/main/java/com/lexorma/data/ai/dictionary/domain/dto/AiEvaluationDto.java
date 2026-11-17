@@ -46,7 +46,7 @@ public final class AiEvaluationDto {
      */
     public record ProposalItem(Long id, String model, String promptVersion, LocalDateTime createdAt, AiDescriptionProposal.ReviewStatus status, boolean edited,
                                AiDescriptionProposal.Certainty certainty, String proposedDescription, String confirmedDescription, JsonNode detail, JsonNode evidence,
-                               boolean sameMetadata, int invalidReferences, String approvalHold) {
+                               boolean sameMetadata, int invalidReferences, String approvalHold, boolean sameContext) {
     }
 
     /**
@@ -73,8 +73,20 @@ public final class AiEvaluationDto {
     }
 
     /** 판정 저장 : 같은 검토자의 판정이 있으면 고친다 (version 필요). targetVersion 은 화면이 본 평가 대상 버전 (다르면 충돌 — 다른 기준 의미로 판정하지 않게) */
+    /** changeReason : 저장한 판정을 고칠 때의 사유 (DEC-27 — 값이 바뀌는 수정에 필수, 판정 변경 이력에 남는다) */
     public record JudgmentRequest(Long targetId, Long proposalId, Long version, Long targetVersion, String judgment, Boolean unfoundedClaim, String missingInformation, String uncertainty,
-                                  String termRecommendation, String domainRecommendation, String requiredEdits, Integer reviewMinutes, Integer writingMinutes) {
+                                  String termRecommendation, String domainRecommendation, String requiredEdits, Integer reviewMinutes, Integer writingMinutes,
+                                  String changeReason) {
+        public JudgmentRequest(Long targetId, Long proposalId, Long version, Long targetVersion, String judgment, Boolean unfoundedClaim, String missingInformation,
+                               String uncertainty, String termRecommendation, String domainRecommendation, String requiredEdits, Integer reviewMinutes, Integer writingMinutes) {
+            this(targetId, proposalId, version, targetVersion, judgment, unfoundedClaim, missingInformation, uncertainty, termRecommendation, domainRecommendation,
+                    requiredEdits, reviewMinutes, writingMinutes, null);
+        }
+    }
+
+    /** 판정 변경 이력 한 건 (DEC-27, 추가만). before 는 처음 판정이면 null. 값은 판정 항목 이름 → 값 */
+    public record JudgmentHistoryRow(Long id, String changeType, String reviewerId, java.util.Map<String, Object> before, java.util.Map<String, Object> after,
+                                     String reason, LocalDateTime changedAt) {
     }
 
     /** 비율 하나 : 값(분모 0 이면 null)과 분자·분모 */

@@ -559,15 +559,18 @@ class ModelChangeHistoryIntegrationTest {
         assertThatThrownBy(call::run).isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(expected));
     }
 
-    private static TableInfoDto update(TableInfo table, String tableName, String description) {
-        return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").build();
+    /** 화면처럼 지금 수정 일시를 기준값으로 보낸다 (DEC-08 3차 : HTTP 수정은 기준값 필수) */
+    private TableInfoDto update(TableInfo table, String tableName, String description) {
+        return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(table.getId()).map(TableInfo::modifiedAt).orElse(null)).build();
     }
 
     private static TableInfoDto dto(TableInfo table) {
         return TableInfoDto.builder().id(table.getId()).build();
     }
 
-    private static ColumnBulkSaveDto bulk(TableInfo table, List<ColumnBulkSaveDto.Row> rows, List<Long> deletedIds) {
+    private ColumnBulkSaveDto bulk(TableInfo table, List<ColumnBulkSaveDto.Row> rows, List<Long> deletedIds) {
+        rows.stream().filter(r -> r.getId() != null)
+                .forEach(r -> r.setBaseModifiedAt(columnInfoRepository.findById(r.getId()).map(ColumnInfo::modifiedAt).orElse(null)));
         return ColumnBulkSaveDto.builder().tableInfoId(table.getId()).rows(new ArrayList<>(rows)).deletedIds(deletedIds).build();
     }
 

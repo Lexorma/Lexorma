@@ -150,7 +150,7 @@ function MetricsTable({ models }: { models: ModelResult[] }) {
     [t('승인율'), (m) => rateText(m.approvalRate)],
     [t('검토 / 직접 작성 시간 중앙값 (분)'), (m) => m.timeBase === 0 ? '-' : `${m.medianReviewMinutes} / ${m.medianWritingMinutes} (${m.timeBase})`],
     [t('시간 절감'), (m) => m.timeSaving == null ? '-' : `${(m.timeSaving * 100).toFixed(1)}%`],
-    [t('등록 시점 메타데이터로 만든 판정'), (m) => `${m.sameMetadata} / ${m.judgments}`],
+    [t('같은 입력 조건으로 만든 판정 (대상 버전·테이블 맥락)'), (m) => `${m.sameMetadata} / ${m.judgments}`],
   ];
   return (
     <div className="ai-dict-table-wrap">

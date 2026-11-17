@@ -257,7 +257,7 @@ PostgreSQL archive  →  Lexorma archive
 
 ### 5.9 VIEW 가져오기
 
-- **지금은 하지 않는다** : 원본 수집기가 VIEW 정의 SQL 을 수집하지 않는다. 정의 SQL 이 없는 불완전한 VIEW 모델(`TB_VIEW` 는 정의 SQL 이 필수)을 만들지 않는다.
+- **지금은 하지 않는다** : 원본 VIEW 정의 SQL 로 모델 VIEW 를 만들지 않는다 (DEC-16 부터 정의는 수집하지만 원본 카탈로그에만 보관한다 — [source-view-definition-dec16.md](../completed/source-view-definition-dec16.md)). 정의 SQL 이 없는 불완전한 VIEW 모델(`TB_VIEW` 는 정의 SQL 이 필수)을 만들지 않는다.
 - **선행 조건** : VIEW 가져오기는 다음이 마련된 뒤에 한다.
   - 정의 SQL 수집 (AI-2 후속)
   - 비밀값 처리 정책 (U-21)

@@ -77,7 +77,7 @@ export interface RevalidateResult { outcome: 'REVIEWABLE' | 'STILL_REQUIRED'; ac
 export interface ObjectStatus { targetType: TargetType; tableId: number; columnId: number | null; bizDescription: string | null; proposalId: number | null; proposalStatus: ReviewStatus | null; recheckNeeded: boolean }
 export interface JobSummary {
   id: number; status: JobStatus; targetCount: number; completedCount: number; failedCount: number; skippedCount: number;
-  requestedAt: string | null; startedAt: string | null; endedAt: string | null; errors: { target: string | null; code: string }[];
+  requestedAt: string | null; startedAt: string | null; endedAt: string | null; errors: { target: string | null; code: string; message?: string }[];
 }
 export interface Page<T> { content: T[]; totalElements: number; number: number; totalPages: number }
 

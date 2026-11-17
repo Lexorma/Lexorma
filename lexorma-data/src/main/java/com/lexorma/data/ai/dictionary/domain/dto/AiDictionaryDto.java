@@ -116,7 +116,14 @@ public final class AiDictionaryDto {
     public record PreviewItem(AiDescriptionProposal.TargetType targetType, Long tableId, Long columnId, String name, String outcome) {
     }
 
-    public record JobError(String target, String code) {
+    /**
+     * 일괄 생성 오류 하나. code 는 오류 코드(저장 값), message 는 요청 언어의 사용자 문구 (DEC-32) — 저장하지 않고 응답할 때 code 로 만든다.
+     */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record JobError(String target, String code, String message) {
+        public JobError(String target, String code) {
+            this(target, code, null);
+        }
     }
 
     public record JobSummary(Long id, AiDescriptionJob.Status status, int targetCount, int completedCount, int failedCount, int skippedCount,

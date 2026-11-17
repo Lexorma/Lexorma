@@ -53,6 +53,10 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
       setMessage({ kind: 'error', text: t('종결 사유를 입력해주세요.') });
       return;
     }
+    if (action === 'hold' && !reason.trim()) {
+      setMessage({ kind: 'error', text: t('보류 사유를 입력해주세요.') });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -295,7 +299,9 @@ export function ProposalDetailView({ id, onChanged, onRegenerated }: { id: numbe
                   : (replaces ? t('승인 및 교체') : tc('버튼', '승인'))}
               </button>
             )}
-            <button type="button" className="btn" disabled={busy} onClick={() => run('reject')}>{tc('버튼', '반려')}</button>
+            {/* 블라인드 평가 중에는 반려하지 않는다 (DEC-29, 서버도 거부) — 보류·종결은 사유와 함께 가능 */}
+            <button type="button" className="btn" disabled={busy || p.blind} onClick={() => run('reject')}
+                    title={p.blind ? t('블라인드 평가 중인 제안은 반려할 수 없습니다. 실제 의미를 확인한 뒤 처리하거나 보류·종결하세요.') : undefined}>{tc('버튼', '반려')}</button>
             {p.status !== 'ON_HOLD' && <button type="button" className="btn" disabled={busy} onClick={() => run('hold')}>{t('보류')}</button>}
             {(p.status === 'PROPOSED' || p.status === 'ON_HOLD') && <button type="button" className="btn" disabled={busy} onClick={() => run('review')}>{t('검토함')}</button>}
             {p.status !== 'REVIEW_REQUIRED' && <button type="button" className="btn" disabled={busy} onClick={() => run('close')} title={t('적용하지 않고 닫습니다 (반려와 달리 품질 지표에 넣지 않음)')}>{t('제안 종결')}</button>}

@@ -19,6 +19,7 @@ import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.data.table.service.TableDesignService;
 import com.lexorma.data.table.service.BizDescriptions;
+import com.lexorma.data.table.service.TableListFilter;
 import com.lexorma.data.table.service.TableNameResolver;
 import com.lexorma.data.physical.repository.TableRelationRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -32,7 +33,6 @@ import com.lexorma.core.project.domain.entity.ProjectMember;
 import com.lexorma.core.util.AuthUtil;
 import com.lexorma.common.utils.ExcelUtils;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -71,25 +71,12 @@ public class TableDesignServiceImpl implements TableDesignService {
     private static final int FIRST_ROW = 1;
 
     /** 그리드 검색 컬럼 → 엔티티 필드 (부분 일치) */
-    private static final Set<String> SEARCH_COLUMNS = Set.of("tableName", "tableDescription", "tableKorName");
-
     @Override
     @Transactional(readOnly = true)
     public Page<TableInfoDto> selectTableInfoData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long schemaId) {
         Long projectId = accountDto.getProjectId();
 
-        Specification<TableInfo> where = (root, query, builder) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(builder.equal(root.get("projectId"), projectId));
-            if (schemaId != null) {
-                // 다른 프로젝트의 스키마 ID 는 projectId 조건 때문에 결과가 없다
-                predicates.add(builder.equal(root.get("schema").get("id"), schemaId));
-            }
-            if (searchQuery != null && !searchQuery.trim().isEmpty() && searchColumn != null && SEARCH_COLUMNS.contains(searchColumn)) {
-                predicates.add(builder.like(root.get(searchColumn), "%" + searchQuery + "%"));
-            }
-            return builder.and(predicates.toArray(Predicate[]::new));
-        };
+        Specification<TableInfo> where = TableListFilter.of(projectId, searchColumn, searchQuery, schemaId);
 
         // DTO 에 펼쳐진 스키마명을 실제 엔티티 연관관계 경로로 정렬한다.
         Sort sort = Sort.by(pageable.getSort().stream()
@@ -272,6 +259,8 @@ public class TableDesignServiceImpl implements TableDesignService {
         if (Boolean.TRUE.equals(tableInfo.getIsApproval())) {
             throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         }
+        // 낙관적 충돌 검사 (DEC-08) : 잠그고 다시 읽은 행이 화면이 읽은 뒤 바뀌었으면 409
+        com.lexorma.common.jpa.ModelBase.verify(tableInfo, tableInfoDto.getBaseModifiedAt(), tableInfo.getTableName());
 
         // 한글명을 입력(변경)한 경우에만 표준 단어 기준으로 테이블명을 다시 만든다. 비어있으면 기존 테이블명/한글명을 유지한다.
         boolean isKorNameChanged = tableInfoDto.getTableKorName() != null && !tableInfoDto.getTableKorName().isBlank();

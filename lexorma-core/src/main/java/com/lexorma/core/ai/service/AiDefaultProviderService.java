@@ -7,6 +7,8 @@ import com.lexorma.core.ai.domain.dto.AiProviderDto;
 import com.lexorma.core.ai.domain.dto.AiProviderDto.DefaultStatus;
 import com.lexorma.core.ai.domain.entity.AiProvider;
 import com.lexorma.core.ai.domain.entity.AiSetting;
+import com.lexorma.core.ai.domain.entity.ProjectAiSetting;
+import java.util.List;
 import com.lexorma.core.ai.repository.AiProviderRepository;
 import com.lexorma.core.ai.repository.AiSettingRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class AiDefaultProviderService {
     private final AiSettingRepository settings;
     private final AiProviderRepository providers;
     private final AiProviderService providerService;
+    private final com.lexorma.core.ai.repository.ProjectAiSettingRepository projectSettings;
 
     /** 지금의 기본 Provider 와 쓸 수 있는지 (연결하지 않는다) */
     @Transactional(readOnly = true)
@@ -89,6 +92,104 @@ public class AiDefaultProviderService {
             }
         }
         return new AiProviderDto.DefaultTarget(provider.getId(), provider.getType(), provider.getBaseUrl(), provider.getDefaultModel(), true);
+    }
+
+    /**
+     * 프로젝트의 업무 AI 기능이 쓸 Provider (DEC-18) : 프로젝트 지정(TB_PRJ_AI_STNG)이 있으면 그 Provider·모델, 없으면 {@link #resolve()} (시스템 기본).
+     * 지정한 Provider 를 쓸 수 없으면 같은 오류 코드로 거절한다 — 시스템 기본으로 대신하지 않는다. 연결하지 않는다
+     */
+    @Transactional(readOnly = true)
+    public AiProviderDto.DefaultTarget resolve(Long projectId) {
+        ProjectAiSetting setting = projectId == null ? null : projectSettings.findByProjectId(projectId).orElse(null);
+        if (setting == null) return resolve();
+        AiProvider provider = providers.findById(setting.getProviderId()).orElse(null);
+        String model = setting.getModel() != null ? setting.getModel() : provider == null ? null : provider.getDefaultModel();
+        switch (projectStatus(provider, model)) {
+            case NOT_CONFIGURED -> throw new CustomException(ErrorCode.AI_DEFAULT_PROVIDER_NOT_CONFIGURED);
+            case UNSUPPORTED -> throw new CustomException(ErrorCode.AI_PROVIDER_UNSUPPORTED);
+            case DISABLED -> throw new CustomException(ErrorCode.AI_PROVIDER_DISABLED);
+            case MODEL_MISSING -> throw new CustomException(ErrorCode.AI_DEFAULT_PROVIDER_MODEL_MISSING);
+            case READY -> {
+                // 아래에서 돌려준다
+            }
+        }
+        return new AiProviderDto.DefaultTarget(provider.getId(), provider.getType(), provider.getBaseUrl(), model, true);
+    }
+
+    /** 프로젝트에서 실제로 쓸 Provider 의 상태 (화면 안내용, 연결하지 않는다) */
+    @Transactional(readOnly = true)
+    public DefaultStatus status(Long projectId) {
+        ProjectAiSetting setting = projectId == null ? null : projectSettings.findByProjectId(projectId).orElse(null);
+        if (setting == null) return get().status();
+        AiProvider provider = providers.findById(setting.getProviderId()).orElse(null);
+        return projectStatus(provider, setting.getModel() != null ? setting.getModel() : provider == null ? null : provider.getDefaultModel());
+    }
+
+    /** 프로젝트 지정 조회 (canManage 는 호출하는 쪽이 정한다) */
+    @Transactional(readOnly = true)
+    public AiProviderDto.ProjectProvider project(Long projectId, boolean canManage) {
+        ProjectAiSetting setting = projectSettings.findByProjectId(projectId).orElse(null);
+        AiProviderDto.DefaultProvider system = get();
+        AiProviderDto.ProviderChoice systemChoice = system.provider() == null ? null : choice(providers.findById(system.provider().id()).orElse(null));
+        List<AiProviderDto.ProviderChoice> choices = canManage ? providers.findAll().stream()
+                .filter(p -> Boolean.TRUE.equals(p.getEnabled()) && providerService.supports(p.getType()))
+                .sorted(java.util.Comparator.comparing(AiProvider::getId)).map(AiDefaultProviderService::choice).toList() : List.of();
+        if (setting == null) {
+            return new AiProviderDto.ProjectProvider(projectId, "SYSTEM", system.status(), systemChoice, systemChoice == null ? null : systemChoice.defaultModel(),
+                    systemChoice, null, null, canManage, choices);
+        }
+        AiProvider provider = providers.findById(setting.getProviderId()).orElse(null);
+        String model = setting.getModel() != null ? setting.getModel() : provider == null ? null : provider.getDefaultModel();
+        BaseEntity.Audit audit = setting.audit();
+        return new AiProviderDto.ProjectProvider(projectId, "PROJECT", projectStatus(provider, model), choice(provider), model, systemChoice,
+                audit.updatedBy(), audit.updated(), canManage, choices);
+    }
+
+    /**
+     * 프로젝트 지정·변경 (권한은 호출하는 쪽 — 프로젝트 관리자·ADMIN). 조건은 시스템 기본 지정과 같다 : 있음 · 활성 · 지원 유형 · 모델(지정 또는 기본 모델) 있음.
+     * Provider 행을 잠가 Provider 삭제와 엇갈리지 않게 한다 (삭제는 지정을 보고 거절한다)
+     */
+    @Transactional
+    public void setProject(Long projectId, AiProviderDto.ProjectProviderRequest request) {
+        Long id = request == null ? null : request.providerId();
+        if (id == null) throw new CustomException(ErrorCode.AI_PROVIDER_INVALID, "프로젝트에서 쓸 Provider 를 선택해주세요.");
+        lockSetting();
+        AiProvider provider = providers.lockById(id).orElseThrow(() -> new CustomException(ErrorCode.AI_PROVIDER_NOT_FOUND));
+        providerService.adapter(provider.getType());
+        if (!Boolean.TRUE.equals(provider.getEnabled())) throw new CustomException(ErrorCode.AI_PROVIDER_DISABLED, "비활성화된 Provider 는 지정할 수 없습니다.");
+        String model = request.model() == null || request.model().isBlank() ? null : request.model().strip();
+        if (model != null && (model.length() > 255 || !providerService.adapter(provider.getType()).isValidModelId(model))) {
+            throw new CustomException(ErrorCode.AI_PROVIDER_INVALID, "모델 ID 형식이 올바르지 않습니다.");
+        }
+        if (model == null && provider.getDefaultModel() == null) {
+            throw new CustomException(ErrorCode.AI_DEFAULT_PROVIDER_MODEL_MISSING, "기본 모델이 없는 Provider 는 모델을 함께 지정해야 합니다.");
+        }
+        ProjectAiSetting setting = projectSettings.lockByProjectId(projectId).orElseGet(() -> ProjectAiSetting.builder().projectId(projectId).build());
+        setting.setProviderId(provider.getId());
+        setting.setModel(model);
+        projectSettings.saveAndFlush(setting);
+    }
+
+    /** 프로젝트 지정 해제 → 시스템 기본을 쓴다 */
+    @Transactional
+    public void clearProject(Long projectId) {
+        lockSetting();
+        projectSettings.lockByProjectId(projectId).ifPresent(setting -> {
+            projectSettings.delete(setting);
+            projectSettings.flush();
+        });
+    }
+
+    private DefaultStatus projectStatus(AiProvider provider, String model) {
+        if (provider == null) return DefaultStatus.NOT_CONFIGURED;
+        if (!providerService.supports(provider.getType())) return DefaultStatus.UNSUPPORTED;
+        if (!Boolean.TRUE.equals(provider.getEnabled())) return DefaultStatus.DISABLED;
+        if (model == null) return DefaultStatus.MODEL_MISSING;
+        return DefaultStatus.READY;
+    }
+
+    private static AiProviderDto.ProviderChoice choice(AiProvider provider) {
+        return provider == null ? null : new AiProviderDto.ProviderChoice(provider.getId(), provider.getName(), provider.getType(), provider.getDefaultModel());
     }
 
     private DefaultStatus status(AiProvider provider) {

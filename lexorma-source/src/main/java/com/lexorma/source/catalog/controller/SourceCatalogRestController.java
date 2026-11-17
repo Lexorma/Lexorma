@@ -4,6 +4,7 @@ import com.lexorma.common.utils.PageableUtil;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.source.catalog.domain.dto.SourceCatalogDto;
 import com.lexorma.source.catalog.service.SourceCatalogService;
+import com.lexorma.source.catalog.service.SourceViewDefinitionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import java.util.Map;
 public class SourceCatalogRestController {
 
     private final SourceCatalogService catalogService;
+    private final SourceViewDefinitionService viewDefinitionService;
 
     @Operation(summary = "원본 카탈로그 : 연결의 스키마 목록", description = "쪽 단위 (size 최대 200).")
     @GetMapping("/connections/{id}/schemas")
@@ -50,5 +52,19 @@ public class SourceCatalogRestController {
     @GetMapping("/tables/{tableId}")
     public ResponseEntity<SourceCatalogDto.TableDetail> table(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "tableId") Long tableId) {
         return ResponseEntity.ok(catalogService.table(accountDto, tableId));
+    }
+
+    /** VIEW 정의 원문 (DEC-16) : 프로젝트 관리자·ADMIN 만 (서비스가 지금의 DB 로 확인), 확인 이력을 남긴다. /api/source/** 라 요청 로그에 본문이 남지 않는다 */
+    @GetMapping("/tables/{tableId}/viewDefinition")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<SourceCatalogDto.ViewDefinitionText> viewDefinition(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "tableId") Long tableId) {
+        return ResponseEntity.ok(viewDefinitionService.read(accountDto, tableId));
+    }
+
+    @GetMapping("/tables/{tableId}/viewDefinition/accesses")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<java.util.List<SourceCatalogDto.ViewDefinitionAccess>> viewDefinitionAccesses(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                    @PathVariable(name = "tableId") Long tableId) {
+        return ResponseEntity.ok(viewDefinitionService.accesses(accountDto, tableId, 20));
     }
 }

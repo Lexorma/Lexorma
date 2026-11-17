@@ -49,8 +49,40 @@ public final class SourceCatalogDto {
                            String deleteRule, String updateRule, List<ColumnPair> columns) {
     }
 
-    /** @param referencedBy 이 테이블을 참조하는 FK (다른 스키마의 테이블일 수 있다) */
+    /**
+     * @param referencedBy   이 테이블을 참조하는 FK (다른 스키마의 테이블일 수 있다)
+     * @param viewDefinition VIEW 정의의 수집 상태 (DEC-16, 원문 없음). TABLE 이면 null
+     */
     public record TableDetail(Table table, Schema schema, List<Column> columns, List<Constraint> constraints, List<Index> indexes,
-                              List<Relation> relations, List<Relation> referencedBy) {
+                              List<Relation> relations, List<Relation> referencedBy, ViewDefinition viewDefinition) {
+    }
+
+    /** 이전 수집 대비 정의 : NEW 처음 수집 / CHANGED 바뀜 / SAME 같음 (마지막 반영 수집 기준) / UNKNOWN 아직 읽은 정의가 없음 */
+    public enum DefinitionChange { NEW, CHANGED, SAME, UNKNOWN }
+
+    /**
+     * VIEW 정의의 상태만 (DEC-16). 원문·해시는 넣지 않는다 : 원문은 프로젝트 관리자·ADMIN 이 /api/source/tables/{id}/viewDefinition 으로만 본다.
+     *
+     * @param status       마지막 수집에서 정의를 읽은 결과. 아직 정의를 읽은 수집이 없으면 null
+     * @param available    볼 수 있는 원문이 있는지 (마지막으로 읽은 원문 — 이번 수집이 실패했어도 남아 있다)
+     * @param change       마지막 반영 수집에서 정의가 처음 수집·바뀌었는지
+     * @param canRead      지금 사용자가 원문을 볼 수 있는지 (프로젝트 관리자·ADMIN)
+     */
+    public record ViewDefinition(String status, boolean available, Integer length, java.time.LocalDateTime collectedAt, Integer changedOrder, DefinitionChange change,
+                                 boolean canRead) {
+    }
+
+    /** 정의 원문 (권한 확인·확인 이력을 남긴 뒤에만). 실행하지 않는 메타데이터다 */
+    public record ViewDefinitionText(Long tableId, String schemaName, String viewName, String definition, String status, Integer length,
+                                     java.time.LocalDateTime collectedAt) {
+        /** 기록·예외에 원문이 섞이지 않게 */
+        @Override
+        public String toString() {
+            return "ViewDefinitionText[tableId=" + tableId + ", length=" + length + "]";
+        }
+    }
+
+    /** 정의 원문 확인 이력 (원문 없음) */
+    public record ViewDefinitionAccess(Long id, String accountId, java.time.LocalDateTime accessedAt) {
     }
 }

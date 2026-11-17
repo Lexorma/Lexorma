@@ -72,9 +72,9 @@ public class AiMetadataQueryService {
     private final TokenBudget budget;
     private final ServerContextAssembler assembler;
 
-    /** 질의 화면의 안내용 : 시스템 기본 Provider 상태만 (AI 서버에 연결하지 않는다) */
-    public AiMetadataQueryDto.Availability availability() {
-        return new AiMetadataQueryDto.Availability(defaults.get().status());
+    /** 질의 화면의 안내용 : 이 프로젝트가 쓸 Provider 상태 (프로젝트 지정 → 없으면 시스템 기본, DEC-18. AI 서버에 연결하지 않는다) */
+    public AiMetadataQueryDto.Availability availability(Long projectId) {
+        return new AiMetadataQueryDto.Availability(defaults.status(projectId));
     }
 
     /**

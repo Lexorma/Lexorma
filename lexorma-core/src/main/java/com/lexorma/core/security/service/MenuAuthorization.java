@@ -100,11 +100,19 @@ public class MenuAuthorization {
 
             // 데이터 품질 관리
             Map.entry("standardization-quality", "VIEWER"),
+            // 모델 구조 진단 (DEC-09 무효 FK · DEC-12 중복 인덱스) : 조회만 있는 화면. GET /api/physical/diagnostics 와 같다
+            Map.entry("model-diagnostics", "VIEWER"),
             // 모델 변경 이력 (M-9) : 조회만 있는 화면. 이력 조회 API 의 권한과 같다
             Map.entry("model-history", "VIEWER"),
             // 모델 버전 (M-9 3차) : 화면(목록·과거 버전 조회·비교)은 VIEWER, [버전 생성] 버튼은 USER (버전 생성 API 의 권한과 같다)
             Map.entry("model-version", "VIEWER"),
             Map.entry("model-version-create", "USER"),
+            // 모델 Export·Import (DEC-22) : 화면·Export 는 VIEWER, [가져오기·복사] 는 USER (서버는 대상 프로젝트의 관리자·ADMIN 인지 지금의 DB 로 다시 확인한다)
+            Map.entry("model-exchange", "VIEWER"),
+            Map.entry("model-exchange-import", "USER"),
+            // 내장 MCP (DEC-31) : 화면·상태는 VIEWER, 사용 설정·토큰 발급·폐기는 USER (서버는 그 프로젝트의 관리자·ADMIN 인지 지금의 DB 로 다시 확인한다)
+            Map.entry("mcp-access", "VIEWER"),
+            Map.entry("mcp-manage", "USER"),
 
             // 원본 DB 관리 (M-4a) : 연결·수집 이력·원본 카탈로그 조회 API 가 VIEWER.
             // 화면 메뉴가 아니라 연결 등록·수정·삭제·테스트, 수집 실행·취소 버튼 노출용 : 그 API 의 역할(USER). 서버는 여기에 그 프로젝트의 관리자 또는 ADMIN 인지도
@@ -138,13 +146,13 @@ public class MenuAuthorization {
             // AI 관리 : AI Provider 설정(ADMIN) · AI 설명 제안 · AI 품질 평가. 역할로 보일 수 있는 메뉴만 여기서 정하고,
             // 시스템 기본 Provider 가 정해지지 않았으면 설명 제안·품질 평가를 사이드바에서 숨기는 것은 화면이 /api/ai/metadata/status 로 정한다 (편의 — API 권한은 그대로)
             "ai-management",
-            new String[]{"ai-provider", "ai-dictionary", "ai-evaluation"},
+            new String[]{"ai-provider", "ai-dictionary", "ai-evaluation", "mcp-access"},
 
             "logical-modeling",
             new String[]{"logical-model", "logical-erd", "model-mapping"},
 
             "data-quality",
-            new String[]{"standardization-quality", "model-history", "model-version"},
+            new String[]{"standardization-quality", "model-diagnostics", "model-history", "model-version", "model-exchange"},
 
             "physical-modeling",
             new String[]{"schema-manage", "table-manage", "column-manage", "index-manage", "view-manage", "physical-erd", "ddl-export"},

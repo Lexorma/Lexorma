@@ -86,6 +86,13 @@ public class AiDictionaryEvaluationRestController {
         return ResponseEntity.ok(evaluations.judge(ExecutionContext.user(account), request));
     }
 
+    @Operation(summary = "판정 변경 이력 (DEC-27)", description = "판정 하나의 저장·수정 이력 (판정자·변경 전후·사유·시각, 추가만). 지표는 최종 판정만 센다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/judgments/{id}/history")
+    public ResponseEntity<List<AiEvaluationDto.JudgmentHistoryRow>> judgmentHistory(@AuthenticationPrincipal AccountDto account, @PathVariable(value = "id") Long id) {
+        return ResponseEntity.ok(evaluations.judgmentHistory(ExecutionContext.user(account), id));
+    }
+
     @Operation(summary = "품질 지표", description = "기준 데이터 현황과 모델·프롬프트 버전별 지표 (분자·분모 포함)")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/metrics")

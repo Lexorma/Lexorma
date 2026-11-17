@@ -13,44 +13,65 @@ public final class LogicalModelDto {
     private LogicalModelDto() {
     }
 
-    public record Model(Long id, String modelName, String modelDescription) {
+    /** modifiedAt : 응답은 지금 수정 일시, 수정 요청은 화면이 읽은 값 (DEC-08 기준값) */
+    public record Model(Long id, String modelName, String modelDescription, java.time.LocalDateTime modifiedAt) {
+        public Model(Long id, String modelName, String modelDescription) {
+            this(id, modelName, modelDescription, null);
+        }
+
         public static Model fromEntity(LogicalModel m) {
-            return new Model(m.getId(), m.getModelName(), m.getModelDescription());
+            return new Model(m.getId(), m.getModelName(), m.getModelDescription(), m.modifiedAt());
         }
     }
 
     /** attributes·identifiers 는 상세 조회에서만 채운다 (목록은 null) */
+    /** modifiedAt : 응답은 지금 수정 일시, 수정 요청은 화면이 읽은 값 (DEC-08 기준값 — 없으면 검사하지 않는다) */
     public record Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
-                         List<Attribute> attributes, List<Identifier> identifiers) {
+                         List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt) {
+        public Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
+                      List<Attribute> attributes, List<Identifier> identifiers) {
+            this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, null);
+        }
+
         public static Entity summary(LogicalEntity e) {
-            return new Entity(e.getId(), e.getModel().getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(), null, null);
+            return new Entity(e.getId(), e.getModel().getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(), null, null, e.modifiedAt());
         }
 
         public static Entity detail(LogicalEntity e) {
             return new Entity(e.getId(), e.getModel().getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(),
                     e.getAttributes().stream().map(Attribute::fromEntity).toList(),
-                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList());
+                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList(), e.modifiedAt());
         }
     }
 
     /** termName·domainName·domainDataType 은 조회 전용 : 표준 도메인은 연결한 표준 용어의 도메인이다 */
     public record Attribute(Long id, Long entityId, String attributeName, String attributeDescription, String dataType, Boolean isRequired,
-                            Integer sortOrder, Long termId, String termName, String domainName, String domainDataType) {
+                            Integer sortOrder, Long termId, String termName, String domainName, String domainDataType, java.time.LocalDateTime modifiedAt) {
+        public Attribute(Long id, Long entityId, String attributeName, String attributeDescription, String dataType, Boolean isRequired,
+                         Integer sortOrder, Long termId, String termName, String domainName, String domainDataType) {
+            this(id, entityId, attributeName, attributeDescription, dataType, isRequired, sortOrder, termId, termName, domainName, domainDataType, null);
+        }
+
         public static Attribute fromEntity(LogicalAttribute a) {
             StandardTerm term = a.getStandardTerm();
             var domain = term == null ? null : term.getStandardDomain();
             return new Attribute(a.getId(), a.getEntity().getId(), a.getAttributeName(), a.getAttributeDescription(), a.getDataType(),
                     a.getIsRequired(), a.getSortOrder(), term == null ? null : term.getId(), term == null ? null : term.getCommonStandardTermName(),
-                    domain == null ? null : domain.getCommonStandardDomainName(), domain == null ? null : domain.getDataType());
+                    domain == null ? null : domain.getCommonStandardDomainName(), domain == null ? null : domain.getDataType(), a.modifiedAt());
         }
     }
 
     /** attributeIds : 식별자를 이루는 속성 (순서대로, 복합 가능). attributeNames 는 조회 전용 */
-    public record Identifier(Long id, Long entityId, String identifierName, Boolean isPrimary, List<Long> attributeIds, List<String> attributeNames) {
+    public record Identifier(Long id, Long entityId, String identifierName, Boolean isPrimary, List<Long> attributeIds, List<String> attributeNames,
+                             java.time.LocalDateTime modifiedAt) {
+        public Identifier(Long id, Long entityId, String identifierName, Boolean isPrimary, List<Long> attributeIds, List<String> attributeNames) {
+            this(id, entityId, identifierName, isPrimary, attributeIds, attributeNames, null);
+        }
+
         public static Identifier fromEntity(LogicalIdentifier i) {
             return new Identifier(i.getId(), i.getEntity().getId(), i.getIdentifierName(), i.getIsPrimary(),
                     i.getAttributes().stream().map(a -> a.getAttribute().getId()).toList(),
-                    i.getAttributes().stream().map(a -> a.getAttribute().getAttributeName()).toList());
+                    i.getAttributes().stream().map(a -> a.getAttribute().getAttributeName()).toList(), i.modifiedAt());
         }
     }
 
@@ -62,12 +83,20 @@ public final class LogicalModelDto {
     public record Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
                                Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
                                Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
-                               String cardinality, Boolean isApproval) {
+                               String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt) {
+        public Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
+                            Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
+                            Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
+                            String cardinality, Boolean isApproval) {
+            this(id, modelId, relationshipName, relationshipDescription, sourceEntityId, sourceEntityName, targetEntityId, targetEntityName,
+                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, null);
+        }
+
         public static Relationship fromEntity(LogicalRelationship r) {
             return new Relationship(r.getId(), r.getModel().getId(), r.getRelationshipName(), r.getRelationshipDescription(),
                     r.getSourceEntity().getId(), r.getSourceEntity().getEntityName(), r.getTargetEntity().getId(), r.getTargetEntity().getEntityName(),
                     r.getIsIdentifying(), r.getSourceMin(), r.getSourceMax(), r.getTargetMin(), r.getTargetMax(),
-                    cardinality(r.getSourceMax(), r.getTargetMax()), r.getIsApproval());
+                    cardinality(r.getSourceMax(), r.getTargetMax()), r.getIsApproval(), r.modifiedAt());
         }
 
         private static String cardinality(Integer sourceMax, Integer targetMax) {

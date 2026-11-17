@@ -28,11 +28,11 @@ public class AiMetadataQueryRestController {
 
     private final AiMetadataQueryService service;
 
-    @Operation(summary = "질의 가능 여부", description = "시스템 기본 AI Provider 상태 (READY · NOT_CONFIGURED · DISABLED · MODEL_MISSING · UNSUPPORTED). AI 서버에 연결하지 않는다")
+    @Operation(summary = "질의 가능 여부", description = "이 프로젝트가 쓸 AI Provider 상태 — 프로젝트 지정(DEC-18)이 있으면 그것, 없으면 시스템 기본 (READY · NOT_CONFIGURED · DISABLED · MODEL_MISSING · UNSUPPORTED). AI 서버에 연결하지 않는다")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/status")
-    public ResponseEntity<AiMetadataQueryDto.Availability> status() {
-        return ResponseEntity.ok(service.availability());
+    public ResponseEntity<AiMetadataQueryDto.Availability> status(@org.springframework.security.core.annotation.AuthenticationPrincipal com.lexorma.core.security.domain.dto.AccountDto accountDto) {
+        return ResponseEntity.ok(service.availability(accountDto == null ? null : accountDto.getProjectId()));
     }
 
     @Operation(summary = "메타데이터 질의", description = "시스템 기본 AI Provider 로 현재 프로젝트의 메타데이터에 대해 묻는다. AI 는 읽기 전용 조회 Tool 만 쓸 수 있다")

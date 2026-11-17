@@ -79,6 +79,22 @@ public final class AiProviderDto {
     public record DefaultTarget(Long providerId, AiProviderType type, String baseUrl, String model, boolean enabled) {
     }
 
+    /** 프로젝트 지정에서 고를 수 있는 Provider (DEC-18) : 주소·설명은 보내지 않는다 (ADMIN 화면만 본다) */
+    public record ProviderChoice(Long id, String name, AiProviderType type, String defaultModel) {
+    }
+
+    /**
+     * 프로젝트의 AI Provider (DEC-18). scope : PROJECT(프로젝트 지정) · SYSTEM(지정 없음 → 시스템 기본). status 는 실제로 쓸 Provider 의 상태 —
+     * 프로젝트 지정이 쓸 수 없는 상태여도 시스템 기본으로 바꾸지 않는다. canManage : 이 사용자가 지정·해제할 수 있는지
+     */
+    public record ProjectProvider(Long projectId, String scope, DefaultStatus status, ProviderChoice provider, String model,
+                                  ProviderChoice systemProvider, String updatedBy, LocalDateTime updatedAt, boolean canManage, List<ProviderChoice> choices) {
+    }
+
+    /** model : 비우면 Provider 의 기본 모델 */
+    public record ProjectProviderRequest(Long providerId, String model) {
+    }
+
     /**
      * 모델 정보 (AI-4) : AI 서버가 알려 준 것만 (Ollama /api/show). 모르면 null — 추측해서 채우지 않는다.
      *

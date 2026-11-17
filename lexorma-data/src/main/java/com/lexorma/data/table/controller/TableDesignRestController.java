@@ -98,6 +98,7 @@ public class TableDesignRestController {
     @PreAuthorize("hasRole('USER')")
     @PutMapping("/saveTable")
     public ResponseEntity<Map<String, Boolean>> updateTable(@RequestBody TableInfoDto tableInfoDto, @AuthenticationPrincipal AccountDto accountDto) {
+        com.lexorma.common.jpa.ModelBase.require(true, tableInfoDto.getBaseModifiedAt()); // DEC-08
         tableDesignService.updateTable(tableInfoDto, accountDto);
         return ResponseEntity.ok(Map.of("result", true));
     }

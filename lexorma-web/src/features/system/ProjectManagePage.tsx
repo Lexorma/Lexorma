@@ -7,8 +7,8 @@ import { PencilIcon, PlusIcon, RepoIcon, TrashIcon } from '@primer/octicons-reac
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError, enc } from '../../lib/api';
-import { DeniedPage } from '../auth/DeniedPage';
 import { projectColumns } from './columns';
+import { ProjectAiProvider } from './ProjectAiProvider';
 import { t } from '../../lib/i18n';
 
 /** 대상 DB 선택지 (서버 core/project/domain/enums/DbType 과 같은 값) */
@@ -56,11 +56,6 @@ export function ProjectManagePage() {
   }, [projects, selectedId]);
 
   if (!projects) return null;
-  // 프로젝트 관리자가 아닌경우 권한 없음
-  if (projects.length === 0) return <DeniedPage title={t('접근 불가 페이지')} message={t('프로젝트 관리자만 접근 가능합니다')} />;
-
-  const selected = projects.find((p) => p.id === selectedId) ?? projects[0];
-  const isInactive = !selected.isActive;
 
   const reloadProjects = async () => {
     await queryClient.invalidateQueries({ queryKey: MANAGED_KEY });
@@ -84,6 +79,24 @@ export function ProjectManagePage() {
       ),
     });
   };
+
+  // 관리하는 프로젝트가 없다 (DEC-19) : 막지 않고 안내와 허용된 동작(프로젝트 등록 — 이 화면과 등록 API 는 DBA 이상)을 보인다.
+  // 다른 프로젝트의 관리는 그 프로젝트 관리자·ADMIN 이 프로젝트 멤버 관리에서 관리자로 지정해야 한다
+  if (projects.length === 0) {
+    return (
+      <>
+        <PageHeader category={t('시스템 관리')} title={t('프로젝트 관리')} description={t('프로젝트를 등록·수정하고, 프로젝트 멤버의 참여를 승인합니다.')} />
+        <div className="Box" role="note" style={{ padding: 16 }}>
+          <p><strong>{t('관리하는 프로젝트가 없습니다.')}</strong></p>
+          <p className="gh-muted">{t('새 프로젝트를 등록하면 그 프로젝트의 관리자가 됩니다. 이미 있는 프로젝트를 관리하려면 그 프로젝트의 관리자나 시스템 관리자(ADMIN)에게 프로젝트 관리자 지정을 요청하세요.')}</p>
+          <button type="button" id="btn-project-add" className="btn btn-primary" onClick={() => openProjectForm('C', {})}>{t('프로젝트 등록')}</button>
+        </div>
+      </>
+    );
+  }
+
+  const selected = projects.find((p) => p.id === selectedId) ?? projects[0];
+  const isInactive = !selected.isActive;
 
   const editProject = async () => {
     const response = await api<{ result: boolean; project: ProjectData }>(`/api/getProject/${enc(selected.id)}/getEditProjectData`);
@@ -178,6 +191,8 @@ export function ProjectManagePage() {
           </button>
         </div>
       </div>
+
+      <ProjectAiProvider key={`ai-${selected.id}`} projectId={selected.id} />
 
       <div id="gridContainer" style={{ pointerEvents: isInactive ? 'none' : 'auto', opacity: isInactive ? 0.5 : 1 }}>
         <Grid

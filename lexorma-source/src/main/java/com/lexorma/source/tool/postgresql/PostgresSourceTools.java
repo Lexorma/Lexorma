@@ -5,6 +5,7 @@ import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
 import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec.Name;
 import com.lexorma.source.catalog.domain.enums.SourceConstraintType;
 import com.lexorma.source.catalog.domain.enums.SourceTableType;
+import com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus;
 import com.lexorma.source.tool.SourceMetadata;
 import com.lexorma.source.tool.SourceMetadata.Owned;
 import com.lexorma.source.tool.SourceMetadataTool;
@@ -27,7 +28,7 @@ import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
- * PostgreSQL 메타데이터 도구 7개 (AI-2b). 시스템 카탈로그(pg_catalog)만 읽는 고정 조회이며, 도구 하나가 대상 스키마 전체를 <b>한 번의 조회</b>로 읽는다
+ * PostgreSQL 메타데이터 도구 8개 (AI-2b, VIEW 정의는 DEC-16). 시스템 카탈로그(pg_catalog)만 읽는 고정 조회이며, 도구 하나가 대상 스키마 전체를 <b>한 번의 조회</b>로 읽는다
  * (스키마 이름은 배열 값으로 넣는다 : 테이블마다 조회하지 않는다). 입력으로 받은 SQL·식별자를 이어 붙이지 않는다.
  * <ul>
  *   <li>대상 스키마 : 접속한 데이터베이스의 {@code pg_} 로 시작하지 않는 스키마와 information_schema 를 뺀 전부 (pg_catalog, pg_toast, pg_temp_N 등은 PostgreSQL 이 예약한 이름이다)</li>
@@ -124,6 +125,21 @@ public class PostgresSourceTools {
 
             order by n.nspname, c.relname, con.conname""";
 
+    /** VIEW 정의 원문의 최대 길이 (글자). 넘으면 원문을 받지 않고 TOO_LARGE 로 남긴다 */
+    public static final int VIEW_DEFINITION_MAX_LENGTH = 262_144;
+
+    /**
+     * VIEW 정의 (DEC-16) : pg_get_viewdef 로 정의 SQL 을 글로만 읽는다 (실행하지 않는다). 한도보다 길면 원문 대신 null 과 길이만 받는다.
+     * 다른 조회보다 나중에 돈다 : 이 조회가 권한 등으로 실패하면 읽기 전용 트랜잭션이 끝나므로 (PostgreSQL), 테이블·컬럼 결과를 먼저 다 읽어 둔다
+     */
+    private static final String VIEW_DEFINITIONS = """
+            select x.nspname, x.relname, case when pg_catalog.length(x.def) <= ? then x.def end, pg_catalog.length(x.def)
+            from (select n.nspname, c.relname, pg_catalog.pg_get_viewdef(c.oid, false) def
+                  from pg_catalog.pg_class c
+                  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                  where n.nspname = any(?) and c.relkind = 'v') x
+            order by x.nspname, x.relname""";
+
     private static final Map<String, String> RULES = Map.of("a", "NO ACTION", "r", "RESTRICT", "c", "CASCADE", "n", "SET NULL", "d", "SET DEFAULT");
 
     @Bean
@@ -207,6 +223,19 @@ public class PostgresSourceTools {
             for (int i = 0; i < own.length; i++) pairs.add(new SourceCatalogSpec.ColumnPair(Name.of(own[i]), Name.of(referenced[i])));
             return new Owned<>(row.getString(1), row.getString(2), new SourceCatalogSpec.Relation(row.getString(3), null, Name.of(row.getString(4)),
                     Name.of(row.getString(5)), RULES.get(row.getString(6)), RULES.get(row.getString(7)), pairs));
+        }));
+    }
+
+    @Bean
+    SourceMetadataTool<SourceMetadata.Scope, List<Owned<SourceCatalogSpec.ViewDefinition>>> postgresViewDefinitionDiscovery() {
+        return tool(SourceTools.VIEW_DEFINITION_DISCOVERY, SourceMetadata.Scope.class, (context, scope) -> context.query(VIEW_DEFINITIONS, statement -> {
+            statement.setInt(1, VIEW_DEFINITION_MAX_LENGTH);
+            statement.setArray(2, statement.getConnection().createArrayOf("text", scope.schemas().toArray()));
+        }, row -> {
+            String text = row.getString(3);
+            SourceCatalogSpec.ViewDefinition definition = text != null ? SourceCatalogSpec.ViewDefinition.collected(text)
+                    : SourceCatalogSpec.ViewDefinition.failed(row.getObject(4) == null ? SourceViewDefinitionStatus.FAILED : SourceViewDefinitionStatus.TOO_LARGE);
+            return new Owned<>(row.getString(1), row.getString(2), definition);
         }));
     }
 

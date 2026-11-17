@@ -54,11 +54,12 @@ public final class SourceCompareDto {
      *   <li>DEFAULT_RULE : 모델에 FK 규칙 칸이 없고 DDL 은 기본(NO ACTION)이다 / SERIAL_DEFAULT : SERIAL 이 시퀀스 기본값을 만든다</li>
      *   <li>UNRESOLVED_TARGET : 참조 대상 원본 TABLE 이 매핑되지 않아 모델 TABLE 과 견줄 수 없다 / RELATIVE_ORDER : 양쪽 모두에 있는 컬럼 사이의 순서</li>
      *   <li>NULLABLE_UNKNOWN : 원본이 NULL 허용 여부를 주지 않았다</li>
+     *   <li>RENAME_MAPPED : 이름이 다르지만 사용자가 확정한 컬럼 매핑(DEC-06)으로 같은 컬럼으로 본다</li>
      * </ul>
      */
     public enum Note {
         MODEL_HAS_NO_FIELD, DESCRIPTION, KOR_NAME, SOURCE_COMMENT, GENERATED_NAME, EXPRESSION, UNSUPPORTED_TYPE, DEFAULT_RULE, SERIAL_DEFAULT, UNRESOLVED_TARGET, RELATIVE_ORDER,
-        NULLABLE_UNKNOWN
+        NULLABLE_UNKNOWN, RENAME_MAPPED
     }
 
     /**

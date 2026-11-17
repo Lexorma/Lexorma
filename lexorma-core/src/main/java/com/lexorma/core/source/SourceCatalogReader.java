@@ -38,6 +38,12 @@ public interface SourceCatalogReader {
     Optional<Snapshot> latest(Long projectId, Long connectionId);
 
     /**
+     * 반영 순서 R 의 정상 반영 수집이 같은 연결·같은 종류의 직전 정상 반영보다 테이블·컬럼 수가 50% 미만으로 줄었는지 (DEC-17 객체 급감, 수집 화면 경고와 같은 계산).
+     * 원본 삭제 반영(DEC-04)이 이 수집을 그대로 믿지 않도록 쓴다. 비교할 직전 수집이 없거나 다른 프로젝트·없는 연결이면 false
+     */
+    boolean dropSuspected(Long projectId, Long connectionId, int reflectedOrder);
+
+    /**
      * 반영 순서 R 시점의 테이블 상세 : 컬럼·제약조건(PK·UNIQUE·CHECK)·인덱스·FK (원본 비교, M-4d). 값은 원본이 준 표현 그대로다 (타입·DEFAULT·식을 다시 쓰지 않는다).
      * R 은 부르는 쪽이 {@link #latest} 에서 받은 반영 순서로 고정해 넘긴다 : 그 사이 새 수집이 반영되어도 같은 시점을 읽고 다른 시점의 객체를 섞지 않는다.
      * 그 시점에 없는(삭제 표시) 테이블, 다른 연결·다른 프로젝트의 ID 는 결과에 없다. 읽기만 하고 잠그지 않는다.

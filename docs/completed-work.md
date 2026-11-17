@@ -182,6 +182,89 @@
 - 설계 결정 : 새 테이블·배치·캐시·차트 라이브러리를 두지 않았다. 표준 적용률 추이는 과거 값을 저장하는 곳이 없어 만들지 않았다(pending-work [UI-DASH]). AI 관계 추정(AI-12)은 구현돼 있지 않아 "미확정 관계 후보" 항목은 없다.
 - 검증 결과 : `DashboardStatsIntegrationTest` 5건(정해 둔 데이터로 모든 수·승인 null 처리·연결률·준수·품질이 M-5 요약과 같음·스키마/구간/관계 없는 테이블, 프로젝트 격리·빈 프로젝트, NOT_APPROVE 거부·승인 가능 여부 5가지 역할 조합, 테이블·컬럼 120개를 더해도 SQL 문 수 같음), `DashboardServiceImplTest` 2건, `SmokeTest`(HTTP 200). H2 799건(실패 0, 건너뜀 34)·PostgreSQL 799건(실패 0, 건너뜀 25, 격리 컨테이너). 격리 인스턴스 브라우저 : 실제 API 로 승인 취소·용어 재연결, H2 로 용어 없는 컬럼·빈 코멘트·승인 null 을 넣은 뒤 화면 수치 = API = M-5 요약, 품질 항목·현황 카드 클릭 이동, ADMIN·VIEWER(컬럼 카드 이동 없음·"조회만")·NOT_APPROVE(공지만, 통계 403)·빈 프로젝트, 공지 상세 열기, 통계 실패 시 안내·공지 유지, 영어(번역 누락 없음), 라이트·다크, 390·606px 가로 넘침 없음(수치). **미검증** : 테이블·컬럼 수만 건 규모의 응답 시간(품질 요약은 M-5 와 같이 프로젝트 컬럼 전체를 읽는다).
 
+### [DEC-IMPL-1] 확정 정책(DEC) 기반 통합 구현 1차 (2026-11-16)
+
+- 상태: 완료된 범위만 적는다 (DEC 별 상태·미착수 사유는 pending-work.md 7.3) · 관련 작업 : [AI-5-EVAL] · [AI-5-MSG] · [COL-TERM-2] · [M-3] · [AUTH-1] · [M-8]·[M-14] → [M-DIAG] · [AI-2] · [PRJ-1] · [UI-HELP]
+- **[AI-5-EVAL] DEC-27 판정 변경 이력** : V2 마이그레이션(`V2__ai_evaluation_judgment_history.sql`, PostgreSQL·H2 같은 내용) `TB_AI_EXPLN_EVL_HSTRY`(append-only, 판정자·변경 전후 JSON·사유·시각, 예제 사전·테이블·논리 엔터티·인덱스·업무 설명 포함). 판정을 고칠 때 사유 필수(`AI_EVALUATION_INVALID`), 같은 값으로 다시 저장하면 기록하지 않는다. `GET /api/ai/dictionary/evaluation/judgments/{id}/history`(VIEWER, 프로젝트 범위), 평가 화면의 [판정 변경 이력] 보기·수정 사유 입력. 기존 판정은 소급 생성하지 않는다. 프로젝트 삭제 정리 목록에 추가.
+- **[AI-5-EVAL] DEC-29** : 블라인드 평가 중(실제 의미 확인 전·확인 불가) 제안은 반려도 거부(`AI_PROPOSAL_EVALUATION_PENDING`), 보류는 사유 필수, 평가 불가 대상의 제안 종결은 이력 `CLOSE_UNCONFIRMABLE`(예제 코드 용어 정의도 V2 에서 갱신). 평가 입력 맥락 : 평가 대상 등록과 제안 생성 사이에 같은 테이블(자신·컬럼, 다른 컬럼의 업무 설명 포함)의 모델 변경 이력이 있으면 `sameContext=false` — 평가 화면에 [입력 맥락 변경], 지표의 "같은 입력 조건으로 만든 판정" 에서 뺀다. 편집은 막지 않는다(기준값 검증 우선). 관계·표준 사전 변경은 보지 않는다.
+- **[AI-5-MSG] DEC-32** : 일괄 생성 실패 사유 `JobError(target, code, message)` — 코드는 그대로, 문구는 `errors_{ko,en}` 을 요청 언어로(없으면 일반 문구). 화면은 "문구 (코드)".
+- **[COL-TERM-2] DEC-26** : `PUT /api/saveColumn/{id}/term` 이 처음 연결(`baseTermId` null)과 해제(`unlink`)를 받는다(기준값이 다르면 409 `COLUMN_TERM_CONFLICT`, 승인 컬럼 거부, 이력 기록 — 기존 규칙). `PUT /api/saveColumn/terms/bulk`(USER) : 컬럼 ID 순서로 잠그고 하나라도 거부되면 전체 롤백, 최대 500, 같은 컬럼 두 번 거부. 컬럼 관리 화면 : 상세의 [표준 용어 연결하기]·[연결 해제], 체크한 컬럼의 [표준 용어 일괄 연결](컬럼명 = 영문 약어인 용어가 하나일 때만 자동 선택, 없음·여럿·승인 컬럼은 빼고 알림).
+- **[M-3] DEC-11** : 테이블 수정 화면에서 미승인 테이블의 스키마를 고를 수 있다(바꿨을 때만 `schemaId` 전송, 영향 안내·확인 문구). 서버 이동 규칙(이름 공간 잠금·중복 거부·참조 컬럼 갱신)은 기존.
+- **[AUTH-1] DEC-19** : 관리 프로젝트가 없으면 "접근 불가" 대신 안내와 [프로젝트 등록](이 화면·등록 API 모두 DBA, 등록한 사용자가 관리자).
+- **[M-DIAG] DEC-09 · DEC-12 모델 구조 진단** : `GET /api/physical/diagnostics`(VIEWER, `schemaId` 선택), 메뉴 `model-diagnostics`(데이터 품질 관리, VIEWER), 화면 `/modelDiagnostics`. 무효 FK = 오류(참조 테이블 없음·여러 스키마·PK 없음·복합 PK, 대상 컬럼이 PK·고유 키가 아닌 사용자 정의 관계 — DDL 생성이 FK 를 빼는 조건과 같은 판정), 중복 인덱스 = 경고(같은 정의, PK 와 같은 순서의 일반 인덱스, 다른 일반 인덱스·PK 의 앞부분). 조회 때 계산·저장 없음, 모델 수정을 막지 않음. 예제 프로젝트는 무효 FK 0.
+- **[AI-2] DEC-17** : 수집 실행 응답에 `drop`(정상 반영된 실행만, 같은 연결·같은 종류의 반영 순서상 직전 정상 반영 대비 테이블 또는 컬럼이 50% 미만) — 목록에 [객체 급감], 상세에 경고 문구. 실패·취소는 비교하지 않는다. 경고 로그도 같은 기준(`Drop.of`)으로 바꿨다(정수 나눗셈으로 3 → 1 을 놓치던 문제 해소).
+- **[PRJ-1] DEC-14 1차** : 요청 로그(`TB_LOG`, 참조 FK 없음)만 보관 기간 정리 — `lexorma.retention.request-log-days`(기본 0 = 끔), `lexorma.retention.request-log-cron`(기본 매일 03:30), 5,000건씩 따로 커밋. 모델 버전·이력·평가 데이터·SEC-1 결정 이력·원본 수집 기록은 지우지 않는다.
+- **[PRJ-1] DEC-20** : 미소속 ADMIN 운영 복구 절차 문서 [project-recovery-login.md 7.1](completed/project-recovery-login.md) (문서만 — 절차를 실제 DB 에 실행해 보지는 않았다).
+- **[UI-HELP] DEC-30 1차** : 화면 가이드 16개(`public/jsons/help/guide.{ko,en}.json`, 텍스트) — `/help` [화면 가이드] 탭, `canView` 로 볼 수 있는 화면만, `?topic=` 펼침, 검색. 이미지·나머지 화면은 하지 않았다.
+- 검증 결과 : 새·수정 테스트 — `AiDictionaryEvaluationIntegrationTest` 14건(이력·사유·블라인드 반려 거부·`CLOSE_UNCONFIRMABLE`·입력 맥락·실패 문구), `ColumnTermRelinkIntegrationTest` 7건(처음 연결·해제·일괄 롤백·같은 컬럼 두 번·충돌), `ModelStructureDiagnosticIntegrationTest` 3건(무효 FK 5종 판정·수정 안 막음·중복 인덱스 3종·예제 프로젝트 오류 0), `CollectionDropTest`(50% 경계·정수 나눗셈·비교 불가), `RequestLogRetentionIntegrationTest`(끔·기간 경계), 예제 수 테스트(인덱스 115·인덱스 컬럼 168·마이그레이션 3·AI 테이블 6). 전체 : H2 `./gradlew build` 853건 실패 0 · 건너뜀 33, PostgreSQL(18.6 컨테이너의 별도 빈 DB, `--rerun`, 실행 뒤 삭제) 853건 실패 0 · 건너뜀 25. `npm run typecheck` 통과. 기존 H2 파일 DB(V1)에 새 JAR 를 띄워 V2 증분 적용 성공. 헤드리스 Chrome(격리 인스턴스) : 모델 구조 진단(예제 75개 테이블·오류 0·경고 0), 도움말 가이드 16개·`?topic=` 펼침, 컬럼 일괄 연결 대화상자(승인 컬럼 제외 표시)를 한국어·영어 × 라이트·다크 × 1440·390px 에서 콘솔 오류·가로 넘침 없이 확인 — 390px 에서 일괄 연결 표의 마지막 열이 잘려 표만 가로 스크롤로 고침. **브라우저에서 확인하지 않은 것** : 진단 결과 행이 있는 화면(예제에 문제가 없어 0건 상태만 봄), 일괄 연결의 실제 반영 버튼(예제 컬럼이 모두 승인이라 대상 0), 처음 연결·해제 버튼, 테이블 수정의 스키마 이동 저장, 관리 프로젝트가 없을 때의 안내(ADMIN 은 관리 프로젝트가 있음), 수집 급감 경고(원본 DB 없음), 평가 화면의 판정 이력·입력 맥락 표시(사람 판정 데이터 없음) — 서버 동작은 위 통합 테스트로만 확인.
+
+### [DEC-IMPL-2] 확정 정책(DEC) 기반 통합 구현 2차 (2026-11-16)
+
+- 상태: 완료된 범위만 (DEC 별 상태·미착수 사유는 pending-work.md 7.3) · 1차 [DEC-IMPL-1] 는 그대로 둔다
+- **[M-8] DEC-08 · DEC-13 낙관적 충돌 검사 (일부 경로)** : 공통 계약 `common/jpa/ModelBase` — 기준값은 행의 MDFCN_DT(새 버전 컬럼 없음), 행을 잠그고(`findForUpdate`·`refresh(PESSIMISTIC_WRITE)`·논리 모델 잠금) 다시 읽은 뒤 마이크로초까지 비교, 다르면 409 `MODEL_CONFLICT`(아무것도 바꾸지 않음, 화면 입력은 그대로), 기준값 없는 요청은 검사 안 함. 적용 : VIEW 수정, 테이블 수정, 인덱스 수정, 관계 삭제·수정 규칙, 컬럼 일괄 저장(기준값 행을 ID 순서로 잠금), 논리 엔터티·속성 저장. 조회 응답에 기준값(`modifiedAt`·`updated`)을 더하고 VIEW·테이블·인덱스·컬럼 일괄·논리 엔터티/속성 화면이 보낸다.
+- **[M-7] DEC-10 논리 → 물리 선택 생성** : `PhysicalGenerationService`, 매핑 화면 [물리 테이블 생성] 대화상자(엔터티·스키마 선택 → 미리보기 → 생성).
+- **[AI-3] DEC-18 프로젝트별 AI Provider** : V3, [ai-provider-ai3.md 15장](completed/ai-provider-ai3.md).
+- **[AI-5-EVAL] DEC-29 보완** : 입력 맥락에 관계 변경 이력·연결 표준 용어/도메인 수정 일시.
+- **[M-DIAG] DEC-09 보완** : 물리 ERD 노드의 무효 FK 배지.
+- **[UI-HELP] DEC-30 보완** : 가이드 31개(메뉴 전부), 가이드 이미지 표시 기능.
+- **[M-11] DEC-22 일부** : 선택 테이블 Export (`/api/exportExcel/tables|columns?tableIds=`, 테이블 관리 [선택 테이블]).
+- 검증 결과 : 새 테스트 — `ModelOptimisticConflictIntegrationTest` 3건(VIEW 정의 409·정의 보존·새 기준값 성공·기준값 없음 호환, 테이블 409와 같은 기준값 동시 저장 2개 중 하나만 반영, 인덱스·컬럼 일괄 409·무저장), `PhysicalGenerationIntegrationTest` 2건(이름·타입·정밀도·PK·FK·미승인·매핑, 다시 하면 건너뜀, 계획 변경 409, 막는 문제 시 무생성, 다른 프로젝트 거부), `ProjectAiProviderIntegrationTest` 2건, `AiDictionaryEvaluationIntegrationTest.termContext`, `ModelExcelExportIntegrationTest` 선택 테이블. 전체 : H2 `./gradlew build` 861건 실패 0 · 건너뜀 33(마지막 실행은 아래 9장), PostgreSQL 861건 실패 0 · 건너뜀 25 — 첫 PostgreSQL 실행에서 논리 → 물리 미리보기가 읽기 전용 트랜잭션에서 기본 스키마 해석의 행 잠금(`FOR NO KEY UPDATE`)으로 실패해(H2 는 재현 안 됨) 미리보기를 일반 트랜잭션으로 바꾼 뒤 다시 전체 통과. 격리 인스턴스(기존 H2 파일 DB, V2) 에 새 JAR 로 V3 증분 적용 성공(단, 그 JAR 의 V3 는 첫 줄 주석의 문서 장 번호만 지금 파일과 다르다 — 이 버린 DB 에만 적용됐다). 헤드리스 Chrome E2E(예제 프로젝트에 실제 데이터를 만들어) : 테이블 수정 화면을 연 뒤 다른 사용자가 먼저 저장 → 저장 시 409 문구, 수정 대화상자·입력 유지, 저장값은 먼저 저장한 값(한국어 1440). 논리 엔터티 생성(API) → 매핑 화면 [물리 테이블 생성] 미리보기(TB_EVL_STNG·AI_STNG_SN PK·PRJ_SN) → 생성 → 미승인 테이블 확인, 다시 열면 건너뜀(한국어·영어·다크·1440·390). 프로젝트 관리 화면에서 프로젝트 AI Provider 지정 → "프로젝트 지정 · 사용 가능", `/api/ai/metadata/status` READY(네 조합 표시 확인). 참조 테이블이 없는 컬럼 → 모델 구조 진단 오류 1행(네 조합). 화면 가이드 31개·가로 넘침 없음(네 조합). 물리 ERD 무효 FK 배지는 처음 확인에서 보이지 않아(자동 배치 뒤 노드를 다시 만들며 진단 결과를 잃음) 고친 뒤 다시 확인 — 노드 78개 중 무효 FK 테이블 1개에 배지 표시(한국어 라이트 1440·영어 다크 390, 이 확인은 같은 버린 DB 를 `spring.flyway.validate-on-migrate=false` 로 띄워서 했다). **확인하지 않은 것** : 실제 AI 서버로 프로젝트 지정 호출, 영어 화면의 충돌 재현, 관계 규칙 화면의 충돌(화면이 기준값을 아직 안 보냄), 가이드 이미지(파일 없음).
+
+### [DEC-IMPL-3] 확정 정책 통합 구현 3차 — DEC-08·13 완성 (2026-11-16)
+
+- 조사한 모델 수정 경로와 처리 : 테이블·VIEW·인덱스·관계 규칙·컬럼 일괄·논리 엔터티/속성(2차) + 스키마·논리 모델·논리 식별자·논리 관계(3차) 에 `ModelBase` 충돌 검사(행·모델 잠금 뒤 비교, 409). 제약조건은 수정 API 가 없고, 엑셀 업로드는 신규 등록 전용이다.
+- 기준값 필수 : 위 HTTP 수정 요청은 기준값이 없으면 400 `MODEL_BASE_REQUIRED`(`ModelBase.require`, 컨트롤러). 화면은 모두 보낸다(테이블 수정은 항상, 컬럼 일괄은 기존 행 전부, FK 규칙은 ERD 관계의 `modifiedAt`, 스키마는 목록 `updated`). 내부 작업(서비스 직접 호출)은 예외로 문서화. 호환 영향 : 기준값 없이 수정 API 를 부르던 외부 호출자는 400 을 받는다 — 조회 응답의 `modifiedAt`/`updated` 를 돌려주면 된다.
+- 비교 허용 오차 1µs (PostgreSQL 은 timestamp(6) 를 반올림해 메모리 값과 1µs 다를 수 있다).
+- 검증 : `ModelOptimisticConflictIntegrationTest` 4건(3차 : 스키마·논리 모델·관계 규칙 409, 컨트롤러 400), 기준값을 보내도록 고친 기존 테스트(ModelChangeHistory·ModelVersion·ModelIntegrityHardening·ProjectDeletion·LogicalErdEdit·ViewAuthorizationHttp·SmokeTest). 전체 실행은 9장. 브라우저 E2E 는 3차에서 다시 하지 않았다(2차 테이블 충돌 E2E 만 있음).
+
+### [DEC-IMPL-7] 7차 통합 품질 개선 · DEC-22 보완 (2026-11-17)
+
+정책 결정(7차 지시)과 구현을 나눠 적는다. 마이그레이션 추가 없음 (다음은 그대로 V7).
+- **요청 로그 상태 코드 (P0, 결함 수정)** : `@PreAuthorize` 로 거부된 요청이 실제로는 403 인데 요청 로그(TB_LOG)에 200 으로 남았다. 원인 : `LogsInterceptor.afterCompletion` 이 핸들러 직후에 저장했는데, 그 시점에는 거부 예외가 아직 `ExceptionTranslationFilter` 에서 403 으로 바뀌기 전이다. → 저장을 필터 체인이 끝난 뒤(`CustomOncePerRequestFilter` → 새 `RequestLogRecorder`)로 옮겨 응답에 실제로 정해진 상태를 쓴다 (추정하지 않는다 — 필터 밖으로 나가는 처리되지 않은 예외만 컨테이너 규칙대로 500, 이미 보낸 응답은 그 상태). 인터셉터는 핸들러·나간 예외·컨트롤러 앞 사용자만 요청 속성에 남기고 가장 먼저 돈다(프로젝트 접근 취소 401 도 그 사용자로 남는다). 한 요청 한 건, 로그인하지 않은 요청·로그 제외 경로(`LogsConfig.isExcludedPath` = 인터셉터 제외 패턴)는 지금처럼 남기지 않고, 컨트롤러 전에 거절된 로그인 사용자 요청은 4xx·5xx 만 남긴다. 본문 보호 정책 그대로, 권한 거부는 스택 없이 info 로그. 비동기 처리(DeferredResult·SSE 등)를 쓰는 API 는 지금 없다 — 생기면 비동기 디스패치에서 이 필터가 다시 돌지 않는 점(OncePerRequestFilter 기본)을 함께 바꿔야 한다. 검증 : `LogsInterceptorTest`(필터 경유로 다시 씀 : 403·컨트롤러 전 거절·세션 끊긴 401·한 번만·제외 경로·500), 새 `RequestLogStatusHttpTest`(실제 서버 : 일반 200·`@PreAuthorize` 403·서비스 권한 403·VIEW 정의 원문 403(USER·VIEWER)·모델 Import 권한 403·처리되지 않은 예외 500·프로젝트 접근 취소 401 이 로그와 같고 각 한 건, 비로그인 401 은 로그 없음, 보호 경로 본문 `[PROTECTED]`), `McpEndpointIntegrationTest`(MCP 는 TB_LOG 에 없다), 실제 앱(PostgreSQL 임시 DB)에서 VIEWER Import 403·USER/VIEWER VIEW 정의 403·없는 대상 404 가 로그와 같음.
+- **MCP·AI `searchTables` 검색 방식 표시 (P1)** : 기존 필드를 두고 `matchMode`(ALL·EXACT·PARTIAL·TOKEN_FALLBACK·NONE)·`exactMatch`·`approximate`·`matchedTerms`·`resultCount`, 테이블별 `match`(EXACT·PARTIAL·TOKEN)·`matchedTerms` 를 더했다. EXACT 는 결과가 모두 이름·코멘트가 같을 때만, 근사(TOKEN_FALLBACK)는 도구 설명에 "관련 없을 수 있다" 를 적었다. 내부 Tool Calling 과 MCP 가 같은 도구. 상세 [embedded-mcp-dec31.md 8장](completed/embedded-mcp-dec31.md). 검증 : `MetadataToolIntegrationTest`(정확·부분·여러 테이블·부분 중 같은 이름·단어별·없음·목록·다른 프로젝트), `McpEndpointIntegrationTest`(MCP 결과·설명), AI Tool Calling 회귀 통과, 실제 앱에서 공식 MCP SDK 로 6가지 확인. 실제 Claude Code 로는 다시 묻지 않았다.
+- **DEC-22 모델 VIEW · ERD 배치 교환 (정책 확정 → 구현)** : 교환 형식 2 — `PHYSICAL_VIEW`(정의 SQL 은 VIEW 관리와 같은 정적 검사, 실행 안 함, 참조는 같이 가져오는 객체 → 대상의 같은 이름 객체 → 모델 밖 이름 순으로 다시 잇고 순환은 제외, 미승인·덮어쓰기 없음)와 내보낸 사용자의 **저장된** 물리·논리 ERD 배치(`layouts`, 가져오는 사용자 본인 배치에 새 객체 좌표만 더함 — 기존 좌표 그대로·기존 배치 오른쪽, 좌표 범위 검사, 없는 객체 좌표 무시 경고, 계획 뒤 배치 저장 시 409). 형식 1 파일은 그대로 가져온다. 원본 DB 수집 VIEW 정의(DEC-16)는 넣지 않는다. 화면 : VIEW 고르기·ERD 배치 행·경고 (ko·en). 상세 [model-exchange-dec22.md 8장](completed/model-exchange-dec22.md). 검증 : `ModelExchangeIntegrationTest.viewsAndLayouts`(왕복·재매핑·격리·이력·CONFLICT·기존 배치 보존·병합·409·형식 1·잘못된 좌표 400·없는 객체 경고·안전하지 않은 정의·순환·전체 롤백), 브라우저(화면에서 Export 파일 → 업로드 → 계획 VIEW 2·배치 2행 → 확정 → 대상 프로젝트 물리·논리 ERD 노드 좌표가 원본과 같음·관계선, 한국어·다크·1440 / 영어·라이트·390, 넘침 0·콘솔 오류 0).
+- **DEC-05 판단 불가(UNKNOWN) 정책 (정책 확정 → 구현)** : 구성 차이를 안전하게 판단할 수 없는 객체는 자동 교체하지 않는다 (기존 동작 유지 : 교체 항목 없음·고를 수 없음·기존 객체 그대로). 더한 것 : 후보 항목에 지금 모델 정의(`before`), 가져오기 패널의 [수동 검토 필요] 묶음(원본·현재 모델 값, 판단 불가 사유 안내). 식 비교 엔진은 만들지 않았다(별도 작업). 상세 [source-sync-dec04-05-07.md 2.1](completed/source-sync-dec04-05-07.md). 검증 : `SourceSyncIntegrationTest.replaceUniqueCheckForeignKey` 보강, 실제 PostgreSQL 원본으로 화면 확인(ko 다크·en 라이트 390).
+- **대형 ERD 이미지 측정 · 크기 한도** : 100·300·500·1,000 노드 PNG/SVG (시간·힙·파일·이미지 크기·멈춤·잘림). 500 까지 성공·잘림 없음(PNG 38초·화면 멈춤 32초·SVG 387MB), 1,000 은 탭이 죽음. → 무게(노드 + 그리는 행) 2,000 초과 확인 대화상자(예상 시간·크기), 6,000 초과 거절 안내. 측정표 [model-exchange-dec22.md 9장](completed/model-exchange-dec22.md). 화면 확인 100·300·1,000 (ko·en).
+- **확인한 기존 문제 (고치지 않음)** : 같은 계정의 세션 행이 많이 남은 DB(임시 DB 에 admin 세션 19행)에서 로그인한 채로 다시 로그인하면 새 세션이 인증되지 않은 상태가 된다 — 6차 JAR 로도 같은 DB 에서 재현, 새 DB 에서는 7차 JAR 도 정상. 7차 변경과 무관해 pending-work 에 올렸다.
+- 전체 실행 : H2 893·실패 0·건너뜀 39, PostgreSQL 893·실패 0·건너뜀 9 (9장, 6차 886 + 새 테스트 7).
+- **확인하지 못한 것** : 실제 Claude Code 로 새 검색 표시를 본 응답, 다른 브라우저·저사양 PC 의 ERD 이미지, 실제 nginx·다중 인스턴스 (6차와 같다).
+
+### [DEC-IMPL-6] 6차 통합 안정화 · 최종 검증 (2026-11-17)
+
+새 기능 없이 1~5차 결과를 실제 실행으로 다시 확인하고 찾은 결함을 고쳤다. 마이그레이션 추가 없음 (다음은 그대로 V7).
+- **찾아서 고친 결함**
+  - DEC-22 : 기본 스키마가 아직 없는 프로젝트(새 프로젝트는 처음 쓸 때 만든다)로 모델을 복사하면 `DEFAULT` 를 일반 스키마로 만들어, 그 뒤 물리 ERD·테이블 관리가 기본 스키마를 만들다 UNIQUE 위반 500. → 그때는 기본 스키마로 만든다 (`ModelExchangeService.create`). 회귀 `ModelExchangeIntegrationTest.roundTrip` (수정 전 실패 확인).
+  - DEC-08 : 논리 식별자의 구성 속성·인덱스의 컬럼만 바꾼 저장은 부모 행 UPDATE 가 없어 수정 일시(기준값)가 그대로 → 예전 기준값으로 보낸 다른 사용자의 저장이 409 없이 구성을 되돌렸다 (실제 API 로 재현). → `BaseEntity.markModified()` 를 구성이 바뀔 때 부른다 (`LogicalModelService.saveIdentifier`, `PhysicalModelServiceImpl.apply`). 회귀 `ModelOptimisticConflictIntegrationTest.compositionOnlyChangeMovesBase` (수정 전 실패 확인).
+  - 로그인 `project_id` 가 숫자가 아니면 500 → "접근할 수 없는 프로젝트" 로 거절 (`FormWebAuthenticationDetails`, `ProjectRecoveryLoginTest.malformedProjectIdIsRejected`).
+  - 충돌 409 상세 문구가 본문을 되풀이 → `충돌한 객체 : {0}` (`ModelBase`, `PhysicalGenerationService`, `EnglishMessages`).
+  - DEC-16 : 원문 확인 이력이 API 에만 있어 화면에 [정의 보기] 아래 최근 확인 이력(일시·계정)을 더했다.
+- **Flyway V6** : 새 `V6EmbeddedMcpMigrationTest`(V5 → V6, H2·PostgreSQL : 1건만 실행·validate·기존 계정·프로젝트·원본 VIEW 정의 유지·설정 행 없음 = 꺼짐·UNIQUE·FK·예제 표준 용어, 다시 migrate 0건), `V0SeedMigrationTest`(신규 V0~V6) 통과. 단일 JAR 로 V5 상태 DB(PostgreSQL 임시 DB·H2 파일 DB 각각)에 데이터를 넣고 V6 적용 → 재기동 "No migration necessary"·validate 통과·데이터 유지. 사용자 개발 DB `lexorma` 는 V0·V1 만 적용된 상태(읽기만 함 — 다음 기동 때 V2~V6 적용). 다른 유지 DB 에 V6 가 적용됐는지는 확인할 수 없다 (5차의 수정 전 V6 는 버린 임시 DB 에만 적용).
+- **DEC-08·13 브라우저 충돌 E2E** (헤드리스 Chrome, 서로 다른 계정 admin·USER, PostgreSQL 임시 앱) : 논리 모델·논리 관계·논리 식별자·물리 ERD FK 규칙 각각 A 저장 → B 409 문구·B 입력 보존·서버 값 = A·새로고침 뒤 최신·재편집 저장 성공·확인 버튼 연타해도 요청 1번, 기준값 없음 400 `MODEL_BASE_REQUIRED`. 영어 화면(논리 모델) 충돌 문구 "Another user changed this object … [Conflicting object: …]" 확인. API : 다른 프로젝트 논리 모델 수정 거절(`LOGICAL_MODEL_IS_NOT_DEFINED`), 승인된 논리 관계 수정 거절(`APPROVED_DATA_CANNOT_BE_UPDATE`). 같은 기준값 동시 저장·50회 연속 저장(1µs 허용 오차)은 PostgreSQL 통합 테스트로 확인.
+- **DEC-05 교체 롤백** : `SourceSyncIntegrationTest.replaceRollsBackWhenLaterItemFails` — 한 계획의 UNIQUE·INDEX 교체 중 두 번째(INDEX) INSERT 를 테스트에서만 거는 임시 CHECK 로 실패시키면 먼저 지나간 UNIQUE 교체까지 되돌아가고(기존 구성), 직전 모델 버전·변경 이력·가져오기 기록·매핑 이력이 남지 않으며, 원인을 없애면 다시 계획해 반영된다. H2·PostgreSQL. 운영 코드에 실패 주입 없음.
+- **DEC-16 브라우저·보안** (실제 PostgreSQL 원본, 47,321자 VIEW 포함) : 한국어·다크·1440 / 영어·라이트·390 — 변경 상태·원문·긴 SQL 스크롤·확인 이력·가로 넘침 0. USER·VIEWER 는 버튼 없음·안내·원문/이력 API 403. TB_LOG `[PROTECTED]`, 앱 로그·Export·MCP 응답에 원문 없음.
+- **DEC-30 권한별 도움말** : VIEWER 27·USER 28·MANAGER 30·ADMIN 33 가이드 = 서버 메뉴 권한과 같음, 숨긴 가이드는 `?topic=` 으로도 안 보임, 이미지 전부 로드·404 0·ko/en 경로·390px 넘침 0, 단일 JAR 에 이미지 66장.
+- **DEC-31 실제 Claude Code** (2.1.311, 임시 MCP 설정 파일 — 사용자 설정 무변경) : 연결·도구 10개·스키마/테이블/컬럼/표준 용어·도메인/논리 모델 조회, 다른 프로젝트 테이블 안 보임, 폐기 뒤 401. HTTPS 리버스 프록시(자체 서명, Node 내장 프록시) 뒤 SDK·Claude Code 연결, Origin 403, Secure 쿠키. 운영 조건(Host 유지, 프록시 헤더 신뢰 범위, 다중 인스턴스 호출 상한)을 [embedded-mcp-dec31.md](completed/embedded-mcp-dec31.md) 7장에 적었다.
+- **DEC-22 회귀** : 물리·논리 ERD PNG/SVG, Export JSON, 새 프로젝트로 복사 → 그 프로젝트의 물리 ERD·테이블 관리 열림, 재계획 충돌. 모델 VIEW 가져오기·ERD 배치 교환은 확정 정책에 따로 적힌 요구가 아니어서 정책 결정 대기로 둔다 (→ 7차에 정책 확정·구현, [DEC-IMPL-7]).
+- 전체 실행 : H2 886·실패 0·건너뜀 39, PostgreSQL 886·실패 0·건너뜀 9 (9장).
+- **확인하지 못한 것** : 실제 nginx·로드밸런서·여러 인스턴스 운영, 실제 원본 DB 에서의 `NO_PRIVILEGE` 화면, 영어 화면의 나머지 3개 충돌 화면(논리 모델만 영어로 확인), 10,000 TABLE 급 ERD 이미지.
+
+### [DEC-IMPL-5] 확정 정책 통합 구현 5차 (2026-11-16)
+
+- **DEC-16 원본 VIEW 정의 수집 (PostgreSQL)** — 상세 [completed/source-view-definition-dec16.md](completed/source-view-definition-dec16.md). V5 `TB_SRC_VIEW_DFN`(원문·키가 있으면 암호화·해시·상태)·`TB_SRC_VIEW_DFN_IDNTY_HSTRY`(원문 확인 감사). 수집 도구 `source.view-definition.discover`(마지막에 따로, 권한 없음·실패여도 수집 계속), 버전·이력에는 `definitionHash` 만, 원문은 프로젝트 관리자·ADMIN 만 `GET /api/source/tables/{id}/viewDefinition`, 원본 카탈로그 VIEW 상세 패널. 검증 : 실제 PostgreSQL 원본 통합 테스트 2, V4→V5 증분(H2·PG), 단일 JAR 브라우저 E2E(한국어 다크·라이트). 미검증 : 영어·390px 화면.
+- **DEC-22 ERD 이미지 · 모델 Export·Import·복사** — 상세 [completed/model-exchange-dec22.md](completed/model-exchange-dec22.md). 물리·논리 ERD [PNG]·[SVG](`html-to-image@1.11.11`, 지연 로드, 노드 전체·배치 그대로·자세히), `/api/modelExchange` export·targets·plan·apply (버전 있는 JSON `lexorma-model` v1, 계획 → planToken → 대상 프로젝트 배타 잠금 뒤 재계획 → 직전 버전 `MODEL-IMPORT-<요청>` → 미승인 새 객체, 충돌은 CONFLICT), 화면 `/modelExchange`. 검증 : H2 통합 테스트 2, 헤드리스 Chrome E2E(한국어 다크·영어 라이트·390px). 미검증 : 모델 VIEW·ERD 배치 교환(범위 밖).
+- **DEC-31 선택형 내장 MCP** — 상세 [completed/embedded-mcp-dec31.md](completed/embedded-mcp-dec31.md). V6 `TB_PRJ_MCP_STNG`·`TB_MCP_TKN`·`TB_MCP_CALL_HSTRY`, 같은 JAR 의 `POST /mcp`(기본 꺼짐), 해시 저장·1회 표시·만료 필수·폐기 토큰, 요청마다 발급자·멤버십·역할 재확인, 읽기 전용 도구 10개, Origin 검사·CSRF 분리·호출 상한·감사, 화면 `/mcpAccess`. 검증 : 통합 테스트 2(실제 서버 HTTP), 공식 MCP TypeScript SDK 클라이언트 E2E. 미검증 : AI 클라이언트 앱 대화형 사용, HTTPS 프록시·다중 인스턴스.
+- **DEC-30 화면 가이드 이미지** — 가이드 33개(모델 Export·Import, MCP 연결 추가) × ko/en 예제 화면 이미지 66장(`public/images/help/{ko,en}/`, JPEG 약 4MB, 예제 프로젝트만 있는 새 임시 데이터에서 캡처 — 실제 사용자·연결·토큰·키 없음). 검증 : 단일 JAR 포함, 도움말에서 33/33 로드(한국어 다크 1440·영어 라이트 390, 가로 넘침 0). 미검증 : 권한이 낮은 계정의 가이드 숨김(기존 규칙).
+- **4차 보완** — DEC-06 TABLE 이름 변경 뒤 재가져오기 기준값 연결(`renamedKeys`, 실제 PostgreSQL 원본 회귀 `SourceRenameReimportJdbcTest`), DEC-05 UNIQUE·CHECK·FK 교체·승인 거부·계획 만료 테스트, DEC-07 COMMENT 비우기 화면 E2E(한국어·영어), DEC-08·13 스키마 화면 두 탭 충돌 E2E와 1µs 허용 오차 테스트. 가져오기 패널·비교 요약의 낡은 안내 문구(삭제 없음·VIEW 정의 미수집)를 고쳤다. 미검증 : 논리 모델·관계·식별자·FK 규칙 화면의 브라우저 충돌.
+
+### [DEC-IMPL-4] 확정 정책 통합 구현 4차 — 원본 동기화 DEC-06·04·05·07 (2026-11-16)
+
+- **DEC-06 원본 이름 변경 매핑** (V4 `TB_SRC_COL_MPNG`·`TB_SRC_MPNG_HSTRY`) : TABLE·컬럼 이름 변경 후보(제안만), 사용자 확정·변경·해제, 확정 매핑을 비교·인덱스/제약 구성·가져오기가 같은 컬럼으로 쓴다, TABLE·컬럼 매핑 이력(append-only, 가져오기가 만든 매핑 포함). 상세 [completed/source-rename-mapping-dec06.md](completed/source-rename-mapping-dec06.md).
+- **DEC-04 원본 삭제 후보 선택 반영** (`/api/sourceMapping/deletions`) : 이름 변경 후보와 구분한 삭제 후보, 막는 이유·영향 분석, 계획 → 확정(잠금 뒤 재계획·planToken), 미승인·참조 없는 객체만, DEC-17 급감 시 확인 필수, 직전 모델 버전 `DELETE-요청`, 한 트랜잭션. **DEC-05** 가져오기 교체 항목(`…:REPLACE`, 미승인만, 참조되는 PK 거절), **DEC-07** 원본 COMMENT 명시적 비우기(`…:COMMENT_CLEAR`). 상세 [completed/source-sync-dec04-05-07.md](completed/source-sync-dec04-05-07.md).
+- 화면 : 원본 매핑 관리에 [이름 변경 매핑]·[원본 삭제 반영] 패널, 가져오기 패널의 비우기·교체 동작 이름, 비교 화면 `RENAME_MAPPED` 설명 (한국어·영어, `npm run typecheck` 통과).
+- 검증 : `SourceSyncIntegrationTest` 6건(DEC-06 2 · DEC-04 2 · DEC-05 1 · DEC-07 1), `V4SourceRenameMigrationTest`(V3 → V4 증분, 기존 TABLE 매핑 유지, 1:1 제약·연쇄 삭제·재연결 — H2·PostgreSQL), 시드 고정값 갱신(예제 인덱스 122·컬럼 177·마이그레이션 5). 전체 실행은 9장.
+- 브라우저 E2E (2026-11-16, 헤드풀 Chrome, `h2-local` 임시 데이터 폴더·포트 9951, 다크, 한국어, 1280px) : 실제 PostgreSQL 원본(컨테이너의 임시 DB, SEC-1 허용 규칙 경유 JDBC 수집) → 가져오기로 모델 TABLE 3개 → 원본에서 TABLE·컬럼 이름 변경·TABLE 삭제·컬럼 삭제·COMMENT 삭제 → 재수집 → 화면에서 [이름 변경 확정](같은 매핑 행 이동·이력) → [매핑 확정](매핑됨) → 삭제 후보(이름 변경 후보 1건 제외 표시) 2개 선택 → [삭제 계획 미리보기] → [삭제 확정](TABLE 1·컬럼 2, 직전 모델 버전 `DELETE-…`). 콘솔 오류 없음. 확인 뒤 앱 종료·임시 DB 삭제. 영어·라이트·390px 와 DEC-05 교체·DEC-07 비우기의 화면 확정은 하지 않았다.
+- **검증하지 않은 것** : 영어·라이트·390px 화면, DEC-05·07 의 화면 확정, 개발 DB(`lexorma`)에 V4 적용(사용자 DB 라 손대지 않음 — 다음 기동 때 V4 만 적용된다), UNIQUE·CHECK·FK 교체 전용 테스트.
+
 ## 3. 데이터 표준 관리
 
 ### [기존 기능] 표준 단어 · 용어 · 도메인
@@ -263,9 +346,14 @@
 
 ### [M-11] 통합 DDL Export
 
-- 상태: 일부 완료 (2026-11-13) — 남은 범위는 pending-work.md [M-11]
+- 상태: 일부 완료 (통합 DDL Export 2026-11-13, 테이블·컬럼 등록 데이터 엑셀 Export 2026-11-16) — 남은 범위는 pending-work.md [M-11]
 - 구현 내용 : 프로젝트·스키마 단위 한 스크립트(SCHEMA → TABLE → INDEX → FK → VIEW, 순환 FK 는 ALTER 분리), DBMS 선택, 설계용(기본)·승인 기준 모드, 범위 밖 참조·이름 충돌 경고, 미리보기·복사·`.sql` 다운로드 — [integrated-ddl-export-m11.md](completed/integrated-ddl-export-m11.md). 테이블 1개 DDL 조회(PostgreSQL/Oracle/MySQL/MariaDB)는 기존 기능, 출력은 골든 파일로 고정.
 - 검증 결과 : PostgreSQL 18 실제 실행 검증. Oracle·MySQL·MariaDB 는 생성 결과만 테스트.
+- **테이블·컬럼 등록 데이터 엑셀 Export (2026-11-16)** — [integrated-ddl-export-m11.md 13장](completed/integrated-ddl-export-m11.md)
+  - 결정(사용자) : 화면의 지금 조회 조건 전체(페이지 무관, 조건 없으면 프로젝트 전체), 승인·승인 대기 모두, USER, 업로드 열 뒤의 참고 열은 조회 전용(다시 올려도 반영 안 됨).
+  - 구현 : `GET /api/exportExcel/tables`·`/columns`(USER), 목록과 같은 조건 클래스(`TableListFilter`·`ColumnListFilter`), `ModelExcelExportService`(500건 쪽 읽기 + SXSSF, fetch join), `ExcelExportUtils.exportModel`(업로드 템플릿 헤더 그대로 + 참고 열, 한국어·영어). 테이블 A~E(E 업무 설명) + F~I(스키마·테이블 코멘트·원본 COMMENT·승인), 컬럼 A~U(S 헤더 표시명 빈 칸·T 데이터 예시·U 업무 설명, 같은 이름이 여러 스키마면 `스키마명.테이블명`) + V~Y(스키마·IDENTITY·원본 COMMENT·승인). 값은 바꾸지 않고(수식처럼 보이는 값도 문자열 셀) 셀 한도(32,767자) 초과는 자르지 않고 대상을 밝혀 실패. 업로드는 등록 전용·열 순서 계약 그대로. 화면 : "빈 템플릿" / "등록 데이터" 버튼(테이블·컬럼 관리).
+  - 검증 : `ModelExcelExportIntegrationTest` 7건(왕복 — 빈 프로젝트에 올려 업로드 열 18항목 비교 포함, 대량 1,200 컬럼 H2 556ms·PG 591ms), `SmokeTest` HTTP 1건. 전체 H2 843건(실패 0, 건너뜀 33)·PostgreSQL 843건(실패 0, 건너뜀 25). 브라우저 : 실제 버튼으로 내려받은 파일 내용(검색 범위·헤더·S/T/U·참고 열), 한국어·영어 × 라이트·다크 × 1440·390.
+  - 한계 : 업로드는 등록 전용이라 같은 프로젝트에 다시 올려도 갱신되지 않고, 참고 열(스키마·테이블 코멘트·IDENTITY·승인)은 왕복되지 않는다. 확인하지 못한 것 — 스키마 선택 상태의 브라우저 다운로드, 실제 Excel 프로그램에서 연 모양, 수만 행 규모.
 
 ### [M-14] 인덱스 관리
 
@@ -306,7 +394,7 @@
   - AI-1a : 요청 로그 본문 보호(`LogBodyPolicy`), `SecretCipher`, `ExecutionContext`·`ExecutionContextVerifier`, `ProjectAuthority`.
   - AI-1b : 원본 연결 `TB_SRC_CNTN`(JDBC URL·드라이버를 받지 않고 부분값으로 조립, 비밀번호 암호화), 원본 카탈로그 `TB_SRC_SCHM/TBL/COL/CNSTRT/IDX/REL`(물리 모델과 FK 없음), 식별자 정규화(U-24), 연결 삭제 시 카탈로그 정리(U-25), 내부 도구 계약(`SourceToolExecutor` 만 연결) — [source-catalog-ai1b.md](completed/source-catalog-ai1b.md), [source-tool-architecture.md](reference/source-tool-architecture.md).
   - AI-1c : 수집 실행·대상, 테이블·스키마 단위 Copy-on-Write 버전, 객체별 변경 이력, 반영 순서(`RFLT_ORD`), 부분 실패 시 전체 미반영(U-26), 보관 방식(U-06, 보관 기간은 미정) — [source-catalog-versioning.md](completed/source-catalog-versioning.md).
-- **AI-1d** : 완료 (2026-11-16). 원본 ↔ 물리 매핑은 M-4c·M-4e 로, 업무 설명 칸(`TASK_EXPLN` TEXT)은 AI-5 로, 엑셀·등록·일괄 편집 화면·길이 통일·안정성 보완은 아래 [AI-1d] 항목. DDL COMMENT 반영 여부는 DEC-03(보류).
+- **AI-1d** : 완료 (2026-11-16). 원본 ↔ 물리 매핑은 M-4c·M-4e 로, 업무 설명 칸(`TASK_EXPLN` TEXT)은 AI-5 로, 엑셀·등록·일괄 편집 화면·길이 통일·안정성 보완은 아래 [AI-1d] 항목. DDL COMMENT 반영 여부는 DEC-03 — 2026-11-16 확정 : 넣지 않는다 (pending-work 7.2).
 
 ### [AI-2b] PostgreSQL JDBC 메타데이터 수집
 
@@ -341,7 +429,7 @@
 
 ### [AI-1d] 업무 설명 반영 범위 — 엑셀 템플릿·업로드 · 컬럼 등록 · 일괄 편집 화면 · 길이 4,000자 통일 · 안정성 보완 (2026-11-16)
 
-- 상태: **완료** (2026-11-16, 구현 및 안정성 보완 — 사용자 결정). 업무 설명을 DDL COMMENT 에 넣을지는 별도 결정 항목 DEC-03(보류), 테이블·컬럼 데이터 엑셀 내려받기는 [M-11] 범위 (pending-work.md). 원본 ↔ 물리 매핑(M-4c·M-4e)과 업무 설명 칸·직접 편집(AI-5)은 앞서 완료
+- 상태: **완료** (2026-11-16, 구현 및 안정성 보완 — 사용자 결정). 업무 설명을 DDL COMMENT 에 넣을지는 DEC-03 — 2026-11-16 확정 : 넣지 않는다(pending-work 7.2), 테이블·컬럼 데이터 엑셀 내려받기는 [M-11] 에서 2026-11-16 구현(아래 [M-11] 항목). 원본 ↔ 물리 매핑(M-4c·M-4e)과 업무 설명 칸·직접 편집(AI-5)은 앞서 완료
 - 사용자 결정 (2026-11-16) : 엑셀 빈 셀은 기존 값 유지(A안). 엑셀 업로드의 등록(INSERT) 전용 계약은 그대로(기존 컬럼은 예전처럼 업로드 전체 거부, 기존 테이블은 건너뜀) → 신규 등록에서 빈 셀·공백만·열 없는 예전 파일은 NULL, 기존 업무 설명은 어떤 업로드로도 바뀌지 않는다. 다운로드는 템플릿 열만(데이터 내려받기는 없음 — 후속). 컬럼 템플릿 S/T 열 불일치 함께 수정. 테이블 템플릿에도 추가.
 - 구현 내용
   - 템플릿 : 컬럼 `columnTemplate.xlsx` U열, 테이블 `tableTemplate.xlsx` E열에 "업무 설명"(영어 "Business description", 예시 행 문구 포함, `ExcelTemplateLabels`). 기존 열 위치·데이터 유효성 검사 그대로.
@@ -365,7 +453,7 @@
 - **확정 정책 (2026-11-16 사용자 결정, 코드 변경 없음 — 구현과 일치 확인)**
   - 업무 설명 직접 편집에서 잠근 행의 DB 값과 이 트랜잭션의 엔터티 값이 다르면(먼저 읽어 둔 엔터티가 그 사이 다른 트랜잭션의 커밋으로 낡음) 변경 이력의 정합성을 보장할 수 없으므로 `BIZ_DESCRIPTION_CONFLICT`(409)로 저장을 거부한다. 거부 시 트랜잭션이 롤백되어 기존 데이터·변경 이력은 그대로이고, 호출자는 최신 상태를 다시 읽어 재시도한다(화면 : 충돌 안내 뒤 최신 내용을 다시 불러옴).
   - 같은 트랜잭션의 정상적인 반영 전 변경은 충돌이 아니다 — 다른 칸·다른 컬럼의 변경은 비교에 들어가지 않고, 같은 업무 설명의 반영 전 변경은 조회 전 자동 flush(Hibernate 기본 FlushMode AUTO, 프로젝트에서 바꾸지 않음)로 DB 값과 같아진다. 회귀 테스트 TX-01·TX-05 와 "같은 트랜잭션의 반영 전 변경" 단언을 유지한다.
-  - DEC-03 은 결정 보류, 데이터 엑셀 Export 는 M-11.
+  - DEC-03 은 결정 보류, 데이터 엑셀 Export 는 M-11. → 2026-11-16 DEC-03 확정 : 업무 설명은 DDL COMMENT 에 넣지 않는다 (pending-work 7.2).
 
 ## 6. AI 기능
 
@@ -421,7 +509,8 @@
 
 ## 9. 검증 및 테스트 현황
 
-- **최근 전체 실행 (2026-11-16, AI-1d 안정성 후속)** : H2 835건 실패 0 · 건너뜀 33, PostgreSQL 835건 실패 0 · 건너뜀 25 (기존 PostgreSQL 18.6 컨테이너의 별도 빈 DB, `LEXORMA_TEST_POSTGRES_URL`, `--rerun`, 실행 뒤 DB 삭제). 이전 기록 : 같은 날 AI-1d 길이 통일 825건, AI-1d 엑셀·화면 819건, AI-5-EVAL 2차 보완 810건(건너뜀 33·25).
+- **최근 전체 실행 (2026-11-17, 7차 통합 품질 개선)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun --continue` 893건 실패 0 · 건너뜀 39, PostgreSQL(빈 임시 DB `lexorma_dec7_full`, `LEXORMA_TEST_POSTGRES_URL`·`LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 893건 실패 0 · 건너뜀 9 — 7차 마지막 백엔드 코드 기준, 임시 DB 는 실행 뒤 지웠다. 그 뒤 바꾼 것은 화면 문구 한 곳(수동 검토 묶음의 동작 표시)뿐이고 타입 검사·JAR 빌드·브라우저로 확인했다.
+- 이전 : **최근 전체 실행 (2026-11-17, 6차 통합 안정화)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun` 886건 실패 0 · 건너뜀 39, PostgreSQL(`--rerun`, 빈 임시 DB `lexorma_dec6_full2`, `LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 886건 실패 0 · 건너뜀 9 — 6차 마지막 코드 기준, 임시 DB 는 실행 뒤 삭제. 첫 전체 실행에서 H2 1건 실패(새 롤백 테스트의 실패 주입 조건이 새 행 번호에 기대 — Hibernate 시퀀스 묶음 때문에 순서에 따라 달라짐)를 기존 인덱스 번호 기준으로 고쳐 다시 전체 실행. 프런트 `npm run typecheck`·프로덕션 빌드(`bootJar`) 통과. 이전 5차 : H2 `./gradlew test -PfrontendPrebuilt=true` 881건 실패 0 · 건너뜀 38, PostgreSQL(`--rerun`, 빈 임시 DB `lexorma_dec5_test`, 원본 JDBC 테스트용 `LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 881건 실패 0 · 건너뜀 9 — 모두 5차 마지막 코드 기준, 임시 DB 는 실행 뒤 삭제. 프런트 `npm run typecheck`·프로덕션 빌드(`bootJar`) 통과. 이전 4차 : H2 `./gradlew test -PfrontendPrebuilt=true` 864건 실패 0 · 건너뜀 33 (DEC-06 반영 시점), PostgreSQL(`--rerun`, 별도 빈 DB) 868건 실패 0 · 건너뜀 25 (DEC-06·04·05·07 반영 시점), 그 뒤 추가한 `V4SourceRenameMigrationTest` H2·PostgreSQL 통과. 이전 3차 : H2 `./gradlew build` 성공(테스트 862건 — 2차 861 + 3차 1), PostgreSQL 862건 실패 0 · 건너뜀 25 (`--rerun`, 별도 빈 DB, 실행 뒤 삭제). 이전 2차 : H2 861건 실패 0 · 건너뜀 33 (마지막 `./gradlew build`), PostgreSQL 861건 실패 0 · 건너뜀 25 (미리보기 트랜잭션 수정 뒤 재실행). 이전 : 같은 날 1차 H2 853건 실패 0 · 건너뜀 33, PostgreSQL 853건 실패 0 · 건너뜀 25 (기존 PostgreSQL 18.6 컨테이너의 별도 빈 DB, `LEXORMA_TEST_POSTGRES_URL`, `--rerun`, 실행 뒤 DB 삭제). 이전 기록 : 같은 날 M-11 엑셀 Export 843건, AI-1d 안정성 후속 835건, AI-1d 길이 통일 825건, AI-5-EVAL 2차 보완 810건(건너뜀 33·25).
 - **단계별 기록된 검증** : 각 작업 항목의 "검증 결과"와 연결된 기록. 대부분의 단계는 H2·PostgreSQL 통합 테스트와 헤드리스 Chrome 화면 검증을 기록하고 있다. 기록에 미검증으로 남은 항목(대규모 성능, Oracle·MySQL·MariaDB 실제 실행, 일부 브라우저·역할·언어 조합)은 pending-work.md 에서 관리한다.
 - **검증 환경** : 단위 테스트(Mockito, 모듈별), 통합 테스트(`lexorma-app`, `@SpringBootTest` + Flyway H2), `SmokeTest`(실제 서버 + JDK `HttpClient`), PostgreSQL 은 빈 DB 를 가리켜 같은 테스트를 실행. 프론트엔드 검사는 `npm run typecheck` 뿐이다.
 
@@ -449,3 +538,10 @@
 | 2026-11-16 | [AI-1d] 업무 설명 길이 4,000자를 모든 저장 경로에서 통일(기존 초과 데이터 보호, 화면 글자 수 표시), 같은 트랜잭션 되돌림 현상 분석 기록. 데이터 엑셀 내려받기는 M-11 로, DEC-03 보류 |
 | 2026-11-16 | [AI-1d] 안정성 후속 : 업무 설명 직접 편집이 테이블 refresh 대신 업무 설명만 다시 조회(같은 트랜잭션의 컬럼 변경 유실 수정), 길이 초과 전용 오류 `BIZ_DESCRIPTION_TOO_LONG` |
 | 2026-11-16 | [AI-1d] 완료 처리 (구현 및 안정성 보완, 사용자 결정) : 낡은 엔터티 409 거부·반영 전 변경 비충돌 정책 확정 기록(코드 변경 없음). DEC-03 은 별도 결정 항목(보류), 데이터 엑셀 Export 는 M-11 |
+| 2026-11-16 | [M-11] 테이블·컬럼 등록 데이터 엑셀 Export (조회 조건 전체·승인 상태 모두·USER·업무 설명 포함, 조회 전용 참고 열, 왕복 검증) |
+| 2026-11-16 | [DEC-IMPL-1] 확정 정책 통합 구현 1차 추가 — DEC-27·29·32(AI 평가), DEC-26(표준 용어 처음 연결·해제·일괄), DEC-11·19(화면), DEC-09·12(모델 구조 진단), DEC-17(수집 급감 경고), DEC-14 1차(요청 로그 보관 기간), DEC-20(운영 복구 절차 문서), DEC-30 1차(화면 가이드). V2 마이그레이션. 미착수·보류 DEC 는 pending-work.md 7.3 |
+| 2026-11-17 | [DEC-IMPL-6] 6차 통합 안정화 — 결함 수정 4건(DEC-22 기본 스키마, DEC-08 구성만 바뀐 저장, 로그인 project_id 500, 충돌 문구)과 DEC-16 확인 이력 화면, V6·DEC-05·08·13·16·30·31·22 재검증 |
+| 2026-11-17 | 7차 통합 품질 개선 [DEC-IMPL-7] : 요청 로그 상태 코드 결함 수정, `searchTables` 검색 방식 표시, DEC-22 교환 형식 2(모델 VIEW·ERD 배치), DEC-05 UNKNOWN 수동 검토 표시, 대형 ERD 이미지 측정·크기 한도. 9장 최근 전체 실행 갱신 (893건) |
+| 2026-11-16 | [DEC-IMPL-5] 확정 정책 통합 구현 5차 — DEC-16 원본 VIEW 정의 수집(V5), DEC-22 ERD 이미지·모델 Export/Import/복사, DEC-31 내장 MCP(V6), DEC-30 가이드 이미지 |
+| 2026-11-16 | [DEC-IMPL-4] 확정 정책 통합 구현 4차 — DEC-06(V4 이름 변경 매핑)·04(원본 삭제 선택 반영)·05(제약·인덱스 교체)·07(원본 COMMENT 명시적 비우기). DEC-06·04 브라우저 E2E(실제 PostgreSQL 원본) |
+| 2026-11-16 | [DEC-IMPL-2] 확정 정책 통합 구현 2차 — DEC-08·13(일부 경로)·10·18, DEC-29·09·30 보완, DEC-22 선택 테이블 Export. V3 |

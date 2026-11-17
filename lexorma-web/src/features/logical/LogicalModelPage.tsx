@@ -241,7 +241,7 @@ function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: 
     if (!name.trim()) return dialog.alert(t('모델명은(는) 필수 입력 항목입니다.'));
     dialog.confirm(model ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
       // 이름 중복(프로젝트 안, 대소문자 무시)은 서버에서 검증한다
-      const saved = await api<LogicalModel>('/api/logical/model', { method: 'POST', body: { id: model?.id ?? null, modelName: name.trim(), modelDescription: description.trim() || null } });
+      const saved = await api<LogicalModel>('/api/logical/model', { method: 'POST', body: { id: model?.id ?? null, modelName: name.trim(), modelDescription: description.trim() || null, modifiedAt: model?.modifiedAt ?? null } });
       dialog.alert(model ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'), () => onSaved(saved));
     });
   };

@@ -2,6 +2,7 @@ package com.lexorma.source.catalog.domain.dto;
 
 import com.lexorma.source.catalog.domain.enums.SourceConstraintType;
 import com.lexorma.source.catalog.domain.enums.SourceTableType;
+import com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -21,7 +22,34 @@ public final class SourceCatalogSpec {
         }
     }
 
-    public record Table(Name name, SourceTableType type, String comment) {
+    /**
+     * @param definition VIEW 정의를 읽은 결과 (DEC-16). TABLE 이거나 정의를 읽지 않는 경로(AI-1b Writer·테스트)면 null : 정의를 바꾸지 않는다
+     */
+    public record Table(Name name, SourceTableType type, String comment, ViewDefinition definition) {
+        public Table(Name name, SourceTableType type, String comment) {
+            this(name, type, comment, null);
+        }
+    }
+
+    /**
+     * 원본 VIEW 정의 (DEC-16). 정의 SQL 은 실행하지 않는 메타데이터다.
+     *
+     * @param text COLLECTED 일 때만 원문, 그 밖에는 null
+     */
+    public record ViewDefinition(SourceViewDefinitionStatus status, String text) {
+        public static ViewDefinition collected(String text) {
+            return new ViewDefinition(SourceViewDefinitionStatus.COLLECTED, text);
+        }
+
+        public static ViewDefinition failed(SourceViewDefinitionStatus status) {
+            return new ViewDefinition(status, null);
+        }
+
+        /** 기록·예외 메시지에 원문이 섞이지 않게 : record 기본 toString 은 text 를 그대로 보인다 */
+        @Override
+        public String toString() {
+            return "ViewDefinition[status=" + status + ", length=" + (text == null ? null : text.length()) + "]";
+        }
     }
 
     public record Column(Name name, Integer ordinal, String dataType, Integer maxLength, BigDecimal precision, Integer scale, Boolean nullable,

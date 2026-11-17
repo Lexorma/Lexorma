@@ -170,7 +170,8 @@ public class AiProviderClients {
 
     /** {@link #callDefault} 와 같다. work 는 {@link AiCall} (모델 정보·요청 옵션)을 받는다 */
     public <T> T callDefaultWith(ExecutionContext context, Function<AiCall, T> work) {
-        AiProviderDto.DefaultTarget target = defaults.resolve();
+        // 프로젝트 지정(DEC-18)이 있으면 그것, 없으면 시스템 기본. 지정을 쓸 수 없으면 거절한다 (대신 부르지 않는다)
+        AiProviderDto.DefaultTarget target = defaults.resolve(context == null ? null : context.projectId());
         return callWith(target.providerId(), target.model(), context, work);
     }
 

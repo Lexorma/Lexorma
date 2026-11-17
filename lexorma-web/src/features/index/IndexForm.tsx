@@ -138,6 +138,8 @@ export function IndexForm({ detail, initialTableId, onSaved, onCancel }: {
         members: keys.map((k) => ({ columnId: k.columnId, expression: k.columnId == null ? k.expression.trim() : null, direction: k.direction, nulls: k.nulls || null })),
         includeColumns: includes.map((columnId) => ({ columnId })),
         condition: condition.trim() || null,
+        // 수정 : 화면이 읽은 수정 일시 (DEC-08, 다르면 409)
+        modifiedAt: detail?.updated ?? null,
       };
       setSaving(true);
       try {

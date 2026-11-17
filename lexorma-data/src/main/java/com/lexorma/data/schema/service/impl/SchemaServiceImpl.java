@@ -51,6 +51,8 @@ public class SchemaServiceImpl implements SchemaService {
                 ? SchemaInfo.builder().projectId(projectId).isDefault(false).build()
                 : schemaInfoRepository.findForUpdate(schemaDto.id(), projectId)
                     .orElseThrow(() -> new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED));
+        // DEC-08 : 잠근 스키마 행과 화면이 읽은 수정 일시(목록의 updated) 비교
+        if (schemaDto.id() != null) com.lexorma.common.jpa.ModelBase.verify(schema, schemaDto.updated(), schema.getSchemaName());
 
         // 기본 스키마는 이름을 고정한다 (설명만 수정). DDL 은 이름이 아니라 기본 여부로 접두어를 정하지만 M-3 정책으로 변경을 막는다
         if (Boolean.TRUE.equals(schema.getIsDefault()) && !name.equals(schema.getSchemaName())) {

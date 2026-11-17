@@ -49,10 +49,12 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
   const [bizDescription, setBizDescription] = useState(originalBizDescription);
   const [isMaster, setIsMaster] = useState(row.isMasterTable === 'Y');
   const [sortOrder, setSortOrder] = useState(row.sortOrder ?? '');
-  // 등록 : 스키마를 고른다 (고르지 않으면 기본 스키마). 수정 : 스키마를 보내지 않아 현재 스키마를 유지한다 (이동은 제공하지 않음)
-  // 목록은 화면에서 받는다 (대화상자는 AuthProvider 밖에 그려져 useSchemas 를 쓸 수 없다)
-  const [schemaId, setSchemaId] = useState('');
+  // 등록 : 스키마를 고른다 (고르지 않으면 기본 스키마). 수정 : 미승인 테이블은 다른 스키마로 옮길 수 있다 (DEC-11 — 승인된 테이블은 수정 자체가 막혀 승인 취소 뒤 옮긴다).
+  // 바꿨을 때만 schemaId 를 보낸다 (안 보내면 서버가 지금 스키마를 유지한다). 목록은 화면에서 받는다 (대화상자는 AuthProvider 밖에 그려져 useSchemas 를 쓸 수 없다)
+  const originalSchemaId = type === 'U' && row.schemaId != null ? String(row.schemaId) : '';
+  const [schemaId, setSchemaId] = useState(originalSchemaId);
   const selectedSchemaId = schemaId || String(schemas.find((s) => s.isDefault)?.id ?? '');
+  const schemaMoved = type === 'U' && !!originalSchemaId && schemaId !== originalSchemaId;
   const [state, setState] = useState<{ korName: string; result: TableNameResult | null; pending: boolean }>({ korName: '', result: null, pending: false });
   const seq = useRef(0);
   const autoDescription = useRef('');
@@ -118,12 +120,15 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
       ...(type === 'C' ? { bizDescription } : bizDescription !== originalBizDescription ? { bizDescription, bizDescriptionBase: originalBizDescription } : {}),
       isMasterTable: isMaster ? 'Y' : 'N',
       sortOrder: parseInt(String(sortOrder)) || 0,
-      ...(type === 'C' && selectedSchemaId ? { schemaId: Number(selectedSchemaId) } : {}),
+      ...((type === 'C' && selectedSchemaId) || schemaMoved ? { schemaId: Number(selectedSchemaId) } : {}),
+      // 수정 : 화면이 읽은 수정 일시 (DEC-08 — 그 사이 다른 사용자가 고쳤으면 409, 입력은 그대로 남는다)
+      ...(type === 'U' ? { baseModifiedAt: (row as { modifiedAt?: string | null }).modifiedAt ?? null } : {}),
     };
 
-    dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : t('수정하시겠습니까?'), async () => {
+    const targetSchemaName = schemas.find((s) => String(s.id) === selectedSchemaId)?.schemaName ?? '';
+    dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : schemaMoved ? t('스키마를 {0}(으)로 옮겨 수정하시겠습니까?', targetSchemaName) : t('수정하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
-      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName, schemaId: type === 'C' && selectedSchemaId ? Number(selectedSchemaId) : null }));
+      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName, schemaId: (type === 'C' && selectedSchemaId) || schemaMoved ? Number(selectedSchemaId) : null }));
     });
   };
 
@@ -132,12 +137,17 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
     <form id="editTableForm" className="edit-form" onSubmit={onSubmit}>
       <div className="form-group">
         <label htmlFor="tableSchema">{t('스키마')}</label>
-        {type === 'C' ? (
+        {type === 'C' || originalSchemaId ? (
           <select className="form-control" id="tableSchema" value={selectedSchemaId} onChange={(e) => setSchemaId(e.target.value)}>
             {schemas.map((s) => <option key={s.id} value={s.id}>{s.schemaName}{s.isDefault ? t(' (기본)') : ''}</option>)}
           </select>
         ) : (
           <input type="text" className="form-control gh-mono" id="tableSchema" readOnly value={row.schemaName ?? ''} />
+        )}
+        {schemaMoved && (
+          <p className="gh-muted" role="note">
+            {t('다른 스키마로 옮깁니다. 이 테이블을 참조하던 컬럼의 참조 테이블명은 새 스키마 기준으로 함께 고쳐지고, DDL·ERD 에서는 새 스키마에 나타납니다. 옮길 스키마에 같은 이름의 테이블·VIEW 가 있으면 저장되지 않습니다.')}
+          </p>
         )}
       </div>
 

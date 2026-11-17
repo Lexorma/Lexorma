@@ -36,6 +36,10 @@ public interface SourceCollectionExecutionRepository extends JpaRepository<Sourc
     Optional<SourceCollectionExecution> findFirstByConnectionIdAndStatusAndCollectionTypeAndIdNotOrderByReflectedOrderDesc(Long connectionId, CollectionStatus status,
                                                                                                         CollectionType type, Long id);
 
+    /** 반영 순서상 바로 앞의 같은 종류 정상 반영 (DEC-17 급감 경고 : 목록의 오래된 실행도 그때의 직전과 비교한다) */
+    Optional<SourceCollectionExecution> findFirstByConnectionIdAndStatusAndCollectionTypeAndReflectedOrderLessThanOrderByReflectedOrderDesc(Long connectionId, CollectionStatus status,
+                                                                                                                 CollectionType type, Integer reflectedOrder);
+
     /** 시각 → 그때까지 반영된 마지막 실행 */
     Optional<SourceCollectionExecution> findFirstByConnectionIdAndStatusAndReflectedAtLessThanEqualOrderByReflectedOrderDesc(Long connectionId, CollectionStatus status,
                                                                                                                         LocalDateTime at);

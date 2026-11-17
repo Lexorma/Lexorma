@@ -100,3 +100,8 @@ springdoc:
     title: "Lexorma API 문서"
     description: "Lexorma 프로젝트의 API 문서"
     version: "1.0.0"
+
+lexorma:
+  mcp:
+    # 선택형 내장 MCP (DEC-31, docs/completed/embedded-mcp-dec31.md) : 기본 꺼짐. 켜면 같은 서버의 POST /mcp 가 열린다 (프로젝트마다 관리자가 따로 켜고 토큰을 발급해야 쓸 수 있다)
+    enabled: ${LEXORMA_MCP_ENABLED:false}

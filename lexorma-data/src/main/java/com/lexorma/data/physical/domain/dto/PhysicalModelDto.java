@@ -30,10 +30,16 @@ public final class PhysicalModelDto {
      */
     public record Relation(Long id, String relationName, String relationType, String relationSource,
                            Long sourceTableId, String sourceTableName, Long targetTableId, String targetTableName,
-                           List<ColumnPair> columns, Boolean isApproval, String deleteRule, String updateRule) {
+                           List<ColumnPair> columns, Boolean isApproval, String deleteRule, String updateRule, java.time.LocalDateTime modifiedAt) {
         public Relation(Long id, String relationName, String relationType, String relationSource, Long sourceTableId, String sourceTableName,
                         Long targetTableId, String targetTableName, List<ColumnPair> columns, Boolean isApproval) {
-            this(id, relationName, relationType, relationSource, sourceTableId, sourceTableName, targetTableId, targetTableName, columns, isApproval, null, null);
+            this(id, relationName, relationType, relationSource, sourceTableId, sourceTableName, targetTableId, targetTableName, columns, isApproval, null, null, null);
+        }
+
+        /** modifiedAt : 수정 기준값 (DEC-08, 응답 전용 — 규칙 수정은 RelationRules.baseModifiedAt 으로 돌려준다) */
+        public Relation(Long id, String relationName, String relationType, String relationSource, Long sourceTableId, String sourceTableName,
+                        Long targetTableId, String targetTableName, List<ColumnPair> columns, Boolean isApproval, String deleteRule, String updateRule) {
+            this(id, relationName, relationType, relationSource, sourceTableId, sourceTableName, targetTableId, targetTableName, columns, isApproval, deleteRule, updateRule, null);
         }
 
         public static Relation fromEntity(TableRelation r) {
@@ -42,7 +48,7 @@ public final class PhysicalModelDto {
                     r.getTargetTable().getId(), r.getTargetTable().getTableName(),
                     r.getColumns().stream().map(c -> new ColumnPair(c.getSourceColumn().getId(), c.getSourceColumn().getColumnName(),
                             c.getTargetColumn().getId(), c.getTargetColumn().getColumnName())).toList(),
-                    r.getIsApproval(), ruleName(r.getDeleteRule()), ruleName(r.getUpdateRule()));
+                    r.getIsApproval(), ruleName(r.getDeleteRule()), ruleName(r.getUpdateRule()), r.modifiedAt());
         }
 
         public static String ruleName(TableRelation.Rule rule) {
@@ -51,7 +57,11 @@ public final class PhysicalModelDto {
     }
 
     /** FK 삭제·수정 규칙 변경 (M-4h) */
-    public record RelationRules(String deleteRule, String updateRule) {
+    /** baseModifiedAt : 화면이 읽은 관계의 수정 일시 (DEC-08, 없으면 검사하지 않는다) */
+    public record RelationRules(String deleteRule, String updateRule, java.time.LocalDateTime baseModifiedAt) {
+        public RelationRules(String deleteRule, String updateRule) {
+            this(deleteRule, updateRule, null);
+        }
     }
 
     /**
@@ -84,9 +94,15 @@ public final class PhysicalModelDto {
      */
     public record Index(Long id, Long tableId, String indexName, String indexType, Boolean isUnique,
                         List<ColumnRef> columns, Boolean isApproval, String indexSource,
-                        List<Member> members, List<ColumnRef> includeColumns, String condition) {
+                        List<Member> members, List<ColumnRef> includeColumns, String condition, java.time.LocalDateTime modifiedAt) {
         public Index(Long id, Long tableId, String indexName, String indexType, Boolean isUnique, List<ColumnRef> columns, Boolean isApproval) {
-            this(id, tableId, indexName, indexType, isUnique, columns, isApproval, null, null, null, null);
+            this(id, tableId, indexName, indexType, isUnique, columns, isApproval, null, null, null, null, null);
+        }
+
+        /** modifiedAt : 응답은 지금 수정 일시, 수정 요청은 화면이 읽은 값(DEC-08 기준값 — 없으면 검사하지 않는다) */
+        public Index(Long id, Long tableId, String indexName, String indexType, Boolean isUnique, List<ColumnRef> columns, Boolean isApproval,
+                     String indexSource, List<Member> members, List<ColumnRef> includeColumns, String condition) {
+            this(id, tableId, indexName, indexType, isUnique, columns, isApproval, indexSource, members, includeColumns, condition, null);
         }
 
         /** 요청의 검색 키 : members, 없으면 columns (오름차순) */
@@ -100,7 +116,7 @@ public final class PhysicalModelDto {
             List<TableIndexColumn> keys = i.keyMembers();
             return new Index(i.getId(), i.getTableInfo().getId(), i.getIndexName(), i.getIndexType(), i.getIsUnique(),
                     keys.stream().filter(c -> c.getColumn() != null).map(c -> ColumnRef.of(c.getColumn())).toList(), i.getIsApproval(), i.getIndexSource().name(),
-                    keys.stream().map(Member::of).toList(), i.includeMembers().stream().map(c -> ColumnRef.of(c.getColumn())).toList(), i.getCondition());
+                    keys.stream().map(Member::of).toList(), i.includeMembers().stream().map(c -> ColumnRef.of(c.getColumn())).toList(), i.getCondition(), i.modifiedAt());
         }
     }
 

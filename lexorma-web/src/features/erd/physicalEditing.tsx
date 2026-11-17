@@ -254,7 +254,7 @@ export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, on
   const [updateRule, setUpdateRule] = useState<FkRule>(r.updateRule ?? 'NO_ACTION');
   const rulesChanged = deleteRule !== (r.deleteRule ?? 'NO_ACTION') || updateRule !== (r.updateRule ?? 'NO_ACTION');
   const saveRules = () => dialog.confirm(t('FK 규칙을 저장하시겠습니까?'), async () => {
-    await api(`/api/physical/relation/${r.id}/rules`, { method: 'PUT', body: { deleteRule, updateRule } });
+    await api(`/api/physical/relation/${r.id}/rules`, { method: 'PUT', body: { deleteRule, updateRule, baseModifiedAt: r.modifiedAt ?? null } });
     onRulesChanged?.();
   });
   const derived = r.relationSource === 'REF_COLUMN';

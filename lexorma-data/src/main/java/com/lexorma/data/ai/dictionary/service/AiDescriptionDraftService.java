@@ -148,8 +148,8 @@ public class AiDescriptionDraftService {
             var open = writer.open(projectId, target.tableId(), target.columnId());
             if (open.isPresent()) return new Result(Outcome.SKIPPED, open.get());
         }
-        // 기본 Provider 를 먼저 확인한다 (미지정·비활성이면 메타데이터를 모으지 않고 끝낸다)
-        AiProviderDto.DefaultTarget provider = defaults.resolve();
+        // 이 프로젝트가 쓸 Provider 를 먼저 확인한다 (프로젝트 지정 → 없으면 시스템 기본, DEC-18. 미지정·비활성이면 메타데이터를 모으지 않고 끝낸다)
+        AiProviderDto.DefaultTarget provider = defaults.resolve(projectId);
         MetadataToolSession session = new MetadataToolSession(context, UUID.randomUUID().toString(), MetadataToolset.TIMEOUT_SECONDS * 1000L);
         session.serverContext();
         List<Section> sections = assemble(session, target);

@@ -35,7 +35,7 @@ public class AiDescriptionProposalHistory extends BaseEntity {
      * REVIEW_REQUIRED 근거 변경으로 재검토 필요 · RECHECK_FLAGGED 승인 뒤 근거 변경 표시 · SUPERSEDE 새 제안으로 대체
      */
     /** REVALIDATE : 재검토 필요 제안의 근거를 다시 확인해 검토할 수 있게 함 (변경을 확인했으면 기준 버전을 지금으로 옮긴다) · CLOSE : 적용하지 않고 종결 */
-    public enum Action { GENERATE, REVIEW, APPROVE, APPROVE_EDITED, REJECT, HOLD, REVIEW_REQUIRED, RECHECK_FLAGGED, SUPERSEDE, REVALIDATE, CLOSE }
+    public enum Action { GENERATE, REVIEW, APPROVE, APPROVE_EDITED, REJECT, HOLD, REVIEW_REQUIRED, RECHECK_FLAGGED, SUPERSEDE, REVALIDATE, CLOSE, CLOSE_UNCONFIRMABLE }
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_AI_EXPLN_SGSTN_HSTRY")

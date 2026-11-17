@@ -6,6 +6,7 @@ import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
 import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec.Name;
 import com.lexorma.source.catalog.domain.enums.SourceConstraintType;
 import com.lexorma.source.catalog.domain.enums.SourceTableType;
+import com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus;
 import com.lexorma.source.catalog.service.SourceCatalogRules;
 import com.lexorma.source.catalog.service.SourceIdentifiers;
 import com.lexorma.source.catalog.service.SourceIdentifiers.Kind;
@@ -237,10 +238,13 @@ public class SourceCollectionPreparer {
             relationTargets.put(entry.getValue().key(), targets.get(entry.getKey()));
         }
 
+        // VIEW 정의 (DEC-16) : 버전에는 해시만. 읽지 못했으면 해시 없음 — 반영 단계가 지난번 해시를 이어 쓴다
+        SourceCatalogSpec.ViewDefinition definition = type == SourceTableType.VIEW ? table.definition() : null;
+        String definitionHash = definition != null && definition.status() == SourceViewDefinitionStatus.COLLECTED ? SourceCatalogCanonical.definitionHash(definition.text()) : null;
         SourceCatalogCanonical.Table canonical = SourceCatalogCanonical.Table.of(schemaPath, name, compareName, table.name().quoted(), type.name(), table.comment(),
-                columns, constraints, indexes, keyed);
+                definitionHash, columns, constraints, indexes, keyed);
         String json = SourceCatalogCanonical.json(canonical.json());
-        return new PreparedCollection.Table(canonical, json, SourceCatalogCanonical.hash(json), columnHashes, relationTargets);
+        return new PreparedCollection.Table(canonical, json, SourceCatalogCanonical.hash(json), columnHashes, relationTargets, definition);
     }
 
     /** 구성 컬럼 : 같은 테이블의 컬럼만 (비교 명) */

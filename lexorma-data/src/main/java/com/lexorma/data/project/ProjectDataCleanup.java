@@ -31,12 +31,22 @@ public class ProjectDataCleanup {
             // 논리 ↔ 물리 매핑
             // 원본 매핑 (M-4c) : 모델 스키마·테이블로 가는 FK 가 있어 먼저 지운다
             // AI 설명 제안 (AI-5) : 모델 테이블에 FK 가 없어 순서는 상관없지만 모델보다 먼저 지운다
+            "delete from TB_AI_EXPLN_EVL_HSTRY where PRJ_SN = :projectId",
+            // 내장 MCP (DEC-31) : 호출 이력·토큰·프로젝트 설정 (FK_MCP_TKN_01·FK_PRJ_MCP_STNG_01 → TB_PRJ)
+            "delete from TB_MCP_CALL_HSTRY where PRJ_SN = :projectId",
+            "delete from TB_MCP_TKN where PRJ_SN = :projectId",
+            "delete from TB_PRJ_MCP_STNG where PRJ_SN = :projectId",
+            // 프로젝트 AI Provider 지정 (DEC-18, FK_PRJ_AI_STNG_01 → TB_PRJ)
+            "delete from TB_PRJ_AI_STNG where PRJ_SN = :projectId",
             "delete from TB_AI_EXPLN_EVL where PRJ_SN = :projectId",
             "delete from TB_AI_EXPLN_EVL_TRGT where PRJ_SN = :projectId",
             "delete from TB_AI_EXPLN_SGSTN_HSTRY where PRJ_SN = :projectId",
             "delete from TB_AI_EXPLN_SGSTN where PRJ_SN = :projectId",
             "delete from TB_AI_EXPLN_CRT_EXCN where PRJ_SN = :projectId",
             "delete from TB_SRC_IMPRT_EXCN where PRJ_SN = :projectId",
+            // 출처 컬럼 매핑·매핑 이력 (DEC-06, V4) : 컬럼 매핑은 테이블 매핑·모델 컬럼으로 가는 FK 가 있어 그보다 먼저, 이력은 FK 가 없다
+            "delete from TB_SRC_COL_MPNG where PRJ_SN = :projectId",
+            "delete from TB_SRC_MPNG_HSTRY where PRJ_SN = :projectId",
             "delete from TB_SRC_TBL_MPNG where PRJ_SN = :projectId",
             "delete from TB_SRC_SCHM_MPNG where PRJ_SN = :projectId",
             "delete from TB_PRJ_SRC_CNTN where PRJ_SN = :projectId",

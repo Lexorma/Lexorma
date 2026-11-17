@@ -16,6 +16,7 @@ public record SchemaDto(Long id, String schemaName, String schemaDescription, Bo
     }
 
     public static SchemaDto fromEntity(SchemaInfo entity) {
-        return new SchemaDto(entity.getId(), entity.getSchemaName(), entity.getSchemaDescription(), entity.getIsDefault());
+        // updated : 저장 응답도 수정 기준값을 준다 (DEC-08)
+        return new SchemaDto(entity.getId(), entity.getSchemaName(), entity.getSchemaDescription(), entity.getIsDefault(), null, null, entity.modifiedAt(), null, null);
     }
 }

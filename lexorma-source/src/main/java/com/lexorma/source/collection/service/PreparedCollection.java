@@ -1,5 +1,7 @@
 package com.lexorma.source.collection.service;
 
+import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
+
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.source.collection.domain.enums.TargetResult;
 import com.lexorma.source.connection.domain.enums.IdentifierComparison;
@@ -30,10 +32,25 @@ record PreparedCollection(Long connectionId, DbType dbType, IdentifierComparison
     /**
      * @param columnHashes     컬럼 비교 명 → 컬럼 해시
      * @param relationTargets  관계 키 → 참조되는 테이블을 찾을 비교용 경로·이름 (수집 결과의 따옴표 정보로 만든 것)
+     * @param definition       VIEW 정의를 읽은 결과 (DEC-16). 정의를 읽지 않는 경로면 null. 원문은 반영 단계에서 TB_SRC_VIEW_DFN 에만 쓴다
      */
-    record Table(SourceCatalogCanonical.Table canonical, String json, String hash, Map<String, String> columnHashes, Map<String, RelationTarget> relationTargets) {
+    record Table(SourceCatalogCanonical.Table canonical, String json, String hash, Map<String, String> columnHashes, Map<String, RelationTarget> relationTargets,
+                 SourceCatalogSpec.ViewDefinition definition) {
         String compareName() {
             return canonical.compareName();
+        }
+
+        /** 정의를 읽지 못한 VIEW : 지난번 정의 해시를 이어 써 원본 변경으로 보지 않는다 */
+        Table withDefinitionHash(String definitionHash) {
+            if (java.util.Objects.equals(canonical.definitionHash(), definitionHash)) return this;
+            SourceCatalogCanonical.Table changed = canonical.withDefinitionHash(definitionHash);
+            String changedJson = SourceCatalogCanonical.json(changed.json());
+            return new Table(changed, changedJson, SourceCatalogCanonical.hash(changedJson), columnHashes, relationTargets, definition);
+        }
+
+        /** 이번 수집에서 정의를 읽은 VIEW 인지 */
+        boolean definitionCollected() {
+            return definition != null && definition.status() == com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus.COLLECTED;
         }
     }
 

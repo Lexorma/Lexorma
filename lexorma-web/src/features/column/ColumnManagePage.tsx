@@ -12,6 +12,7 @@ import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
 import { TermRelink, type TermRelinkColumn } from './TermRelink';
+import { BulkTermLink, type BulkTermColumn } from './BulkTermLink';
 import { termLabel } from './terms';
 import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { columnColumns } from './columns';
@@ -132,10 +133,23 @@ export function ColumnManagePage() {
   // 표준 용어 재연결 (COL-TERM) : 승인 전 컬럼, 용어가 연결된 컬럼만. 연결만 바꾸고 컬럼 속성은 그대로
   const openTermRelink = (row: Row) => {
     dialog.popup({
-      title: t('표준 용어 변경 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
+      title: row.standardTerms ? t('표준 용어 변경 · {0}.{1}', row.tableName ?? '', row.columnName ?? '') : t('표준 용어 연결 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
       content: ({ close }: DialogControls) => (
         <TermRelink column={row as unknown as TermRelinkColumn} onCancel={close}
                     onChanged={(changed) => { close(); reload(); dialog.alert(changed ? t('표준 용어 연결을 바꿨습니다.') : t('같은 표준 용어라 바꾸지 않았습니다.')); }} />
+      ),
+    });
+  };
+
+  // 표준 용어 일괄 연결·변경 (DEC-26) : 체크한 컬럼마다 같은 영문 약어의 용어를 찾아 계획을 보이고 한 번에 반영
+  const openBulkTermLink = () => {
+    const checked = grid.current?.getCheckedOrAlert();
+    if (!checked) return;
+    dialog.popup({
+      title: t('표준 용어 일괄 연결 ({0}개)', checked.length),
+      content: ({ close }: DialogControls) => (
+        <BulkTermLink columns={checked as unknown as BulkTermColumn[]} onCancel={close}
+                      onDone={(changed) => { close(); reload(); dialog.alert(t('{0}개 컬럼의 표준 용어 연결을 바꿨습니다.', changed)); }} />
       ),
     });
   };
@@ -189,8 +203,8 @@ export function ColumnManagePage() {
                 {t('ERD 에서 보기')}
               </button>
             )}
-            {!approved && canView('physical-model-edit') && term?.id != null && (
-              <button type="button" className="btn" onClick={() => { close(); openTermRelink(row); }}>{t('표준 용어 변경')}</button>
+            {!approved && canView('physical-model-edit') && (
+              <button type="button" className="btn" onClick={() => { close(); openTermRelink(row); }}>{term?.id != null ? t('표준 용어 변경') : t('표준 용어 연결하기')}</button>
             )}
             {!approved && <button type="button" className="btn" onClick={() => { close(); openColumnOrder(row); }}>{t('컬럼 순서 변경')}</button>}
           </div>
@@ -214,10 +228,21 @@ export function ColumnManagePage() {
           crudActions="anCD"
           extraActions={
             <>
-              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/columnTemplate', t('컬럼 템플릿.xlsx'))}>
-                <DownloadIcon />{t('템플릿')}
+              <button type="button" className="btn" id="download-template" title={t('값이 없는 업로드 양식을 내려받습니다.')}
+                onClick={() => download('/api/downloadTemplate/columnTemplate', t('컬럼 템플릿.xlsx'))}>
+                <DownloadIcon />{t('빈 템플릿')}
+              </button>
+              {/* 등록 데이터 (M-11) : 지금 검색 조건 전체, 페이지와 무관. 업로드 양식과 같은 열 + 뒤에 참고 열 */}
+              <button type="button" className="btn" id="download-data" title={t('지금 조회 조건의 등록 데이터 전체를 업로드 양식으로 내려받습니다. 뒤쪽 참고 열은 다시 올려도 반영되지 않습니다.')}
+                onClick={() => {
+                  const search = grid.current?.getSearch();
+                  const query = new URLSearchParams(search?.column ? { searchColumn: search.column, searchQuery: search.query } : {});
+                  return download(`/api/exportExcel/columns?${query}`, t('컬럼 등록 데이터.xlsx'));
+                }}>
+                <DownloadIcon />{t('등록 데이터')}
               </button>
               <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />{t('업로드')}</button>
+              {canView('physical-model-edit') && <button type="button" id="bulk-term-link" className="btn" onClick={openBulkTermLink}>{t('표준 용어 일괄 연결')}</button>}
             </>
           }
           onAction={{ add, active: () => updateActive(true), unactive: () => updateActive(false), delete: remove }}

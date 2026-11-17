@@ -751,5 +751,36 @@ DEC-03(DDL COMMENT 에 넣을지), 데이터 엑셀 내려받기, 업무 설명 
 2. DB 최신 값과 영속성 컨텍스트 값이 달라 변경 이력의 정합성을 보장할 수 없으면 저장하지 않는다.
 3. 같은 트랜잭션의 정상적인 반영 전 변경은 충돌로 보지 않는다 : 비교는 업무 설명 한 칸만이고, 같은 칸의 반영 전 변경은 스칼라 조회 전 자동 flush(FlushMode AUTO — 프로젝트에서 바꾸는 곳 없음)로 DB 값과 같아진다. TX-01·TX-05 와 28.3 의 "반영 전 변경" 단언을 회귀 테스트로 유지한다. (전제 : 호출하는 트랜잭션이 FlushMode 를 COMMIT 등으로 바꾸면 같은 칸의 반영 전 변경이 충돌로 보일 수 있다 — 지금 그런 코드는 없다.)
 4. 충돌 시 예외로 트랜잭션이 롤백되어 기존 데이터·변경 이력은 그대로다. 호출자는 최신 상태를 다시 조회한 뒤 재시도한다 — 화면(`BizDescriptionInfo`)은 충돌 안내와 함께 최신 내용을 다시 불러온다.
-5. DEC-03(업무 설명을 DDL COMMENT 에) 은 결정 보류로 pending-work.md 7.1 에서만 관리하고, 데이터 엑셀 Export 는 M-11 에서 한다.
+5. DEC-03(업무 설명을 DDL COMMENT 에) 은 결정 보류로 pending-work.md 7.1 에서만 관리하고, 데이터 엑셀 Export 는 M-11 에서 한다. → 2026-11-16 DEC-03 확정 : 넣지 않는다 (pending-work.md 7.2). 엑셀 Export 는 M-11 에서 구현됨.
 
+
+## 29. 후속 : 판정 변경 이력 · 블라인드 처리 보강 · 평가 입력 맥락 · 실패 사유 문구 (DEC-27·29·32, 2026-11-16)
+
+정책 출처 : pending-work.md 7.2 (DEC-27·DEC-29·DEC-32 사용자 최종 결정), 상태는 7.3.
+
+### 29.1 판정 변경 이력 (DEC-27)
+
+- 저장 : V2 `TB_AI_EXPLN_EVL_HSTRY` (`AiDescriptionEvaluationHistory`, 시퀀스 `SQ_AI_EXPLN_EVL_HSTRY`). 판정(`TB_AI_EXPLN_EVL`) 하나를 저장할 때마다 한 행을 **추가만** 한다 — 처음 저장 `INSERT`, 수정 `UPDATE`. 칸 : 판정 ID·평가 대상·제안·판정자·변경 전(처음이면 null)·변경 후(판정·근거 없는 주장·누락 정보·불확실성·용어·도메인 추천·필요한 수정·검토/작성 분)·사유(최대 1,000자)·시각. 고치거나 지우는 경로는 프로젝트 삭제(`ProjectDataCleanup`)뿐이다.
+- 규칙 : 같은 값으로 다시 저장하면 아무것도 바꾸지 않고 이력도 남기지 않는다. 판정을 고칠 때는 사유가 필수(`AI_EVALUATION_INVALID` "판정을 고친 사유를 입력해주세요."). 기존 판정의 이력은 소급 생성하지 않는다. 지표는 지금처럼 판정 테이블의 최종 판정만 센다.
+- 조회 : `GET /api/ai/dictionary/evaluation/judgments/{id}/history` (VIEWER, 이 프로젝트의 판정만 — 아니면 NOT_FOUND). 평가 대상 화면의 판정 행에서 [판정 변경 이력] 으로 바뀐 칸만 전후로 보인다. 블라인드 규칙은 판정 목록과 같다(실제 의미 확인 전에는 판정 자체가 화면에 오지 않는다).
+- 예제 시드 : 같은 마이그레이션에 용어 `AI_설명_평가_이력_일련번호`, `TB_TBL`/`TB_COL`, 논리 엔터티 "AI 설명 평가 이력"·속성·식별자·매핑, 예제 인덱스 `IX_AI_EXPLN_EVL_HSTRY_01`, 업무 설명을 넣었다 (V0SeedMigrationTest·LexormaIndexSeedTest 의 수 115/168, AI 테이블 6).
+
+### 29.2 블라인드 처리 보강 (DEC-29)
+
+- 반려 : 승인과 같이, 실제 의미를 확인하기 전(PENDING)·확인 불가(UNCONFIRMABLE) 대상의 제안은 반려할 수 없다 (`AI_PROPOSAL_EVALUATION_PENDING`). 화면은 블라인드 제안의 [반려] 를 막고 이유를 툴팁으로 보인다.
+- 보류 : 사유 필수 ("보류 사유를 입력해주세요."). 일괄 처리 화면도 반려·보류 모두 사유를 받는다.
+- 종결 : 평가 불가(UNCONFIRMABLE) 대상의 제안을 종결하면 이력 동작이 `CLOSE_UNCONFIRMABLE`(사유 필수, 화면 "제안 종결 (평가 확인 불가)"). 예제 코드 용어 `처리_유형_코드` 정의에도 이 값을 V2 에서 더했다 (`ExampleTermCodeDefinitionTest`).
+
+### 29.3 평가 입력 맥락 (DEC-29)
+
+- 기준값 : 새 저장 없이 평가 대상 등록 시각과 제안 생성 시각을 쓴다. 두 시각 사이(어느 쪽이 먼저든)에 같은 테이블 — 테이블 자신(`PHYSICAL_TABLE`, ID) 과 컬럼(`PHYSICAL_COLUMN`, 이력 대상 이름 `테이블명.%`) — 의 모델 변경 이력이 있으면 입력 맥락이 바뀐 것으로 본다 (`ModelChangeHistoryRepository.countTableChanges`). 이름이 같은 다른 스키마 테이블의 컬럼도 함께 세므로 "바뀌었다" 쪽으로 넓다.
+- 쓰임 : 제안 항목의 `sameContext`, 화면의 [입력 맥락 변경] 표시, 지표 `sameMetadata`("같은 입력 조건으로 만든 판정") = 대상 자신의 버전이 같고(기존 `sameMetadata`) 입력 맥락도 같은 판정 수. 기존 예제 지표 테스트의 값이 3 → 1 로 바뀌었다(앞 제안의 승인이 같은 테이블 업무 설명을 바꿨기 때문 — 의도한 변화).
+- 하지 않은 것 : 프로젝트 전체 편집 차단(정책 : 기준값 검증 우선), 관계·표준 사전·다른 테이블 변경 감지, 승인 시점의 추가 차단(승인은 기존 `ProposalVersions` 재검증).
+
+### 29.4 일괄 생성 실패 사유 (DEC-32)
+
+- `JobError(target, code, message)` : 코드는 그대로(하위 호환), `message` 는 그 코드의 오류 문구를 요청 언어로(`Messages.error`, 없으면 "이 대상의 설명 초안을 만들지 못했습니다."). 화면은 "문구 (코드)" 로, 같은 코드는 한 번만 보인다.
+
+### 29.5 검증
+
+- `AiDictionaryEvaluationIntegrationTest` 14건(판정 이력·사유·같은 값 무기록, 블라인드 반려 거부·종결 `CLOSE_UNCONFIRMABLE`, 입력 맥락 변경과 지표, 실패 사유 문구), `AiDictionaryMigrationTest`, `V0SeedMigrationTest`, `LexormaIndexSeedTest`, `ExampleTermCodeDefinitionTest`, `ProjectDeletionIntegrationTest`, `MessagesCoverageTest` — 전체 실행 결과는 completed-work.md 9장.

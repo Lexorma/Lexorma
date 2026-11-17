@@ -71,6 +71,8 @@ interface BulkRow {
   termNotApproved: boolean;
   fields: Fields;
   original: Fields | null;
+  /** 기존 컬럼의 수정 기준값 (DEC-08) : 고친 행만 저장 때 보내 그 사이 다른 사용자가 고친 컬럼을 덮어쓰지 않는다 (409) */
+  modifiedAt?: string | null;
   deleted?: boolean;
   expanded?: boolean;
   error?: string | null;
@@ -83,6 +85,7 @@ interface ColumnInfo extends Row {
   columnName: string;
   sortOrder?: number | null;
   standardTerms?: { id: number; isApprovalYn: string } | null;
+  modifiedAt?: string | null;
 }
 
 // ---------------------------------------------------------------- 행 데이터 변환
@@ -107,6 +110,7 @@ function fromExisting(col: ColumnInfo): BulkRow {
     termNotApproved: false,
     fields,
     original: { ...fields },
+    modifiedAt: col.modifiedAt ?? null,
   };
 }
 
@@ -180,6 +184,8 @@ function toPayloadRow(row: BulkRow) {
   const biz = row.fields[BIZ_KEY] ?? '';
   if (row.isNew) payload[BIZ_KEY] = biz;
   else if (bizChanged(row)) Object.assign(payload, { [BIZ_KEY]: biz, bizDescriptionBase: row.original?.[BIZ_KEY] ?? '' });
+  // 기존 행은 모두 기준값을 보낸다 (서버가 필수로 확인 — 화면이 읽은 뒤 바뀐 행이 하나라도 있으면 409, DEC-08 3차)
+  if (!row.isNew) payload.baseModifiedAt = row.modifiedAt ?? null;
   return payload;
 }
 

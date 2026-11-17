@@ -47,6 +47,14 @@ public final class SourceModelComparator {
         /** 모델 이름(따옴표 없이 쓴 이름)을 원본 DBMS 의 비교 이름으로 */
         String fold(String modelName);
 
+        /**
+         * 모델 컬럼의 짝짓기 키 (DEC-06) : 사용자가 확정한 컬럼 매핑이 있으면 그 원본 컬럼의 비교 이름, 없으면 이름을 접은 값.
+         * 이 키로 컬럼·PK·UNIQUE·FK·인덱스의 구성 컬럼을 원본과 견준다 (이름이 바뀐 컬럼이 원본에만·모델에만 있는 객체로 나뉘지 않는다)
+         */
+        default String columnKey(Long columnId, String modelName) {
+            return fold(modelName);
+        }
+
         /** 읽어 둔 모델 컬럼 (FK 대상 TABLE 의 컬럼 포함). 없으면 null */
         CompareModel.Column modelColumn(Long id);
 
@@ -189,7 +197,9 @@ public final class SourceModelComparator {
             this.context = context;
             for (CompareModel.Column column : model.columns()) {
                 columnById.put(column.id(), column);
-                folded.put(column.id(), context.fold(column.name()));
+                // 확정된 컬럼 매핑(DEC-06)이 있으면 늘 그 원본 이름으로 짝짓는다. 그 원본 컬럼이 사라졌으면 모델에만 있는 컬럼이 되고
+                // (같은 이름의 새 원본 컬럼과 저절로 이어지지 않는다), 사용자가 매핑을 바꾸거나 해제한다 (가져오기의 key 와 같은 규칙)
+                folded.put(column.id(), context.columnKey(column.id(), column.name()));
             }
         }
 
@@ -297,6 +307,8 @@ public final class SourceModelComparator {
             }
             attributes.add(attribute("order", sourceRank, modelRank, equal(sourceRank, modelRank), Note.RELATIVE_ORDER));
             attributes.addAll(commentAttributes(s.comment(), "description", m.description(), Note.DESCRIPTION, m.sourceComment()));
+            // 이름이 다른데 짝지어졌다 = 사용자가 확정한 컬럼 매핑 (DEC-06). 이름 차이는 상태에 넣지 않는다 (모델 이름을 원본에 맞추지 않는다)
+            if (!s.compareName().equals(context.fold(m.name()))) attributes.add(0, attribute("name", s.name(), m.name(), AttributeResult.NOT_COMPARED, Note.RENAME_MAPPED));
             return new ObjectDiff(ObjectKind.COLUMN, s.name(), m.name(), status(attributes), attributes, List.of(), false);
         }
 
@@ -381,8 +393,9 @@ public final class SourceModelComparator {
         }
 
         String foldColumn(Long id) {
+            if (folded.containsKey(id)) return folded.get(id);
             String name = columnName(id);
-            return name == null ? null : context.fold(name);
+            return name == null ? null : context.columnKey(id, name);
         }
 
         // ------------------------------------------------------------------ PK

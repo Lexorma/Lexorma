@@ -386,8 +386,9 @@ class ModelIntegrityHardeningIntegrationTest {
         });
     }
 
-    private static TableInfoDto update(TableInfo table, String tableName, String description, Long schemaId) {
-        return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").schemaId(schemaId).build();
+    /** 화면처럼 지금 수정 일시를 기준값으로 보낸다 (DEC-08 3차) */
+    private TableInfoDto update(TableInfo table, String tableName, String description, Long schemaId) {
+        return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").schemaId(schemaId).baseModifiedAt(tableInfoRepository.findById(table.getId()).map(TableInfo::modifiedAt).orElse(null)).build();
     }
 
     private static TableInfoDto dto(TableInfo table) {

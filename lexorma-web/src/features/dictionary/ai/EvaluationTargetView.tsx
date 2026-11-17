@@ -131,6 +131,7 @@ function ProposalJudgment({ detail, proposal: p, canWrite, onSaved, onError }: {
         <span className="ai-dict-small">{p.model ?? '-'} · {p.promptVersion} · {p.createdAt?.replace('T', ' ').slice(0, 16)}</span>
         <span className="ai-dict-small gh-muted">{t('AI 확실성 {0} (정확성 아님)', CERTAINTY_LABEL[p.certainty])}</span>
         {!p.sameMetadata && <span className="Label">{t('등록 시점과 다른 메타데이터')}</span>}
+        {p.sameMetadata && !p.sameContext && <span className="Label" title={t('평가 대상 등록과 이 제안 생성 사이에 같은 테이블(다른 컬럼·업무 설명 포함)이 바뀌었습니다. 같은 입력 조건의 판정으로 세지 않습니다.')}>{t('입력 맥락 변경')}</span>}
         {p.invalidReferences > 0 && <span className="Label Label--attention">{t('존재하지 않는 객체 언급 {0}', p.invalidReferences)}</span>}
       </div>
       {p.approvalHold && <p className="ai-dict-small gh-muted">{APPROVAL_HOLD_LABEL[p.approvalHold]}</p>}
@@ -143,6 +144,7 @@ function ProposalJudgment({ detail, proposal: p, canWrite, onSaved, onError }: {
       )}
       {judgments.filter((j) => j !== mine).map((j) => <JudgmentSummary key={j.id} j={j} />)}
       {canWrite ? <JudgmentForm detail={detail} proposal={p} mine={mine} confirmed={confirmed} onSaved={onSaved} onError={onError} /> : mine && <JudgmentSummary j={mine} />}
+      {judgments.map((j) => <JudgmentHistory key={`h${j.id}`} j={j} />)}
     </div>
   );
 }
@@ -153,6 +155,50 @@ function JudgmentSummary({ j }: { j: JudgmentRow }) {
       {j.reviewerId} : {JUDGMENT_LABEL[j.judgment]} · {t('근거 없는 주장')} {j.unfoundedClaim ? t('있음') : t('없음')} · {UNCERTAINTY_LABEL[j.uncertainty]}
       {j.missingInformation ? ` · ${t('누락')} : ${j.missingInformation}` : ''}{j.requiredEdits ? ` · ${t('수정 필요')} : ${j.requiredEdits}` : ''}
     </p>
+  );
+}
+
+const HISTORY_FIELD_LABEL: Record<string, string> = {
+  judgment: t('업무적 정확성'), unfoundedClaim: t('근거 없는 주장'), missingInformation: t('누락된 중요 정보'), uncertainty: t('불확실성 처리'),
+  termRecommendation: t('표준 용어 추천'), domainRecommendation: t('표준 도메인 추천'), requiredEdits: t('수정이 필요한 부분'),
+  reviewMinutes: t('검토 시간 (분)'), writingMinutes: t('직접 작성 시간 (분)'),
+};
+
+/** 판정 변경 이력 (DEC-27, 추가만) : 펼칠 때 한 번 읽는다. 지표는 최종 판정만 센다 */
+function JudgmentHistory({ j }: { j: JudgmentRow }) {
+  const [open, setOpen] = useState(false);
+  const history = useQuery({ queryKey: ['ai-eval-judgment-history', j.id, j.version], queryFn: () => aiEvaluation.judgmentHistory(j.id), enabled: open });
+  const show = (field: string, value: unknown) => {
+    if (value === null || value === undefined || value === '') return '-';
+    if (field === 'judgment') return JUDGMENT_LABEL[value as Judgment] ?? String(value);
+    if (field === 'uncertainty') return UNCERTAINTY_LABEL[value as UncertaintyJudgment] ?? String(value);
+    if (field === 'termRecommendation' || field === 'domainRecommendation') return RECOMMENDATION_LABEL[value as RecommendationJudgment] ?? String(value);
+    if (field === 'unfoundedClaim') return value ? t('있음') : t('없음');
+    return String(value);
+  };
+  return (
+    <div className="ai-dict-small">
+      <button type="button" className="btn btn-sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {open ? t('판정 변경 이력 닫기') : t('판정 변경 이력 ({0})', j.reviewerId)}
+      </button>
+      {open && (
+        <ul className="ai-dict-list">
+          {(history.data ?? []).map((h) => {
+            const changed = Object.keys(h.after).filter((k) => !h.before || JSON.stringify(h.before[k]) !== JSON.stringify(h.after[k]));
+            return (
+              <li key={h.id}>
+                <span className="gh-muted">{h.changedAt.replace('T', ' ').slice(0, 19)}</span> {h.reviewerId} · {h.changeType === 'INSERT' ? t('처음 판정') : t('판정 수정')}
+                {h.reason && <> · {t('사유')} : {h.reason}</>}
+                {h.before && changed.length > 0 && (
+                  <span> — {changed.map((k) => `${HISTORY_FIELD_LABEL[k] ?? k} : ${show(k, h.before?.[k])} → ${show(k, h.after[k])}`).join(' / ')}</span>
+                )}
+              </li>
+            );
+          })}
+          {history.data?.length === 0 && <li className="gh-muted">{t('이력이 없습니다 (이력 기록 전의 판정).')}</li>}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -173,15 +219,17 @@ function JudgmentForm({ detail, proposal, mine, confirmed, onSaved, onError }: {
   const [edits, setEdits] = useState(mine?.requiredEdits ?? '');
   const [review, setReview] = useState(mine?.reviewMinutes?.toString() ?? '');
   const [writing, setWriting] = useState(mine?.writingMinutes?.toString() ?? '');
+  // 저장한 판정을 고칠 때의 사유 (DEC-27 — 서버가 값이 바뀐 수정에 필수로 검사한다)
+  const [changeReason, setChangeReason] = useState('');
   const minutes = (v: string) => (v.trim() === '' ? null : Math.max(0, Math.round(Number(v))));
-  const complete = confirmed && judgment !== '' && unfounded !== '' && uncertainty !== '' && term !== '' && domain !== '';
+  const complete = confirmed && judgment !== '' && unfounded !== '' && uncertainty !== '' && term !== '' && domain !== '' && (!mine || changeReason.trim() !== '');
   const save = () => {
     if (!complete) return;
     void aiEvaluation.judge({
       targetId: detail.target.id, proposalId: proposal.id, version: mine?.version ?? null, targetVersion: detail.target.version, judgment, unfoundedClaim: unfounded === 'YES',
       missingInformation: missing || null, uncertainty, termRecommendation: term, domainRecommendation: domain, requiredEdits: edits || null,
-      reviewMinutes: minutes(review), writingMinutes: minutes(writing),
-    }).then(onSaved, onError);
+      reviewMinutes: minutes(review), writingMinutes: minutes(writing), changeReason: mine ? changeReason.trim() : null,
+    }).then(() => { setChangeReason(''); onSaved(); }, onError);
   };
   const select = <T extends string>(label: string, value: T | '', labels: Record<T, string>, set: (v: T | '') => void) => (
     <label className="ai-dict-field">
@@ -205,6 +253,8 @@ function JudgmentForm({ detail, proposal, mine, confirmed, onSaved, onError }: {
       </div>
       <textarea className="ai-dict-textarea" rows={2} value={missing} onChange={(e) => setMissing(e.target.value)} placeholder={t('누락된 중요 정보')} aria-label={t('누락된 중요 정보')} />
       <textarea className="ai-dict-textarea" rows={2} value={edits} onChange={(e) => setEdits(e.target.value)} placeholder={t('수정이 필요한 부분')} aria-label={t('수정이 필요한 부분')} />
+      {mine && <textarea className="ai-dict-textarea" rows={2} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} maxLength={1000}
+                         placeholder={t('판정을 고친 사유 (필수 — 판정 변경 이력에 남습니다)')} aria-label={t('판정을 고친 사유')} />}
       {judgment === 'NOT_EVALUABLE' && <p className="ai-dict-small gh-muted">{t('평가할 수 없음은 평가 완료로 보지 않습니다 — 이 제안의 승인 제한이 유지됩니다.')}</p>}
       {!complete && <p className="ai-dict-small gh-muted">{t('* 표시 항목을 모두 골라야 저장할 수 있습니다.')}</p>}
       <div className="ai-dict-buttons"><button type="submit" className="btn btn-primary" disabled={!complete}>{mine ? t('판정 고치기') : t('판정 저장')}</button></div>

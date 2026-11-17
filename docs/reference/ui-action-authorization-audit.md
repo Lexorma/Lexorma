@@ -319,6 +319,9 @@ P1 로 남은 문제는 없다. 위 표는 모두 P2 이고 M-9(모델 변경 �
 | 화면 | 액션 | 서버 | 화면 |
 |---|---|---|---|
 | 모델 변경 이력 (`/modelHistory`, 메뉴 `model-history`) | 목록·객체별·그룹·상세 조회 | VIEWER, 이력의 프로젝트 = 로그인 프로젝트 | 메뉴·화면 VIEWER 부터. 변경 버튼 없음 (쓰기 API 가 없다) |
+| 모델 Export·Import (DEC-22, `model-exchange`) | 조회·Export (`GET /api/modelExchange/export`, `/targets`) | VIEWER (로그인 프로젝트만) | 메뉴 VIEWER |
+| 모델 Export·Import | 계획·확정 (`POST /api/modelExchange/plan`, `/apply`) | USER + **대상 프로젝트의 관리자 또는 ADMIN(멤버)** — `ProjectAuthority.canManage` 를 지금의 DB 로 | `model-exchange-import` (USER), 대상 목록은 관리 프로젝트만 |
+| 원본 카탈로그 VIEW 정의 (DEC-16) | 원문 조회 (`GET /api/source/tables/{id}/viewDefinition`, `/accesses`) | USER + 그 프로젝트의 관리자 또는 ADMIN (`verifyProjectManager`), 확인 이력 | 상세의 `canRead`(관리자)일 때만 [정의 보기] |
 
 NOT_APPROVE 는 메뉴가 없고 API 가 403 이다. 복구 세션은 화면이 복구 화면으로 돌아가고 API 가 403 이다. 테이블 상세·엔터티 상세의 [변경 이력] 버튼은 `canView('model-history')` 일 때만 나온다.
 

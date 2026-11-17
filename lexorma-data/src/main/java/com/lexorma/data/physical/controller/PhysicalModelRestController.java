@@ -25,6 +25,15 @@ import java.util.Map;
 public class PhysicalModelRestController {
 
     private final PhysicalModelService physicalModelService;
+    private final com.lexorma.data.physical.diagnostic.ModelStructureDiagnosticService diagnosticService;
+
+    @Operation(summary = "물리 모델 구조 진단 (DEC-09·DEC-12)", description = "무효 FK(오류 : 참조 테이블 없음·모호·PK 없음·복합 PK, 대상이 키가 아닌 관계)와 중복 인덱스(경고 : 같은 정의, PK 와 같은 일반 인덱스, 다른 인덱스·PK 의 앞부분). 읽기 전용, 저장하지 않는다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/diagnostics")
+    public ResponseEntity<com.lexorma.data.physical.diagnostic.ModelStructureDiagnosticDto.Result> diagnostics(@RequestParam(value = "schemaId", required = false) Long schemaId,
+                                                                                                             @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(diagnosticService.diagnose(accountDto, schemaId));
+    }
 
     @Operation(summary = "테이블 물리 모델 조회", description = "스키마, 나가는/들어오는 관계, 인덱스, 제약조건, 관계로 확정하지 못한 참조 테이블명")
     @PreAuthorize("hasRole('VIEWER')")
@@ -47,6 +56,7 @@ public class PhysicalModelRestController {
     @PutMapping("/relation/{id}/rules")
     public ResponseEntity<PhysicalModelDto.Relation> updateRelationRules(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id,
                                                                          @RequestBody PhysicalModelDto.RelationRules rules) {
+        com.lexorma.common.jpa.ModelBase.require(true, rules == null ? null : rules.baseModifiedAt()); // DEC-08
         return ResponseEntity.ok(physicalModelService.updateRelationRules(accountDto, id, rules));
     }
 
@@ -65,6 +75,7 @@ public class PhysicalModelRestController {
     public ResponseEntity<PhysicalModelDto.IndexSaveResult> updateIndex(@AuthenticationPrincipal AccountDto accountDto,
                                                                         @PathVariable(name = "id") Long id,
                                                                         @RequestBody PhysicalModelDto.Index index) {
+        com.lexorma.common.jpa.ModelBase.require(true, index == null ? null : index.modifiedAt()); // DEC-08
         return ResponseEntity.ok(physicalModelService.updateIndex(accountDto, id, index));
     }
 

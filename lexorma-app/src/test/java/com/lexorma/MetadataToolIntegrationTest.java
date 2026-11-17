@@ -305,7 +305,42 @@ class MetadataToolIntegrationTest {
         JsonNode upper = call(session, "searchTables", "{\"keyword\":\"tb_ai_prvdr\"}");
         assertThat(names(upper.path("tables"), "tableName")).containsExactly("TB_AI_PRVDR");
         // 통째로는 맞지 않는 여러 단어 : 단어별로 찾고 많이 맞은 테이블부터 ("AI 서버(Provider)" 설명)
-        assertThat(names(call(session, "searchTables", "{\"keyword\":\"AI Provider\"}").path("tables"), "tableName").getFirst()).isEqualTo("TB_AI_PRVDR");
+        JsonNode token = call(session, "searchTables", "{\"keyword\":\"AI Provider\"}");
+        assertThat(names(token.path("tables"), "tableName").getFirst()).isEqualTo("TB_AI_PRVDR");
+
+        // 검색 방식 표시 (7차) : 기존 필드는 그대로, 근사 결과를 정확한 결과로 보이지 않게 한다
+        assertThat(upper.path("matchMode").asString()).as("이름이 같은 테이블 하나").isEqualTo("EXACT");
+        assertThat(upper.path("exactMatch").asBoolean()).isTrue();
+        assertThat(upper.path("approximate").asBoolean()).isFalse();
+        assertThat(upper.path("tables").get(0).path("match").asString()).isEqualTo("EXACT");
+        assertThat(upper.path("keyword").asString()).isEqualTo("tb_ai_prvdr");
+        assertThat(upper.path("resultCount").asInt()).isOne();
+        assertThat(found.path("matchMode").asString()).as("코멘트·설명의 부분 일치").isEqualTo("PARTIAL");
+        assertThat(found.path("exactMatch").asBoolean()).isFalse();
+        assertThat(found.path("approximate").asBoolean()).isFalse();
+        assertThat(found.path("resultCount").asInt()).isEqualTo(found.path("tables").size());
+        assertThat(found.path("matchedTerms").toString()).contains("AI");
+        assertThat(found.has("truncated")).as("기존 필드 유지").isTrue();
+        JsonNode several = call(session, "searchTables", "{\"keyword\":\"TB_AI\"}");
+        assertThat(several.path("tables").size()).as("여러 테이블").isGreaterThan(1);
+        assertThat(several.path("matchMode").asString()).isEqualTo("PARTIAL");
+        assertThat(several.path("tables").findValuesAsString("match")).containsOnly("PARTIAL");
+        JsonNode exactAmongPartial = call(session, "searchTables", "{\"keyword\":\"TB_AI_STNG\"}");
+        assertThat(exactAmongPartial.path("tables").get(0).path("match").asString()).isEqualTo("EXACT");
+        assertThat(token.path("matchMode").asString()).as("단어별 재검색").isEqualTo("TOKEN_FALLBACK");
+        assertThat(token.path("approximate").asBoolean()).isTrue();
+        assertThat(token.path("exactMatch").asBoolean()).isFalse();
+        assertThat(token.path("tables").findValuesAsString("match")).containsOnly("TOKEN");
+        assertThat(token.path("tables").get(0).path("matchedTerms").toString()).contains("Provider").contains("AI");
+        assertThat(token.path("matchedTerms").toString()).contains("AI").contains("Provider");
+        JsonNode none = call(session, "searchTables", "{\"keyword\":\"없는테이블XYZ\"}");
+        assertThat(none.path("matchMode").asString()).isEqualTo("NONE");
+        assertThat(none.path("resultCount").asInt()).isZero();
+        assertThat(none.path("approximate").asBoolean()).isFalse();
+        assertThat(call(session, "searchTables", "{}").path("matchMode").asString()).isEqualTo("ALL");
+        JsonNode foreign = call(session, "searchTables", "{\"keyword\":\"TB_SECRET_B\"}");
+        assertThat(names(foreign.path("tables"), "tableName")).as("다른 프로젝트 테이블은 없다 (단어 TB 로 찾은 근사 결과만)").doesNotContain("TB_SECRET_B");
+        assertThat(foreign.path("matchMode").asString()).isEqualTo("TOKEN_FALLBACK");
 
         JsonNode detail = call(session, "getTableDetail", "{\"tableName\":\"TB_AI_STNG\"}");
         assertThat(detail.path("table").path("tableName").asString()).isEqualTo("TB_AI_STNG");
@@ -491,7 +526,7 @@ class MetadataToolIntegrationTest {
         ExecutionContext context = ExecutionContext.user(principal(viewer, EXAMPLE_PROJECT));
         AiMetadataQueryDto.QueryRequest question = new AiMetadataQueryDto.QueryRequest("스키마 목록?");
         assertThatThrownBy(() -> queries.query(context, question)).extracting("errorCode").isEqualTo(ErrorCode.AI_DEFAULT_PROVIDER_NOT_CONFIGURED);
-        assertThat(queries.availability().status()).isEqualTo(AiProviderDto.DefaultStatus.NOT_CONFIGURED);
+        assertThat(queries.availability(null).status()).isEqualTo(AiProviderDto.DefaultStatus.NOT_CONFIGURED);
 
         ScriptedOllama first = ollama();
         AiProviderDto.Provider one = ready(first, "llama3.2");
@@ -542,14 +577,14 @@ class MetadataToolIntegrationTest {
         Account pending = account("ROLE_NOT_APPROVE");
         exampleMembers.add(member(EXAMPLE_PROJECT, pending));
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, EXAMPLE_PROJECT, String.valueOf(pending.getId()), "ROLE_NOT_APPROVE");
-        assertThatThrownBy(() -> api.status()).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> api.status(null)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> api.query(notApproved, new AiMetadataQueryDto.QueryRequest("x"))).isInstanceOf(AccessDeniedException.class);
 
         ScriptedOllama ollama = ollama();
         ready(ollama, "llama3.2");
         ollama.then(answer("llama3.2", "ok"));
         AccountDto principal = SecurityTestSupport.loginAs(projectRepository, EXAMPLE_PROJECT, String.valueOf(viewer.getId()), "ROLE_VIEWER");
-        AiMetadataQueryDto.Availability status = api.status().getBody();
+        AiMetadataQueryDto.Availability status = api.status(null).getBody();
         assertThat(status.status()).isEqualTo(AiProviderDto.DefaultStatus.READY);
         assertThat(JSON.writeValueAsString(status)).doesNotContain(ollama.url(), "127.0.0.1");
         assertThat(api.query(principal, new AiMetadataQueryDto.QueryRequest("hi")).getBody().answer()).isEqualTo("ok");

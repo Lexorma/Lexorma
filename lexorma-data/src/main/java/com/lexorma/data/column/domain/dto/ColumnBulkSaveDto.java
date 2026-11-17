@@ -74,6 +74,8 @@ public class ColumnBulkSaveDto {
         private String isMasterData;
         private String isSensitive;
         private String isEncrypted;
+        /** 수정 행 : 화면이 읽은 컬럼의 수정 일시 (DEC-08). 그 사이 다른 사용자가 고쳤으면 아무것도 저장하지 않고 409 MODEL_CONFLICT. 없으면 검사하지 않는다 */
+        private java.time.LocalDateTime baseModifiedAt;
     }
 
     /**

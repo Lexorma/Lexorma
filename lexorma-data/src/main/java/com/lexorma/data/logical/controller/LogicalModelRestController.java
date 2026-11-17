@@ -48,6 +48,7 @@ public class LogicalModelRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/model")
     public ResponseEntity<LogicalModelDto.Model> saveModel(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Model model) {
+        com.lexorma.common.jpa.ModelBase.require(model.id() != null, model.modifiedAt()); // DEC-08
         return ResponseEntity.ok(logicalModelService.saveModel(accountDto, model));
     }
 
@@ -101,6 +102,7 @@ public class LogicalModelRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/entity")
     public ResponseEntity<LogicalModelDto.Entity> saveEntity(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Entity entity) {
+        com.lexorma.common.jpa.ModelBase.require(entity.id() != null, entity.modifiedAt()); // DEC-08
         return ResponseEntity.ok(logicalModelService.saveEntity(accountDto, entity));
     }
 
@@ -135,6 +137,7 @@ public class LogicalModelRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/attribute")
     public ResponseEntity<LogicalModelDto.Attribute> saveAttribute(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Attribute attribute) {
+        com.lexorma.common.jpa.ModelBase.require(attribute.id() != null, attribute.modifiedAt()); // DEC-08
         return ResponseEntity.ok(logicalModelService.saveAttribute(accountDto, attribute));
     }
 
@@ -168,6 +171,7 @@ public class LogicalModelRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/identifier")
     public ResponseEntity<LogicalModelDto.Identifier> saveIdentifier(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Identifier identifier) {
+        com.lexorma.common.jpa.ModelBase.require(identifier.id() != null, identifier.modifiedAt()); // DEC-08
         return ResponseEntity.ok(logicalModelService.saveIdentifier(accountDto, identifier));
     }
 
@@ -192,6 +196,7 @@ public class LogicalModelRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/relationship")
     public ResponseEntity<LogicalModelDto.Relationship> saveRelationship(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Relationship relationship) {
+        com.lexorma.common.jpa.ModelBase.require(relationship.id() != null, relationship.modifiedAt()); // DEC-08
         return ResponseEntity.ok(logicalModelService.saveRelationship(accountDto, relationship));
     }
 

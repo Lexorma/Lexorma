@@ -445,7 +445,9 @@ class SmokeTest {
         long id = mapper.readTree(created.body()).path("id").asLong();
         assertThat(postJson("/api/schema", "{\"schemaName\":\"" + name.toUpperCase() + "\"}").body()).contains("SAVED_DATA_EXISTS");
 
-        HttpResponse<String> renamed = postJson("/api/schema", "{\"id\":" + id + ",\"schemaName\":\"" + name + "_v2\"}");
+        // 수정은 목록의 수정 일시를 기준값(updated)으로 보낸다 (DEC-08 3차 : 없으면 400 MODEL_BASE_REQUIRED)
+        assertThat(postJson("/api/schema", "{\"id\":" + id + ",\"schemaName\":\"" + name + "_v2\"}").body()).contains("MODEL_BASE_REQUIRED");
+        HttpResponse<String> renamed = postJson("/api/schema", "{\"id\":" + id + ",\"schemaName\":\"" + name + "_v2\",\"updated\":\"" + schemaUpdated(id) + "\"}");
         assertThat(mapper.readTree(renamed.body()).path("id").asLong()).as("이름을 바꿔도 ID 는 그대로").isEqualTo(id);
         assertThat(get("/api/schema", true).body()).contains("\"schemaName\":\"" + name + "_v2\"").contains("\"tableCount\":0");
 
@@ -464,7 +466,7 @@ class SmokeTest {
         assertThat(get("/api/erd?page=0&size=5", true).body()).contains("\"domainName\":");
 
         // 기본 스키마 : 이름 변경·삭제 불가
-        assertThat(postJson("/api/schema", "{\"id\":" + defaultId + ",\"schemaName\":\"main\"}").body()).contains("INVALID_SCHEMA_NAME");
+        assertThat(postJson("/api/schema", "{\"id\":" + defaultId + ",\"schemaName\":\"main\",\"updated\":\"" + schemaUpdated(defaultId) + "\"}").body()).contains("INVALID_SCHEMA_NAME");
         assertThat(delete("/api/schema/" + defaultId).statusCode()).isEqualTo(400);
         assertThat(delete("/api/schema/" + id).statusCode()).isEqualTo(200);
         assertThat(get("/api/schema", true).body()).doesNotContain(name);
@@ -941,6 +943,31 @@ class SmokeTest {
     }
 
     @Test
+    @Order(24)
+    @DisplayName("등록 데이터 엑셀 다운로드 (M-11) : 검색 조건이 HTTP 로 넘어가고, 업로드 양식 열(테이블 A~E, 컬럼 A~U) 위치에 예제 데이터가 들어간다")
+    void exportModelExcel() throws Exception {
+        HttpResponse<byte[]> tables = getBytes("/api/exportExcel/tables?searchColumn=tableName&searchQuery=TB_ACNT");
+        assertThat(tables.statusCode()).isEqualTo(200);
+        List<Map<String, String>> tableRows = new java.util.ArrayList<>();
+        com.lexorma.common.utils.ExcelUtils.readExcelRows(new org.springframework.mock.web.MockMultipartFile("file", "tables.xlsx", null, tables.body()),
+                0, List.of("tableName", "tableDescription", "isMasterTable", "sortOrder", "bizDescription", "schemaName"), 1, tableRows::add);
+        assertThat(tableRows).isNotEmpty().allSatisfy(row -> assertThat(row.get("tableName")).contains("TB_ACNT"))
+                .anySatisfy(row -> {
+                    assertThat(row.get("tableName")).isEqualTo("TB_ACNT");
+                    assertThat(row.get("bizDescription")).isNotBlank();
+                    assertThat(row.get("schemaName")).isNotBlank();
+                });
+
+        HttpResponse<byte[]> columns = getBytes("/api/exportExcel/columns?searchColumn=tableName&searchQuery=TB_ACNT");
+        assertThat(columns.statusCode()).isEqualTo(200);
+        List<Map<String, String>> columnRows = new java.util.ArrayList<>();
+        com.lexorma.common.utils.ExcelUtils.readExcelRows(new org.springframework.mock.web.MockMultipartFile("file", "columns.xlsx", null, columns.body()),
+                0, List.of("tableName", "columnName"), 1, columnRows::add);
+        assertThat(columnRows).isNotEmpty().allSatisfy(row -> assertThat(row.get("tableName")).contains("TB_ACNT"))
+                .anySatisfy(row -> assertThat(row.get("columnName")).isEqualTo("ACNT_SN"));
+    }
+
+    @Test
     @Order(23)
     @DisplayName("컬럼명 중복 확인 API : 없는 컬럼명이면 duplicated=false")
     void checkColumnDuplicate() throws Exception {
@@ -1201,4 +1228,13 @@ class SmokeTest {
         assertThat(json.path("headerName").asString()).isEqualTo("X-XSRF-TOKEN");
         return json.path("token").asString();
     }
+
+    /** 스키마 목록의 수정 일시 (DEC-08 기준값) */
+    private String schemaUpdated(long id) throws Exception {
+        for (var schema : tools.jackson.databind.json.JsonMapper.builder().build().readTree(get("/api/schema", true).body())) {
+            if (schema.path("id").asLong() == id) return schema.path("updated").asString();
+        }
+        throw new AssertionError("스키마 없음 : " + id);
+    }
+
 }

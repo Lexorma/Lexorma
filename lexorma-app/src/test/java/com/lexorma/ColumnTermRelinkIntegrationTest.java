@@ -214,13 +214,13 @@ class ColumnTermRelinkIntegrationTest {
     }
 
     @Test
-    @DisplayName("거부 : 승인된 컬럼, 용어 없는 컬럼(처음 연결은 범위 밖), 다른 프로젝트의 컬럼·용어, 없는 컬럼·용어, 필수값 없음, VIEWER(API 권한)")
+    @DisplayName("거부 : 승인된 컬럼, 용어 없는 컬럼을 용어가 있다고 본 요청(기준값 충돌 — DEC-26 부터 처음 연결은 지원), 다른 프로젝트의 컬럼·용어, 없는 컬럼·용어, 기준값 불일치, VIEWER(API 권한)")
     void rejects() {
         AccountDto user = login(owner);
         assertThatThrownBy(() -> termService.relink(user, approved.getId(), new ColumnTermDto.Request(progressTerm.getId(), statusTerm.getId())))
                 .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         assertThatThrownBy(() -> termService.relink(user, noTerm.getId(), new ColumnTermDto.Request(progressTerm.getId(), statusTerm.getId())))
-                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.NOT_FOUND_TERM_DATA);
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.COLUMN_TERM_CONFLICT);
         Long foreignColumn = columnRepository.findAll().stream().filter(c -> other.getId().equals(c.getProjectId())).findFirst().orElseThrow().getId();
         assertThatThrownBy(() -> termService.relink(user, foreignColumn, new ColumnTermDto.Request(progressTerm.getId(), foreignTerm.getId())))
                 .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.COLUMN_IS_NOT_DEFINED);
@@ -236,6 +236,54 @@ class ColumnTermRelinkIntegrationTest {
                 .isInstanceOf(AccessDeniedException.class);
         assertThat(termId(column(status))).as("어느 거부도 연결을 바꾸지 않았다").isEqualTo(statusTerm.getId());
         assertThat(termId(column(approved))).isEqualTo(statusTerm.getId());
+    }
+
+    @Test
+    @DisplayName("DEC-26 : 용어 없는 미승인 컬럼에 처음 연결, 연결 해제(기준값 확인), 이력에 연결 변경이 남고 다른 속성은 그대로")
+    void firstLinkAndUnlink() {
+        AccountDto user = login(owner);
+        long historyBefore = histories(noTerm);
+        ColumnTermDto.Result linked = termService.relink(user, noTerm.getId(), new ColumnTermDto.Request(statusTerm.getId(), null));
+        assertThat(linked.changed()).isTrue();
+        assertThat(linked.before()).isNull();
+        assertThat(termId(column(noTerm))).isEqualTo(statusTerm.getId());
+        assertThat(histories(noTerm)).isEqualTo(historyBefore + 1);
+        // 그 사이 다른 사용자가 연결했는데 '연결 없음' 을 본 화면이 다시 연결하려 하면 충돌
+        assertThatThrownBy(() -> termService.relink(user, noTerm.getId(), new ColumnTermDto.Request(progressTerm.getId(), null)))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.COLUMN_TERM_CONFLICT);
+        // 해제 : 화면이 읽은 연결과 같을 때만, 용어 칸을 함께 보내면 거부
+        assertThatThrownBy(() -> termService.relink(user, noTerm.getId(), new ColumnTermDto.Request(statusTerm.getId(), statusTerm.getId(), true)))
+                .isInstanceOf(CustomException.class);
+        ColumnTermDto.Result unlinked = termService.relink(user, noTerm.getId(), new ColumnTermDto.Request(null, statusTerm.getId(), true));
+        assertThat(unlinked.changed()).isTrue();
+        assertThat(unlinked.after()).isNull();
+        assertThat(termId(column(noTerm))).isNull();
+        assertThat(histories(noTerm)).isEqualTo(historyBefore + 2);
+        assertThatThrownBy(() -> termService.relink(user, approved.getId(), new ColumnTermDto.Request(null, statusTerm.getId(), true)))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+    }
+
+    @Test
+    @DisplayName("DEC-26 일괄 : 여러 컬럼의 연결·변경·해제를 한 번에 — 하나라도 거부되면(승인 컬럼·기준값 충돌) 아무것도 바뀌지 않는다")
+    void bulkLink() {
+        AccountDto user = login(owner);
+        // 승인된 컬럼이 섞이면 전체 거부
+        assertThatThrownBy(() -> termService.bulk(user, new ColumnTermDto.BulkRequest(List.of(
+                new ColumnTermDto.BulkItem(noTerm.getId(), statusTerm.getId(), null, null),
+                new ColumnTermDto.BulkItem(approved.getId(), progressTerm.getId(), statusTerm.getId(), null)))))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        assertThat(termId(column(noTerm))).as("되돌림").isNull();
+        // 같은 컬럼 두 번 거부
+        assertThatThrownBy(() -> termService.bulk(user, new ColumnTermDto.BulkRequest(List.of(
+                new ColumnTermDto.BulkItem(noTerm.getId(), statusTerm.getId(), null, null),
+                new ColumnTermDto.BulkItem(noTerm.getId(), statusTerm.getId(), null, null))))).isInstanceOf(CustomException.class);
+        // 정상 : 처음 연결 + 변경
+        List<ColumnTermDto.Result> results = termService.bulk(user, new ColumnTermDto.BulkRequest(List.of(
+                new ColumnTermDto.BulkItem(status.getId(), progressTerm.getId(), statusTerm.getId(), null),
+                new ColumnTermDto.BulkItem(noTerm.getId(), statusTerm.getId(), null, null))));
+        assertThat(results).allSatisfy(r -> assertThat(r.changed()).isTrue());
+        assertThat(termId(column(noTerm))).isEqualTo(statusTerm.getId());
+        assertThat(termId(column(status))).isEqualTo(progressTerm.getId());
     }
 
     @Test

@@ -32,11 +32,14 @@ public class AiProviderService {
 
     private final AiProviderRepository providers;
     private final AiSettingRepository settings;
+    private final com.lexorma.core.ai.repository.ProjectAiSettingRepository projectSettings;
     private final Map<AiProviderType, AiProviderAdapter> adapters = new EnumMap<>(AiProviderType.class);
 
-    public AiProviderService(AiProviderRepository providers, AiSettingRepository settings, List<AiProviderAdapter> adapters) {
+    public AiProviderService(AiProviderRepository providers, AiSettingRepository settings, com.lexorma.core.ai.repository.ProjectAiSettingRepository projectSettings,
+                             List<AiProviderAdapter> adapters) {
         this.providers = providers;
         this.settings = settings;
+        this.projectSettings = projectSettings;
         adapters.forEach(adapter -> this.adapters.put(adapter.type(), adapter));
     }
 
@@ -79,6 +82,8 @@ public class AiProviderService {
         AiSetting setting = settings.lockSystem().orElse(null);
         AiProvider provider = find(id);
         if (setting != null && provider.getId().equals(setting.getDefaultProviderId())) throw new CustomException(ErrorCode.AI_PROVIDER_IN_USE);
+        // 프로젝트가 지정한 Provider (DEC-18, FK_PRJ_AI_STNG_02) 도 지우지 않는다 — 프로젝트 지정은 설정 행을 먼저 잡고 바꾸므로 엇갈리지 않는다
+        if (projectSettings.existsByProviderId(provider.getId())) throw new CustomException(ErrorCode.AI_PROVIDER_IN_USE);
         providers.delete(provider);
         providers.flush();
     }

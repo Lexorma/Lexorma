@@ -66,12 +66,21 @@ public class SourceSnapshotService {
         Long projectId = connection(accountDto, connectionId);
         return executionRepository.findAllByProjectIdAndConnectionId(projectId, connectionId,
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), SIZE_MAX), Sort.by(Sort.Order.desc("startedAt"), Sort.Order.desc("id"))))
-                .map(SourceCollectionDto.Execution::of);
+                .map(this::withDrop);
+    }
+
+    /** 정상 반영된 실행만 직전 정상 반영과 비교한다 (DEC-17). 실패·취소·진행 중은 비교하지 않는다 */
+    private SourceCollectionDto.Execution withDrop(SourceCollectionExecution e) {
+        SourceCollectionDto.Execution dto = SourceCollectionDto.Execution.of(e);
+        if (e.getStatus() != CollectionStatus.COMPLETED || e.getReflectedOrder() == null) return dto;
+        return dto.withDrop(executionRepository.findFirstByConnectionIdAndStatusAndCollectionTypeAndReflectedOrderLessThanOrderByReflectedOrderDesc(
+                        e.getConnectionId(), CollectionStatus.COMPLETED, e.getCollectionType(), e.getReflectedOrder())
+                .map(previous -> SourceCollectionDto.Drop.of(previous, e.getTableCount(), e.getColumnCount())).orElse(null));
     }
 
     public SourceCollectionDto.ExecutionDetail execution(AccountDto accountDto, Long executionId) {
         SourceCollectionExecution execution = execution(accountDto.getProjectId(), executionId);
-        return new SourceCollectionDto.ExecutionDetail(SourceCollectionDto.Execution.of(execution),
+        return new SourceCollectionDto.ExecutionDetail(withDrop(execution),
                 targetRepository.findAllByExecutionIdOrderByPathKeyAsc(executionId).stream().map(SourceCollectionDto.Target::of).toList());
     }
 

@@ -5,6 +5,7 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
+import { PhysicalGeneration } from './PhysicalGeneration';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -33,6 +34,8 @@ export function ModelMappingPage() {
   const dialog = useDialog();
   const { canView, user } = useAuth();
   const canEdit = canView('model-mapping-edit');
+  // 논리 → 물리 생성 (DEC-10) : 물리 모델 변경 권한(USER)과 같다. 스키마 목록은 화면에서 넘긴다 (대화상자는 AuthProvider 밖)
+  const canGenerate = canView('physical-model-edit');
   const { models, selected, select, isPending, isError } = useLogicalModels();
   const { schemas } = useSchemas();
   const grid = useRef<GridHandle>(null);
@@ -152,6 +155,13 @@ export function ModelMappingPage() {
             {models.map((m) => <option key={m.id} value={m.id}>{m.modelName}</option>)}
           </select>
         </div>
+        {canGenerate && modelId != null && (
+          <button type="button" id="btn-physical-generate" className="btn" onClick={() => dialog.popup({
+            title: t('논리 → 물리 테이블 생성'),
+            content: ({ close }: DialogControls) => <PhysicalGeneration modelId={modelId} schemas={schemas}
+              onDone={(n) => { close(); reload(); dialog.alert(t('물리 테이블 {0}개를 만들었습니다 (승인 대기).', n)); }} />,
+          })}>{t('물리 테이블 생성')}</button>
+        )}
       </div>
 
       {isError && <p role="alert">{t('논리 모델 목록을 불러오지 못했습니다.')}</p>}

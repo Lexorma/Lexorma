@@ -1,6 +1,7 @@
 package com.lexorma.data.excel.controller;
 
 import com.lexorma.data.excel.service.ExcelService;
+import com.lexorma.data.excel.service.ModelExcelExportService;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.common.i18n.Messages;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +28,29 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class ExcelRestController {
 
     private final ExcelService excelService;
+    private final ModelExcelExportService modelExport;
+
+    @Operation(summary = "테이블 등록 데이터 엑셀 다운로드 (M-11)",
+            description = "테이블 관리 화면의 지금 조회 조건(스키마·검색) 전체를 테이블 템플릿 형식(A~E, 업무 설명 E)으로 내려받는다. 승인·승인 대기 모두. F 열부터는 참고 열(다시 올려도 반영되지 않음)")
+    @GetMapping("/exportExcel/tables")
+    public ResponseEntity<Resource> exportTables(@AuthenticationPrincipal AccountDto accountDto,
+                                                 @RequestParam(required = false, value = "searchColumn") String searchColumn,
+                                                 @RequestParam(required = false, value = "searchQuery") String searchQuery,
+                                                 @RequestParam(required = false, value = "schemaId") Long schemaId,
+                                                 @RequestParam(required = false, value = "tableIds") java.util.List<Long> tableIds) throws IOException {
+        return modelExport.tables(accountDto, searchColumn, searchQuery, schemaId, tableIds);
+    }
+
+    @Operation(summary = "컬럼 등록 데이터 엑셀 다운로드 (M-11)",
+            description = "컬럼 관리 화면의 지금 조회 조건(검색·테이블) 전체를 컬럼 템플릿 형식(A~U : S 비움, T 데이터 예시, U 업무 설명)으로 내려받는다. 승인·승인 대기 모두. V 열부터는 참고 열(다시 올려도 반영되지 않음)")
+    @GetMapping("/exportExcel/columns")
+    public ResponseEntity<Resource> exportColumns(@AuthenticationPrincipal AccountDto accountDto,
+                                                  @RequestParam(required = false, value = "searchColumn") String searchColumn,
+                                                  @RequestParam(required = false, value = "searchQuery") String searchQuery,
+                                                  @RequestParam(required = false, value = "tableId") Long tableId,
+                                                  @RequestParam(required = false, value = "tableIds") java.util.List<Long> tableIds) throws IOException {
+        return modelExport.columns(accountDto, searchColumn, searchQuery, tableId, tableIds);
+    }
 
     @Operation(
             summary = "Excel 템플릿 다운로드",

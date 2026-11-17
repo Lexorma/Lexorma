@@ -134,6 +134,16 @@ export interface Execution {
   changeCount: number | null;
   errorCode: string | null;
   errorMessage: string | null;
+  /** 객체 급감 (DEC-17) : 정상 반영된 수집이 직전 정상 반영보다 테이블·컬럼이 50% 미만으로 줄었으면. 실패한 수집에는 없다 */
+  drop: CollectionDrop | null;
+}
+
+export interface CollectionDrop {
+  previousExecutionId: number;
+  previousTableCount: number;
+  previousColumnCount: number;
+  tableCount: number;
+  columnCount: number;
 }
 
 export interface ExecutionTarget {
@@ -288,7 +298,24 @@ export interface CatalogTableDetail {
   indexes: { id: number; name: string; indexType: string | null; unique: boolean; columns: string[]; members: { columnName: string | null; expression: string | null; sort: string | null }[]; predicate: string | null }[];
   relations: CatalogRelation[];
   referencedBy: CatalogRelation[];
+  /** VIEW 정의의 수집 상태 (DEC-16, 원문 없음). TABLE 이면 null */
+  viewDefinition: ViewDefinitionSummary | null;
 }
+
+export type ViewDefinitionStatus = 'COLLECTED' | 'NO_PRIVILEGE' | 'FAILED' | 'TOO_LARGE';
+export interface ViewDefinitionSummary {
+  status: ViewDefinitionStatus | null;
+  available: boolean;
+  length: number | null;
+  collectedAt: string | null;
+  changedOrder: number | null;
+  change: 'NEW' | 'CHANGED' | 'SAME' | 'UNKNOWN';
+  canRead: boolean;
+}
+/** 원문 확인 이력 한 건 (프로젝트 관리자·ADMIN 만 조회) */
+export interface ViewDefinitionAccess { id: number; accountId: string | null; accessedAt: string }
+
+export interface ViewDefinitionText { tableId: number; schemaName: string | null; viewName: string; definition: string; status: ViewDefinitionStatus; length: number | null; collectedAt: string | null }
 
 // ---------------------------------------------------------------- 화면 표시용 (현재 카탈로그·과거 버전을 같은 모양으로)
 

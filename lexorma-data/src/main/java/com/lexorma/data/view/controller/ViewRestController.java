@@ -94,6 +94,7 @@ public class ViewRestController {
     @PutMapping("/{id}")
     public ResponseEntity<ViewDto.SaveResult> update(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id,
                                                      @RequestBody ViewDto.Save request) {
+        com.lexorma.common.jpa.ModelBase.require(true, request == null ? null : request.baseModifiedAt()); // DEC-13
         return ResponseEntity.ok(viewService.update(accountDto, id, request));
     }
 

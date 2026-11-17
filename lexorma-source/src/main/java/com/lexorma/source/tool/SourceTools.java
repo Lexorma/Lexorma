@@ -19,6 +19,8 @@ public final class SourceTools {
     public static final String INDEX_DISCOVERY = "source.index.discover";
     /** FK·참조 관계 조회 */
     public static final String RELATIONSHIP_DISCOVERY = "source.relationship.discover";
+    /** VIEW 정의 조회 (DEC-16) : 실패해도 수집 전체를 멈추지 않고 VIEW 마다 상태로 남긴다. 원문은 기록하지 않는다 */
+    public static final String VIEW_DEFINITION_DISCOVERY = "source.view-definition.discover";
 
     private SourceTools() {
     }

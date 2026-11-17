@@ -90,8 +90,10 @@ export const MENU: MenuEntry[] = [
     label: t('데이터 품질 관리'),
     items: [
       { id: 'standardization-quality', label: t('표준화 품질 진단'), path: '/standardizationQuality' },
+      { id: 'model-diagnostics', label: t('모델 구조 진단'), path: '/modelDiagnostics' },
       { id: 'model-history', label: t('모델 변경 이력'), path: '/modelHistory' },
       { id: 'model-version', label: t('모델 버전 관리'), path: '/modelVersion' },
+      { id: 'model-exchange', label: t('모델 Export·Import'), path: '/modelExchange' },
     ],
   },
   // AI 관리 : AI 기능 화면을 한 그룹에 모은다 (각 화면은 따로). 기본 Provider 가 없으면 Provider 설정(ADMIN)만 보인다
@@ -102,6 +104,8 @@ export const MENU: MenuEntry[] = [
       { id: 'ai-provider', label: t('AI Provider 설정'), path: '/aiProvider' },
       { id: 'ai-dictionary', label: t('AI 설명 제안'), path: '/aiDictionary', requires: 'ai' },
       { id: 'ai-evaluation', label: t('AI 품질 평가'), path: '/aiEvaluation', requires: 'ai' },
+      // 내장 MCP (DEC-31) : AI Provider 와 무관하다 (requires 없음)
+      { id: 'mcp-access', label: t('MCP 연결'), path: '/mcpAccess' },
     ],
   },
 ];

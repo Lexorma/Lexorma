@@ -33,6 +33,7 @@ public class SchemaRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/schema")
     public ResponseEntity<SchemaDto> saveSchema(@AuthenticationPrincipal AccountDto accountDto, @RequestBody SchemaDto schemaDto) {
+        com.lexorma.common.jpa.ModelBase.require(schemaDto.id() != null, schemaDto.updated()); // DEC-08 : 수정은 목록의 updated 를 기준값으로
         return ResponseEntity.ok(schemaService.saveSchema(accountDto, schemaDto));
     }
 

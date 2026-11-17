@@ -67,6 +67,8 @@ export interface GridHandle {
   getCheckedOrAlert: () => Row[] | null;
   /** 현재 페이지의 모든 행 (셀에서 고친 값 반영) */
   getEditedRows: () => Row[];
+  /** 지금 적용된 검색 조건 (조회 버튼으로 적용한 값 — 입력 중인 검색어가 아니다). 등록 데이터 다운로드가 같은 조건을 쓴다 */
+  getSearch: () => { column: string; query: string };
   columns: GridColumn[];
 }
 
@@ -262,9 +264,10 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
         return null;
       },
       getEditedRows: editedRows,
+      getSearch: () => ({ ...search }),
       columns,
     }),
-    [reload, resetSearch, getChecked, editedRows, columns, dialog],
+    [reload, resetSearch, getChecked, editedRows, columns, dialog, search],
   );
 
   const selectedSearch = searchColumns.find((c) => c.column === searchColumn);

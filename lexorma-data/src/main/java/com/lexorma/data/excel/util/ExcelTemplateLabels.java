@@ -72,6 +72,12 @@ public final class ExcelTemplateLabels {
             entry("업무 설명", "Business description"),
             entry("예제 테이블의 업무 설명입니다.", "Business description of the example table."),
             entry("사용자가 로그인하고 알림을 받는 이메일 주소입니다.", "Email address the user signs in with and receives notifications at."),
+            // 등록 데이터 다운로드(M-11)의 참고 열 : 조회 전용, 업로드는 읽지 않는다
+            entry("스키마 (참고)", "Schema (reference)"),
+            entry("테이블 코멘트 (참고)", "Table comment (reference)"),
+            entry("원본 COMMENT (참고)", "Source comment (reference)"),
+            entry("승인 여부 (참고)", "Approved (reference)"),
+            entry("IDENTITY (참고)", "IDENTITY (reference)"),
             // columnTemplate.xlsx
             entry("컬럼명", "Column name"),
             entry("컬럼 설명", "Column description"),

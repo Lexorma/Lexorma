@@ -24,7 +24,8 @@ export interface TermRelinkColumn {
   maxLength?: number | string | null;
   precision?: number | string | null;
   scale?: number | string | null;
-  standardTerms: LinkedTerm;
+  /** 연결된 표준 용어 (없으면 null — DEC-26 처음 연결) */
+  standardTerms: LinkedTerm | null;
 }
 
 /** 컬럼 타입 표기 : 도메인 타입 표기(VARCHAR(10))와 같은 모양으로 */
@@ -65,12 +66,14 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
     }
   };
 
-  const save = async () => {
-    if (!picked) return;
+  // 연결·변경 : 고른 용어, 해제(DEC-26) : unlink. 화면이 읽은 연결(없었으면 null)을 함께 보내 그 사이 바뀐 연결을 덮어쓰지 않는다
+  const save = async (unlink = false) => {
+    if (!picked && !unlink) return;
     setSaving(true);
     setError(null);
     try {
-      const result = await api<{ changed: boolean }>(`/api/saveColumn/${enc(column.id)}/term`, { method: 'PUT', body: { termId: picked.id, baseTermId: current.id }, silent: true });
+      const body = unlink ? { termId: null, baseTermId: current?.id ?? null, unlink: true } : { termId: picked!.id, baseTermId: current?.id ?? null };
+      const result = await api<{ changed: boolean }>(`/api/saveColumn/${enc(column.id)}/term`, { method: 'PUT', body, silent: true });
       onChanged(result.changed);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('표준 용어를 바꾸지 못했습니다.'));
@@ -79,7 +82,7 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
     }
   };
 
-  const same = picked?.id === current.id;
+  const same = !!current && picked?.id === current.id;
   const nameDiffers = picked && norm(picked.commonStandardTermAbbreviation) !== norm(column.columnName);
   const typeDiffers = picked && picked.dataType && norm(picked.dataType) !== norm(columnType(column));
   return (
@@ -87,7 +90,8 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
       <p className="gh-muted">{t('표준 용어 연결만 바꿉니다. 컬럼명·데이터 타입·길이·설명·업무 설명은 바뀌지 않습니다.')}</p>
       <dl className="dict-detail">
         <dt>{t('대상 컬럼')}</dt><dd className="gh-mono">{column.tableName}.{column.columnName}</dd>
-        <dt>{t('현재 표준 용어')}</dt><dd>{termLabel(current)} <span className="gh-mono gh-muted">{current.commonStandardTermAbbreviation}</span></dd>
+        <dt>{t('현재 표준 용어')}</dt>
+        <dd>{current ? <>{termLabel(current)} <span className="gh-mono gh-muted">{current.commonStandardTermAbbreviation}</span></> : <span className="gh-muted">{t('연결 없음')}</span>}</dd>
       </dl>
 
       <form className="term-relink-search" onSubmit={(e) => { e.preventDefault(); void search(); }}>
@@ -107,7 +111,7 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
                 <span>{termLabel(term)}</span> <span className="gh-mono gh-muted">{term.commonStandardTermAbbreviation}</span>
                 <span className="gh-muted"> · {term.commonStandardDomainName ?? t('도메인 없음')}{term.dataType ? ` · ${term.dataType}` : ''}</span>
                 {term.isApprovalYn !== 'Y' && <span className="gh-label gh-label-attention">{t('미승인 용어')}</span>}
-                {term.id === current.id && <span className="gh-label">{t('현재 연결')}</span>}
+                {term.id === current?.id && <span className="gh-label">{t('현재 연결')}</span>}
               </button>
             </li>
           ))}
@@ -120,10 +124,10 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
           <table className="term-relink-table">
             <thead><tr><th /><th>{t('현재 연결')}</th><th>{t('새 연결')}</th></tr></thead>
             <tbody>
-              <tr><th>{t('표준 용어')}</th><td>{termLabel(current)}</td><td>{termLabel(picked)}</td></tr>
-              <tr><th>{t('영문 약어')}</th><td className="gh-mono">{current.commonStandardTermAbbreviation ?? '-'}</td><td className="gh-mono">{picked.commonStandardTermAbbreviation}</td></tr>
-              <tr><th>{t('표준 도메인')}</th><td>{current.commonStandardDomainName ?? '-'}</td><td>{picked.commonStandardDomainName ?? '-'}</td></tr>
-              <tr><th>{t('권장 타입')}</th><td className="gh-mono">{current.dataType ?? '-'}</td><td className="gh-mono">{picked.dataType ?? '-'}</td></tr>
+              <tr><th>{t('표준 용어')}</th><td>{current ? termLabel(current) : '-'}</td><td>{termLabel(picked)}</td></tr>
+              <tr><th>{t('영문 약어')}</th><td className="gh-mono">{current?.commonStandardTermAbbreviation ?? '-'}</td><td className="gh-mono">{picked.commonStandardTermAbbreviation}</td></tr>
+              <tr><th>{t('표준 도메인')}</th><td>{current?.commonStandardDomainName ?? '-'}</td><td>{picked.commonStandardDomainName ?? '-'}</td></tr>
+              <tr><th>{t('권장 타입')}</th><td className="gh-mono">{current?.dataType ?? '-'}</td><td className="gh-mono">{picked.dataType ?? '-'}</td></tr>
             </tbody>
           </table>
           <ul className="term-relink-keep">
@@ -148,8 +152,10 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
       {error && <div className="ai-dict-callout is-error" role="alert">{error}</div>}
       <div className="gh-dialog-actions">
         <button type="button" className="btn" onClick={onCancel} disabled={saving}>{t('취소')}</button>
+        {current && <button type="button" className="btn btn-danger" onClick={() => void save(true)} disabled={saving}
+                            title={t('표준 용어 연결만 끊습니다. 컬럼은 그대로이고 표준화 품질 진단에 나타날 수 있습니다.')}>{t('연결 해제')}</button>}
         <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={!picked || same || saving}>
-          {saving ? t('저장 중…') : t('이 표준 용어로 변경')}
+          {saving ? t('저장 중…') : current ? t('이 표준 용어로 변경') : t('이 표준 용어로 연결')}
         </button>
       </div>
     </div>

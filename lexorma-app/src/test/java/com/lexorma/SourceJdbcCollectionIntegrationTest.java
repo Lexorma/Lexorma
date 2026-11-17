@@ -502,7 +502,7 @@ class SourceJdbcCollectionIntegrationTest extends SourceJdbcTestSupport {
             String status = jdbc.queryForObject("select EXCN_STTS_CD from TB_SRC_CLCT_EXCN where SRC_CLCT_EXCN_SN = ?", String.class, id);
             if (!"RUNNING".equals(status)) {
                 return new SourceCollectionDto.Execution(id, null, null, null, null, status, null, null, null, null, null, null, null, null,
-                        jdbc.queryForObject("select ERR_CD from TB_SRC_CLCT_EXCN where SRC_CLCT_EXCN_SN = ?", String.class, id), null);
+                        jdbc.queryForObject("select ERR_CD from TB_SRC_CLCT_EXCN where SRC_CLCT_EXCN_SN = ?", String.class, id), null, null);
             }
             Thread.sleep(25);
         }

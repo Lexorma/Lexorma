@@ -8,6 +8,8 @@ export interface LogicalModel {
   id: number;
   modelName: string;
   modelDescription: string | null;
+  /** 수정 기준값 (DEC-08) */
+  modifiedAt?: string | null;
 }
 
 /** 표준 도메인(domainName·domainDataType)은 연결한 표준 용어의 도메인이다 (따로 저장하지 않는다) */
@@ -23,10 +25,14 @@ export interface LogicalAttribute {
   termName: string | null;
   domainName: string | null;
   domainDataType: string | null;
+  /** 수정 기준값 (DEC-08) */
+  modifiedAt?: string | null;
 }
 
 /** attributeIds : 식별자를 이루는 속성 (순서대로, 복합 가능) */
 export interface LogicalIdentifier {
+  /** 수정 기준값 (DEC-08) */
+  modifiedAt?: string | null;
   id: number;
   entityId: number;
   identifierName: string;
@@ -44,6 +50,8 @@ export interface LogicalEntity {
   isApproval: boolean | null;
   attributes: LogicalAttribute[];
   identifiers: LogicalIdentifier[];
+  /** 수정 기준값 (DEC-08) */
+  modifiedAt?: string | null;
 }
 
 /**
@@ -51,6 +59,8 @@ export interface LogicalEntity {
  * 최소 0 = 선택 / 1 이상 = 필수, **최대 null = 다(N)** (미입력이 아니다).
  */
 export interface LogicalRelationship {
+  /** 수정 기준값 (DEC-08) */
+  modifiedAt?: string | null;
   id: number;
   modelId: number;
   relationshipName: string | null;

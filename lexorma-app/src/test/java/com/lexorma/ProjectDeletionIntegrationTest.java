@@ -104,7 +104,7 @@ class ProjectDeletionIntegrationTest {
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
             "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
-            "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL");
+            "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -324,7 +324,7 @@ class ProjectDeletionIntegrationTest {
                 List.of(new ColumnPair(statGrp.getId(), null, grp.getId(), null), new ColumnPair(stat.getId(), null, cd.getId(), null)), null));
         PhysicalModelDto.Index index = physical.saveIndex(admin, new PhysicalModelDto.Index(null, order.getId(), null, null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null)).getBody();
         // 승인된 인덱스의 수정 → 변경 요청 (TB_IDX_CHG_DMND, 승인 권한자라 바로 승인)
-        physical.updateIndex(admin, index.id(), new PhysicalModelDto.Index(null, null, "IX_ORD_STAT", null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
+        physical.updateIndex(admin, index.id(), new PhysicalModelDto.Index(null, null, "IX_ORD_STAT", null, false, List.of(new PhysicalModelDto.ColumnRef(stat.getId(), null)), null, null, null, null, null, index.modifiedAt()));
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), null, "UNIQUE", null, List.of(new PhysicalModelDto.ColumnRef(statGrp.getId(), null), new PhysicalModelDto.ColumnRef(stat.getId(), null)), null));
         physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, order.getId(), "CK_ORD_STAT", "CHECK", "STAT_CD <> ''", null, null));
         jdbc.update("update TB_COL set STD_TRM_SN = ? where COL_SN = ?", base - 1, orderNo.getId());
@@ -392,6 +392,21 @@ class ProjectDeletionIntegrationTest {
         sourceMappingService.setBase(admin, new SourceMappingDto.BaseRequest(connection.getId(), null));
         sourceMappingService.mapSchema(admin, new SourceMappingDto.SchemaRequest(sourceSchema.getId(), order.getSchema().getId()));
         sourceMappingService.mapTable(admin, new SourceMappingDto.TableRequest(users.getId(), order.getId()));
+        // 원본 컬럼 매핑 (DEC-06) : TABLE 매핑 안의 원본 컬럼 ↔ 모델 컬럼 (매핑 이력은 위 mapTable 이 남긴다)
+        jdbc.update("insert into TB_SRC_COL_MPNG(SRC_COL_MPNG_SN, PRJ_SN, SRC_CNTN_SN, SRC_TBL_MPNG_SN, CMPR_NM, COL_NM, COL_SN, RFLT_ORD) select ?, ?, m.SRC_CNTN_SN, m.SRC_TBL_MPNG_SN,"
+                        + " 'old_ord_no', 'old_ord_no', ?, m.RFLT_ORD from TB_SRC_TBL_MPNG m where m.PRJ_SN = ? and m.TBL_SN = ?",
+                900_000_000L + projectId, projectId, orderNo.getId(), projectId, order.getId());
+        // 원본 VIEW 정의·확인 이력 (DEC-16) : 행 하나씩 (수집 경로와 상관없이 지워지는지만 본다)
+        jdbc.update("insert into TB_SRC_VIEW_DFN(SRC_VIEW_DFN_SN, PRJ_SN, SRC_CNTN_SN, SRC_TBL_SN, DFN_STTS_CD, DFN_CN, ENCPT_YN, HASH_VL) values (?, ?, ?, ?, 'COLLECTED', 'select 1', false, 'd1:x')",
+                900_000_000L + projectId, projectId, connection.getId(), users.getId());
+        jdbc.update("insert into TB_SRC_VIEW_DFN_IDNTY_HSTRY(SRC_VIEW_DFN_IDNTY_HSTRY_SN, PRJ_SN, SRC_CNTN_SN, SRC_TBL_SN, HASH_VL, IDNTY_DT) values (?, ?, ?, ?, 'd1:x', current_timestamp)",
+                900_000_000L + projectId, projectId, connection.getId(), users.getId());
+        // 내장 MCP (DEC-31) : 설정·토큰·호출 이력
+        jdbc.update("insert into TB_PRJ_MCP_STNG(PRJ_MCP_STNG_SN, PRJ_SN, ACTVTN_YN) values (?, ?, true)", 900_000_000L + projectId, projectId);
+        jdbc.update("insert into TB_MCP_TKN(MCP_TKN_SN, PRJ_SN, ACNT_SN, TKN_NM, HASH_VL, TKN_PFX_NM, EXPRY_DT) values (?, ?, 1, 't', ?, 'lxm_x', current_timestamp)",
+                900_000_000L + projectId, projectId, "hash-" + projectId);
+        jdbc.update("insert into TB_MCP_CALL_HSTRY(MCP_CALL_HSTRY_SN, PRJ_SN, MCP_TKN_SN, TOOL_NM, RSLT_CD, CALL_DT) values (?, ?, ?, 'ping', 'OK', current_timestamp)",
+                900_000_000L + projectId, projectId, 900_000_000L + projectId);
         // 원본 가져오기 실행 이력 (M-4e)
         jdbc.update("insert into TB_SRC_IMPRT_EXCN(SRC_IMPRT_EXCN_SN, PRJ_SN, SRC_CNTN_SN, RFLT_ORD, CHG_GROUP_ID) values (?, ?, ?, 1, ?)",
                 900_000_000L + projectId, projectId, connection.getId(), "deletion-" + projectId);
@@ -409,6 +424,14 @@ class ProjectDeletionIntegrationTest {
         jdbc.update("insert into TB_AI_EXPLN_EVL(AI_EXPLN_EVL_SN, PRJ_SN, AI_EXPLN_EVL_TRGT_SN, AI_EXPLN_SGSTN_SN, PRMPT_VER_NM, JGMT_RSLT_CD, UNFND_CLM_YN, UNCRT_JGMT_CD,"
                         + " TRM_RCMDTN_JGMT_CD, DMN_RCMDTN_JGMT_CD, RVWR_ID, RVW_DT, VER_NO) values (?, ?, ?, ?, 'test', 'CORRECT', false, 'APPROPRIATE', 'NO_RECOMMENDATION', 'NO_RECOMMENDATION', 'admin', current_timestamp, 0)",
                 900_000_000L + projectId, projectId, 900_000_000L + projectId, 900_000_000L + projectId);
+        // 프로젝트 AI Provider 지정 (DEC-18) : 두 프로젝트가 같은 Provider 하나를 지정한다 (Provider 는 전역 — 프로젝트 삭제 뒤에도 남는다)
+        if (jdbc.queryForObject("select count(*) from TB_AI_PRVDR where AI_PRVDR_SN = 900000000", Integer.class) == 0) {
+            jdbc.update("insert into TB_AI_PRVDR(AI_PRVDR_SN, PRVDR_NM, PRVDR_TYPE_CD, BSC_URL_ADDR, BSC_MDL_NM, ACTVTN_YN) values (900000000, 'deletion-test', 'OLLAMA', 'http://127.0.0.1:1', 'm', true)");
+        }
+        jdbc.update("insert into TB_PRJ_AI_STNG(PRJ_AI_STNG_SN, PRJ_SN, AI_PRVDR_SN) values (?, ?, 900000000)", 900_000_000L + projectId, projectId);
+        jdbc.update("insert into TB_AI_EXPLN_EVL_HSTRY(AI_EXPLN_EVL_HSTRY_SN, PRJ_SN, AI_EXPLN_EVL_SN, AI_EXPLN_EVL_TRGT_SN, AI_EXPLN_SGSTN_SN, CHG_TYPE_CD, RVWR_ID, CHG_AFTR_CN, CHG_DT)"
+                        + " values (?, ?, ?, ?, ?, 'INSERT', 'admin', '{}', current_timestamp)",
+                900_000_000L + projectId, projectId, 900_000_000L + projectId, 900_000_000L + projectId, 900_000_000L + projectId);
         return new Filled(order);
     }
 

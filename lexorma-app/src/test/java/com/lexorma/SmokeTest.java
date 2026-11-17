@@ -555,6 +555,46 @@ class SmokeTest {
 
     @Test
     @Order(20)
+    @DisplayName("M-5 잔여 진단 API (테이블명·용어 중복·컬럼명 개선 후보) : 요약 = 목록, 조건 바인딩, 잘못된 값 400")
+    void standardizationQualityRules() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+
+        // 모델 진단 : 컬럼 요약은 기존 요약과 같고, 요약 = 목록 건수. 예제 자체의 결과(0건)는 StandardizationQualityRulesIntegrationTest.example 이 새 DB 에서 본다
+        // (같은 DB 를 쓰는 다른 테스트가 프로젝트 0 에 테이블을 더할 수 있다)
+        var model = mapper.readTree(get("/api/standardizationQuality/model/summary", true).body());
+        var columns = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
+        assertThat(model.path("columns")).isEqualTo(columns);
+        assertThat(model.path("totalTables").asLong()).isPositive();
+        assertThat(model.path("tablePrefix").asString()).isEqualTo("TB_");
+        assertThat(mapper.readTree(get("/api/standardizationQuality/model/data?page=0&size=5&type=TABLE_PREFIX_MISSING&severity=ERROR&targetType=TABLE", true).body())
+                .path("recordsTotal").asLong()).isEqualTo(model.path("tablePrefixMissing").asLong());
+        assertThat(get("/api/standardizationQuality/model/data?page=0&size=5&targetType=VIEW", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/standardizationQuality/model/data?page=0&size=5&severity=FATAL", true).statusCode()).isEqualTo(400);
+
+        // 용어 진단 : 참고 그룹 수 = 목록 건수
+        var terms = mapper.readTree(get("/api/standardizationQuality/terms/summary", true).body());
+        assertThat(terms.path("totalTerms").asLong()).isPositive();
+        var infos = mapper.readTree(get("/api/standardizationQuality/terms/data?page=0&size=20&severity=INFO", true).body());
+        assertThat(infos.path("recordsTotal").asLong()).isEqualTo(terms.path("infos").asLong());
+        for (var group : infos.path("data")) {
+            assertThat(group.path("id").asString()).startsWith("v1:");
+            assertThat(group.path("members").size()).isEqualTo(group.path("memberCount").asInt()).isPositive();
+        }
+        assertThat(get("/api/standardizationQuality/terms/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+
+        // 컬럼명 개선 후보 : 후보는 최대 5건이고, 없으면 사유가 있다. 없는 컬럼은 오류
+        long columnId = mapper.readTree(get("/api/selectColumn/data?page=0&size=1", true).body()).path("data").get(0).path("id").asLong();
+        var suggestions = mapper.readTree(get("/api/standardizationQuality/columns/" + columnId + "/suggestions", true).body());
+        assertThat(suggestions.path("columnId").asLong()).isEqualTo(columnId);
+        assertThat(suggestions.path("candidates").size()).isLessThanOrEqualTo(5);
+        if (suggestions.path("candidates").isEmpty()) {
+            assertThat(suggestions.path("reason").asString()).isNotBlank();
+        }
+        assertThat(get("/api/standardizationQuality/columns/999999999/suggestions", true).statusCode()).isBetween(400, 404);
+    }
+
+    @Test
+    @Order(20)
     @DisplayName("M-6 논리 모델 API : 모델 → 엔터티 → 속성(표준 용어) → 식별자 → 관계 → 논리 ERD, 오류 코드, 삭제 순서")
     void logicalModel() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
@@ -633,7 +673,8 @@ class SmokeTest {
             // 사용 현황 (V0 예제 : 표준 용어 1, 표준 단어 12)
             Map.entry("usageColumnColumns", "/api/dictionaryUsage/term/1"),
             Map.entry("usageTermColumns", "/api/dictionaryUsage/word/12"),
-            Map.entry("qualityIssueColumns", "/api/standardizationQuality"),
+            Map.entry("qualityModelColumns", "/api/standardizationQuality/model"),
+            Map.entry("qualityTermColumns", "/api/standardizationQuality/terms"),
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             Map.entry("modelHistoryColumns", "/api/modelHistory"),
             Map.entry("modelVersionColumns", "/api/modelVersion"),

@@ -5,6 +5,8 @@ import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Attribut
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ColumnRow;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Issue;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.IssueType;
+import com.lexorma.data.dictionary.quality.Finding;
+import com.lexorma.data.dictionary.quality.StandardizationRule;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -92,6 +94,30 @@ class StandardizationQualityServiceTest {
                 1, false, 10L, "사용자_명", "USER_NM", 20L, "명V100", "VARCHAR", 100, null));
         assertThat(issues).extracting(Issue::type).containsExactly(IssueType.COLUMN_NAME_MISMATCH, IssueType.DOMAIN_DEFINITION_MISMATCH);
         assertThat(issues).extracting(Issue::columnId).containsOnly(7L);
+    }
+
+    @Test
+    @DisplayName("기존 3종은 같은 이름의 규칙(심각도·대상)에 연결되고, fingerprint 는 현재 값이 아니라 기대 값·다른 속성으로 정해진다")
+    void ruleAndFingerprint() {
+        assertThat(java.util.Arrays.stream(IssueType.values()).map(IssueType::rule))
+                .containsExactly(StandardizationRule.TERM_NOT_LINKED, StandardizationRule.COLUMN_NAME_MISMATCH, StandardizationRule.DOMAIN_DEFINITION_MISMATCH)
+                .allMatch(rule -> rule.targetType() == StandardizationRule.TargetType.COLUMN);
+
+        Finding first = StandardizationQualityService.finding(1L, diagnose(DbType.POSTGRESQL, named("USR_NM", "USER_NM")).get(0));
+        assertThat(first.rule()).isEqualTo(StandardizationRule.COLUMN_NAME_MISMATCH);
+        assertThat(first.targetIds()).containsExactly(1L);
+        assertThat(first.actualValue()).isEqualTo("USR_NM");
+        assertThat(StandardizationQualityService.finding(1L, diagnose(DbType.POSTGRESQL, named("US_NM", "USER_NM")).get(0)).fingerprint())
+                .as("다른 틀린 이름이어도 같은 문제").isEqualTo(first.fingerprint());
+        assertThat(StandardizationQualityService.finding(1L, diagnose(DbType.POSTGRESQL, named("USR_NM", "USER_NAME")).get(0)).fingerprint())
+                .as("기대 이름이 바뀌면 다른 문제").isNotEqualTo(first.fingerprint());
+        assertThat(StandardizationQualityService.finding(2L, diagnose(DbType.POSTGRESQL, named("USR_NM", "USER_NM")).get(0)).fingerprint())
+                .as("다른 프로젝트").isNotEqualTo(first.fingerprint());
+
+        Finding length = StandardizationQualityService.finding(1L, diagnose(DbType.POSTGRESQL, typed("VARCHAR", 20, null, null, "VARCHAR", 100, null)).get(0));
+        assertThat(StandardizationQualityService.finding(1L, diagnose(DbType.POSTGRESQL, typed("VARCHAR", 30, null, null, "VARCHAR", 100, null)).get(0)).fingerprint())
+                .isEqualTo(length.fingerprint());
+        assertThat(length.evidence()).containsEntry("attributes", "LENGTH");
     }
 
     // ------------------------------------------------------------------ 보조

@@ -45,9 +45,11 @@ import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Status;
 import com.lexorma.data.sourcemapping.domain.entity.SourceImportExecution;
 import com.lexorma.data.sourcemapping.domain.entity.SourceSchemaMapping;
+import com.lexorma.data.sourcemapping.domain.entity.SourceMappingHistory;
 import com.lexorma.data.sourcemapping.domain.entity.SourceTableMapping;
 import com.lexorma.data.sourcemapping.repository.SourceCompareModelRepository;
 import com.lexorma.data.sourcemapping.repository.SourceImportExecutionRepository;
+import com.lexorma.data.sourcemapping.repository.SourceMappingHistoryRepository;
 import com.lexorma.data.sourcemapping.repository.SourceTableMappingRepository;
 import com.lexorma.data.table.ddl.TableDdlGenerator;
 import com.lexorma.data.table.domain.entity.TableInfo;
@@ -114,6 +116,8 @@ public class SourceImportService {
     private final SourceCatalogReader reader;
     private final SourceCompareModelRepository modelRepository;
     private final SourceTableMappingRepository tableMappingRepository;
+    private final SourceMappingHistoryRecorder mappingHistory;
+    private final SourceMappingHistoryRepository mappingHistoryRepository;
     private final SourceImportExecutionRepository executionRepository;
     private final ModelChangeHistoryRepository historyRepository;
     private final ObjectNamespace objectNamespace;
@@ -312,6 +316,8 @@ public class SourceImportService {
         Map<Long, CompareModel.Column> modelColumns = Map.of();
         Map<Long, CompareModel.Table> modelTables = Map.of();
         final Map<String, String> folded = new HashMap<>();
+        /** 확정된 컬럼 매핑 (DEC-06) : 모델 컬럼 ID → 원본 컬럼 비교 이름 */
+        final Map<Long, String> columnKeys;
         Baselines baselines;
 
         Work(Long projectId, SourceMappingService.State state) {
@@ -321,10 +327,17 @@ public class SourceImportService {
             this.snapshot = state.snapshot;
             this.order = snapshot.reflectedOrder();
             this.supported = "POSTGRESQL".equals(connection.dbType());
+            this.columnKeys = state.columnKeys();
         }
 
         String fold(String name) {
             return name == null ? null : folded.computeIfAbsent(name, n -> reader.compareName(connection, NameKind.COLUMN, n));
+        }
+
+        /** 모델 컬럼의 원본 쪽 이름 : 확정된 컬럼 매핑(DEC-06)이 있으면 그 원본 컬럼 비교 이름, 없으면 이름을 접은 값 (비교의 columnKey 와 같다) */
+        String key(Long columnId, String name) {
+            String key = columnId == null ? null : columnKeys.get(columnId);
+            return key != null ? key : fold(name);
         }
 
         void prepare(List<SourceImportDto.TableSelection> selections) {
@@ -362,7 +375,7 @@ public class SourceImportService {
             SourceCompareModelRepository.Loaded loaded = modelRepository.load(projectId, modelIds);
             modelColumns = loaded.columns();
             modelTables = loaded.tables();
-            baselines = new Baselines(projectId, connection.id(), tables.stream().map(TableWork::key).toList());
+            baselines = new Baselines(projectId, connection.id(), tables.stream().map(TableWork::key).toList(), renamedKeys(projectId, tables));
             List<String> views = new ArrayList<>();
             Map<Long, List<String>> viewNames = modelRepository.viewNames(projectId);
             for (TableWork table : tables) table.classify(viewNames.getOrDefault(table.schemaId, views));
@@ -375,6 +388,11 @@ public class SourceImportService {
                 @Override
                 public String fold(String modelName) {
                     return Work.this.fold(modelName);
+                }
+
+                @Override
+                public String columnKey(Long columnId, String modelName) {
+                    return key(columnId, modelName);
                 }
 
                 @Override
@@ -475,6 +493,30 @@ public class SourceImportService {
      * 같은 기준 연결의 실행을 최근 것부터 읽어, TABLE(key)·항목 ID 마다 그 항목을 고른 가장 최근 실행의 변경 그룹을 정하고, 그 그룹의 IMPORT 이력(변경 후 상태)을
      * 대상 ID 로 찾는다. 기준 연결이 바뀌었거나(다른 연결의 실행은 보지 않는다) 다시 매핑해 모델 객체가 다르면(그 ID 의 이력이 없다) 기준값이 없다.
      */
+    /**
+     * 이름 변경을 확정한 TABLE (DEC-06) 의 예전 키 → 지금 키 : 매핑 행은 그대로 새 원본 TABLE 로 옮겨지므로, 매핑 이력의 RENAME 변경 전 원본 TABLE 로 한 가져오기도
+     * 같은 TABLE 의 기준값으로 본다 (모델 TABLE 이 같은 경우만 — 기준값은 어차피 같은 모델 객체 ID 의 이력에서만 찾는다)
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, String> renamedKeys(Long projectId, List<TableWork> tables) {
+        Map<Long, TableWork> byMapping = new HashMap<>();
+        for (TableWork table : tables) {
+            if (table.row.mappingId() != null) byMapping.put(table.row.mappingId(), table);
+        }
+        Map<String, String> aliases = new HashMap<>();
+        if (byMapping.isEmpty()) return aliases;
+        for (SourceMappingHistory history : mappingHistoryRepository.findAllByProjectIdAndTableMappingIdInAndTargetTypeAndChangeType(projectId, byMapping.keySet(),
+                SourceMappingHistory.TargetType.TABLE, SourceMappingHistory.ChangeType.RENAME)) {
+            if (history.getBefore() == null) continue;
+            Map<String, Object> before = (Map<String, Object>) JSON.readValue(history.getBefore(), Map.class);
+            TableWork table = byMapping.get(history.getTableMappingId());
+            Object sourceTableId = before.get("sourceTableId");
+            if (sourceTableId == null || !Objects.equals(String.valueOf(before.get("tableId")), String.valueOf(table.row.tableId()))) continue;
+            aliases.put("S" + sourceTableId, table.key());
+        }
+        return aliases;
+    }
+
     private final class Baselines {
 
         private static final List<TargetType> TYPES = List.of(TargetType.PHYSICAL_TABLE, TargetType.PHYSICAL_COLUMN, TargetType.PHYSICAL_CONSTRAINT,
@@ -491,7 +533,8 @@ public class SourceImportService {
         private final Map<String, Map<String, Object>> parsed = new HashMap<>();
 
         @SuppressWarnings("unchecked")
-        Baselines(Long projectId, Long connectionId, List<String> keys) {
+        /** @param aliases 예전 키 → 지금 키 (이름 변경 확정 TABLE, {@link #renamedKeys}) */
+        Baselines(Long projectId, Long connectionId, List<String> keys, Map<String, String> aliases) {
             Set<String> wanted = new LinkedHashSet<>(keys);
             for (SourceImportExecution execution : executionRepository.findAllByProjectIdAndConnectionIdOrderByIdDesc(projectId, connectionId)) {
                 if (execution.getSummary() == null) continue;
@@ -499,8 +542,10 @@ public class SourceImportService {
                 Object tables = summary.get("tables");
                 if (!(tables instanceof List<?> list)) continue;
                 for (Object entry : list) {
-                    if (!(entry instanceof Map<?, ?> table) || !wanted.contains(String.valueOf(table.get("key")))) continue;
-                    String key = String.valueOf(table.get("key"));
+                    if (!(entry instanceof Map<?, ?> table)) continue;
+                    String recorded = String.valueOf(table.get("key"));
+                    String key = wanted.contains(recorded) ? recorded : aliases.get(recorded);
+                    if (key == null || !wanted.contains(key)) continue;
                     last.putIfAbsent(key, new SourceImportDto.LastImport(execution.getId(), execution.getReflectedOrder(), execution.appliedBy(), execution.appliedAt(),
                             (String) summary.get("modelVersionName")));
                     groups.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(execution.getChangeGroupId());
@@ -692,11 +737,15 @@ public class SourceImportService {
             Reason reason = comment.source() == null ? Reason.EMPTY_COMMENT : model.approved() ? Reason.APPROVED : null;
             Item item = item("TABLE:COMMENT", ObjectKind.TABLE, source.name(), modelName, Action.UPDATE, "comment", comment.source(), comment.model(), comment.source(), reason,
                     List.of(), createDependency());
-            if (!create) {
-                Map<String, Object> b = work.baselines.after(key(), List.of("TABLE:COMMENT"), TargetType.PHYSICAL_TABLE, model.id());
-                item = judge(item, b == null ? NO_VALUE : (String) b.get("sourceComment"), model.sourceComment(), source.comment());
-            }
+            Map<String, Object> b = create ? null : work.baselines.after(key(), List.of("TABLE:COMMENT", "TABLE:COMMENT_CLEAR"), TargetType.PHYSICAL_TABLE, model.id());
+            if (!create) item = judge(item, b == null ? NO_VALUE : (String) b.get("sourceComment"), model.sourceComment(), source.comment());
             put(item);
+            // DEC-07 : 원본 COMMENT 가 비었고 모델의 원본 COMMENT 칸에 값이 있으면, 비우기는 따로 고르는 항목이다 (빈 값으로 자동으로 지우지 않는다)
+            if (!create && comment.source() == null && comment.model() != null) {
+                Item clear = item("TABLE:COMMENT_CLEAR", ObjectKind.TABLE, source.name(), modelName, Action.CLEAR, "comment", null, comment.model(), null,
+                        model.approved() ? Reason.APPROVED : null, List.of(), List.of());
+                put(judge(clear, b == null ? NO_VALUE : (String) b.get("sourceComment"), model.sourceComment(), null));
+            }
         }
 
         void column(ObjectDiff object, SourceCatalogReader.Column column) {
@@ -759,6 +808,12 @@ public class SourceImportService {
                         reason, List.of(), List.of());
                 Map<String, Object> b = baseline(column, modelColumn, "COMMENT");
                 put(judge(item, b == null ? NO_VALUE : (String) b.get("sourceComment"), modelColumn.sourceComment(), column.comment()));
+                // DEC-07 : 원본 COMMENT 를 지운 경우의 명시적 비우기 (승인 컬럼은 승인 취소 후)
+                if (comment.source() == null && comment.model() != null) {
+                    Item clear = item(prefix + "COMMENT_CLEAR", ObjectKind.COLUMN, column.name(), modelColumn.name(), Action.CLEAR, "comment", null, comment.model(), null,
+                            approved, List.of(), List.of());
+                    put(judge(clear, b == null ? NO_VALUE : (String) b.get("sourceComment"), modelColumn.sourceComment(), null));
+                }
             }
             AttributeDiff auto = attribute(object, "autoIncrement");
             if (auto != null && auto.result() != AttributeResult.SAME) {
@@ -781,6 +836,15 @@ public class SourceImportService {
             if (object.status() != CompareStatus.ADDED_IN_SOURCE) {
                 put(item(id, ObjectKind.PRIMARY_KEY, pk.name(), object.modelName(), Action.ADD, null, String.join(", ", pk.columns()), null, null,
                         object.status() == CompareStatus.UNKNOWN ? Reason.UNKNOWN : Reason.REPLACE_REQUIRED, List.of(), List.of()));
+                // DEC-05 : 구성이 다른 PK 는 미승인 TABLE·컬럼이고 다른 TABLE 의 관계가 이 TABLE 을 참조하지 않을 때만 교체를 고를 수 있다
+                if (object.status() == CompareStatus.MODIFIED && model != null && model.id() != null) {
+                    List<String> current = model.columns().stream().filter(c -> Boolean.TRUE.equals(c.pk())).map(c -> work.key(c.id(), c.name())).toList();
+                    boolean approved = model.approved() || model.columns().stream().filter(c -> Boolean.TRUE.equals(c.pk()) || pk.columns().contains(work.key(c.id(), c.name())))
+                            .anyMatch(CompareModel.Column::approved);
+                    Reason reason = approved ? Reason.APPROVED : referencedByOthers() ? Reason.REFERENCED : null;
+                    put(item(id + ":REPLACE", ObjectKind.PRIMARY_KEY, pk.name(), object.modelName(), Action.REPLACE, null, String.join(", ", pk.columns()),
+                            String.join(", ", current), String.join(", ", pk.columns()), reason, List.of(), columnDependencies(pk.columns())));
+                }
                 return;
             }
             Reason reason = pk.columns().stream().map(this::modelColumn).anyMatch(c -> c != null && c.approved()) ? Reason.APPROVED : null;
@@ -800,11 +864,22 @@ public class SourceImportService {
                     case CONFLICT -> Reason.CONFLICT;
                     default -> Reason.REPLACE_REQUIRED;
                 };
-                put(item(id, object.kind(), object.sourceName(), object.modelName(), Action.ADD, null, sourceText, null, null, reason, List.of(), List.of()));
+                // DEC-05 판단 불가(UNKNOWN) : 자동으로 교체하지 않는다 (교체 항목 없음, 기존 객체 그대로). 수동 검토할 수 있게 지금 모델의 정의를 함께 보인다
+                put(item(id, object.kind(), object.sourceName(), object.modelName(), Action.ADD, null, sourceText,
+                        reason == Reason.UNKNOWN ? text(object.attributes(), false) : null, null, reason, List.of(), List.of()));
+                // DEC-05 : 구성이 다른(MODIFIED) 같은 이름의 객체는 교체를 따로 고를 수 있다 — 미승인 객체·미승인 TABLE 만 (승인 객체는 승인 취소·변경 요청 절차)
+                if (object.status() == CompareStatus.MODIFIED && object.modelName() != null && model != null && model.id() != null) {
+                    addOrReplace(object, id + ":REPLACE", Action.REPLACE, object.modelName(), replaceBlocker(object), text(object.attributes(), false));
+                }
                 return;
             }
-            String name = objectName(object.sourceName());
-            Reason reason = name == null ? Reason.QUOTED_NAME : null;
+            addOrReplace(object, id, Action.ADD, objectName(object.sourceName()), null, null);
+        }
+
+        /** 원본 객체로 새 모델 객체를 만드는 항목 (추가 또는 DEC-05 교체 : 교체는 반영 때 같은 이름의 모델 객체를 먼저 지운다) */
+        void addOrReplace(ObjectDiff object, String id, Action action, String name, Reason blocker, String before) {
+            String sourceText = text(object.attributes(), true);
+            Reason reason = name == null ? Reason.QUOTED_NAME : blocker;
             List<String> excluded = new ArrayList<>();
             List<String> dependencies;
             switch (object.kind()) {
@@ -833,13 +908,48 @@ public class SourceImportService {
                     }
                 }
             }
-            put(item(id, object.kind(), object.sourceName(), name, Action.ADD, null, sourceText, null, sourceText, reason, List.copyOf(excluded), dependencies));
+            put(item(id, object.kind(), object.sourceName(), name, action, null, sourceText, before, sourceText, reason, List.copyOf(excluded), dependencies));
+        }
+
+        /** 교체할 모델 객체 (이름으로 짝지은 것) 의 ID. 없으면 null */
+        Long replacedId(ObjectKind kind, String modelName) {
+            if (model == null || modelName == null) return null;
+            String folded = work.fold(modelName);
+            return switch (kind) {
+                case INDEX -> model.indexes().stream().filter(i -> folded.equals(work.fold(i.name()))).map(CompareModel.Index::id).findFirst().orElse(null);
+                case UNIQUE, CHECK -> model.constraints().stream().filter(c -> c.name() != null && folded.equals(work.fold(c.name()))).map(CompareModel.Constraint::id)
+                        .findFirst().orElse(null);
+                case FOREIGN_KEY -> model.relations().stream().filter(r -> r.name() != null && folded.equals(work.fold(r.name()))).map(CompareModel.Relation::id)
+                        .findFirst().orElse(null);
+                default -> null;
+            };
+        }
+
+        /** 교체를 막는 이유 : 승인된 TABLE·객체 (모델 객체를 이름으로 못 찾으면 비교와 달라진 것이라 UNKNOWN) */
+        Reason replaceBlocker(ObjectDiff object) {
+            Long id = replacedId(object.kind(), object.modelName());
+            if (id == null) return Reason.UNKNOWN;
+            if (model.approved()) return Reason.APPROVED;
+            Class<?> type = object.kind() == ObjectKind.INDEX ? TableIndex.class : object.kind() == ObjectKind.FOREIGN_KEY ? TableRelation.class : TableConstraint.class;
+            Boolean approved = entityManager.createQuery("select o.isApproval from " + type.getSimpleName() + " o where o.id = :id", Boolean.class).setParameter("id", id)
+                    .getResultStream().findFirst().orElse(null);
+            return Boolean.TRUE.equals(approved) ? Reason.APPROVED : null;
+        }
+
+        /** 다른 TABLE 의 관계가 이 모델 TABLE 을 참조하는지 (PK 를 바꾸면 그 관계가 무효가 된다) */
+        boolean referencedByOthers() {
+            return entityManager.createQuery("select count(r) from TableRelation r where r.targetTable.id = :t and r.sourceTable.id <> :t", Long.class)
+                    .setParameter("t", model.id()).getSingleResult() > 0;
         }
 
         /** 컬럼 속성의 기준값 B : 그 속성을 쓴 가장 최근 가져오기(그 속성 항목 또는 컬럼 추가)가 이 모델 컬럼에 남긴 변경 후 상태 */
         Map<String, Object> baseline(SourceCatalogReader.Column column, CompareModel.Column modelColumn, String attribute) {
-            String prefix = "COLUMN:" + column.name() + ":";
-            List<String> covering = "COMMENT".equals(attribute) ? List.of(prefix + "COMMENT") : List.of(prefix + attribute, prefix + "ADD");
+            List<String> covering = new ArrayList<>();
+            // 이름 변경 매핑을 확정한 컬럼 (DEC-06) : 예전 가져오기는 예전 원본 이름(= 그때 이름으로 짝지은 모델 컬럼 이름)으로 항목을 남겼다. 같은 모델 컬럼 ID 의 이력만 쓰므로 섞이지 않는다
+            for (String name : new LinkedHashSet<>(List.of(column.name(), work.fold(modelColumn.name())))) {
+                String prefix = "COLUMN:" + name + ":";
+                covering.addAll("COMMENT".equals(attribute) ? List.of(prefix + "COMMENT", prefix + "COMMENT_CLEAR") : List.of(prefix + attribute, prefix + "ADD"));
+            }
             return work.baselines.after(key(), covering, TargetType.PHYSICAL_COLUMN, modelColumn.id());
         }
 
@@ -908,7 +1018,7 @@ public class SourceImportService {
 
         CompareModel.Column modelColumn(String compareName) {
             if (model == null) return null;
-            return model.columns().stream().filter(c -> Objects.equals(work.fold(c.name()), compareName)).findFirst().orElse(null);
+            return model.columns().stream().filter(c -> Objects.equals(work.key(c.id(), c.name()), compareName)).findFirst().orElse(null);
         }
 
         // ---------------------------------------------------------- 계획
@@ -971,7 +1081,7 @@ public class SourceImportService {
         List<String> plannedColumnOrder() {
             List<String> order = new ArrayList<>();
             model.columns().stream().sorted(Comparator.comparing(CompareModel.Column::sortOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(CompareModel.Column::id)).forEach(c -> order.add(work.fold(c.name())));
+                    .thenComparing(CompareModel.Column::id)).forEach(c -> order.add(work.key(c.id(), c.name())));
             detail.columns().stream().sorted(Comparator.comparing(SourceCatalogReader.Column::ordinal, Comparator.nullsLast(Comparator.naturalOrder())))
                     .filter(c -> selected.contains("COLUMN:" + c.name() + ":ADD")).forEach(c -> order.add(c.compareName()));
             return order;
@@ -993,17 +1103,17 @@ public class SourceImportService {
             if (table == null) return keys;
             Set<String> pk = new LinkedHashSet<>();
             for (CompareModel.Column column : table.columns()) {
-                if (Boolean.TRUE.equals(column.pk())) pk.add(work.fold(column.name()));
-                if (Boolean.TRUE.equals(column.unique())) keys.add(Set.of(work.fold(column.name())));
+                if (Boolean.TRUE.equals(column.pk())) pk.add(work.key(column.id(), column.name()));
+                if (Boolean.TRUE.equals(column.unique())) keys.add(Set.of(work.key(column.id(), column.name())));
             }
             if (!pk.isEmpty()) keys.add(pk);
             for (CompareModel.Constraint constraint : table.constraints()) {
                 if (!"UNIQUE".equals(constraint.type())) continue;
-                keys.add(constraint.columnIds().stream().map(id -> work.fold(work.modelColumns.get(id).name())).collect(java.util.stream.Collectors.toSet()));
+                keys.add(constraint.columnIds().stream().map(id -> work.key(id, work.modelColumns.get(id).name())).collect(java.util.stream.Collectors.toSet()));
             }
             for (CompareModel.Index index : table.indexes()) {
                 if (!index.unique() || index.condition() != null || index.members().stream().anyMatch(m -> m.columnId() == null || "INCLUDE".equals(m.sort()))) continue;
-                keys.add(index.members().stream().map(m -> work.fold(work.modelColumns.get(m.columnId()).name())).collect(java.util.stream.Collectors.toSet()));
+                keys.add(index.members().stream().map(m -> work.key(m.columnId(), work.modelColumns.get(m.columnId()).name())).collect(java.util.stream.Collectors.toSet()));
             }
             return keys;
         }
@@ -1023,13 +1133,16 @@ public class SourceImportService {
                         .isMasterTable(false).sortOrder(last == null ? 1 : last + 1).isApproval(false).columns(new ArrayList<>())
                         .sourceComment(chosen("TABLE:COMMENT") ? source.comment() : null).build();
                 entityManager.persist(entity);
-                tableMappingRepository.save(SourceTableMapping.builder().projectId(work.projectId).connectionId(work.connection.id()).sourceTableId(source.id())
-                        .sourceSchemaId(source.schemaId()).pathKey(source.pathKey()).compareName(source.compareName()).creationCycle(source.creationCycle())
-                        .reflectedOrder(work.order).tableId(entity.getId()).build());
+                SourceTableMapping mapping = tableMappingRepository.save(SourceTableMapping.builder().projectId(work.projectId).connectionId(work.connection.id())
+                        .sourceTableId(source.id()).sourceSchemaId(source.schemaId()).pathKey(source.pathKey()).compareName(source.compareName())
+                        .creationCycle(source.creationCycle()).reflectedOrder(work.order).tableId(entity.getId()).build());
+                mappingHistory.record(work.projectId, work.connection.id(), mapping.getId(), SourceMappingHistory.TargetType.TABLE, SourceMappingHistory.ChangeType.CONFIRM,
+                        null, SourceMappingHistoryRecorder.table(mapping, source.name(), entity.getTableName()));
             } else {
                 entity = entityManager.find(TableInfo.class, model.id());
                 if (chosen("TABLE:COMMENT")) entity.setSourceComment(source.comment());
-                for (ColumnInfo column : entity.getColumns()) columnEntities.put(work.fold(column.getColumnName()), column);
+                if (chosen("TABLE:COMMENT_CLEAR")) entity.setSourceComment(null);
+                for (ColumnInfo column : entity.getColumns()) columnEntities.put(work.key(column.getId(), column.getColumnName()), column);
             }
             int next = entity.getColumns().stream().map(ColumnInfo::getSortOrder).filter(Objects::nonNull).max(Integer::compare).orElse(0);
             for (SourceCatalogReader.Column column : detail.columns().stream()
@@ -1064,15 +1177,42 @@ public class SourceImportService {
                 }
                 if (chosen(prefix + "DEFAULT")) existing.setDefaultValue(convert(column).defaultValue);
                 if (chosen(prefix + "COMMENT")) existing.setSourceComment(column.comment());
+                if (chosen(prefix + "COMMENT_CLEAR")) existing.setSourceComment(null);
             }
+        }
+
+        /** 추가 또는 교체로 골랐는지 (교체면 만들 때 기존 모델 이름을 쓴다) */
+        String chosenId(String id) {
+            return chosen(id) ? id : chosen(id + ":REPLACE") ? id + ":REPLACE" : null;
+        }
+
+        /** DEC-05 교체 : 고른 객체의 기존 모델 객체를 먼저 지운다 (같은 트랜잭션, 모델 변경 이력에 삭제로 남는다) */
+        void removeReplaced() {
+            boolean removed = false;
+            for (String id : selected) {
+                if (!id.endsWith(":REPLACE") || !chosen(id)) continue;
+                Item item = candidates.get(id);
+                if (item.kind() == ObjectKind.PRIMARY_KEY) {
+                    for (ColumnInfo column : entity.getColumns()) column.setIsPk(false);
+                    continue;
+                }
+                Long target = replacedId(item.kind(), item.modelName());
+                Class<?> type = item.kind() == ObjectKind.INDEX ? TableIndex.class : item.kind() == ObjectKind.FOREIGN_KEY ? TableRelation.class : TableConstraint.class;
+                Object found = target == null ? null : entityManager.find(type, target);
+                if (found == null) throw stale();
+                entityManager.remove(found);
+                removed = true;
+            }
+            if (removed) entityManager.flush();
         }
 
         void applyKeysAndIndexes() {
             if (blocked != null || entity == null) return;
+            removeReplaced();
             for (SourceCatalogReader.Constraint constraint : detail.constraints()) {
                 switch (constraint.type()) {
                     case "PRIMARY_KEY" -> {
-                        if (!chosen("PRIMARY_KEY:" + constraint.name())) continue;
+                        if (chosenId("PRIMARY_KEY:" + constraint.name()) == null) continue;
                         for (String column : constraint.columns()) {
                             ColumnInfo pk = columnEntities.get(column);
                             pk.setIsPk(true);
@@ -1080,8 +1220,8 @@ public class SourceImportService {
                         }
                     }
                     case "UNIQUE", "CHECK" -> {
-                        String id = constraint.type() + ":" + constraint.name();
-                        if (!chosen(id)) continue;
+                        String id = chosenId(constraint.type() + ":" + constraint.name());
+                        if (id == null) continue;
                         TableConstraint created = TableConstraint.builder().projectId(work.projectId).tableInfo(entity).constraintName(candidates.get(id).modelName())
                                 .constraintType("UNIQUE".equals(constraint.type()) ? TableConstraint.Type.UNIQUE : TableConstraint.Type.CHECK)
                                 .checkExpression(constraint.checkExpression()).isApproval(false).columns(new ArrayList<>()).build();
@@ -1097,8 +1237,8 @@ public class SourceImportService {
                 }
             }
             for (SourceCatalogReader.Index index : detail.indexes()) {
-                String id = "INDEX:" + index.name();
-                if (!chosen(id)) continue;
+                String id = chosenId("INDEX:" + index.name());
+                if (id == null) continue;
                 String type = index.indexType() == null ? null : index.indexType().toUpperCase(Locale.ROOT);
                 TableIndex created = TableIndex.builder().projectId(work.projectId).tableInfo(entity).indexName(candidates.get(id).modelName())
                         .indexType("BTREE".equals(type) ? null : type).isUnique(index.unique()).indexSource(TableIndex.Source.USER).condition(index.predicate())
@@ -1117,14 +1257,14 @@ public class SourceImportService {
         void applyForeignKeys() {
             if (blocked != null || entity == null) return;
             for (SourceCatalogReader.ForeignKey fk : detail.foreignKeys()) {
-                String id = "FOREIGN_KEY:" + fk.name();
-                if (!chosen(id)) continue;
+                String id = chosenId("FOREIGN_KEY:" + fk.name());
+                if (id == null) continue;
                 TableWork planned = work.plannedTarget(fk);
                 Long targetId = work.mappedModelBySource.get(work.sourceByName.get(fk.referencedSchema() + "\u0000" + fk.referencedTable()));
                 TableInfo target = planned != null ? planned.entity : entityManager.find(TableInfo.class, targetId);
                 Map<String, ColumnInfo> targetColumns = new HashMap<>();
                 if (planned != null) targetColumns.putAll(planned.columnEntities);
-                for (ColumnInfo column : target.getColumns()) targetColumns.putIfAbsent(work.fold(column.getColumnName()), column);
+                for (ColumnInfo column : target.getColumns()) targetColumns.putIfAbsent(work.key(column.getId(), column.getColumnName()), column);
                 TableRelation relation = TableRelation.builder().projectId(work.projectId).sourceTable(entity).targetTable(target).relationName(candidates.get(id).modelName())
                         .relationType(TableRelation.Type.FK).relationSource(TableRelation.Source.IMPORTED).isApproval(false).columns(new ArrayList<>())
                         .deleteRule(importedRule(fk.deleteRule())).updateRule(importedRule(fk.updateRule())).build();

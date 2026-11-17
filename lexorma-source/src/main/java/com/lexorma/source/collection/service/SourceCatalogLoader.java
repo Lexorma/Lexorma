@@ -18,6 +18,12 @@ import com.lexorma.source.catalog.domain.entity.SourceRelation;
 import com.lexorma.source.catalog.domain.entity.SourceRelationColumn;
 import com.lexorma.source.catalog.domain.entity.SourceSchema;
 import com.lexorma.source.catalog.domain.entity.SourceTable;
+import com.lexorma.source.catalog.domain.entity.SourceViewDefinition;
+import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
+import com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus;
+import com.lexorma.source.catalog.repository.SourceViewDefinitionRepository;
+import com.lexorma.source.catalog.service.SourceViewDefinitionCipher;
+import com.lexorma.core.crypto.SecretCipher;
 import com.lexorma.source.catalog.domain.enums.SourceConstraintType;
 import com.lexorma.source.catalog.domain.enums.SourceTableType;
 import com.lexorma.source.catalog.service.SourceIdentifiers;
@@ -90,6 +96,8 @@ class SourceCatalogLoader {
     private final SourceCollectionTargetRepository targetRepository;
     private final SourceSchemaVersionRepository schemaVersionRepository;
     private final SourceTableVersionRepository tableVersionRepository;
+    private final SourceViewDefinitionRepository viewDefinitionRepository;
+    private final SecretCipher secretCipher;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -146,6 +154,8 @@ class SourceCatalogLoader {
         /** 컬럼을 읽은 테이블 → 비교 명 → 컬럼 */
         private final Map<Long, Map<String, SourceColumn>> columnsByTable = new HashMap<>();
         private final List<Work> works = new ArrayList<>();
+        /** VIEW ID → [정의 행 ID, 상태, 해시] (DEC-16, 원문은 읽지 않는다) */
+        private final Map<Long, Object[]> definitions = new HashMap<>();
         private int versions;
         private int changes;
 
@@ -200,11 +210,15 @@ class SourceCatalogLoader {
                 }
             }
             indexTables(tables);
+            for (Object[] row : viewDefinitionRepository.statesOf(connection.getId())) definitions.put((Long) row[1], row);
 
             for (SchemaWork schemaWork : schemaWorks.values()) {
                 Map<String, SourceTable> existing = new HashMap<>(tables.getOrDefault(schemaWork.schema.getId(), Map.of()));
-                for (PreparedCollection.Table table : schemaWork.prepared.tables()) {
-                    SourceTable row = existing.remove(table.compareName());
+                for (PreparedCollection.Table collected : schemaWork.prepared.tables()) {
+                    SourceTable row = existing.remove(collected.compareName());
+                    // 정의를 읽지 못한 VIEW (권한·실패·정의를 넘기지 않는 경로) : 지난번 정의 해시를 이어 써 정의 변경으로 보지 않는다
+                    PreparedCollection.Table table = row != null && SourceTableType.VIEW.name().equals(collected.canonical().type()) && !collected.definitionCollected()
+                            ? collected.withDefinitionHash(storedDefinitionHash(row.getId())) : collected;
                     WorkKind kind = row == null ? WorkKind.NEW : !Boolean.TRUE.equals(row.getPresent()) ? WorkKind.REVIVED
                             : SourceCatalogCanonical.current(row.getContentHash()) && row.getContentHash().equals(table.hash()) ? WorkKind.UNCHANGED : WorkKind.SUSPECT;
                     works.add(new Work(schemaWork, table, row, kind, row == null ? null : latest.get(row.getId())));
@@ -232,6 +246,7 @@ class SourceCatalogLoader {
             for (Work work : works) removeChildren(work);
             entityManager.flush();
             for (Work work : works) writeTable(work);
+            for (Work work : works) writeDefinition(work);
             for (Work work : works) addChildren(work);
             for (Work work : works) record(work);
             for (SourceSchema schema : removedSchemas) removeSchema(schema, latestSchemas.get(schema.getId()));
@@ -391,7 +406,7 @@ class SourceCatalogLoader {
                         relation.getReferencedSchemaName(), relation.getReferencedTableName(), relation.getDeleteRule(), relation.getUpdateRule(), pairs));
             }
             return SourceCatalogCanonical.Table.of(row.getSchema().getPathKey(), row.getName(), row.getCompareName(), row.getQuoted(), row.getType().name(), row.getComment(),
-                    columns, SourceCatalogCanonical.unique(constraints), SourceCatalogCanonical.unique(indexes), SourceCatalogCanonical.unique(relations));
+                    row.getType() == SourceTableType.VIEW ? storedDefinitionHash(row.getId()) : null, columns, SourceCatalogCanonical.unique(constraints), SourceCatalogCanonical.unique(indexes), SourceCatalogCanonical.unique(relations));
         }
 
         private SourceCatalogCanonical.Column canonical(SourceColumn column) {
@@ -463,6 +478,55 @@ class SourceCatalogLoader {
                 default -> {
                 }
             }
+        }
+
+        private String storedDefinitionHash(Long tableId) {
+            Object[] stored = definitions.get(tableId);
+            return stored == null ? null : (String) stored[3];
+        }
+
+        /**
+         * VIEW 정의 (DEC-16) : 원문은 TB_SRC_VIEW_DFN 에만 쓴다 (키가 있으면 암호화). 바뀐 것만 쓴다 — 변경 없는 수집은 UPDATE 가 없다.
+         * 정의를 읽지 못했으면 상태만 바꾸고 원문·해시는 둔다. VIEW 가 TABLE 이 되면 정의 행을 지운다. 사라진 VIEW 의 정의는 남긴다 (행이 사라짐 표시로 남는 것과 같다)
+         */
+        private void writeDefinition(Work work) {
+            if (work.prepared == null) return;
+            Object[] stored = definitions.get(work.row.getId());
+            if (!SourceTableType.VIEW.name().equals(work.prepared.canonical().type())) {
+                if (stored != null) entityManager.remove(entityManager.getReference(SourceViewDefinition.class, stored[0]));
+                return;
+            }
+            SourceCatalogSpec.ViewDefinition definition = work.prepared.definition();
+            if (definition == null) return;
+            SourceViewDefinitionStatus storedStatus = stored == null ? null : (SourceViewDefinitionStatus) stored[2];
+            if (definition.status() != SourceViewDefinitionStatus.COLLECTED) {
+                if (storedStatus == definition.status()) return;
+                SourceViewDefinition row = stored == null ? newDefinition(work) : entityManager.find(SourceViewDefinition.class, stored[0]);
+                row.setStatus(definition.status());
+                return;
+            }
+            String hash = work.prepared.canonical().definitionHash();
+            if (storedStatus == SourceViewDefinitionStatus.COLLECTED && hash.equals(stored[3])) return;
+            SourceViewDefinition row = stored == null ? newDefinition(work) : entityManager.find(SourceViewDefinition.class, stored[0]);
+            if (!hash.equals(row.getHash())) {
+                row.setPreviousHash(row.getHash());
+                row.setChangedOrder(order);
+            }
+            row.setStatus(SourceViewDefinitionStatus.COLLECTED);
+            boolean encrypt = secretCipher.isAvailable();
+            row.setContent(encrypt ? secretCipher.encrypt(definition.text(), SourceViewDefinitionCipher.scope(projectId, row.getId())) : definition.text());
+            row.setEncrypted(encrypt);
+            row.setHash(hash);
+            row.setLength(definition.text().length());
+            row.setCollectedAt(now);
+        }
+
+        /** 새 정의 행 : 암호화 범위에 행 ID 가 들어가므로 먼저 persist 해 ID 를 받는다 (INSERT 는 flush 때 마지막 값으로) */
+        private SourceViewDefinition newDefinition(Work work) {
+            SourceViewDefinition row = SourceViewDefinition.builder().projectId(projectId).connectionId(connection.getId()).tableId(work.row.getId())
+                    .status(SourceViewDefinitionStatus.FAILED).encrypted(false).build();
+            entityManager.persist(row);
+            return row;
         }
 
         /** 컬럼 : 바뀐 것만 고치고, 없던 것은 만들고(사라졌던 같은 이름은 되살리고), 사라진 것은 EXST_YN = false */
@@ -796,6 +860,8 @@ class SourceCatalogLoader {
     private static Map<String, Object> own(Map<String, Object> table) {
         Map<String, Object> own = new LinkedHashMap<>();
         for (String field : List.of("name", "compareName", "quoted", "type", "comment")) own.put(field, table.get(field));
+        // VIEW 정의 해시 (DEC-16) : 있는 버전에만 (TABLE·정의를 읽기 전의 버전 내용은 그대로)
+        if (table.containsKey("definitionHash")) own.put("definitionHash", table.get("definitionHash"));
         return own;
     }
 

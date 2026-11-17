@@ -24,7 +24,7 @@ type ObjectKind = 'TABLE' | 'COLUMN' | 'PRIMARY_KEY' | 'UNIQUE' | 'CHECK' | 'FOR
 type TableReason = 'COMPARED' | 'UNMAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'MODEL_NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT'
   | 'SOURCE_REMOVED' | 'MODEL_DELETED' | 'MODEL_ONLY' | 'UNSUPPORTED_DBMS';
 type Note = 'MODEL_HAS_NO_FIELD' | 'DESCRIPTION' | 'KOR_NAME' | 'SOURCE_COMMENT' | 'GENERATED_NAME' | 'EXPRESSION' | 'UNSUPPORTED_TYPE' | 'DEFAULT_RULE' | 'SERIAL_DEFAULT' | 'UNRESOLVED_TARGET'
-  | 'RELATIVE_ORDER' | 'NULLABLE_UNKNOWN';
+  | 'RELATIVE_ORDER' | 'NULLABLE_UNKNOWN' | 'RENAME_MAPPED';
 type WarningCode = 'MODEL_TYPE_CONVERTED' | 'MODEL_TYPE_MISSING' | 'CONSTRAINT_INDEX' | 'DUPLICATE_MODEL_NAME' | 'UNSUPPORTED_DBMS';
 type MappingStatus = 'UNMAPPED' | 'MAPPED' | 'RECHECK' | 'CONFLICT' | 'SOURCE_MISSING' | 'MODEL_MISSING' | 'EXCLUDED';
 
@@ -117,6 +117,7 @@ const NOTE: Record<Note, string> = {
   UNRESOLVED_TARGET: t('참조 대상 원본 TABLE 이 매핑되지 않아 견줄 수 없습니다'),
   RELATIVE_ORDER: t('양쪽 모두에 있는 컬럼 사이의 순서입니다'),
   NULLABLE_UNKNOWN: t('원본이 NULL 허용 여부를 주지 않았습니다'),
+  RENAME_MAPPED: t('이름은 다르지만 확정한 컬럼 매핑으로 같은 컬럼으로 봅니다 (이름 변경 매핑)'),
 };
 
 const AUTO: Record<string, string> = { SEQUENCE: t('시퀀스'), IDENTITY_ALWAYS: 'IDENTITY ALWAYS', IDENTITY_BY_DEFAULT: 'IDENTITY BY DEFAULT' };
@@ -196,7 +197,7 @@ export function SourceComparePage() {
               )}
               {data.reflectedOrder != null && (
                 <p className="form-help">
-                  {t('VIEW {0}개는 비교하지 않습니다 (정의 SQL 을 수집하지 않음). 판단 불가는 같음이 아니며 삭제 대상도 아닙니다. 비교 안 함은 모델에 그 속성이 없거나 모델이 이름을 만들어 쓰는 경우입니다.', data.viewCount)}
+                  {t('VIEW {0}개는 비교하지 않습니다 (VIEW 정의는 원본 카탈로그에서만 봅니다). 판단 불가는 같음이 아니며 삭제 대상도 아닙니다. 비교 안 함은 모델에 그 속성이 없거나 모델이 이름을 만들어 쓰는 경우입니다.', data.viewCount)}
                 </p>
               )}
             </section>

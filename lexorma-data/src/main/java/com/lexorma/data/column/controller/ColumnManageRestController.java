@@ -161,9 +161,17 @@ public class ColumnManageRestController {
         return ResponseEntity.ok(columnTermService.relink(accountDto, id, request));
     }
 
+    @Operation(summary = "표준 용어 일괄 연결·변경·해제 (DEC-26)", description = "고른 컬럼마다 연결할 용어(또는 unlink)와 화면이 읽은 연결(baseTermId, 없었으면 null)을 보냅니다. 하나라도 거부되면(승인된 컬럼·그 사이 바뀐 연결·없는 용어) 아무것도 바꾸지 않습니다. 최대 500개")
+    @PutMapping(value = "/saveColumn/terms/bulk")
+    public ResponseEntity<java.util.List<ColumnTermDto.Result>> bulkTerms(@RequestBody ColumnTermDto.BulkRequest request, @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(columnTermService.bulk(accountDto, request));
+    }
+
     @Operation(summary = "컬럼 일괄 저장", description = "테이블의 컬럼을 한 번에 추가/수정/삭제하고 화면 순서대로 정렬 순서를 저장합니다. 검증 오류가 있으면 아무것도 저장하지 않고 행별 오류를 돌려줍니다.")
     @PutMapping(value = "/saveColumn/bulk")
     public ResponseEntity<ColumnBulkSaveDto.Result> saveColumnsBulk(@RequestBody ColumnBulkSaveDto request, @AuthenticationPrincipal AccountDto accountDto) {
+        // DEC-08 : 기존 컬럼 행은 모두 기준값이 필요하다 (편집 화면은 테이블 전체를 보여 주고 함께 저장한다 — 그 사이 바뀐 행이 있으면 409)
+        if (request != null && request.getRows() != null) request.getRows().forEach(row -> com.lexorma.common.jpa.ModelBase.require(row.getId() != null, row.getBaseModifiedAt()));
         return ResponseEntity.ok(columnManageService.saveColumnsBulk(accountDto, request));
     }
 

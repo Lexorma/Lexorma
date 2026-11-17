@@ -88,6 +88,7 @@ class AiDictionaryEvaluationIntegrationTest {
     @Autowired TableInfoRepository tableRepository;
     @Autowired ColumnInfoRepository columnRepository;
     @Autowired TransactionTemplate tx;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private ScriptedOllama ollama;
     private final List<Long> providerIds = new ArrayList<>();
@@ -270,7 +271,8 @@ class AiDictionaryEvaluationIntegrationTest {
         assertThat(modelA.timeBase()).isEqualTo(2);
         assertThat(modelA.medianReviewMinutes()).isEqualTo(3.5);
         assertThat(modelA.medianWritingMinutes()).isEqualTo(9.0);
-        assertThat(modelA.sameMetadata()).isEqualTo(3);
+        // 같은 입력 조건 (DEC-29) : a1 승인이 같은 테이블(TB_PAY)의 업무 설명을 바꾼 뒤 만든 d1 의 판정 2개는 입력 맥락이 달라 빠진다 (전에는 대상 자신만 봐서 3)
+        assertThat(modelA.sameMetadata()).isEqualTo(1);
         AiEvaluationDto.ModelResult modelB = m.models().stream().filter(x -> x.model().equals("qwen-test:1b")).findFirst().orElseThrow();
         assertThat(modelB.accuracy()).isEqualTo(new AiEvaluationDto.Rate(0.0, 0, 1));
         assertThat(modelB.partial()).isEqualTo(new AiEvaluationDto.Rate(1.0, 1, 1));
@@ -310,6 +312,110 @@ class AiDictionaryEvaluationIntegrationTest {
         AiEvaluationDto.TargetDetail other = evaluations.updateTarget(user(owner), s.id(), new AiEvaluationDto.TargetUpdate(s.version(), null, "결제 상태", "CONFIRMED"));
         assertThat(evaluations.updateTarget(user(owner), s.id(), new AiEvaluationDto.TargetUpdate(other.target().version(), null, null, "UNCONFIRMABLE")).target().meaningStatus())
                 .isEqualTo(MeaningStatus.UNCONFIRMABLE);
+    }
+
+    @Test
+    @DisplayName("판정 변경 이력 (DEC-27) : 처음 판정·수정을 추가만 하는 이력에 판정자·전후 값·사유·시각으로 남긴다. 값이 바뀐 수정은 사유 필수, 같은 값은 이력 없음, 지표는 최종 판정만 센다")
+    void judgmentHistory() {
+        evaluations.register(user(owner), register(amount, status));
+        AiEvaluationDto.TargetRow a = target("TB_PAY.PAY_AMT");
+        evaluations.updateTarget(user(owner), a.id(), new AiEvaluationDto.TargetUpdate(a.version(), null, "결제 금액", "CONFIRMED"));
+        AiDescriptionProposal p = propose(amount, List.of(evidence(amount)));
+
+        AiEvaluationDto.JudgmentRow first = evaluations.judge(user(owner), request(a.id(), p, null, "CORRECT"));
+        // 값이 바뀌는 수정 : 사유 없으면 거부, 판정과 이력은 그대로
+        rejected(() -> evaluations.judge(user(owner), new AiEvaluationDto.JudgmentRequest(a.id(), p.getId(), first.version(), targetVersion(a.id()), "INCORRECT", false,
+                "통화 단위", "APPROPRIATE", "APPROPRIATE", "NOT_EVALUABLE", "부가세 언급 필요", 3, 9, "  ")), ErrorCode.AI_EVALUATION_INVALID);
+        assertThat(evaluations.judgmentHistory(user(owner), first.id())).hasSize(1);
+        // 같은 값으로 다시 저장 : 바뀐 것이 없어 이력·버전 그대로 (사유 없어도 됨)
+        AiEvaluationDto.JudgmentRow same = evaluations.judge(user(owner), new AiEvaluationDto.JudgmentRequest(a.id(), p.getId(), first.version(), targetVersion(a.id()), "CORRECT",
+                false, "통화 단위", "APPROPRIATE", "APPROPRIATE", "NOT_EVALUABLE", "부가세 언급 필요", 3, 9));
+        assertThat(same.version()).isEqualTo(first.version());
+        AiEvaluationDto.JudgmentRow changed = evaluations.judge(user(owner), new AiEvaluationDto.JudgmentRequest(a.id(), p.getId(), first.version(), targetVersion(a.id()), "INCORRECT",
+                false, "통화 단위", "APPROPRIATE", "APPROPRIATE", "NOT_EVALUABLE", "부가세 언급 필요", 3, 9, "금액 단위를 다시 확인"));
+
+        List<AiEvaluationDto.JudgmentHistoryRow> history = evaluations.judgmentHistory(user(viewer), first.id());
+        assertThat(history).extracting(AiEvaluationDto.JudgmentHistoryRow::changeType).containsExactly("INSERT", "UPDATE");
+        assertThat(history.get(0).before()).isNull();
+        assertThat(history.get(0).after()).containsEntry("judgment", "CORRECT");
+        assertThat(history.get(1)).satisfies(h -> {
+            assertThat(h.before()).containsEntry("judgment", "CORRECT");
+            assertThat(h.after()).containsEntry("judgment", "INCORRECT");
+            assertThat(h.reason()).isEqualTo("금액 단위를 다시 확인");
+            assertThat(h.reviewerId()).isEqualTo(changed.reviewerId());
+            assertThat(h.changedAt()).isNotNull();
+        });
+        // append-only : DB 에 두 행, 판정은 한 행 — 지표는 판정(최종 값)만 센다
+        assertThat(jdbc.queryForObject("select count(*) from TB_AI_EXPLN_EVL_HSTRY where AI_EXPLN_EVL_SN = ?", Integer.class, first.id())).isEqualTo(2);
+        AiEvaluationDto.Metrics m = evaluations.metrics(user(owner));
+        assertThat(m.models()).singleElement().satisfies(r -> assertThat(r.judgments()).isEqualTo(1));
+        // 다른 프로젝트의 판정 ID 는 찾을 수 없다
+        Account other = account("ROLE_USER");
+        Project otherProject = projectRepository.save(Project.builder().projectName("ai5e-h-" + UUID.randomUUID().toString().substring(0, 8)).isActive(true).account(other).dbType(DbType.POSTGRESQL).build());
+        projectMemberRepository.save(ProjectMember.builder().project(otherProject).account(other).isActive(true).build());
+        ExecutionContext outsider = ExecutionContext.user(AccountDto.builder().id(String.valueOf(other.getId())).projectId(otherProject.getId()).build());
+        rejected(() -> evaluations.judgmentHistory(outsider, first.id()), ErrorCode.AI_EVALUATION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("평가 입력 맥락 (DEC-29 보완) : 등록 뒤 같은 테이블 컬럼에 연결된 표준 용어(정의)가 바뀐 다음 만든 제안도 '입력 맥락 변경' — 용어는 그대로면 같은 맥락")
+    void termContext() {
+        Long projectId = status.getProjectId();
+        long termId = 880_000_000L + projectId;
+        jdbc.update("insert into TB_STD_TRM(STD_TRM_SN, PRJ_SN, ENCT_CYCL, TRM_NM, TRM_EXPLN, TRM_ENG_ABBR_NM, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 1, '결제_상태_코드', '결제 상태.', 'PAY_STTS_CD', true, ?, ?, 'test', 'test')", termId, projectId,
+                java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(1)), java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(1)));
+        jdbc.update("update TB_COL set STD_TRM_SN = ? where COL_SN = ?", termId, status.getId());
+        evaluations.register(user(owner), register(amount, status));
+        AiEvaluationDto.TargetRow a = target("TB_PAY.PAY_AMT");
+        evaluations.updateTarget(user(owner), a.id(), new AiEvaluationDto.TargetUpdate(a.version(), null, "결제 금액", "CONFIRMED"));
+        propose(amount, List.of(evidence(amount)));
+        assertThat(evaluations.detail(user(owner), a.id()).proposals()).singleElement().satisfies(x -> assertThat(x.sameContext()).isTrue());
+
+        // 같은 테이블 다른 컬럼(PAY_STTS_CD)의 표준 용어 정의를 고친다 — 모델 변경 이력은 없지만 AI 입력(용어 정의)이 바뀐다
+        jdbc.update("update TB_STD_TRM set TRM_EXPLN = '결제 상태 (평가 중 수정).', MDFCN_DT = ? where STD_TRM_SN = ?", java.sql.Timestamp.valueOf(java.time.LocalDateTime.now()), termId);
+        AiDescriptionProposal after = propose(amount, List.of(evidence(amount)));
+        assertThat(evaluations.detail(user(owner), a.id()).proposals()).filteredOn(x -> x.id().equals(after.getId())).singleElement()
+                .satisfies(x -> {
+                    assertThat(x.sameMetadata()).isTrue();
+                    assertThat(x.sameContext()).isFalse();
+                });
+        jdbc.update("update TB_COL set STD_TRM_SN = null where COL_SN = ?", status.getId());
+        jdbc.update("delete from TB_STD_TRM where STD_TRM_SN = ?", termId);
+    }
+
+    @Test
+    @DisplayName("평가 입력 맥락 (DEC-29) : 등록 뒤 같은 테이블의 다른 컬럼(업무 설명 포함)이 바뀐 다음 만든 제안은 '입력 맥락 변경' — 같은 입력 조건 판정 수에서 빠진다. 편집 자체는 막지 않는다")
+    void inputContext() {
+        evaluations.register(user(owner), register(amount, status));
+        AiEvaluationDto.TargetRow a = target("TB_PAY.PAY_AMT");
+        evaluations.updateTarget(user(owner), a.id(), new AiEvaluationDto.TargetUpdate(a.version(), null, "결제 금액", "CONFIRMED"));
+        AiDescriptionProposal unchanged = propose(amount, List.of(evidence(amount)));
+        assertThat(evaluations.detail(user(owner), a.id()).proposals()).singleElement().satisfies(x -> assertThat(x.sameContext()).isTrue());
+
+        // 같은 테이블의 다른 컬럼 업무 설명을 고친다 (평가 기간 운영 규칙 위반을 기능이 잡는다) — 편집은 그대로 된다
+        tx.executeWithoutResult(x -> columnRepository.findById(status.getId()).orElseThrow().setBizDescription("결제 상태 (평가 중 수정)"));
+        AiDescriptionProposal changed = propose(amount, List.of(evidence(amount)));
+        assertThat(evaluations.detail(user(owner), a.id()).proposals())
+                .filteredOn(x -> x.id().equals(changed.getId())).singleElement()
+                .satisfies(x -> {
+                    assertThat(x.sameMetadata()).as("대상 자신은 그대로").isTrue();
+                    assertThat(x.sameContext()).isFalse();
+                });
+        evaluations.judge(user(owner), request(a.id(), changed, null, "CORRECT"));
+        assertThat(evaluations.metrics(user(owner)).models()).singleElement().satisfies(r -> {
+            assertThat(r.judgments()).isEqualTo(1);
+            assertThat(r.sameMetadata()).as("같은 입력 조건 판정 수").isZero();
+        });
+        assertThat(unchanged.getId()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("일괄 생성 실패 사유 (DEC-32) : 오류 코드의 사용자 문구(요청 언어), 등록된 문구가 없는 코드는 일반 문구")
+    void jobErrorMessages() {
+        assertThat(com.lexorma.data.ai.dictionary.service.AiDescriptionJobService.errorMessage("AI_PROVIDER_CALL_FAILED"))
+                .isEqualTo(com.lexorma.common.i18n.Messages.error("AI_PROVIDER_CALL_FAILED")).isNotEqualTo("AI_PROVIDER_CALL_FAILED");
+        assertThat(com.lexorma.data.ai.dictionary.service.AiDescriptionJobService.errorMessage("FAILED")).isEqualTo("이 대상의 설명 초안을 만들지 못했습니다.");
     }
 
     @Test
@@ -476,7 +582,7 @@ class AiDictionaryEvaluationIntegrationTest {
         assertThat(dn.evidence()).isNotNull();
 
         // 검토 응답 (보류)
-        AiDictionaryDto.ReviewResult held = reviews.hold(user(owner), p.getId(), new AiDictionaryDto.ReviewRequest(p.getVersion(), null, null));
+        AiDictionaryDto.ReviewResult held = reviews.hold(user(owner), p.getId(), new AiDictionaryDto.ReviewRequest(p.getVersion(), null, "평가 진행 중"));
         assertThat(held.proposal().blind()).isTrue();
         assertThat(held.proposal().proposedDescription()).isNull();
 
@@ -535,7 +641,7 @@ class AiDictionaryEvaluationIntegrationTest {
 
         // 정확성 판정 뒤 : 승인된다. 실제 의미·등록 시점 버전·판정·같은 메타데이터 여부는 그대로 (소급 변경 없음)
         evaluations.judge(user(owner), new AiEvaluationDto.JudgmentRequest(a.id(), p.getId(), notEvaluable.version(), targetVersion(a.id()), "PARTIAL", false, null, "APPROPRIATE",
-                "NO_RECOMMENDATION", "NO_RECOMMENDATION", null, null, null));
+                "NO_RECOMMENDATION", "NO_RECOMMENDATION", null, null, null, "다시 보니 일부 맞음"));
         AiEvaluationDto.TargetDetail before = evaluations.detail(user(owner), a.id());
         assertThat(before.proposals()).singleElement().satisfies(x -> {
             assertThat(x.approvalHold()).isNull();
@@ -560,15 +666,20 @@ class AiDictionaryEvaluationIntegrationTest {
                 .satisfies(x -> assertThat(x.sameMetadata()).isFalse());
         approve(later);
 
-        // 확인 불가 대상 : 판정할 수 없으므로 승인 제한이 풀리지 않는다. 반려·보류·종결은 그대로 된다
+        // 확인 불가 대상 : 판정할 수 없으므로 승인 제한이 풀리지 않는다. 블라인드라 반려도 막고(DEC-29), 보류·종결은 사유와 함께 된다 — 종결은 '평가 확인 불가' 로 따로 남긴다
         AiEvaluationDto.TargetRow s = target("TB_PAY.PAY_STTS_CD");
         evaluations.updateTarget(user(owner), s.id(), new AiEvaluationDto.TargetUpdate(s.version(), null, null, "UNCONFIRMABLE"));
         AiDescriptionProposal sp = propose(status, List.of(evidence(status)));
         rejected(() -> approve(sp), ErrorCode.AI_PROPOSAL_EVALUATION_PENDING);
-        assertThat(reviews.hold(user(owner), sp.getId(), new AiDictionaryDto.ReviewRequest(sp.getVersion(), null, null)).outcome()).isEqualTo("ON_HOLD");
+        assertThat(reviews.hold(user(owner), sp.getId(), new AiDictionaryDto.ReviewRequest(sp.getVersion(), null, "평가 진행 중")).outcome()).isEqualTo("ON_HOLD");
         AiDictionaryDto.ProposalDetail held = queries.detail(user(owner), sp.getId());
         assertThat(held.evaluationHold()).isEqualTo("MEANING_UNCONFIRMABLE");
-        assertThat(reviews.reject(user(owner), sp.getId(), new AiDictionaryDto.ReviewRequest(held.proposal().version(), null, "평가 중")).outcome()).isEqualTo("REJECTED");
+        rejected(() -> reviews.reject(user(owner), sp.getId(), new AiDictionaryDto.ReviewRequest(held.proposal().version(), null, "평가 중")),
+                ErrorCode.AI_PROPOSAL_EVALUATION_PENDING);
+        assertThat(reviews.close(user(owner), sp.getId(), new AiDictionaryDto.ReviewRequest(held.proposal().version(), null, "실제 의미 확인 불가")).outcome())
+                .isEqualTo("CLOSED");
+        assertThat(jdbc.queryForList("select PRCS_TYPE_CD from TB_AI_EXPLN_SGSTN_HSTRY where AI_EXPLN_SGSTN_SN = ? order by AI_EXPLN_SGSTN_HSTRY_SN", String.class, sp.getId()))
+                .endsWith("CLOSE_UNCONFIRMABLE");
         assertThat(queries.detail(user(owner), sp.getId()).evaluationHold()).as("끝난 제안은 승인할 일이 없다").isNull();
     }
 
@@ -587,7 +698,7 @@ class AiDictionaryEvaluationIntegrationTest {
         CountDownLatch release = new CountDownLatch(1);
         CompletableFuture<Void> downgrade = CompletableFuture.runAsync(() -> tx.executeWithoutResult(x -> {
             evaluations.judge(user(owner), new AiEvaluationDto.JudgmentRequest(a.id(), p.getId(), correct.version(), version, "NOT_EVALUABLE", false, null, "NOT_APPLICABLE",
-                    "NO_RECOMMENDATION", "NO_RECOMMENDATION", null, null, null));
+                    "NO_RECOMMENDATION", "NO_RECOMMENDATION", null, null, null, "평가할 수 없음으로 바꿈"));
             locked.countDown();
             await(release);
         }));
@@ -770,7 +881,7 @@ class AiDictionaryEvaluationIntegrationTest {
 
     private AiEvaluationDto.JudgmentRequest request(Long targetId, AiDescriptionProposal p, Long version, String judgment) {
         return new AiEvaluationDto.JudgmentRequest(targetId, p.getId(), version, targetVersion(targetId), judgment, false, "통화 단위", "APPROPRIATE", "APPROPRIATE", "NOT_EVALUABLE",
-                "부가세 언급 필요", 3, 9);
+                "부가세 언급 필요", 3, 9, version == null ? null : "판정 수정");
     }
 
     /** 화면이 본 대상 버전 (지금 값) */

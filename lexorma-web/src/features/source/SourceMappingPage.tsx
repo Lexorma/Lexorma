@@ -9,6 +9,8 @@ import { formatDateTime } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useTableDetail } from '../table/tableDetail';
 import { dbTypeLabel } from './model';
+import { SourceDeletionPanel } from './SourceDeletionPanel';
+import { SourceRenamePanel } from './SourceRenamePanel';
 import { Pager, useCanManageSource } from './shared';
 import '../../styles/source.css';
 
@@ -93,7 +95,8 @@ export function SourceMappingPage() {
     setBaseChoice(data?.base ? String(data.base.id) : '');
   }, [data?.base?.id]);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: [OVERVIEW_KEY] });
+  // TABLE 매핑이 바뀌면 이름 변경 후보·컬럼 매핑·이력(DEC-06)도 다시 읽는다
+  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: [OVERVIEW_KEY] }), queryClient.invalidateQueries({ queryKey: ['source-rename'] })]);
 
   /** 변경 요청 : 409(확인 필요)는 서버 문구로 확인을 받고 acknowledge 로 다시 보낸다 */
   const saveBase = async (acknowledge = false) => {
@@ -161,6 +164,8 @@ export function SourceMappingPage() {
               <>
                 <SchemaMappings data={data} canManage={canManage} onChanged={refresh} />
                 <TableMappings data={data} canManage={canManage} onChanged={refresh} />
+                <SourceRenamePanel canManage={canManage} onChanged={() => void queryClient.invalidateQueries({ queryKey: [OVERVIEW_KEY] })} />
+                <SourceDeletionPanel canManage={canManage} onChanged={() => void queryClient.invalidateQueries({ queryKey: [OVERVIEW_KEY] })} />
               </>
             )}
           </>

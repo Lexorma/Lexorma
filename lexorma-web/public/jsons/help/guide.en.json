@@ -1,0 +1,523 @@
+[
+  {
+    "menuId": "standard-domain",
+    "path": "/standardDomain",
+    "title": "Standard domains",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Defines the value format: data type, length and decimal places. Each standard term picks one domain for its type.",
+          "See the 29 domains of the example project (LEXORMA) and reuse similar formats."
+        ]
+      },
+      {
+        "heading": "Approval",
+        "items": [
+          "New and changed items wait for approval; a user with approval rights (DBA or above, or the project manager) confirms them. Revoke approval before editing an approved item."
+        ]
+      }
+    ],
+    "image": "/images/help/en/standard-domain.jpg"
+  },
+  {
+    "menuId": "standard-word",
+    "path": "/standardWord",
+    "title": "Standard words",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages the words and English abbreviations used to build terms and table names. Keep one word per meaning and link synonyms to it.",
+          "Excel upload and download are available from the USER role."
+        ]
+      }
+    ],
+    "image": "/images/help/en/standard-word.jpg"
+  },
+  {
+    "menuId": "standard-term",
+    "path": "/standardTerm",
+    "title": "Standard terms",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Combines words into terms and assigns a domain. Columns link to standard terms, which define their names and types.",
+          "For code terms, list the code values in the description; AI description proposals and quality checks use it."
+        ]
+      }
+    ],
+    "image": "/images/help/en/standard-term.jpg"
+  },
+  {
+    "menuId": "table-manage",
+    "path": "/tableManage",
+    "title": "Tables",
+    "sections": [
+      {
+        "heading": "Register and edit",
+        "items": [
+          "Enter the table comment (Korean name) and the table name is built from standard words, prefixed with the project's table prefix.",
+          "An unapproved table can be moved to another schema from the edit form; columns that referenced it are updated. Revoke approval to move an approved table."
+        ]
+      },
+      {
+        "heading": "Business description",
+        "items": [
+          "The business description is the confirmed explanation kept apart from the DDL COMMENT. Up to 4,000 characters; if someone else changed it first, saving stops and tells you."
+        ]
+      }
+    ],
+    "image": "/images/help/en/table-manage.jpg"
+  },
+  {
+    "menuId": "column-manage",
+    "path": "/columnManage",
+    "title": "Columns",
+    "sections": [
+      {
+        "heading": "Standard term link",
+        "items": [
+          "From the detail dialog, change or first link the standard term of an unapproved column, or unlink it. The column name, type and description stay.",
+          "Check several columns and use [Link standard terms] to see a plan of terms whose abbreviation equals the column name. If any one is refused, nothing changes."
+        ]
+      },
+      {
+        "heading": "Excel",
+        "items": [
+          "Excel upload registers new columns only. Download exports everything matching the current search; reference columns are not applied when re-uploaded."
+        ]
+      }
+    ],
+    "image": "/images/help/en/column-manage.jpg"
+  },
+  {
+    "menuId": "index-manage",
+    "path": "/indexManage",
+    "title": "Indexes",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages composite, unique, partial and expression indexes. An index with the same definition cannot be registered.",
+          "A non-unique index equal to the PK, or equal to the leading part of another index, can be registered but shows as a warning in [Model structure check]."
+        ]
+      }
+    ],
+    "image": "/images/help/en/index-manage.jpg"
+  },
+  {
+    "menuId": "physical-erd",
+    "path": "/physicalErd",
+    "title": "Physical ERD",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Draws tables and relations per schema. In edit mode (USER and above) you create relations and save the layout.",
+          "Reference table names that could not become relations are shown in the table detail and listed as invalid FKs in [Model structure check]."
+        ]
+      }
+    ],
+    "image": "/images/help/en/physical-erd.jpg"
+  },
+  {
+    "menuId": "ddl-export",
+    "path": "/ddlExport",
+    "title": "DDL export",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Generates DDL for the project DBMS (PostgreSQL, Oracle, MySQL, MariaDB). FKs and rules that cannot be created are left out with a warning.",
+          "Unapproved objects in the output are listed too. Check the warnings before running the DDL on a real database."
+        ]
+      }
+    ],
+    "image": "/images/help/en/ddl-export.jpg"
+  },
+  {
+    "menuId": "source-collection",
+    "path": "/sourceCollection",
+    "title": "Metadata collection",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Collects metadata from the source database (PostgreSQL) read-only and applies it to the source catalog. No DDL or DML is run on the source.",
+          "Project managers and ADMINs run collections. The connection must pass the external connection security rules."
+        ]
+      },
+      {
+        "heading": "Sharp drop warning",
+        "items": [
+          "If a completed collection has fewer than half the tables or columns of the previous completed one, a [Sharp drop] warning is shown. It is not a failure and the result is already applied; check privileges and target schemas."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-collection.jpg"
+  },
+  {
+    "menuId": "source-compare",
+    "path": "/sourceCompare",
+    "title": "Source vs. model",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Compares the source catalog with the physical model and applies chosen items through plan → apply. Approved objects, deletions and renames are not imported.",
+          "A model version is saved automatically before applying."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-compare.jpg"
+  },
+  {
+    "menuId": "standardization-quality",
+    "path": "/standardizationQuality",
+    "title": "Standardization quality",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Checks columns without standard terms, column name mismatches and domain definition mismatches. It only reads and never changes the model."
+        ]
+      }
+    ],
+    "image": "/images/help/en/standardization-quality.jpg"
+  },
+  {
+    "menuId": "model-diagnostics",
+    "path": "/modelDiagnostics",
+    "title": "Model structure check",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Checks invalid FKs (errors) and duplicate indexes (warnings). Invalid FKs are not created in DDL, but model edits are not blocked. Use the row links to fix them in the table detail or ERD."
+        ]
+      }
+    ],
+    "image": "/images/help/en/model-diagnostics.jpg"
+  },
+  {
+    "menuId": "model-version",
+    "path": "/modelVersion",
+    "title": "Model versions",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Saves the whole model as named versions and compares versions with each other or with the current model. Versions and model change history are kept and never deleted automatically."
+        ]
+      }
+    ],
+    "image": "/images/help/en/model-version.jpg"
+  },
+  {
+    "menuId": "ai-dictionary",
+    "path": "/aiDictionary",
+    "title": "AI description proposals",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "AI drafts business descriptions for tables and columns; once an approver reviews and approves, only the business description changes. Standard terms, DDL descriptions and source COMMENTs are never changed.",
+          "Proposals under blind evaluation cannot be rejected. Holding or rejecting needs a reason."
+        ]
+      }
+    ],
+    "image": "/images/help/en/ai-dictionary.jpg"
+  },
+  {
+    "menuId": "ai-evaluation",
+    "path": "/aiEvaluation",
+    "title": "AI quality evaluation",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Judges AI proposals against the actual meaning a person confirmed, and shows metrics per model and prompt. The actual meaning is never sent to the AI.",
+          "Changing a judgment needs a reason and is kept in its history. Proposals made after the same table changed are marked [Input context changed] and are not counted as same-condition judgments."
+        ]
+      }
+    ],
+    "image": "/images/help/en/ai-evaluation.jpg"
+  },
+  {
+    "menuId": "project-manage",
+    "path": "/projectManage",
+    "title": "Projects",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Registers and edits projects and approves members. If you manage no project, a guide and [Register project] are shown; whoever registers a project becomes its manager.",
+          "After deactivating the last active project, only a system ADMIN's recovery login can bring it back."
+        ]
+      }
+    ],
+    "image": "/images/help/en/project-manage.jpg"
+  },
+  {
+    "menuId": "schema-manage",
+    "path": "/schemaManage",
+    "title": "Schemas",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages the schemas that group tables and views. Table names only need to be unique within a schema.",
+          "The default schema is used when no schema is chosen at table registration."
+        ]
+      }
+    ],
+    "image": "/images/help/en/schema-manage.jpg"
+  },
+  {
+    "menuId": "view-manage",
+    "path": "/viewManage",
+    "title": "Views",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages view definition SQL, columns and referenced objects. Editing an approved view creates a change request.",
+          "If someone else changed the view first, saving stops and tells you. Your SQL stays on screen; reload and check."
+        ]
+      }
+    ],
+    "image": "/images/help/en/view-manage.jpg"
+  },
+  {
+    "menuId": "logical-model",
+    "path": "/logicalModel",
+    "title": "Logical models",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages entities, attributes, identifiers and relationships. Link attributes to standard terms to align names and domains.",
+          "If someone else changed the entity or attribute first, saving stops and tells you."
+        ]
+      }
+    ],
+    "image": "/images/help/en/logical-model.jpg"
+  },
+  {
+    "menuId": "logical-erd",
+    "path": "/logicalErd",
+    "title": "Logical ERD",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Draws the entities and relationships of a logical model. Save the layout to see the same arrangement later."
+        ]
+      }
+    ],
+    "image": "/images/help/en/logical-erd.jpg"
+  },
+  {
+    "menuId": "model-mapping",
+    "path": "/modelMapping",
+    "title": "Logical-physical mapping",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Links entities to tables and attributes to columns, and shows unmapped objects and differences."
+        ]
+      }
+    ],
+    "image": "/images/help/en/model-mapping.jpg"
+  },
+  {
+    "menuId": "source-connection",
+    "path": "/sourceConnection",
+    "title": "Source connections",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Registers source database connections. Passwords are stored encrypted and only whether one is set is shown.",
+          "Connections must pass the external connection security rules and are read-only."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-connection.jpg"
+  },
+  {
+    "menuId": "source-catalog",
+    "path": "/sourceCatalog",
+    "title": "Source catalog",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Shows the collected source schemas, tables, columns, constraints, indexes and relations with their versions and change history. Stored separately from the physical model."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-catalog.jpg"
+  },
+  {
+    "menuId": "source-erd",
+    "path": "/sourceErd",
+    "title": "Source ERD",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Shows source catalog tables and FKs as an ERD. You can pick a past reflected order to see how it looked then."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-erd.jpg"
+  },
+  {
+    "menuId": "source-mapping",
+    "path": "/sourceMapping",
+    "title": "Source mapping",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Maps source schemas and tables to the physical model. The mapping is the basis for comparison and import."
+        ]
+      }
+    ],
+    "image": "/images/help/en/source-mapping.jpg"
+  },
+  {
+    "menuId": "model-history",
+    "path": "/modelHistory",
+    "title": "Model change history",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Shows who changed what and when in the physical and logical models. History is kept and never deleted."
+        ]
+      }
+    ],
+    "image": "/images/help/en/model-history.jpg"
+  },
+  {
+    "menuId": "notice",
+    "path": "/notice",
+    "title": "Notices",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Shows project notices. Only users with permission can post or edit them."
+        ]
+      }
+    ],
+    "image": "/images/help/en/notice.jpg"
+  },
+  {
+    "menuId": "user-manage",
+    "path": "/userManage",
+    "title": "Users",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages user accounts and roles (ADMIN, MANAGER, DBA, USER, VIEWER). The last active ADMIN cannot be deleted or demoted."
+        ]
+      }
+    ],
+    "image": "/images/help/en/user-manage.jpg"
+  },
+  {
+    "menuId": "system-log",
+    "path": "/systemLog",
+    "title": "System log",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Shows the project's API request log. Auth, source and AI APIs are logged without bodies and secrets are masked.",
+          "If the operator sets a retention period, older request records are cleaned up automatically (kept by default)."
+        ]
+      }
+    ],
+    "image": "/images/help/en/system-log.jpg"
+  },
+  {
+    "menuId": "connection-security",
+    "path": "/connectionSecurity",
+    "title": "External connection security",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Manages allow rules for outgoing connections to source databases and AI servers. Connections not matching a rule are blocked and every decision is recorded."
+        ]
+      }
+    ],
+    "image": "/images/help/en/connection-security.jpg"
+  },
+  {
+    "menuId": "ai-provider",
+    "path": "/aiProvider",
+    "title": "AI provider settings",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Registers AI servers (Ollama) and sets the system default provider. Project managers can set a per-project provider in [Projects].",
+          "If a project's provider cannot be used, that project's AI features stop and do not switch to the system default."
+        ]
+      }
+    ],
+    "image": "/images/help/en/ai-provider.jpg"
+  },
+  {
+    "menuId": "model-exchange",
+    "path": "/modelExchange",
+    "title": "Model export·import",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Exports the project model (schemas, TABLEs, columns, keys, indexes, constraints, relations, logical models, mappings) as a versioned JSON file, and imports a file or the current project's model into another project you manage.",
+          "Approval states, VIEWs, source database information and secrets are not included."
+        ]
+      },
+      {
+        "heading": "Importing",
+        "items": [
+          "Check in the plan preview what will be created, what is skipped because of a name conflict and what is excluded, then confirm. Objects with the same name are never overwritten.",
+          "Imported objects are unapproved. A model version is saved just before, and nothing changes if the import fails midway."
+        ]
+      }
+    ],
+    "image": "/images/help/en/model-exchange.jpg"
+  },
+  {
+    "menuId": "mcp-access",
+    "path": "/mcpAccess",
+    "title": "MCP access",
+    "sections": [
+      {
+        "heading": "What it does",
+        "items": [
+          "Lets external MCP clients read this project's metadata, read-only. Both the server setting and the project setting must be on.",
+          "No SQL execution, source database access, model changes or source VIEW definitions."
+        ]
+      },
+      {
+        "heading": "Tokens",
+        "items": [
+          "Project managers issue tokens with an expiry date. The token text is shown only once, right after issuing, and tokens can be revoked at any time.",
+          "The issuer's current permissions are checked every time a token is used."
+        ]
+      }
+    ],
+    "image": "/images/help/en/mcp-access.jpg"
+  }
+]

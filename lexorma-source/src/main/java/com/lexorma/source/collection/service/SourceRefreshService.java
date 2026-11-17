@@ -6,6 +6,8 @@ import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec;
 import com.lexorma.source.catalog.domain.dto.SourceCatalogSpec.Name;
+import com.lexorma.source.catalog.domain.enums.SourceTableType;
+import com.lexorma.source.catalog.domain.enums.SourceViewDefinitionStatus;
 import com.lexorma.source.collection.domain.dto.SourceCollectionDto;
 import com.lexorma.source.collection.domain.dto.SourceCollectionSpec;
 import com.lexorma.source.collection.domain.entity.SourceCollectionExecution;
@@ -237,7 +239,7 @@ public class SourceRefreshService {
             }
         }
 
-        /** 수집 범위의 스키마를 도구 7개로 읽어 수집 결과로 묶는다 (도구마다 조회 한 번) */
+        /** 수집 범위의 스키마를 도구 8개로 읽어 수집 결과로 묶는다 (도구마다 조회 한 번) */
         private SourceCollectionSpec.Result collect(SourceToolSession opened) {
             List<String> discovered = opened.run(SourceTools.SCHEMA_DISCOVERY, null);
             // PARTIAL : 원본에 있는 스키마만 읽는다. 없는 스키마는 결과에서 빠져 NOT_FOUND 가 되고 실행 전체가 반영되지 않는다
@@ -260,12 +262,35 @@ public class SourceRefreshService {
                 indexes.forEach(owned -> parts(bySchema, owned).indexes.add(owned.item()));
                 List<Owned<SourceCatalogSpec.Relation>> relations = opened.run(SourceTools.RELATIONSHIP_DISCOVERY, scope);
                 relations.forEach(owned -> parts(bySchema, owned).relations.add(owned.item()));
+                viewDefinitions(opened, scope, bySchema);
             }
             opened.checkActive();
             List<SourceCollectionSpec.Schema> schemas = new ArrayList<>();
             bySchema.forEach((schema, tables) -> schemas.add(SourceCollectionSpec.Schema.completed(null, Name.of(schema),
                     tables.values().stream().map(TableParts::spec).toList())));
             return new SourceCollectionSpec.Result(schemas);
+        }
+
+        /**
+         * VIEW 정의 (DEC-16) : 마지막에 따로 읽는다. 원본이 정의 조회를 막거나(권한) 조회가 실패해도 수집 전체를 멈추지 않고 VIEW 마다 상태로 남긴다 —
+         * 그 VIEW 의 이전 정의·해시는 반영 단계에서 그대로 둔다. 멈추라는 알림(취소·제한 시간)은 그대로 실패다. 오류 코드만 기록한다 (정의·메시지 없음)
+         */
+        private void viewDefinitions(SourceToolSession opened, SourceMetadata.Scope scope, Map<String, Map<String, TableParts>> bySchema) {
+            List<TableParts> views = bySchema.values().stream().flatMap(tables -> tables.values().stream()).filter(parts -> parts.table.type() == SourceTableType.VIEW).toList();
+            if (views.isEmpty()) return;
+            SourceViewDefinitionStatus failure = null;
+            try {
+                List<Owned<SourceCatalogSpec.ViewDefinition>> definitions = opened.run(SourceTools.VIEW_DEFINITION_DISCOVERY, scope);
+                definitions.forEach(owned -> parts(bySchema, owned).definition = owned.item());
+            } catch (CustomException e) {
+                if (abortReason.get() != null) throw e;
+                failure = e.getErrorCode() == ErrorCode.SOURCE_PERMISSION_DENIED ? SourceViewDefinitionStatus.NO_PRIVILEGE : SourceViewDefinitionStatus.FAILED;
+                log.warn("원본 VIEW 정의를 읽지 못했습니다 : executionId={}, code={}, views={}", executionId, e.getErrorCode(), views.size());
+            }
+            SourceCatalogSpec.ViewDefinition missing = SourceCatalogSpec.ViewDefinition.failed(failure == null ? SourceViewDefinitionStatus.FAILED : failure);
+            for (TableParts view : views) {
+                if (failure != null || view.definition == null) view.definition = missing;
+            }
         }
 
         /** 테이블 목록에 없는 테이블의 하위 객체 : 같은 스냅숏에서 읽었으므로 원본이 그사이 바뀐 것이다 */
@@ -276,12 +301,11 @@ public class SourceRefreshService {
             return parts;
         }
 
-        /** 이전 같은 종류의 반영보다 객체가 크게 줄었으면 진단 로그만 남긴다 (차단하지 않는다 : 완결성은 수집 단계에서 확인했다) */
+        /** 이전 같은 종류의 반영보다 객체가 크게 줄었으면 진단 로그를 남긴다 (차단하지 않는다 : 완결성은 수집 단계에서 확인했다). 화면 경고는 같은 기준(Drop.of)으로 조회 때 계산한다 (DEC-17) */
         private void diagnoseDrop(SourceCollectionDto.Execution applied) {
             if (applied.tableCount() == null || applied.columnCount() == null) return;
             executionRepository.findFirstByConnectionIdAndStatusAndCollectionTypeAndIdNotOrderByReflectedOrderDesc(connectionId, CollectionStatus.COMPLETED, type, executionId)
-                    .filter(previous -> previous.getTableCount() != null && previous.getTableCount() > 0 && previous.getColumnCount() != null)
-                    .filter(previous -> applied.tableCount() < previous.getTableCount() / 2 || applied.columnCount() < previous.getColumnCount() / 2)
+                    .filter(previous -> SourceCollectionDto.Drop.of(previous, applied.tableCount(), applied.columnCount()) != null)
                     .ifPresent(previous -> log.warn("원본 카탈로그 객체 급감 : executionId={}, tables {} → {}, columns {} → {}, tableDropRate={}%", executionId,
                             previous.getTableCount(), applied.tableCount(), previous.getColumnCount(), applied.columnCount(),
                             100 - applied.tableCount() * 100 / previous.getTableCount()));
@@ -294,13 +318,15 @@ public class SourceRefreshService {
         private final List<SourceCatalogSpec.Constraint> constraints = new ArrayList<>();
         private final List<SourceCatalogSpec.Index> indexes = new ArrayList<>();
         private final List<SourceCatalogSpec.Relation> relations = new ArrayList<>();
+        private SourceCatalogSpec.ViewDefinition definition;
 
         TableParts(SourceCatalogSpec.Table table) {
             this.table = table;
         }
 
         SourceCollectionSpec.Table spec() {
-            return new SourceCollectionSpec.Table(table, columns, constraints, indexes, relations);
+            SourceCatalogSpec.Table own = definition == null ? table : new SourceCatalogSpec.Table(table.name(), table.type(), table.comment(), definition);
+            return new SourceCollectionSpec.Table(own, columns, constraints, indexes, relations);
         }
     }
 

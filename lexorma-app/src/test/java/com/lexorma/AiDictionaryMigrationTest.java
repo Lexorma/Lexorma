@@ -47,8 +47,8 @@ class AiDictionaryMigrationTest {
             assertThat(db.queryForObject("select SRC_ANTN_CN from " + s + "TB_TBL where TBL_SN = ?", String.class, table)).isEqualTo("source comment");
             // 예제 : 새 테이블과 업무 설명 컬럼이 예제 물리 모델에 들어갔다
             assertThat(db.queryForObject("select count(*) from " + s + "TB_COL where PRJ_SN = 0 and COL_NM = 'TASK_EXPLN'", Long.class)).isEqualTo(2);
-            // 제안·이력·실행 3개 + 품질 평가 대상·평가 2개
-            assertThat(db.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0 and TBL_NM like 'TB_AI_EXPLN_%'", Long.class)).isEqualTo(5);
+            // 제안·이력·실행 3개 + 품질 평가 대상·평가 2개 + 판정 변경 이력 1개(V2, DEC-27)
+            assertThat(db.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0 and TBL_NM like 'TB_AI_EXPLN_%'", Long.class)).isEqualTo(6);
         } finally {
             flyway.clean();
         }

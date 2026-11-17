@@ -26,7 +26,7 @@
 | Tool | 인자 | 재사용한 조회 | 결과 (요약) |
 |---|---|---|---|
 | `listSchemas` | 없음 | `SchemaInfoRepository.findSchemaList` (`SchemaService.selectSchemas` 와 같은 쿼리) | `schemaId·schemaName·description·defaultSchema·tableCount`, 최대 20 |
-| `searchTables` | `keyword?`, `schemaId?`, `limit?` | `TableDesignService.selectTableInfoData` (테이블명·테이블 코멘트·설명 검색을 ID 로 합침. 통째로 맞는 것이 없으면 단어별로 찾아 많이 맞은 테이블부터) | `tableId·schemaName·tableName·tableComment·description·approved` |
+| `searchTables` | `keyword?`, `schemaId?`, `limit?` | `TableDesignService.selectTableInfoData` (테이블명·테이블 코멘트·설명 검색을 ID 로 합침. 통째로 맞는 것이 없으면 단어별로 찾아 많이 맞은 테이블부터) | `tableId·schemaName·tableName·tableComment·description·approved` (+ 7차 : 결과 `matchMode`·`exactMatch`·`approximate`·`matchedTerms`·`resultCount`, 테이블별 `match` — [embedded-mcp-dec31.md 8장](embedded-mcp-dec31.md)) |
 | `getTableDetail` | `tableId` 또는 `tableName` | `TableDesignService.selectTable`, `PhysicalModelService.selectTableModel`, `ColumnManageService.selectTableColumn` | 테이블 + 컬럼 수 + 인덱스(키·조건) + 제약(PK·UNIQUE·CHECK) |
 | `getTableColumns` | `tableId` 또는 `tableName` | `ColumnManageService.selectTableColumn` | `columnName·description·dataType·length·precision·scale·primaryKey·nullable·unique·defaultValue·identity·referencedTable·standardTerm·sensitive·approved` |
 | `getTableRelations` | `tableId` 또는 `tableName` | `PhysicalModelService.selectTableModel` | `outgoing`(이 테이블이 자식)·`incoming`(부모) : `kind`(FK=등록된 FK, LOGICAL=DB 제약 없는 모델 관계)·`origin`·컬럼 쌍·ON DELETE/UPDATE, `referenceColumnsWithoutRelation` |

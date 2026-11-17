@@ -41,6 +41,8 @@ export interface ErdRelation {
   targetTableName: string;
   columns: { sourceColumnId: number; sourceColumnName: string; targetColumnId: number; targetColumnName: string }[];
   isApproval: boolean | null;
+  /** 수정 기준값 (DEC-08) : FK 규칙 저장이 돌려준다 */
+  modifiedAt?: string | null;
   /** FK 의 ON DELETE · ON UPDATE (V7). 비면 NO_ACTION */
   deleteRule?: FkRule | null;
   updateRule?: FkRule | null;
@@ -98,6 +100,8 @@ export type TableNodeData = {
   columns: ErdColumn[];
   /** FK 관계의 원본 컬럼 */
   fkColumns: Set<number>;
+  /** 모델 구조 진단의 무효 FK 수 (DEC-09, 물리 ERD 만) — 0·없으면 표시하지 않는다 */
+  invalidFk?: number;
   /** 화면에 그리는 관계에 쓰인 컬럼 (연결점을 만든다) */
   linkedColumns: Set<number>;
   diff?: NodeDiff;

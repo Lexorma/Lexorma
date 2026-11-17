@@ -169,17 +169,25 @@ public final class SourceCatalogCanonical {
         }
     }
 
-    public record Table(String schemaPath, String name, String compareName, Boolean quoted, String type, String comment, List<Column> columns,
+    /**
+     * @param definitionHash VIEW 정의 원문의 해시 (DEC-16, {@link #definitionHash}). 원문은 넣지 않는다 : 버전·변경 이력·일반 API 에는 해시만 간다.
+     *                       없으면(TABLE, 아직 정의를 읽지 못한 VIEW) JSON 에 그 항목이 없어 FORMAT 1 의 JSON·해시 그대로다
+     */
+    public record Table(String schemaPath, String name, String compareName, Boolean quoted, String type, String comment, String definitionHash, List<Column> columns,
                         List<Constraint> constraints, List<Index> indexes, List<Relation> relations) {
 
         /** 정렬해 만든다 : 컬럼은 원본 순서, 하위 객체는 비교 키 순서 */
-        public static Table of(String schemaPath, String name, String compareName, Boolean quoted, String type, String comment, List<Column> columns,
-                               List<Constraint> constraints, List<Index> indexes, List<Relation> relations) {
-            return new Table(schemaPath, name, compareName, quoted, type, comment,
+        public static Table of(String schemaPath, String name, String compareName, Boolean quoted, String type, String comment, String definitionHash,
+                               List<Column> columns, List<Constraint> constraints, List<Index> indexes, List<Relation> relations) {
+            return new Table(schemaPath, name, compareName, quoted, type, comment, definitionHash,
                     columns.stream().sorted(Comparator.comparing(Column::ordinal).thenComparing(Column::compareName)).toList(),
                     constraints.stream().sorted(Comparator.comparing(Constraint::key)).toList(),
                     indexes.stream().sorted(Comparator.comparing(Index::key)).toList(),
                     relations.stream().sorted(Comparator.comparing(Relation::key)).toList());
+        }
+
+        public Table withDefinitionHash(String hash) {
+            return new Table(schemaPath, name, compareName, quoted, type, comment, hash, columns, constraints, indexes, relations);
         }
 
         /** 테이블 자체의 항목 (하위 객체 제외) : 테이블 수정 이력의 전후 */
@@ -190,6 +198,7 @@ public final class SourceCatalogCanonical {
             map.put("quoted", quoted);
             map.put("type", type);
             map.put("comment", comment);
+            if (definitionHash != null) map.put("definitionHash", definitionHash);
             return map;
         }
 
@@ -219,6 +228,21 @@ public final class SourceCatalogCanonical {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(json.getBytes(StandardCharsets.UTF_8));
             return HASH_PREFIX + HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * VIEW 정의 원문의 해시 (DEC-16) : 수집 사이의 정의 변경을 원문 없이 비교한다. 줄 끝·앞뒤 공백 차이만 있는 것은 같은 정의로 본다 (pg_get_viewdef 의 출력 형식).
+     * 테이블 해시와 다른 접두사를 써서 섞이지 않게 한다
+     */
+    public static String definitionHash(String definition) {
+        if (definition == null) return null;
+        String normalized = definition.replace("\r\n", "\n").strip();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(normalized.getBytes(StandardCharsets.UTF_8));
+            return "d1:" + HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

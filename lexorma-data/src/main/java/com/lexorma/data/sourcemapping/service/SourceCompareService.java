@@ -135,6 +135,15 @@ public class SourceCompareService {
         return new SourceCompareDto.RenamePage(comparison.connectionId(), comparison.reflectedOrder(), page(all, page, size), all.size());
     }
 
+    /**
+     * 매핑된 모든 원본 TABLE 의 하위 객체 비교 결과 (원본 TABLE ID → 결과). 원본 삭제 반영(DEC-04)이 모델에만 있는 컬럼을 찾을 때 쓴다 (같은 계산·같은 기준 확인).
+     * 비교할 수 없으면(기준 연결·수집 없음, 지원하지 않는 DBMS) 비어 있다
+     */
+    Map<Long, SourceModelComparator.Result> results(Long projectId, Long expectedConnection, Integer expectedOrder) {
+        Comparison comparison = compare(projectId, expectedConnection, expectedOrder, null);
+        return comparison.ready() ? comparison.results : Map.of();
+    }
+
     // ------------------------------------------------------------------ 계산
 
     /** 한 요청의 비교 결과 */
@@ -234,10 +243,17 @@ public class SourceCompareService {
             if (schema != null) sourceByName.put(schema.schemaName() + "\u0000" + table.name(), table.id());
         }
         Map<String, String> folded = new HashMap<>();
+        Map<Long, String> columnKeys = state.columnKeys();
         return new SourceModelComparator.Context() {
             @Override
             public String fold(String modelName) {
                 return modelName == null ? null : folded.computeIfAbsent(modelName, n -> reader.compareName(connection, NameKind.COLUMN, n));
+            }
+
+            @Override
+            public String columnKey(Long columnId, String modelName) {
+                String key = columnId == null ? null : columnKeys.get(columnId);
+                return key != null ? key : fold(modelName);
             }
 
             @Override

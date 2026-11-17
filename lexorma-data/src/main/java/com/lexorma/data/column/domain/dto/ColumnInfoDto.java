@@ -102,6 +102,9 @@ public class ColumnInfoDto {
     /** 승인여부 **/
     private String isApproval;
 
+    /** 수정 기준값 (조회 전용, DEC-08) : 마지막 수정 일시 — 일괄 편집 저장이 baseModifiedAt 으로 돌려준다 */
+    private java.time.LocalDateTime modifiedAt;
+
     public static ColumnInfoDto fromEntity(ColumnInfo entity) {
         TableInfo tableInfo = entity.getTableInfo();
         SchemaInfo schema = tableInfo == null ? null : tableInfo.getSchema();
@@ -136,6 +139,7 @@ public class ColumnInfoDto {
                 .example(entity.getExample())
                 .standardTerms(entity.getStandardTerms() != null ? StandardTermDto.fromEntity(entity.getStandardTerms()) : null)
                 .isApproval(toYN(entity.getIsApproval()))
+                .modifiedAt(entity.modifiedAt())
                 .build();
     }
 

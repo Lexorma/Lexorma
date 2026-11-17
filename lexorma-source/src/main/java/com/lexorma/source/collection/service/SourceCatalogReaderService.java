@@ -5,6 +5,7 @@ import com.lexorma.core.source.SourceCatalogReader;
 import com.lexorma.source.catalog.service.SourceIdentifiers;
 import com.lexorma.source.catalog.service.SourceIdentifiers.Kind;
 import com.lexorma.source.connection.domain.enums.IdentifierComparison;
+import com.lexorma.source.collection.domain.dto.SourceCollectionDto;
 import com.lexorma.source.collection.domain.entity.SourceCollectionExecution;
 import com.lexorma.source.collection.domain.entity.SourceSchemaVersion;
 import com.lexorma.source.collection.domain.entity.SourceTableVersion;
@@ -69,6 +70,16 @@ public class SourceCatalogReaderService implements SourceCatalogReader {
     @Override
     public List<Connection> connections(Long projectId) {
         return connectionRepository.findAllByProjectIdOrderByNameAscIdAsc(projectId).stream().map(this::toContract).toList();
+    }
+
+    @Override
+    public boolean dropSuspected(Long projectId, Long connectionId, int reflectedOrder) {
+        if (projectId == null || connectionId == null || connectionRepository.findByIdAndProjectId(connectionId, projectId).isEmpty()) return false;
+        SourceCollectionExecution reflected = executionRepository.findByConnectionIdAndReflectedOrder(connectionId, reflectedOrder).orElse(null);
+        if (reflected == null || reflected.getStatus() != CollectionStatus.COMPLETED) return false;
+        return executionRepository.findFirstByConnectionIdAndStatusAndCollectionTypeAndReflectedOrderLessThanOrderByReflectedOrderDesc(connectionId, CollectionStatus.COMPLETED,
+                        reflected.getCollectionType(), reflectedOrder)
+                .map(previous -> SourceCollectionDto.Drop.of(previous, reflected.getTableCount(), reflected.getColumnCount()) != null).orElse(false);
     }
 
     @Override

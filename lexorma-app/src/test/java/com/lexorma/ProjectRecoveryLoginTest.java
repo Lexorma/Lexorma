@@ -113,6 +113,13 @@ class ProjectRecoveryLoginTest {
     }
 
     @Test
+    @DisplayName("숫자가 아닌 project_id 는 500 이 아니라 접근할 수 없는 프로젝트로 거절한다 (6차)")
+    void malformedProjectIdIsRejected() throws Exception {
+        HttpResponse<String> response = new Browser().formLogin("username=admin&password=" + PASSWORD + "&project_id=undefined");
+        assertThat(response.statusCode()).as(response.body()).isBetween(400, 499);
+    }
+
+    @Test
     @DisplayName("기본 프로젝트가 비활성이어도 다른 활성 프로젝트로 로그인한다 (복구 로그인은 불가)")
     void defaultProjectInactiveOtherActive() throws Exception {
         Browser admin = new Browser();

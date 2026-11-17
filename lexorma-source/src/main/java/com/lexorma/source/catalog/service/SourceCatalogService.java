@@ -44,6 +44,7 @@ public class SourceCatalogService {
     private final SourceConstraintRepository constraintRepository;
     private final SourceIndexRepository indexRepository;
     private final SourceRelationRepository relationRepository;
+    private final SourceViewDefinitionService viewDefinitionService;
 
     public Page<SourceCatalogDto.Schema> schemas(AccountDto accountDto, Long connectionId, int page, int size) {
         Long projectId = accountDto.getProjectId();
@@ -85,7 +86,8 @@ public class SourceCatalogService {
                         index.getColumns().stream().map(c -> new SourceCatalogDto.IndexMember(c.getSourceColumn() == null ? null : c.getSourceColumn().getName(), c.getExpression(),
                                 c.getSort())).toList(), index.getCondition())).toList(),
                 relationRepository.findAllBySourceTable_IdOrderByIdAsc(tableId).stream().map(SourceCatalogService::relation).toList(),
-                relationRepository.findAllByReferencedTable_IdOrderByIdAsc(tableId).stream().map(SourceCatalogService::relation).toList());
+                relationRepository.findAllByReferencedTable_IdOrderByIdAsc(tableId).stream().map(SourceCatalogService::relation).toList(),
+                viewDefinitionService.summary(accountDto, table));
     }
 
     private SourceCatalogDto.Schema schema(SourceSchema schema) {

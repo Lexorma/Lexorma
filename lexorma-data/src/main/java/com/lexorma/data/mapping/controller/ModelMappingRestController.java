@@ -34,6 +34,23 @@ public class ModelMappingRestController {
     private final ModelMappingService modelMappingService;
     private final ModelMappingQualityService modelMappingQualityService;
     private final PhysicalNameRecommendationService recommendationService;
+    private final com.lexorma.data.mapping.service.PhysicalGenerationService generationService;
+
+    @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK·FK 계획과 막는 문제·경고, planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/generate/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Plan> generatePreview(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Request request,
+                                                                                                         @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(generationService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "논리 → 물리 생성 반영 (DEC-10)", description = "미리보기의 planToken 과 같은 계획일 때만 미승인 테이블·컬럼과 매핑을 만든다. 그 사이 바뀌었으면 409, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/generate")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Result> generate(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Request request,
+                                                                                                    @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(generationService.apply(accountDto, request));
+    }
 
     @Operation(summary = "엔터티 기준 매핑 목록", description = "프로젝트의 엔터티와 매핑된 테이블. 조건 : modelId, schemaId, mapped(true 매핑됨 / false 매핑 후보 엔터티), entityId(그 엔터티 1건), 검색 : entityName / tableName")
     @PreAuthorize("hasRole('VIEWER')")

@@ -120,7 +120,7 @@ export default function AiDescriptionPage() {
     }
     dialog.open({
       title: action === 'REJECT' ? t('일괄 반려') : t('일괄 보류'),
-      content: ({ close }) => <ReasonForm required={action === 'REJECT'} onSubmit={(reason) => { close(); void perform(reason); }} />,
+      content: ({ close }) => <ReasonForm required onSubmit={(reason) => { close(); void perform(reason); }} />, // 반려·보류 모두 사유 필수 (DEC-29)
     });
   };
 
@@ -151,7 +151,12 @@ export default function AiDescriptionPage() {
                   <span>#{j.id}</span>
                   <progress max={Math.max(j.targetCount, 1)} value={done} aria-label={t('진행')} />
                   <span className="gh-muted">{t('{0}/{1} · 만듦 {2} · 건너뜀 {3} · 실패 {4}', done, j.targetCount, j.completedCount, j.skippedCount, j.failedCount)}</span>
-                  {j.errors.length > 0 && <span className="gh-muted ai-dict-small">{[...new Set(j.errors.map((e) => e.code))].join(', ')}</span>}
+                  {/* 실패 사유 (DEC-32) : 요청 언어의 문구 + 오류 코드 (같은 사유는 한 번만) */}
+                  {j.errors.length > 0 && (
+                    <span className="gh-muted ai-dict-small">
+                      {[...new Map(j.errors.map((e) => [e.code, e])).values()].map((e) => `${e.message ?? e.code} (${e.code})`).join(' · ')}
+                    </span>
+                  )}
                 </li>
               );
             })}

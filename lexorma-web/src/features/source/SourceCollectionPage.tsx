@@ -180,6 +180,7 @@ function CollectionPanel({ connection, executionId, onSelectExecution }: {
                           <span className="source-exec-head">
                             <strong>#{e.id}</strong>
                             <Label variant={status.variant} dot>{status.label}</Label>
+                            {e.drop && <Label variant="attention">{t('객체 급감')}</Label>}
                             <span className="gh-muted">{COLLECTION_TYPE[e.collectionType] ?? e.collectionType}</span>
                           </span>
                           <span className="gh-muted">{formatDateTime(e.startedAt)}{e.reflectedOrder != null ? ` · ${t('반영 순서 {0}', e.reflectedOrder)}` : ''}</span>
@@ -249,6 +250,12 @@ function ExecutionView({ executionId, canManage, connectionId }: { executionId: 
         <p className="source-error" role="alert">{execution.errorMessage ?? t('수집에 실패했습니다.')}{execution.errorCode && <span className="gh-mono gh-muted"> ({execution.errorCode})</span>}</p>
       )}
       {execution.status === 'CANCELLED' && <p className="gh-muted">{t('취소된 수집입니다. 원본 카탈로그에 반영하지 않았습니다.')}</p>}
+      {execution.drop && (
+        <p className="source-warn" role="status">
+          {t('직전 정상 수집(#{0})보다 객체가 크게 줄었습니다 : 테이블·VIEW {1} → {2}, 컬럼 {3} → {4}. 수집은 정상 완료되어 반영되었습니다. 원본에서 실제로 지운 것인지, 접속 계정의 권한·대상 스키마가 바뀐 것인지 확인하세요.',
+            execution.drop.previousExecutionId, execution.drop.previousTableCount, execution.drop.tableCount, execution.drop.previousColumnCount, execution.drop.columnCount)}
+        </p>
+      )}
 
       <dl className="source-dl source-dl-grid">
         <dt>{t('범위')}</dt><dd>{COLLECTION_TYPE[execution.collectionType] ?? execution.collectionType}</dd>

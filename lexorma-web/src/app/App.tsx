@@ -35,7 +35,10 @@ import { SourceMappingPage } from '../features/source/SourceMappingPage';
 import { SourceComparePage } from '../features/source/SourceComparePage';
 import { ModelHistoryPage } from '../features/history/ModelHistoryPage';
 import { ModelVersionPage } from '../features/version/ModelVersionPage';
+import { ModelExchangePage } from '../features/exchange/ModelExchangePage';
+import { McpAccessPage } from '../features/mcp/McpAccessPage';
 import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
+import { ModelDiagnosticsPage } from '../features/quality/ModelDiagnosticsPage';
 import { t } from '../lib/i18n';
 
 const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
@@ -134,9 +137,12 @@ export function App() {
                 <Route path="/sourceCompare" element={<RequireMenu menuId="source-compare"><SourceComparePage /></RequireMenu>} />
                 <Route path="/sourceErd" element={<RequireMenu menuId="source-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><SourceErdPage /></Suspense></RequireMenu>} />
                 <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
+                <Route path="/modelDiagnostics" element={<RequireMenu menuId="model-diagnostics"><ModelDiagnosticsPage /></RequireMenu>} />
 
                 <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />
                 <Route path="/modelVersion" element={<RequireMenu menuId="model-version"><ModelVersionPage /></RequireMenu>} />
+                <Route path="/modelExchange" element={<RequireMenu menuId="model-exchange"><ModelExchangePage /></RequireMenu>} />
+                <Route path="/mcpAccess" element={<RequireMenu menuId="mcp-access"><McpAccessPage /></RequireMenu>} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

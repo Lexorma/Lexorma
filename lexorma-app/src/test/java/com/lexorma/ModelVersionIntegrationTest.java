@@ -149,7 +149,7 @@ class ModelVersionIntegrationTest {
 
         // 모델을 바꿔도 저장된 버전의 내용은 한 글자도 달라지지 않는다
         String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, v1.id());
-        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").build(), admin);
+        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(f.order.getId()).orElseThrow().modifiedAt()).build(), admin);
         physical.updateApproval(admin, "constraint", f.check.id(), false);
         physical.delete(admin, "constraint", f.check.id());
         logical.saveAttribute(admin, new Attribute(null, f.orderEntity.id(), "주문 일자", null, null, false, null, null, null, null, null));
@@ -174,7 +174,7 @@ class ModelVersionIntegrationTest {
         Summary v1 = versions.create(admin, new Create("v1", null)).getBody();
 
         // 수정 : 테이블 이름 변경, 컬럼 타입 길이·NULL 정책·기본값, PK 변경 / 추가 : 컬럼, 속성 / 삭제 : CHECK, 매핑 / 재생성 : 인덱스
-        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").build(), admin);
+        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(f.order.getId()).orElseThrow().modifiedAt()).build(), admin);
         tx.executeWithoutResult(s -> {
             ColumnInfo stat = columnInfoRepository.findById(f.stat.getId()).orElseThrow();
             stat.setMaxLength(20);
@@ -268,7 +268,7 @@ class ModelVersionIntegrationTest {
         assertThat(same).extracting(ErdComparison::changedNodeCount, ErdComparison::truncated).containsExactly(0, false);
 
         // 테이블 : 이름 변경 · 삭제 · 추가 / 컬럼 : 타입 길이·PK 변경 · 추가 · (테이블과 함께) 삭제 / 관계 : 추가 · 복합 FK 의 컬럼 쌍 하나만 변경
-        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").build(), admin);
+        tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(f.order.getId()).orElseThrow().modifiedAt()).build(), admin);
         tx.executeWithoutResult(s -> {
             ColumnInfo stat = columnInfoRepository.findById(f.stat.getId()).orElseThrow();
             stat.setMaxLength(20);

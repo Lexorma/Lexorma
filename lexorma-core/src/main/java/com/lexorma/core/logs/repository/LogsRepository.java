@@ -28,6 +28,10 @@ public interface LogsRepository extends JpaRepository<Logs, Long> {
     Page<Logs> findByProjectIdAndResponseBodyContaining(Long projectId, String responseBody, Pageable pageable);
     Page<Logs> findByProjectIdAndErrorMessageContaining(Long projectId, String errorMessage, Pageable pageable);
 
+    /** 보관 기간 정리 (DEC-14) : 기준 시각보다 오래된 요청 로그 ID (오래된 순) */
+    @Query("select l.id from Logs l where l.timestamp < :cutoff order by l.id")
+    List<Long> findIdsOlderThan(@Param("cutoff") java.time.LocalDateTime cutoff, Pageable pageable);
+
     /** 프로젝트 영구 삭제 : 그 프로젝트의 요청 로그 (프로젝트 안에서만 조회되는 데이터다) */
     @org.springframework.data.jpa.repository.Modifying
     @Query("delete from Logs l where l.projectId = :projectId")

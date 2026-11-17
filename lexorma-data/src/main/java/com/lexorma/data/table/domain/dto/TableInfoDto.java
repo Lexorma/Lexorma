@@ -49,6 +49,12 @@ public class TableInfoDto {
     /** 스키마명 (조회 전용) */
     private String schemaName;
 
+    /** 수정 기준값 (조회 전용, DEC-08) : 마지막 수정 일시 */
+    private java.time.LocalDateTime modifiedAt;
+
+    /** 수정 요청 : 화면이 읽은 modifiedAt (DEC-08). 보내면 그 사이 다른 사용자가 고친 테이블을 덮어쓰지 않는다 (MODEL_CONFLICT). 없으면 검사하지 않는다 */
+    private java.time.LocalDateTime baseModifiedAt;
+
     public static TableInfoDto fromEntity(TableInfo entity) {
         return TableInfoDto.builder()
                 .id(entity.getId())
@@ -63,6 +69,7 @@ public class TableInfoDto {
                 .isApproval(toYN(entity.getIsApproval()))
                 .schemaId(entity.getSchema() == null ? null : entity.getSchema().getId())
                 .schemaName(entity.getSchema() == null ? null : entity.getSchema().getSchemaName())
+                .modifiedAt(entity.modifiedAt())
                 .build();
     }
 

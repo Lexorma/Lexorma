@@ -16,6 +16,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -47,6 +48,15 @@ public class ExcelExportUtils {
     public interface RowSource<T> {
         void forEach(Consumer<? super T> action);
     }
+
+    /** 한 행을 쓴다 : 숫자(Number)는 숫자 셀, 그 외는 문자열 셀 (null 은 빈 셀 값) */
+    @FunctionalInterface
+    public interface RowWriter {
+        void write(Object... values);
+    }
+
+    /** 엑셀 셀 하나에 담을 수 있는 최대 글자 수 (xlsx) */
+    public static final int MAX_CELL_TEXT = org.apache.poi.ss.SpreadsheetVersion.EXCEL2007.getMaxTextLength();
 
     /** 시트에 쓸 다음 행 번호 + 열별 데이터 셀 서식 (템플릿 열 서식 + 얇은 테두리) */
     private static final class SheetWriter {
@@ -95,7 +105,7 @@ public class ExcelExportUtils {
 
     public static File loadAndCopyDictionaryExcelFile(String fileName, RowSource<StandardTermDto> terms,
                                                       RowSource<StandardWordDto> words, RowSource<StandardDomainDto> domains) throws IOException {
-        return export("template", fileName, workbook -> {
+        return export("template", fileName, null, workbook -> {
             // 표준용어
             SheetWriter termSheet = new SheetWriter(workbook.getSheetAt(0));
             terms.forEach(dto ->
@@ -155,7 +165,40 @@ public class ExcelExportUtils {
      * @param fileName     오류 메시지용 이름
      * @param writer       데이터 행 쓰기
      */
-    private static File export(String templateName, String fileName, Consumer<SXSSFWorkbook> writer) throws IOException {
+    /**
+     * 업로드 템플릿(tableTemplate / columnTemplate)에 등록 데이터를 쓴다 (M-11 데이터 Export).
+     * 예시 행과 입력 규칙(데이터 유효성 검사)을 지우고, 업로드가 읽는 열 뒤에 참고 열(조회 전용 — 업로드는 읽지 않는다)을 붙인다.
+     * 업로드 열의 위치·헤더는 템플릿 그대로라 내려받은 파일을 다른 프로젝트·빈 모델에 다시 올릴 수 있다 (업로드는 등록 전용).
+     *
+     * @param referenceHeaders 참고 열 헤더 (한국어 원문, 영어 요청이면 {@link ExcelTemplateLabels} 로 바뀐다)
+     * @param rows             데이터 행 쓰기 (업로드 열 + 참고 열 순서)
+     */
+    public static File exportModel(String templateName, String fileName, List<String> referenceHeaders, Consumer<RowWriter> rows) throws IOException {
+        return export(templateName, fileName, header -> prepareModelSheet(header.getSheetAt(0), referenceHeaders),
+                workbook -> rows.accept(new SheetWriter(workbook.getSheetAt(0))::write));
+    }
+
+    /** 헤더(1행)만 남기고 참고 열 헤더를 붙인다 : 서식은 마지막 헤더 셀, 너비는 넉넉히 */
+    private static void prepareModelSheet(Sheet sheet, List<String> referenceHeaders) {
+        for (int i = sheet.getLastRowNum(); i >= FIRST_DATA_ROW; i--) {
+            Row row = sheet.getRow(i);
+            if (row != null) sheet.removeRow(row);
+        }
+        if (sheet instanceof org.apache.poi.xssf.usermodel.XSSFSheet xssf && xssf.getCTWorksheet().isSetDataValidations()) {
+            xssf.getCTWorksheet().unsetDataValidations(); // 예시 행에만 걸린 입력 규칙
+        }
+        Row header = sheet.getRow(0);
+        int last = header.getLastCellNum() - 1;
+        CellStyle style = header.getCell(last).getCellStyle();
+        for (int i = 0; i < referenceHeaders.size(); i++) {
+            Cell cell = header.createCell(last + 1 + i);
+            cell.setCellStyle(style);
+            cell.setCellValue(referenceHeaders.get(i));
+            sheet.setColumnWidth(last + 1 + i, 20 * 256);
+        }
+    }
+
+    private static File export(String templateName, String fileName, Consumer<XSSFWorkbook> prepare, Consumer<SXSSFWorkbook> writer) throws IOException {
         File outFile = null;
 
         try (InputStream template = ExcelExportUtils.class.getClassLoader().getResourceAsStream("static/excel/" + templateName + ".xlsx")) {
@@ -164,7 +207,8 @@ public class ExcelExportUtils {
             }
 
             XSSFWorkbook header = new XSSFWorkbook(template);
-            ExcelTemplateLabels.localize(header); // 영어 요청이면 시트 이름·헤더를 영어로
+            if (prepare != null) prepare.accept(header);
+            ExcelTemplateLabels.localize(header); // 영어 요청이면 시트 이름·헤더를 영어로 (데이터를 쓰기 전이라 데이터는 바꾸지 않는다)
             SXSSFWorkbook workbook = new SXSSFWorkbook(header, STREAMING_WINDOW_SIZE);
             try {
                 writer.accept(workbook);

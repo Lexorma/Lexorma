@@ -70,6 +70,8 @@ export function ViewForm({ detail, onSaved, onCancel }: {
   const sqlChanged = !!editing && sql !== editing.definition;
 
   const body = () => ({
+    // 수정 : 화면이 읽은 수정 일시 (DEC-13 낙관적 충돌 검사 — 그 사이 다른 사용자가 고쳤으면 409, 입력은 그대로 남는다)
+    baseModifiedAt: detail?.updated ?? null,
     schemaId: schemaId ? Number(schemaId) : null,
     viewName: name.trim(),
     viewKorName: korName.trim() || null,

@@ -12,7 +12,11 @@ import java.util.Map;
  * <ul>
  *   <li>{@code TABLE:CREATE} (원본 TABLE 로 새 모델 TABLE + 매핑 확정), {@code TABLE:COMMENT}</li>
  *   <li>{@code COLUMN:<원본 컬럼>:ADD}, {@code COLUMN:<원본 컬럼>:TYPE|NULLABLE|DEFAULT|COMMENT} (TYPE = 타입·길이·정밀도·소수)</li>
- *   <li>{@code PRIMARY_KEY:<이름>}, {@code UNIQUE:<이름>}, {@code CHECK:<이름>}, {@code FOREIGN_KEY:<이름>}, {@code INDEX:<이름>} (추가만)</li>
+ *   <li>{@code TABLE:COMMENT_CLEAR}, {@code COLUMN:<원본 컬럼>:COMMENT_CLEAR} (DEC-07) : 원본 COMMENT 가 지워졌을 때 모델의 원본 COMMENT 칸을 비우는 명시적 선택 (Action CLEAR).
+ *       같은 속성의 COMMENT 항목은 지금처럼 고를 수 없다 (EMPTY_COMMENT — 빈 값으로 자동으로 지우지 않는다). 업무 설명·DDL 설명은 바꾸지 않는다</li>
+ *   <li>{@code PRIMARY_KEY:<이름>}, {@code UNIQUE:<이름>}, {@code CHECK:<이름>}, {@code FOREIGN_KEY:<이름>}, {@code INDEX:<이름>} (추가)</li>
+ *   <li>{@code <같은 종류>:<이름>:REPLACE} (DEC-05, Action REPLACE) : 이름으로 짝지은 모델 객체의 구성이 다를 때(MODIFIED) 그 객체를 지우고 원본 구성으로 다시 만든다.
+ *       미승인 객체·미승인 TABLE 만 (승인 객체는 APPROVED — 승인 취소·변경 요청 절차). PK 는 다른 TABLE 의 관계가 이 TABLE 을 참조하면 REFERENCED. 원본 DB 에 DDL 을 실행하지 않는다</li>
  * </ul>
  * 고르지 않은 속성은 바꾸지 않는다. 삭제·이름 변경·기존 객체 교체는 없다.
  */
@@ -21,7 +25,7 @@ public final class SourceImportDto {
     private SourceImportDto() {
     }
 
-    public enum Action { CREATE, ADD, UPDATE }
+    public enum Action { CREATE, ADD, UPDATE, CLEAR, REPLACE }
 
     /**
      * 가져올 수 없는 이유 (화면이 문구로 바꾼다).
@@ -42,7 +46,7 @@ public final class SourceImportDto {
         UNSUPPORTED_ATTRIBUTE, APPROVED, TYPE_NOT_REPRESENTABLE, DEFAULT_NOT_REPRESENTABLE, INVALID_NAME, QUOTED_NAME, PK_NOT_NULL, PK_EXISTS, PK_ORDER, ORDER_NOT_SUPPORTED, NO_FIELD,
         EMPTY_COMMENT, UNSUPPORTED_INDEX_TYPE,
         MISSING_DEPENDENCY, UNRESOLVED_TARGET, TARGET_NOT_KEY,
-        NOT_FOUND, UNSUPPORTED_DBMS,
+        NOT_FOUND, UNSUPPORTED_DBMS, REFERENCED,
         MODEL_EDITED, BOTH_CHANGED, REMOVED_IN_SOURCE
     }
 

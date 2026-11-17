@@ -25,8 +25,13 @@ public final class ViewDto {
     }
 
     /** 등록·수정 요청. schemaId 가 없으면 프로젝트 기본 스키마 */
+    /** baseModifiedAt : 수정 때 화면이 읽은 상세의 updated (DEC-13 낙관적 충돌 검사, 없으면 검사하지 않는다) */
     public record Save(Long schemaId, String viewName, String viewKorName, String viewDescription, String definition,
-                       List<Column> columns, List<Reference> references) {
+                       List<Column> columns, List<Reference> references, LocalDateTime baseModifiedAt) {
+        public Save(Long schemaId, String viewName, String viewKorName, String viewDescription, String definition,
+                    List<Column> columns, List<Reference> references) {
+            this(schemaId, viewName, viewKorName, viewDescription, definition, columns, references, null);
+        }
     }
 
     /** VIEW 정의 전체 : 상세 응답, 변경 요청의 전후 (승인할 때 이 단위로 한 번에 반영된다) */

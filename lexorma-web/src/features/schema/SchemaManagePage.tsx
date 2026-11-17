@@ -110,7 +110,7 @@ function SchemaForm({ schema, onSaved }: { schema?: Schema; onSaved: () => void 
     if (!schemaName) return dialog.alert(t('스키마명은(는) 필수 입력 항목입니다.'));
     dialog.confirm(schema ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
       // 이름 형식·중복·권한은 서버에서 검증한다
-      await api('/api/schema', { method: 'POST', body: { id: schema?.id ?? null, schemaName, schemaDescription: description.trim() || null } });
+      await api('/api/schema', { method: 'POST', body: { id: schema?.id ?? null, schemaName, schemaDescription: description.trim() || null, updated: schema?.updated ?? null } });
       dialog.alert(schema ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'), onSaved);
     });
   };

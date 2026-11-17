@@ -79,6 +79,7 @@ public class AiDescriptionEvaluationService {
     private final ExecutionContextVerifier verifier;
     private final AiDescriptionEvaluationTargetRepository targets;
     private final AiDescriptionEvaluationRepository judgments;
+    private final com.lexorma.data.ai.dictionary.repository.AiDescriptionEvaluationHistoryRepository judgmentHistories;
     private final AiDescriptionProposalRepository proposals;
     private final AiDescriptionProposalHistoryRepository histories;
     private final TableInfoRepository tables;
@@ -236,7 +237,7 @@ public class AiDescriptionEvaluationService {
         List<AiEvaluationDto.ProposalItem> items = ps.stream().map(p -> new AiEvaluationDto.ProposalItem(p.getId(), p.getModel(), p.getPromptVersion(),
                 p.audit() == null ? null : p.audit().created(), p.getStatus(), edited.contains(p.getId()), p.getCertainty(), p.getProposedDescription(),
                 p.getConfirmedDescription(), ProposalMapper.node(p.getDetail()), ProposalMapper.node(p.getEvidence()), sameMetadata(base, p), invalidReferences(p),
-                approvalHold(p))).toList();
+                approvalHold(p), sameContext(projectId, t, p))).toList();
         return new AiEvaluationDto.TargetDetail(row, t.getActualMeaning(), t.getReviewerId(), t.getReviewedAt(), items,
                 js.stream().map(AiDescriptionEvaluationService::judgmentRow).toList(), false, metadata);
     }
@@ -295,6 +296,8 @@ public class AiDescriptionEvaluationService {
         } else if (request.version() == null || !request.version().equals(j.getVersion())) {
             throw new CustomException(ErrorCode.AI_EVALUATION_CONFLICT);
         }
+        // 판정 변경 이력 (DEC-27) : 고치기 전 판정을 남긴다 (처음 판정이면 null)
+        String before = j.getId() == null ? null : judgmentState(j);
         j.setJudgment(judgment);
         j.setUnfoundedClaim(request.unfoundedClaim());
         j.setMissingInformation(blank(request.missingInformation()));
@@ -304,9 +307,52 @@ public class AiDescriptionEvaluationService {
         j.setRequiredEdits(blank(request.requiredEdits()));
         j.setReviewMinutes(request.reviewMinutes());
         j.setWritingMinutes(request.writingMinutes());
-        j.setReviewedAt(LocalDateTime.now());
+        String after = judgmentState(j);
+        if (before != null && before.equals(after)) return judgmentRow(j); // 바뀐 값이 없으면 저장·이력 없음
+        String changeReason = blank(request.changeReason());
+        if (before != null && changeReason == null) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID, "판정을 고친 사유를 입력해주세요.");
+        if (changeReason != null && changeReason.length() > 1000) throw new CustomException(ErrorCode.AI_EVALUATION_INVALID, "사유는 {0}자까지 입력할 수 있습니다.", 1000);
+        LocalDateTime now = LocalDateTime.now();
+        j.setReviewedAt(now);
         j = judgments.saveAndFlush(j);
+        judgmentHistories.save(com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluationHistory.builder().projectId(projectId).judgmentId(j.getId())
+                .targetId(j.getTargetId()).proposalId(j.getProposalId())
+                .changeType(before == null ? com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluationHistory.ChangeType.INSERT
+                        : com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluationHistory.ChangeType.UPDATE)
+                .reviewerId(execution.username()).before(before).after(after).reason(changeReason).changedAt(now).build());
         return judgmentRow(j);
+    }
+
+    /** 판정 변경 이력 (DEC-27, 오래된 것부터). 판정 행의 프로젝트 범위 안에서만 */
+    @Transactional(readOnly = true)
+    public List<AiEvaluationDto.JudgmentHistoryRow> judgmentHistory(ExecutionContext context, Long judgmentId) {
+        Long projectId = verifier.verify(context, "VIEWER").context().projectId();
+        List<com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionEvaluationHistory> rows = judgmentHistories.findAllByProjectIdAndJudgmentIdOrderByIdAsc(projectId, judgmentId);
+        if (rows.isEmpty() && judgments.findById(judgmentId).filter(j -> projectId.equals(j.getProjectId())).isEmpty()) {
+            throw new CustomException(ErrorCode.AI_EVALUATION_NOT_FOUND);
+        }
+        return rows.stream().map(h -> new AiEvaluationDto.JudgmentHistoryRow(h.getId(), h.getChangeType().name(), h.getReviewerId(),
+                h.getBefore() == null ? null : stateMap(h.getBefore()), stateMap(h.getAfter()), h.getReason(), h.getChangedAt())).toList();
+    }
+
+    /** 판정 내용 (이력·비교용, 항목 순서 고정) : 판정자·시각·버전은 넣지 않는다 */
+    private static String judgmentState(AiDescriptionEvaluation j) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("judgment", j.getJudgment() == null ? null : j.getJudgment().name());
+        m.put("unfoundedClaim", j.getUnfoundedClaim());
+        m.put("missingInformation", j.getMissingInformation());
+        m.put("uncertainty", j.getUncertainty() == null ? null : j.getUncertainty().name());
+        m.put("termRecommendation", j.getTermRecommendation() == null ? null : j.getTermRecommendation().name());
+        m.put("domainRecommendation", j.getDomainRecommendation() == null ? null : j.getDomainRecommendation().name());
+        m.put("requiredEdits", j.getRequiredEdits());
+        m.put("reviewMinutes", j.getReviewMinutes());
+        m.put("writingMinutes", j.getWritingMinutes());
+        return JSON.writeValueAsString(m);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, Object> stateMap(String json) {
+        return JSON.readValue(json, java.util.LinkedHashMap.class);
     }
 
     // ------------------------------------------------------------------ 지표
@@ -365,7 +411,8 @@ public class AiDescriptionEvaluationService {
                     writing.add(j.getWritingMinutes());
                 }
                 AiDescriptionProposal p = proposalById.get(j.getProposalId());
-                if (t != null && p != null && sameMetadata(JSON.readValue(t.getBaseVersion(), BaseVersion.class), p)) same++;
+                // 같은 입력 조건 : 대상 자신의 버전이 같고(sameMetadata) 등록 ~ 생성 사이에 같은 테이블이 바뀌지 않았다 (DEC-29 입력 맥락)
+                if (t != null && p != null && sameMetadata(JSON.readValue(t.getBaseVersion(), BaseVersion.class), p) && sameContext(projectId, t, p)) same++;
             }
             int fabricated = 0, approved = 0, rejected = 0, editedCount = 0;
             for (Long id : proposalIds) {
@@ -455,6 +502,38 @@ public class AiDescriptionEvaluationService {
         LocalDateTime version = catalog.load(type, List.of(id)).values().stream().findFirst().map(EvidenceCatalog.Snapshot::version).orElse(null);
         Long historyId = modelHistories.lastId(projectId, columnId == null ? ModelChangeHistory.TargetType.PHYSICAL_TABLE : ModelChangeHistory.TargetType.PHYSICAL_COLUMN, id);
         return new BaseVersion(version, historyId);
+    }
+
+    /**
+     * 평가 입력 맥락 (DEC-29) : 평가 대상 등록과 제안 생성 사이(어느 쪽이 먼저든)에 같은 테이블(자신·컬럼 — 다른 컬럼의 업무 설명 포함)이 바뀌지 않았는지.
+     * 모델 변경 이력으로 판단해 편집을 막지 않는다 (기준값 검증). 관계·표준 사전의 변경은 보지 않는다 — 운영 규칙(평가 기간 수정 금지)으로 보완
+     */
+    private boolean sameContext(Long projectId, AiDescriptionEvaluationTarget t, AiDescriptionProposal p) {
+        LocalDateTime registered = t.audit() == null ? null : t.audit().created();
+        LocalDateTime generated = p.audit() == null ? null : p.audit().created();
+        if (registered == null || generated == null) return false;
+        TableInfo table = tables.findByIdAndProjectId(t.getTableId(), projectId);
+        if (table == null) return false;
+        LocalDateTime from = registered.isBefore(generated) ? registered : generated;
+        LocalDateTime to = registered.isBefore(generated) ? generated : registered;
+        if (modelHistories.countTableChanges(projectId, table.getId(), table.getTableName() + ".%", from, to) > 0) return false;
+        // 테이블에 걸린 관계(나가는·들어오는 FK — AI 입력의 관계 메타데이터) : 지금 있는 관계의 변경 이력 (그 사이 지워진 관계는 테이블·컬럼 이력으로 대개 함께 잡힌다)
+        List<Long> relationIds = java.util.stream.Stream.concat(relations.findAllByProjectIdAndSourceTable_Id(projectId, table.getId()).stream(),
+                relations.findAllByProjectIdAndTargetTable_Id(projectId, table.getId()).stream()).map(com.lexorma.data.physical.domain.entity.TableRelation::getId).distinct().toList();
+        if (!relationIds.isEmpty() && modelHistories.countChanges(projectId, ModelChangeHistory.TargetType.PHYSICAL_RELATION, relationIds, from, to) > 0) return false;
+        // 컬럼에 연결된 표준 용어와 그 도메인 (AI 입력의 용어 정의·도메인 타입) : 사이에 수정됐으면 맥락이 바뀌었다. 표준 사전은 모델 변경 이력이 없어 수정 일시로 본다 —
+        // 그 뒤에 다시 고쳐지면 사이의 수정은 보이지 않는다 (마지막 수정 일시만 남는다)
+        for (ColumnInfo column : table.getColumns()) {
+            var term = column.getStandardTerms();
+            if (term == null) continue;
+            if (within(term.modifiedAt(), from, to)) return false;
+            if (term.getStandardDomain() != null && within(term.getStandardDomain().modifiedAt(), from, to)) return false;
+        }
+        return true;
+    }
+
+    private static boolean within(LocalDateTime at, LocalDateTime from, LocalDateTime to) {
+        return at != null && at.isAfter(from) && !at.isAfter(to);
     }
 
     /** 제안이 평가 대상 등록 시점과 같은 메타데이터 버전(대상의 수정 일시·변경 이력)으로 만들어졌는지 */

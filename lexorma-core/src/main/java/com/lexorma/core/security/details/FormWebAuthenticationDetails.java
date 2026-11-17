@@ -15,7 +15,16 @@ public class FormWebAuthenticationDetails extends WebAuthenticationDetails {
 
     public FormWebAuthenticationDetails(HttpServletRequest request) {
         super(request);
-        String projectIdParam = request.getParameter("project_id");
-        projectId = (projectIdParam == null || projectIdParam.isBlank()) ? null : Long.parseLong(projectIdParam);
+        projectId = parse(request.getParameter("project_id"));
+    }
+
+    /** 숫자가 아니면 null : 선택하지 않은 것과 같이 "접근할 수 없는 프로젝트" 로 거절된다 (예전에는 NumberFormatException → 500) */
+    private static Long parse(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

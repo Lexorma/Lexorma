@@ -147,8 +147,11 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     public PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules) {
         Long projectId = accountDto.getProjectId();
         TableRelation relation = relationRepository.findByIdAndProjectId(relationId, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+        // 행을 잠그고 다시 읽는다 (DEC-08 : 비교와 반영 사이에 다른 수정이 끼어들지 않는다)
+        entityManager.refresh(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (relation.getRelationType() != TableRelation.Type.FK) throw invalid("논리 관계에는 삭제·수정 규칙이 없습니다.");
         rejectApproved(relation.getIsApproval());
+        com.lexorma.common.jpa.ModelBase.verify(relation, rules == null ? null : rules.baseModifiedAt(), relation.getRelationName());
         relation.setDeleteRule(rule(rules == null ? null : rules.deleteRule()));
         relation.setUpdateRule(rule(rules == null ? null : rules.updateRule()));
         return PhysicalModelDto.Relation.fromEntity(relation);
@@ -225,6 +228,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         TableIndex index = lockIndex(projectId, id);
         if (request.tableId() != null && !request.tableId().equals(index.getTableInfo().getId())) throw invalid("인덱스의 테이블은 바꿀 수 없습니다.");
         rejectColumnIndex(index);
+        // 낙관적 충돌 검사 (DEC-08) : 테이블 행 잠금 뒤 다시 읽은 인덱스의 수정 일시와 화면이 읽은 값 비교
+        com.lexorma.common.jpa.ModelBase.verify(index, request.modifiedAt(), index.getIndexName());
         IndexSpec spec = indexSpec(projectId, index.getTableInfo(), request, index.getId());
 
         if (!Boolean.TRUE.equals(index.getIsApproval())) {
@@ -491,15 +496,20 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         List<KeySpec> members = new ArrayList<>(spec.keys());
         spec.includes().forEach(c -> members.add(new KeySpec(c, null, TableIndexColumn.INCLUDE)));
         List<TableIndexColumn> rows = index.getColumns();
+        boolean changed = rows.size() != members.size();
         for (int i = 0; i < members.size(); i++) {
             if (i >= rows.size()) rows.add(TableIndexColumn.builder().tableIndex(index).build());
             TableIndexColumn row = rows.get(i);
-            row.setColumn(members.get(i).column());
-            row.setExpression(members.get(i).expression());
-            row.setSort(members.get(i).sort());
+            KeySpec member = members.get(i);
+            changed |= !Objects.equals(row.getColumn() == null ? null : row.getColumn().getId(), member.column() == null ? null : member.column().getId()) || !Objects.equals(row.getExpression(), member.expression()) || !Objects.equals(row.getSort(), member.sort())
+                    || !Objects.equals(row.getColumnOrder(), i + 1);
+            row.setColumn(member.column());
+            row.setExpression(member.expression());
+            row.setSort(member.sort());
             row.setColumnOrder(i + 1);
         }
         while (rows.size() > members.size()) rows.remove(rows.size() - 1);
+        if (changed && index.getId() != null) index.markModified(); // 컬럼 구성만 바뀌어도 기준값이 바뀐다 (DEC-08)
     }
 
     /** 이름(대소문자 무시)·유형·고유 여부·키(컬럼 ID 또는 표현식, 정렬)·INCLUDE·조건이 같은가 (컬럼명 스냅샷은 보지 않는다) */

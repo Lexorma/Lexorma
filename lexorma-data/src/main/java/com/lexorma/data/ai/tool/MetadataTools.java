@@ -97,12 +97,40 @@ public class MetadataTools {
     public record SchemaList(List<SchemaItem> schemas, boolean truncated) {
     }
 
+    /**
+     * @param match        이 테이블이 검색어와 맞은 방식 : EXACT(테이블명·코멘트가 검색어와 같다) · PARTIAL(테이블명·코멘트·설명이 검색어 전체를 포함) ·
+     *                     TOKEN(검색어 전체는 없고 일부 단어만 맞았다 — 근사) · null(검색어 없이 목록)
+     * @param matchedTerms TOKEN 일 때 실제로 맞은 단어
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TableItem(Long tableId, String schemaName, String tableName, String tableComment, String description, String businessDescription,
-                            String sourceComment, boolean approved) {
+                            String sourceComment, boolean approved, TableMatch match, List<String> matchedTerms) {
     }
 
-    public record TableList(String keyword, List<TableItem> tables, boolean truncated) {
+    /** 테이블 하나가 검색어와 맞은 방식 ({@link TableItem#match()}) */
+    public enum TableMatch { EXACT, PARTIAL, TOKEN }
+
+    /**
+     * 테이블 검색 결과 전체의 검색 방식 ({@link TableList#matchMode()}).
+     * ALL = 검색어 없음(목록), EXACT = 결과가 모두 검색어와 같은 이름·코멘트, PARTIAL = 검색어 전체를 포함하는 부분 일치(같은 이름이 섞여 있을 수 있다 — 테이블별 match),
+     * TOKEN_FALLBACK = 검색어 전체로는 없어 단어별로 다시 찾은 근사 결과, NONE = 결과 없음
+     */
+    public enum TableMatchMode { ALL, EXACT, PARTIAL, TOKEN_FALLBACK, NONE }
+
+    /**
+     * 기존 필드(keyword·tables·truncated)는 그대로 두고 검색 방식을 덧붙였다 (7차) : AI·MCP 클라이언트가 근사 결과를 정확한 결과로 오해하지 않도록.
+     * @param exactMatch   matchMode 가 EXACT 일 때만 true
+     * @param approximate  matchMode 가 TOKEN_FALLBACK 일 때만 true (검색어 전체를 포함하지 않는 테이블이다)
+     * @param matchedTerms 결과를 낸 검색어 형태 (부분 일치 : 원래 검색어·공백을 _ 로 이은 형태 중 맞은 것, 근사 : 맞은 단어)
+     */
+    public record TableList(String keyword, List<TableItem> tables, boolean truncated, TableMatchMode matchMode, boolean exactMatch, boolean approximate,
+                            List<String> matchedTerms, int resultCount) {
+
+        static TableList of(String keyword, List<TableItem> tables, boolean truncated, TableMatchMode mode, List<String> matchedTerms) {
+            TableMatchMode resolved = mode != TableMatchMode.ALL && tables.isEmpty() ? TableMatchMode.NONE : mode;
+            return new TableList(keyword, tables, truncated, resolved, resolved == TableMatchMode.EXACT, resolved == TableMatchMode.TOKEN_FALLBACK,
+                    resolved == TableMatchMode.NONE ? List.of() : matchedTerms, tables.size());
+        }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -229,7 +257,11 @@ public class MetadataTools {
                 tool("listSchemas", "List the schemas of the current Lexorma project with their table counts. Takes no arguments.",
                         NoInput.class, (input, context) -> listSchemas(context)),
                 tool("searchTables", "Search physical tables of the current project by table name, table comment (Korean name) or description. "
-                        + "Returns table ids to use with the other table tools.", TableSearch.class, this::searchTables),
+                        + "Returns table ids to use with the other table tools. matchMode tells how the tables matched: EXACT (every table name or comment "
+                        + "equals the keyword), PARTIAL (name, comment or description contains the whole keyword), TOKEN_FALLBACK (nothing contained the whole "
+                        + "keyword, so tables matching only some of its words are returned: approximate = true, they may be unrelated — check each table's "
+                        + "matchedTerms and say so instead of treating them as the answer), NONE (no table), ALL (no keyword). Each table has match "
+                        + "EXACT, PARTIAL or TOKEN.", TableSearch.class, this::searchTables),
                 tool("getTableDetail", "Get one table of the current project: name, comment, description, schema, approval, indexes and "
                         + "constraints (PK, UNIQUE, CHECK). Give tableId (preferred) or the exact tableName.", TableRef.class, this::getTableDetail),
                 tool("getTableColumns", "List the columns of one table of the current project: name, description, data type, length, primary key, "
@@ -278,37 +310,59 @@ public class MetadataTools {
         boolean more = false;
         if (query.isEmpty()) {
             more = collect(found, tableDesignService.selectTableInfoData(page, scope, null, null, schemaId), TableInfoDto::getId, max);
-            return sawTables(toolContext, new TableList(query, found.values().stream().limit(max).map(MetadataTools::table).toList(), more || found.size() > max));
+            List<TableItem> items = found.values().stream().limit(max).map(t -> table(t, null, null)).toList();
+            return sawTables(toolContext, TableList.of(query, items, more || found.size() > max, TableMatchMode.ALL, List.of()));
         }
-        more = searchTables(scope, query, schemaId, page, max, found);
+        List<String> matchedVariants = new ArrayList<>();
+        for (String variant : variants(query)) {
+            Map<Long, TableInfoDto> each = new LinkedHashMap<>();
+            more |= searchTables(scope, variant, schemaId, page, max, each);
+            if (!each.isEmpty()) matchedVariants.add(variant);
+            each.forEach(found::putIfAbsent);
+        }
         if (found.isEmpty()) {
-            // 여러 단어("AI Provider")가 통째로 맞지 않으면 단어별로 찾아 많이 맞은 테이블부터 (모델이 설명의 표현과 다르게 묻는 경우)
-            Map<Long, Integer> hits = new LinkedHashMap<>();
+            // 여러 단어("AI Provider")가 통째로 맞지 않으면 단어별로 찾아 많이 맞은 테이블부터 (모델이 설명의 표현과 다르게 묻는 경우) — 근사 결과로 표시한다
+            Map<Long, List<String>> hits = new LinkedHashMap<>();
+            List<String> matchedWords = new ArrayList<>();
             for (String word : query.split("[\\s_]+")) {
                 if (word.length() < 2) continue;
                 Map<Long, TableInfoDto> each = new LinkedHashMap<>();
-                more |= searchTables(scope, word, schemaId, page, max, each);
+                for (String variant : variants(word)) more |= searchTables(scope, variant, schemaId, page, max, each);
+                if (!each.isEmpty() && !matchedWords.contains(word)) matchedWords.add(word);
                 each.forEach((id, table) -> {
                     found.putIfAbsent(id, table);
-                    hits.merge(id, 1, Integer::sum);
+                    List<String> words = hits.computeIfAbsent(id, k -> new ArrayList<>());
+                    if (!words.contains(word)) words.add(word);
                 });
             }
             List<TableInfoDto> ranked = found.values().stream()
-                    .sorted(java.util.Comparator.comparing((TableInfoDto t) -> -hits.getOrDefault(t.getId(), 0)).thenComparing(TableInfoDto::getTableName))
+                    .sorted(java.util.Comparator.comparing((TableInfoDto t) -> -hits.getOrDefault(t.getId(), List.of()).size()).thenComparing(TableInfoDto::getTableName))
                     .toList();
-            return sawTables(toolContext, new TableList(query, ranked.stream().limit(max).map(MetadataTools::table).toList(), more || ranked.size() > max));
+            List<TableItem> items = ranked.stream().limit(max).map(t -> table(t, TableMatch.TOKEN, hits.get(t.getId()))).toList();
+            return sawTables(toolContext, TableList.of(query, items, more || ranked.size() > max, TableMatchMode.TOKEN_FALLBACK, matchedWords));
         }
-        return sawTables(toolContext, new TableList(query, found.values().stream().limit(max).map(MetadataTools::table).toList(), more || found.size() > max));
+        List<TableItem> items = found.values().stream().limit(max)
+                .map(t -> table(t, exact(t, variants(query)) ? TableMatch.EXACT : TableMatch.PARTIAL, null)).toList();
+        TableMatchMode mode = items.stream().allMatch(t -> t.match() == TableMatch.EXACT) ? TableMatchMode.EXACT : TableMatchMode.PARTIAL;
+        return sawTables(toolContext, TableList.of(query, items, more || found.size() > max, mode, matchedVariants));
     }
 
-    /** 테이블명(대문자)·테이블 코멘트·설명의 부분 일치 (기존 테이블 목록 조회와 같은 검색). max 보다 많았는지 돌려준다 */
-    private boolean searchTables(AccountDto scope, String query, Long schemaId, Pageable page, int max, Map<Long, TableInfoDto> found) {
+    /** 테이블명(대소문자 무시)이나 테이블 코멘트가 검색어(또는 공백을 _ 로 이은 형태)와 같다. 스키마.테이블 형태도 같다고 본다 */
+    private static boolean exact(TableInfoDto t, List<String> variants) {
+        for (String variant : variants) {
+            String v = variant.strip();
+            if (v.equalsIgnoreCase(t.getTableName()) || v.equals(text(t.getTableKorName()))) return true;
+            if (t.getSchemaName() != null && v.equalsIgnoreCase(t.getSchemaName() + "." + t.getTableName())) return true;
+        }
+        return false;
+    }
+
+    /** 테이블명(대문자)·테이블 코멘트·설명의 부분 일치 (기존 테이블 목록 조회와 같은 검색) — 검색어 한 형태. max 보다 많았는지 돌려준다 */
+    private boolean searchTables(AccountDto scope, String variant, Long schemaId, Pageable page, int max, Map<Long, TableInfoDto> found) {
         boolean more = false;
-        for (String variant : variants(query)) {
-            for (String column : List.of("tableName", "tableKorName", "tableDescription")) {
-                String value = column.equals("tableName") ? variant.toUpperCase(Locale.ROOT) : variant;
-                more |= collect(found, tableDesignService.selectTableInfoData(page, scope, column, value, schemaId), TableInfoDto::getId, max);
-            }
+        for (String column : List.of("tableName", "tableKorName", "tableDescription")) {
+            String value = column.equals("tableName") ? variant.toUpperCase(Locale.ROOT) : variant;
+            more |= collect(found, tableDesignService.selectTableInfoData(page, scope, column, value, schemaId), TableInfoDto::getId, max);
         }
         return more;
     }
@@ -604,8 +658,12 @@ public class MetadataTools {
     }
 
     private static TableItem table(TableInfoDto t) {
+        return table(t, null, null);
+    }
+
+    private static TableItem table(TableInfoDto t, TableMatch match, List<String> matchedTerms) {
         return new TableItem(t.getId(), t.getSchemaName(), t.getTableName(), text(t.getTableKorName()), text(t.getTableDescription()), text(t.getBizDescription()),
-                text(t.getSourceComment()), yes(t.getIsApproval()));
+                text(t.getSourceComment()), yes(t.getIsApproval()), match, matchedTerms);
     }
 
     private static RelationItem relation(PhysicalModelDto.Relation r) {

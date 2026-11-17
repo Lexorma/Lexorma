@@ -65,6 +65,7 @@ public class LogicalModelService {
     private final LogicalErdLayoutRepository layoutRepository;
     private final EntityTableMappingRepository entityTableMappingRepository;
     private final AttributeColumnMappingRepository attributeColumnMappingRepository;
+    private final jakarta.persistence.EntityManager entityManager;
 
     // ------------------------------------------------------------------ 논리 모델
 
@@ -84,6 +85,11 @@ public class LogicalModelService {
         projectRepository.findByIdForUpdate(projectId); // 같은 프로젝트의 모델명 중복 검사를 직렬화한다
         String name = name(request.modelName(), "모델명");
         LogicalModel model = request.id() == null ? LogicalModel.builder().projectId(projectId).build() : model(projectId, request.id());
+        // DEC-08 : 모델 저장은 프로젝트 행 잠금으로 직렬화된다 — 잠근 뒤 다시 읽은 모델과 화면이 읽은 수정 일시 비교
+        if (request.id() != null) {
+            entityManager.refresh(model);
+            com.lexorma.common.jpa.ModelBase.verify(model, request.modifiedAt(), model.getModelName());
+        }
         if (modelRepository.existsByProjectIdAndModelNameIgnoreCaseAndIdNot(projectId, name, idOrNone(request.id()))) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, name);
         }
@@ -124,6 +130,9 @@ public class LogicalModelService {
         } else {
             entity = lockEntity(projectId, request.id()); // 모델은 바꿀 수 없다 (요청의 modelId 는 무시)
             rejectApproved(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+            // 낙관적 충돌 검사 (DEC-08) : 논리 모델 행 잠금 뒤 다시 읽은 엔터티와 화면이 읽은 수정 일시 비교
+            entityManager.refresh(entity);
+            com.lexorma.common.jpa.ModelBase.verify(entity, request.modifiedAt(), entity.getEntityName());
         }
         String name = name(request.entityName(), "엔터티명");
         if (entityRepository.existsByModel_IdAndEntityNameIgnoreCaseAndIdNot(entity.getModel().getId(), name, idOrNone(request.id()))) {
@@ -180,6 +189,8 @@ public class LogicalModelService {
             entity.getAttributes().add(attribute);
         } else {
             attribute = entity.getAttributes().stream().filter(a -> a.getId().equals(request.id())).findFirst().orElseThrow(() -> notFound("속성"));
+            entityManager.refresh(attribute);
+            com.lexorma.common.jpa.ModelBase.verify(attribute, request.modifiedAt(), attribute.getAttributeName()); // DEC-08
         }
         String name = name(request.attributeName(), "속성명");
         if (entity.getAttributes().stream().anyMatch(a -> a != attribute && a.getAttributeName().equalsIgnoreCase(name))) {
@@ -246,6 +257,8 @@ public class LogicalModelService {
             entity.getIdentifiers().add(identifier);
         } else {
             identifier = entity.getIdentifiers().stream().filter(i -> i.getId().equals(request.id())).findFirst().orElseThrow(() -> notFound("식별자"));
+            entityManager.refresh(identifier);
+            com.lexorma.common.jpa.ModelBase.verify(identifier, request.modifiedAt(), identifier.getIdentifierName()); // DEC-08 (엔터티의 모델 잠금 뒤)
         }
         String name = name(request.identifierName(), "식별자명");
         boolean primary = Boolean.TRUE.equals(request.isPrimary());
@@ -273,6 +286,7 @@ public class LogicalModelService {
             for (int i = 0; i < attributeIds.size(); i++) {
                 identifier.getAttributes().add(LogicalIdentifierAttribute.builder().identifier(identifier).attribute(owned.get(attributeIds.get(i))).sortOrder(i + 1).build());
             }
+            if (identifier.getId() != null) identifier.markModified(); // 구성만 바뀌어도 기준값이 바뀐다 (DEC-08)
         }
         if (identifier.getId() == null) identifierRepository.save(identifier);
         identifierRepository.flush();
@@ -304,7 +318,10 @@ public class LogicalModelService {
         } else {
             lockModel(projectId, relationshipRepository.findModelId(request.id(), projectId).orElseThrow(() -> notFound("관계")));
             relationship = relationshipRepository.findByIdAndProjectId(request.id(), projectId).orElseThrow(() -> notFound("관계"));
+            entityManager.refresh(relationship);
             rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+            com.lexorma.common.jpa.ModelBase.verify(relationship, request.modifiedAt(),
+                    relationship.getRelationshipName() == null ? String.valueOf(relationship.getId()) : relationship.getRelationshipName()); // DEC-08 (모델 잠금 뒤)
         }
         Long modelId = relationship.getModel().getId();
         relationship.setSourceEntity(relationEntity(projectId, modelId, request.sourceEntityId()));

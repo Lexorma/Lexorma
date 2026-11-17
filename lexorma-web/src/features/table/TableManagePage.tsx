@@ -113,8 +113,29 @@ export function TableManagePage() {
           crudActions={canEdit ? 'anCD' : ''}
           extraActions={canEdit && (
             <>
-              <button type="button" className="btn" id="download-template" onClick={() => download('/api/downloadTemplate/tableTemplate', t('테이블 템플릿.xlsx'))}>
-                <DownloadIcon />{t('템플릿')}
+              <button type="button" className="btn" id="download-template" title={t('값이 없는 업로드 양식을 내려받습니다.')}
+                onClick={() => download('/api/downloadTemplate/tableTemplate', t('테이블 템플릿.xlsx'))}>
+                <DownloadIcon />{t('빈 템플릿')}
+              </button>
+              {/* 등록 데이터 (M-11) : 지금 조회 조건(스키마·검색) 전체, 페이지와 무관. 업로드 양식과 같은 열 + 뒤에 참고 열 */}
+              <button type="button" className="btn" id="download-data" title={t('지금 조회 조건의 등록 데이터 전체를 업로드 양식으로 내려받습니다. 뒤쪽 참고 열은 다시 올려도 반영되지 않습니다.')}
+                onClick={() => {
+                  const search = grid.current?.getSearch();
+                  const query = new URLSearchParams({ ...(schemaId ? { schemaId } : {}), ...(search?.column ? { searchColumn: search.column, searchQuery: search.query } : {}) });
+                  return download(`/api/exportExcel/tables?${query}`, t('테이블 등록 데이터.xlsx'));
+                }}>
+                <DownloadIcon />{t('등록 데이터')}
+              </button>
+              {/* 선택 테이블 Export (DEC-22) : 체크한 테이블과 그 컬럼만 — 테이블·컬럼 두 파일 (최대 500개) */}
+              <button type="button" className="btn" id="download-selected" title={t('체크한 테이블과 그 컬럼의 등록 데이터를 업로드 양식으로 내려받습니다.')}
+                onClick={async () => {
+                  const checked = grid.current?.getCheckedOrAlert();
+                  if (!checked) return;
+                  const query = new URLSearchParams(checked.map((row) => ['tableIds', String(row.id)]));
+                  await download(`/api/exportExcel/tables?${query}`, t('선택 테이블 등록 데이터.xlsx'));
+                  await download(`/api/exportExcel/columns?${query}`, t('선택 테이블 컬럼 등록 데이터.xlsx'));
+                }}>
+                <DownloadIcon />{t('선택 테이블')}
               </button>
               <button type="button" id="excel-upload" className="btn" onClick={() => fileRef.current?.click()}><UploadIcon />{t('업로드')}</button>
             </>

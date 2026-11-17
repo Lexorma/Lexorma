@@ -1,5 +1,6 @@
 package com.lexorma.data.column.service.impl;
 
+import com.lexorma.data.column.service.ColumnListFilter;
 import com.lexorma.data.column.domain.dto.TermResolveDto;
 import com.lexorma.data.column.domain.dto.ColumnBulkSaveDto;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
@@ -23,7 +24,6 @@ import com.lexorma.common.utils.ExcelUtils;
 import com.lexorma.common.i18n.Messages;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
-import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -60,24 +60,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     public Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId) {
         Long projectId = accountDto.getProjectId();
 
-        Specification<ColumnInfo> where = (root, query, builder) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(builder.equal(root.get("projectId"), projectId));
-            if (tableId != null) {
-                // 테이블 ID 로 정확히 한 테이블의 컬럼만 (테이블명 검색은 부분 일치라 이름이 겹치는 테이블이 섞인다)
-                predicates.add(builder.equal(root.get("tableInfo").get("id"), tableId));
-            }
-            if (searchQuery != null && !searchQuery.trim().isEmpty() && searchColumn != null) {
-                String keyword = "%" + searchQuery + "%";
-                switch (searchColumn) {
-                    case "tableName" -> predicates.add(builder.like(root.get("tableName"), keyword.toUpperCase()));
-                    case "columnName" -> predicates.add(builder.like(builder.upper(root.get("columnName")), keyword.toUpperCase()));
-                    case "columnDesc", "dataType" -> predicates.add(builder.like(root.get(searchColumn), keyword));
-                    default -> { } // 모르는 검색 컬럼은 무시
-                }
-            }
-            return builder.and(predicates.toArray(Predicate[]::new));
-        };
+        Specification<ColumnInfo> where = ColumnListFilter.of(projectId, searchColumn, searchQuery, tableId);
 
         return columnInfoRepository.findAll(where, pageable).map(ColumnInfoDto::fromEntity);
     }
@@ -594,9 +577,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         List<ColumnBulkSaveDto.Row> rows = request.getRows() == null ? List.of() : request.getRows();
         // 업무 설명을 고치는 행은 먼저 잠그고 지금 값을 다시 읽어 비교한다 : 같은 업무 설명을 동시에 고친 두 저장(또는 AI 제안 승인) 중 뒤의 것이
         // 앞의 것을 모르고 덮어쓰지 않도록 (AI-5). 교착을 피하려고 ID 순서로 잠근다. 다른 행은 잠그지 않는다 (@DynamicUpdate 로 바꾼 칸만 쓴다)
-        rows.stream().filter(row -> row.getId() != null && row.getBizDescription() != null && existing.containsKey(row.getId()))
+        // 기준값(baseModifiedAt, DEC-08)을 보낸 행도 같은 순서로 잠그고 다시 읽어 비교한다 — 하나라도 다르면 아무것도 저장하지 않고 409
+        rows.stream().filter(row -> row.getId() != null && (row.getBizDescription() != null || row.getBaseModifiedAt() != null) && existing.containsKey(row.getId()))
                 .map(ColumnBulkSaveDto.Row::getId).distinct().sorted()
                 .forEach(id -> entityManager.refresh(existing.get(id), LockModeType.PESSIMISTIC_WRITE));
+        rows.stream().filter(row -> row.getId() != null && row.getBaseModifiedAt() != null && existing.containsKey(row.getId()))
+                .forEach(row -> com.lexorma.common.jpa.ModelBase.verify(existing.get(row.getId()), row.getBaseModifiedAt(), existing.get(row.getId()).getColumnName()));
         Map<String, StandardTerm> termByRowKey = new HashMap<>();
         Set<Long> seenIds = new HashSet<>();
         // 새로 적거나 바꾼 참조 테이블명 (행 키 → 값) : 여러 스키마에 있어 정할 수 없는 이름은 스키마명을 적게 한다

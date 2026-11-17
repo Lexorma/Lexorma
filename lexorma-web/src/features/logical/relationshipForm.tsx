@@ -53,6 +53,7 @@ export function RelationshipForm({ modelId, entities, relationship, initial, onS
           id: relationship?.id ?? null, modelId, relationshipName: name.trim() || null, relationshipDescription: description.trim() || null,
           sourceEntityId: Number(sourceId), targetEntityId: Number(targetId), isIdentifying: identifying,
           sourceMin: side(source).min, sourceMax: side(source).max, targetMin: side(target).min, targetMax: side(target).max,
+          modifiedAt: relationship?.modifiedAt ?? null, // DEC-08 기준값 (수정만)
         },
       });
       onSaved(saved);

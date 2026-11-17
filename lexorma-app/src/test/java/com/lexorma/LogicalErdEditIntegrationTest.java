@@ -299,8 +299,8 @@ class LogicalErdEditIntegrationTest {
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "941", "ROLE_USER");
         Relationship byUser = controller.saveRelationship(user, new Relationship(null, model.id(), "사용자 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null)).getBody();
         assertThat(byUser.isApproval()).as("승인 권한이 없는 사용자가 만든 관계는 승인 대기").isFalse();
-        assertThat(controller.saveRelationship(user, new Relationship(byUser.id(), model.id(), "사용자 관계 수정", null, order.id(), null, item.id(), null, true, 1, 1, 1, null, null, null)).getBody().isIdentifying()).isTrue();
-        rejected(() -> controller.saveRelationship(user, new Relationship(details.id(), model.id(), "승인된 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        assertThat(controller.saveRelationship(user, new Relationship(byUser.id(), model.id(), "사용자 관계 수정", null, order.id(), null, item.id(), null, true, 1, 1, 1, null, null, null, byUser.modifiedAt())).getBody().isIdentifying()).isTrue();
+        rejected(() -> controller.saveRelationship(user, new Relationship(details.id(), model.id(), "승인된 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null, details.modifiedAt())), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> controller.deleteRelationship(user, details.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         rejected(() -> controller.saveIdentifier(user, new Identifier(null, item.id(), "사용자 식별자", false, List.of(itemQuantity), null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> controller.updateRelationshipApproval(user, byUser.id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);

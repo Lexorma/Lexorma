@@ -27,11 +27,30 @@ public final class SourceCollectionDto {
 
     public record Execution(Long id, Long connectionId, String jobId, String executionType, String collectionType, String status, Integer reflectedOrder,
                             LocalDateTime startedAt, LocalDateTime endedAt, LocalDateTime reflectedAt, Integer tableCount, Integer columnCount,
-                            Integer versionCount, Integer changeCount, String errorCode, String errorMessage) {
+                            Integer versionCount, Integer changeCount, String errorCode, String errorMessage, Drop drop) {
         public static Execution of(SourceCollectionExecution e) {
             return new Execution(e.getId(), e.getConnectionId(), e.getJobId(), e.getExecutionType().name(), e.getCollectionType().name(), e.getStatus().name(),
                     e.getReflectedOrder(), e.getStartedAt(), e.getEndedAt(), e.getReflectedAt(), e.getTableCount(), e.getColumnCount(), e.getVersionCount(),
-                    e.getChangeCount(), e.getErrorCode(), e.getErrorMessage());
+                    e.getChangeCount(), e.getErrorCode(), e.getErrorMessage(), null);
+        }
+
+        public Execution withDrop(Drop drop) {
+            return new Execution(id, connectionId, jobId, executionType, collectionType, status, reflectedOrder, startedAt, endedAt, reflectedAt, tableCount, columnCount,
+                    versionCount, changeCount, errorCode, errorMessage, drop);
+        }
+    }
+
+    /**
+     * 객체 급감 (DEC-17) : 정상 반영(COMPLETED)된 수집의 테이블·컬럼 수가 같은 연결·같은 종류의 직전 정상 반영의 50% 미만. 실패(FAILED)는 반영되지 않아 비교하지 않는다 —
+     * 수집 실패와 정상적인 객체 감소(권한·스키마 삭제 등)를 구분한다. 차단하지 않고 화면에 경고만 한다. 저장하지 않고 조회할 때 계산한다
+     */
+    public record Drop(Long previousExecutionId, Integer previousTableCount, Integer previousColumnCount, Integer tableCount, Integer columnCount) {
+        /** 급감이 아니면(또는 비교할 수 없으면) null */
+        public static Drop of(SourceCollectionExecution previous, Integer tableCount, Integer columnCount) {
+            if (previous == null || tableCount == null || columnCount == null || previous.getTableCount() == null || previous.getColumnCount() == null) return null;
+            boolean tables = previous.getTableCount() > 0 && tableCount * 2 < previous.getTableCount();
+            boolean columns = previous.getColumnCount() > 0 && columnCount * 2 < previous.getColumnCount();
+            return tables || columns ? new Drop(previous.getId(), previous.getTableCount(), previous.getColumnCount(), tableCount, columnCount) : null;
         }
     }
 

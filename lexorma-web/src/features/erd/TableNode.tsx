@@ -2,9 +2,14 @@ import { Fragment, memo } from 'react';
 import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
 import { columnType, DIFF_LABEL, DIFF_MARK, diffClass, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, ROW_HEIGHT, SIMPLE_WIDTH_PX, type DiffKind, type NodeDiff, type TableNode as TableNodeType } from './model';
 import { t } from '../../lib/i18n';
+import { useErdExporting } from './exportImage';
 
-/** 화면에서 노드가 작으면(축소) 컬럼을 생략한다. 노드 크기와 테이블 연결점은 그대로라 관계선이 끊기지 않는다 */
-export const useSimpleNodes = () => useStore((s) => s.transform[2] * NODE_WIDTH < SIMPLE_WIDTH_PX);
+/** 화면에서 노드가 작으면(축소) 컬럼을 생략한다. 노드 크기와 테이블 연결점은 그대로라 관계선이 끊기지 않는다. 이미지로 내보내는 동안에는 자세히 그린다 (DEC-22) */
+export const useSimpleNodes = () => {
+  const small = useStore((s) => s.transform[2] * NODE_WIDTH < SIMPLE_WIDTH_PX);
+  const exporting = useErdExporting();
+  return small && !exporting;
+};
 
 /** 컬럼 연결점 id : 왼쪽(들어옴) / 오른쪽(나감) / 오른쪽 들어옴(자기 참조) */
 export const columnHandle = (columnId: number, side: 'in' | 'out' | 'self') => `c${columnId}-${side}`;
@@ -30,6 +35,10 @@ export const TableNode = memo(function TableNode({ data, selected, isConnectable
     <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}`} style={{ width: NODE_WIDTH, height: nodeHeight(columns.length) }}>
       <header title={schemaPrefix ? `${schemaPrefix}.${table.tableName}` : table.tableName}>
         <DiffBadge diff={diff} />
+        {!!data.invalidFk && (
+          <a className="erd-diff-badge erd-invalid-fk nodrag" href={`/modelDiagnostics`} title={t('무효 FK {0}건 : DDL 에서 FK 가 만들어지지 않습니다. 모델 구조 진단에서 확인하세요.', data.invalidFk)}
+             onClick={(e) => e.stopPropagation()}>⚠ {t('무효 FK {0}', data.invalidFk)}</a>
+        )}
         <strong>{schemaPrefix && <small className="erd-schema-prefix">{schemaPrefix}.</small>}{table.tableName}</strong>
         <span>
           {diff?.caption ? `${diff.caption} · ` : ''}

@@ -18,7 +18,7 @@ export interface EvaluationTarget {
 }
 export interface EvaluationProposal {
   id: number; model: string | null; promptVersion: string; createdAt: string | null; status: ReviewStatus; edited: boolean; certainty: Certainty;
-  proposedDescription: string; confirmedDescription: string | null; detail: DraftDetail | null; evidence: EvidenceItem[] | null; sameMetadata: boolean; invalidReferences: number;
+  proposedDescription: string; confirmedDescription: string | null; detail: DraftDetail | null; evidence: EvidenceItem[] | null; sameMetadata: boolean; sameContext: boolean; invalidReferences: number;
   /** 열린 제안을 아직 승인할 수 없는 사유 (평가 미완료) */
   approvalHold: ApprovalHold | null;
 }
@@ -40,6 +40,12 @@ export interface TargetDetail {
 export interface JudgmentRequest {
   targetId: number; proposalId: number; version: number | null; targetVersion: number; judgment: Judgment; unfoundedClaim: boolean; missingInformation: string | null; uncertainty: UncertaintyJudgment;
   termRecommendation: RecommendationJudgment; domainRecommendation: RecommendationJudgment; requiredEdits: string | null; reviewMinutes: number | null; writingMinutes: number | null;
+  /** 저장한 판정을 고칠 때의 사유 (DEC-27 — 값이 바뀌면 필수) */
+  changeReason?: string | null;
+}
+/** 판정 변경 이력 한 건 (DEC-27, 추가만) */
+export interface JudgmentHistoryRow {
+  id: number; changeType: 'INSERT' | 'UPDATE'; reviewerId: string; before: Record<string, unknown> | null; after: Record<string, unknown>; reason: string | null; changedAt: string;
 }
 export interface Rate { value: number | null; count: number; base: number }
 export interface ModelResult {
@@ -61,6 +67,7 @@ export const aiEvaluation = {
     api<TargetDetail>(`${BASE}/targets/${id}`, { method: 'PUT', body }),
   remove: (id: number) => api<{ result: boolean }>(`${BASE}/targets/${id}`, { method: 'DELETE' }),
   judge: (body: JudgmentRequest) => api<JudgmentRow>(`${BASE}/judgments`, { method: 'POST', body }),
+  judgmentHistory: (id: number) => api<JudgmentHistoryRow[]>(`${BASE}/judgments/${id}/history`),
   metrics: () => api<Metrics>(`${BASE}/metrics`),
 };
 

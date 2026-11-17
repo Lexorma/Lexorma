@@ -38,23 +38,23 @@ class LexormaIndexSeedTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, vendor, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2); // V0·V1
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7); // V0·V1·V2·V3·V4·V5·V6
             var jdbc = new JdbcTemplate(dataSource);
             Map<String, String> declared = declaredIndexes(vendor);
             Map<String, String> model = modelIndexes(jdbc, s);
 
-            // 누락·추가·불일치 없이 같다 (114·167 은 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개 포함,
+            // 누락·추가·불일치 없이 같다 (115·168 은 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개·평가 판정 이력 1개(V2) 포함,
             // TABLE·VIEW 이름은 스키마 단위라 UX_TBL_01·UX_VIEW_01 = 스키마 + 이름이고 IX_TBL_01·IX_VIEW_01 은 없다)
-            assertThat(model).isEqualTo(declared).hasSize(114);
+            assertThat(model).isEqualTo(declared).hasSize(132);
             assertThat(model).isEqualTo(realIndexes(jdbc, vendor, schema));
-            assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL")).isEqualTo(167);
+            assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL")).isEqualTo(187);
             // 중복 없음, 모두 프로젝트 LEXORMA 의 기본 스키마 테이블, 구성 컬럼은 그 테이블의 컬럼
-            assertThat(count(jdbc, "select count(distinct IDX_NM) from " + s + "TB_TBL_IDX")).isEqualTo(114);
+            assertThat(count(jdbc, "select count(distinct IDX_NM) from " + s + "TB_TBL_IDX")).isEqualTo(132);
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX i join " + s + "TB_TBL t on t.TBL_SN = i.TBL_SN join " + s + "TB_SCHM h on h.SCHM_SN = t.SCHM_SN "
-                    + "where i.PRJ_SN = 0 and t.PRJ_SN = 0 and h.PRJ_SN = 0")).isEqualTo(114);
+                    + "where i.PRJ_SN = 0 and t.PRJ_SN = 0 and h.PRJ_SN = 0")).isEqualTo(132);
             // 시스템 초기 등록 : 직접 정의(USER)·승인·등록자 SYSTEM, 유형·고급 속성 없음(BTREE 기본), 변경 요청·변경 이력은 만들지 않는다
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX where IDX_SRC_CD = 'USER' and APRV_YN = true and RGTR_ID = 'SYSTEM' and MDFR_ID = 'SYSTEM' "
-                    + "and IDX_TYPE_NM is null and CND_CN is null and DRVN_COL_SN is null")).isEqualTo(114);
+                    + "and IDX_TYPE_NM is null and CND_CN is null and DRVN_COL_SN is null")).isEqualTo(132);
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL where EXPR_CN is not null or SORT_CD is not null or COL_SN is null")).isZero();
             assertThat(count(jdbc, "select count(*) from " + s + "TB_IDX_CHG_DMND")).isZero();
             assertThat(count(jdbc, "select count(*) from " + s + "TB_MDL_CHG_HSTRY where TRGT_TYPE_CD like '%INDEX%'")).isZero();

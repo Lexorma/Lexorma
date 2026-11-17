@@ -7,7 +7,7 @@ import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import {
   CHANGE_TYPE, CONSTRAINT_TYPE, fromDetail, fromSnapshot,
-  type CatalogAt, type CatalogTableDetail, type Execution, type PageResult, type SourceChange, type SourceConnection, type TableState, type TableVersion, type ViewRelation, type ViewTable,
+  type CatalogAt, type CatalogTableDetail, type Execution, type PageResult, type SourceChange, type SourceConnection, type TableState, type TableVersion, type ViewRelation, type ViewTable, type ViewDefinitionStatus, type ViewDefinitionSummary, type ViewDefinitionText, type ViewDefinitionAccess,
 } from './model';
 import { ChangeTable } from './SourceCollectionPage';
 import { ConnectionPicker, NoConnection, orDash, useSelectedConnection, useSourceConnections } from './shared';
@@ -20,7 +20,7 @@ type Tab = 'columns' | 'constraints' | 'indexes' | 'relations' | 'changes' | 've
  * 모두 Lexorma 에 저장된 것을 읽는다 (원본 DB 에 접속하지 않는다). 원본 카탈로그는 물리 모델과 별개이며 이 화면은 물리 모델을 바꾸지 않는다.
  * - 스키마·테이블 목록 : 그 시점의 스냅샷 (order 가 없으면 마지막 반영)
  * - 테이블 상세 : 마지막 반영이면 현재 카탈로그(들어오는 FK 포함), 과거 시점이면 그때의 버전 내용
- * VIEW 는 이름·컬럼·COMMENT 만 있다 (정의 SQL 은 수집하지 않는다).
+ * VIEW 는 이름·컬럼·COMMENT 와 정의의 수집 상태가 있다 (DEC-16 : 원문은 프로젝트 관리자만 [정의 보기] 로 따로 불러온다).
  */
 export function SourceCatalogPage() {
   const connections = useSourceConnections();
@@ -173,6 +173,68 @@ function CatalogBrowser({ connections, connection, onSelectConnection, params, s
 }
 
 /** 그 시점에 새로 생기거나 바뀐 객체 표시 (그 반영에서 생긴 버전일 때만) */
+const DEFINITION_STATUS: Record<ViewDefinitionStatus, string> = {
+  COLLECTED: t('정의 수집됨'),
+  NO_PRIVILEGE: t('정의 조회 권한 없음'),
+  FAILED: t('정의 수집 실패'),
+  TOO_LARGE: t('정의가 너무 김'),
+};
+
+/**
+ * 원본 VIEW 정의 (DEC-16) : 상태·이전 수집 대비 변경은 누구나, 원문은 프로젝트 관리자·ADMIN 만 [정의 보기] 로 따로 불러온다 (서버가 권한을 다시 확인하고 확인 이력을 남긴다).
+ * 원문은 화면 상태에만 두고 캐시·저장소에 넣지 않는다 (닫으면 지운다). 정의 SQL 은 실행하지 않는 메타데이터다
+ */
+function ViewDefinitionPanel({ tableId, summary }: { tableId: number; summary: ViewDefinitionSummary }) {
+  const [text, setText] = useState<ViewDefinitionText | null>(null);
+  const [accesses, setAccesses] = useState<ViewDefinitionAccess[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      setText(await api<ViewDefinitionText>(`/api/source/tables/${enc(tableId)}/viewDefinition`));
+      // 방금 본 것까지 들어간 최근 확인 이력 (원문은 없다 — 누가·언제만)
+      setAccesses(await api<ViewDefinitionAccess[]>(`/api/source/tables/${enc(tableId)}/viewDefinition/accesses`, { silent: true }).catch(() => null));
+    } catch { /* 공통 알림 */ } finally {
+      setBusy(false);
+    }
+  };
+  const change = summary.change === 'NEW' ? t('이번 수집에서 처음 수집') : summary.change === 'CHANGED' ? t('이전 수집보다 바뀜') : summary.change === 'SAME' ? t('이전 수집과 같음') : null;
+  return (
+    <section className="source-definition" aria-label={t('VIEW 정의')}>
+      <div className="source-labels">
+        <strong>{t('VIEW 정의')}</strong>
+        {summary.status ? <Label variant={summary.status === 'COLLECTED' ? 'done' : 'danger'}>{DEFINITION_STATUS[summary.status]}</Label>
+          : <Label>{t('아직 정의를 수집하지 않음')}</Label>}
+        {change && <Label variant={summary.change === 'SAME' ? undefined : 'attention'}>{change}</Label>}
+        {summary.length != null && <span className="gh-muted">{t('{0}자', summary.length)}</span>}
+        {summary.collectedAt && <span className="gh-muted">{t('정의 수집 {0}', formatDateTime(summary.collectedAt))}</span>}
+      </div>
+      {summary.status === 'NO_PRIVILEGE' && <p className="source-warn">{t('원본 DB 가 이 계정의 VIEW 정의 조회를 허용하지 않았습니다. 테이블·컬럼은 수집되었고, 이전에 수집한 정의가 있으면 그대로 둡니다.')}</p>}
+      {summary.status === 'FAILED' && <p className="source-warn">{t('VIEW 정의를 읽지 못했습니다. 테이블·컬럼은 수집되었고, 이전에 수집한 정의가 있으면 그대로 둡니다.')}</p>}
+      {summary.status === 'TOO_LARGE' && <p className="source-warn">{t('정의가 저장 한도보다 길어 원문을 받지 않았습니다.')}</p>}
+      <p className="form-help">{t('정의에는 업무 규칙·리터럴이 들어 있을 수 있어 AI·모델 Export·MCP 에 넣지 않고, 프로젝트 관리자만 원문을 볼 수 있습니다. 볼 때마다 확인 이력이 남습니다.')}</p>
+      {summary.canRead && summary.available && !text && (
+        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void open()}>{t('정의 보기')}</button>
+      )}
+      {!summary.canRead && summary.available && <p className="gh-muted">{t('정의 원문은 프로젝트 관리자만 볼 수 있습니다.')}</p>}
+      {text && (
+        <>
+          <pre className="source-definition-text gh-mono" aria-label={t('VIEW 정의 원문')}>{text.definition}</pre>
+          <button type="button" className="btn btn-sm" onClick={() => { setText(null); setAccesses(null); }}>{t('정의 닫기')}</button>
+          {accesses && accesses.length > 0 && (
+            <div className="source-sub">
+              <h4>{t('최근 원문 확인 이력')}</h4>
+              <ul>
+                {accesses.map((a) => <li key={a.id}>{formatDateTime(a.accessedAt)} · <span className="gh-mono">{a.accountId ?? '-'}</span></li>)}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function ChangeBadge({ changeType, versionOrder, order }: { changeType: string; versionOrder: number; order: number | null }) {
   if (versionOrder !== order || changeType === 'BASE') return null;
   const type = CHANGE_TYPE[changeType as keyof typeof CHANGE_TYPE];
@@ -189,13 +251,13 @@ export function TableDetailView({ tableId, order, onOpenTable, onOpenOrder }: {
   const [tab, setTab] = useState<Tab>('columns');
   const detail = useQuery({
     queryKey: ['source-table', tableId, order],
-    queryFn: async (): Promise<{ view: ViewTable; schemaName: string | null; present: boolean }> => {
+    queryFn: async (): Promise<{ view: ViewTable; schemaName: string | null; present: boolean; definition: ViewDefinitionSummary | null }> => {
       if (order == null) {
         const d = await api<CatalogTableDetail>(`/api/source/tables/${enc(tableId)}`, { silent: true });
-        return { view: fromDetail(d), schemaName: d.schema.schemaName, present: d.table.present };
+        return { view: fromDetail(d), schemaName: d.schema.schemaName, present: d.table.present, definition: d.viewDefinition };
       }
       const snapshot = await api<{ content: unknown }>(`/api/source/tables/${enc(tableId)}/snapshot?order=${enc(order)}`, { silent: true });
-      return { view: fromSnapshot(snapshot.content), schemaName: null, present: true };
+      return { view: fromSnapshot(snapshot.content), schemaName: null, present: true, definition: null };
     },
   });
   const changes = useQuery({
@@ -238,7 +300,9 @@ export function TableDetailView({ tableId, order, onOpenTable, onOpenOrder }: {
         {order != null && <Label variant="attention">{t('반영 순서 {0} 시점', order)}</Label>}
       </div>
       <p className={view.comment ? 'source-comment' : 'gh-muted'}>{view.comment ?? t('원본 COMMENT 없음')}</p>
-      {isView && <p className="form-help">{t('원본 VIEW 는 이름·컬럼·COMMENT 만 수집합니다. 정의 SQL 은 수집하지 않습니다.')}</p>}
+      {isView && (order == null && detail.data.definition
+        ? <ViewDefinitionPanel key={tableId} tableId={tableId} summary={detail.data.definition} />
+        : <p className="form-help">{t('VIEW 정의는 현재 카탈로그에서만 볼 수 있습니다. 버전에는 정의의 해시만 남습니다.')}</p>)}
 
       <ul className="nav nav-tabs">
         {tabs.map(([id, label]) => (

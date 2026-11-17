@@ -27,6 +27,19 @@ public class BaseEntity {
         return new Audit(created, updated, createdBy, updatedBy);
     }
 
+    /** 수정 기준값 (DEC-08 낙관적 충돌 검사, {@link ModelBase}) : 마지막 수정 일시. bean getter 가 아니라 JSON 프로퍼티가 되지 않는다 */
+    public LocalDateTime modifiedAt() {
+        return updated;
+    }
+
+    /**
+     * 자식 행(구성 : 식별자 속성·인덱스 컬럼 등)만 바뀐 수정도 이 행의 수정 일시를 바꾼다 (DEC-08). 행 자신의 값이 그대로면 Hibernate 가 UPDATE 하지 않아
+     * MDFCN_DT 가 남고, 예전 기준값으로 보낸 저장이 충돌 없이 구성을 되돌린다. 값을 바꿔 두면 UPDATE 가 나가고 감사 리스너가 지금 시각으로 다시 채운다
+     */
+    public void markModified() {
+        updated = LocalDateTime.now();
+    }
+
     @CreatedDate
     @Column(name = "REG_DT", updatable = false)
     private LocalDateTime created;

@@ -430,6 +430,12 @@ public enum ErrorCode {
      * 원본 비교(M-4d) 요청이 앞서 받은 비교 기준(기준 연결·반영 순서)과 다르다 : 그 사이 기준 연결이 바뀌었거나 새 수집이 반영되었다 (다른 시점의 결과를 섞지 않는다).
      */
     SOURCE_COMPARE_STALE(HttpStatus.CONFLICT, "SOURCE_COMPARE_STALE"),
+    // DEC-22 모델 Export·Import : 파일이 올바르지 않음 / 계획 뒤 대상 모델이 바뀜 / 대상 프로젝트 관리자가 아님
+    MODEL_EXCHANGE_INVALID(HttpStatus.BAD_REQUEST, "MODEL_EXCHANGE_INVALID"),
+    MODEL_EXCHANGE_STALE(HttpStatus.CONFLICT, "MODEL_EXCHANGE_STALE"),
+    MODEL_EXCHANGE_FORBIDDEN(HttpStatus.FORBIDDEN, "MODEL_EXCHANGE_FORBIDDEN"),
+    // DEC-31 내장 MCP : 설정·토큰 요청이 올바르지 않음
+    MCP_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "MCP_REQUEST_INVALID"),
 
     /**
      * 원본 메타데이터 가져오기(M-4e) 요청을 처리할 수 없다 : 고른 항목이 없거나, 적용할 수 없는 항목이 있거나, 미리보기 없이 확정했다.
@@ -548,6 +554,16 @@ public enum ErrorCode {
      * 컬럼의 표준 용어 연결을 화면을 연 뒤 다른 사용자가 바꿨다 (COL-TERM). 다시 열어 확인한다.
      */
     COLUMN_TERM_CONFLICT(HttpStatus.CONFLICT, "COLUMN_TERM_CONFLICT"),
+
+    /**
+     * 모델 객체를 화면이 읽은 뒤 다른 사용자가 먼저 수정했다 (DEC-08 · DEC-13 낙관적 충돌 검사). 아무것도 바꾸지 않았다.
+     */
+    MODEL_CONFLICT(HttpStatus.CONFLICT, "MODEL_CONFLICT"),
+
+    /**
+     * 모델 수정 요청에 수정 기준값(화면이 읽은 수정 일시)이 없다 (DEC-08 3차). 화면을 새로 열어 다시 저장한다.
+     */
+    MODEL_BASE_REQUIRED(HttpStatus.BAD_REQUEST, "MODEL_BASE_REQUIRED"),
 
     /**
      * 지금 상태에서는 할 수 없는 검토다 (이미 승인·반려됨, 재검토 필요 제안의 승인 등, AI-5).

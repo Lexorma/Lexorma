@@ -15,11 +15,11 @@ import { Pager, useCanManageSource } from './shared';
  * 재가져오기 (M-4f) : 전에 가져온 TABLE 이면 마지막으로 가져온 값과 견줘 원본만 바뀐 것·모델에서 바꾼 것·둘 다 바뀐 것·기준값 없음을 나눠 보여 준다 (판정은 서버).
  */
 type Kind = 'TABLE' | 'COLUMN' | 'PRIMARY_KEY' | 'UNIQUE' | 'CHECK' | 'FOREIGN_KEY' | 'INDEX';
-type Action = 'CREATE' | 'ADD' | 'UPDATE';
+type Action = 'CREATE' | 'ADD' | 'UPDATE' | 'CLEAR' | 'REPLACE';
 type Reason = 'NOT_MAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'EXCLUDED' | 'NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT' | 'SOURCE_REMOVED' | 'MODEL_DELETED'
   | 'SAME' | 'UNKNOWN' | 'RENAME_CANDIDATE' | 'CONFLICT' | 'REPLACE_REQUIRED' | 'MODEL_ONLY' | 'UNSUPPORTED_ATTRIBUTE' | 'APPROVED' | 'TYPE_NOT_REPRESENTABLE' | 'DEFAULT_NOT_REPRESENTABLE'
   | 'INVALID_NAME' | 'QUOTED_NAME' | 'PK_NOT_NULL' | 'PK_EXISTS' | 'PK_ORDER' | 'ORDER_NOT_SUPPORTED' | 'NO_FIELD' | 'EMPTY_COMMENT' | 'UNSUPPORTED_INDEX_TYPE'
-  | 'MISSING_DEPENDENCY' | 'UNRESOLVED_TARGET' | 'TARGET_NOT_KEY' | 'NOT_FOUND' | 'UNSUPPORTED_DBMS' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'REMOVED_IN_SOURCE';
+  | 'MISSING_DEPENDENCY' | 'UNRESOLVED_TARGET' | 'TARGET_NOT_KEY' | 'NOT_FOUND' | 'UNSUPPORTED_DBMS' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'REMOVED_IN_SOURCE' | 'REFERENCED';
 type Judgement = 'SOURCE_CHANGED' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'NO_BASELINE';
 
 interface Item {
@@ -43,7 +43,8 @@ interface Execution {
 interface Change { targetType: string; targetId: number; targetName: string | null; action: string; source: string; before: string | null; after: string | null }
 
 const KIND: Record<Kind, string> = { TABLE: 'TABLE', COLUMN: t('컬럼'), PRIMARY_KEY: 'PK', UNIQUE: 'UNIQUE', CHECK: 'CHECK', FOREIGN_KEY: 'FK', INDEX: t('인덱스') };
-const ACTION: Record<Action, string> = { CREATE: t('새로 만들기'), ADD: t('추가'), UPDATE: t('변경') };
+// CLEAR (DEC-07) : 원본에서 지워진 COMMENT 를 모델의 원본 COMMENT 칸에서도 비운다 — 따로 골라야만 반영된다
+const ACTION: Record<Action, string> = { CREATE: t('새로 만들기'), ADD: t('추가'), UPDATE: t('변경'), CLEAR: t('비우기 (원본에서 지워짐)'), REPLACE: t('교체 (기존 객체를 지우고 원본 구성으로)') };
 const ATTRIBUTE: Record<string, string> = {
   dataType: t('타입'), nullable: t('NULL 허용'), default: t('기본값'), comment: t('원본 COMMENT'), autoIncrement: t('자동 증가'), order: t('순서'),
 };
@@ -82,9 +83,10 @@ const REASON: Record<Reason, string> = {
   TARGET_NOT_KEY: t('참조 컬럼이 대상 TABLE 의 PK·UNIQUE 가 아닙니다'),
   NOT_FOUND: t('지금 비교 결과에 없는 항목입니다'),
   UNSUPPORTED_DBMS: t('이 DBMS 의 비교 규칙이 아직 없습니다'),
+  REFERENCED: t('다른 TABLE 의 관계가 이 TABLE 의 PK 를 참조해 교체할 수 없습니다'),
   MODEL_EDITED: t('원본은 마지막 가져오기 그대로인데 모델에서 바꿨습니다. 모델 값을 되돌리지 않습니다'),
   BOTH_CHANGED: t('마지막 가져오기 뒤 원본과 모델이 모두 바뀌었습니다. 자동으로 반영하지 않습니다 (모델 관리에서 직접 정하세요)'),
-  REMOVED_IN_SOURCE: t('원본에서 삭제되었습니다. 모델 객체는 유지되며 자동 삭제는 지원하지 않습니다'),
+  REMOVED_IN_SOURCE: t('원본에서 삭제되었습니다. 모델 객체는 자동으로 지우지 않습니다 (원본 매핑 관리의 원본 삭제 반영에서 고를 수 있습니다)'),
 };
 const JUDGEMENT: Record<Judgement, { label: string; variant: LabelVariant; help: string }> = {
   SOURCE_CHANGED: { label: t('원본 변경'), variant: 'accent', help: t('마지막으로 가져온 뒤 원본만 바뀌었습니다') },
@@ -101,15 +103,18 @@ function JudgementLabel({ item }: { item: Item }) {
 
 const IMPORT_KEY = 'source-import';
 
-function itemLabel(item: Item) {
+/** @param withAction 동작(추가·변경…)을 보인다. 수동 검토 묶음은 아무것도 하지 않으므로 보이지 않는다 */
+function itemLabel(item: Item, withAction = true) {
   return (
     <>
       {item.kind && <Label>{KIND[item.kind]}</Label>}{' '}
       <span className="gh-mono source-break">{item.sourceName ?? item.id}</span>
       {item.modelName && item.modelName !== item.sourceName && <span className="gh-muted"> → <span className="gh-mono">{item.modelName}</span></span>}
-      <div className="gh-muted source-sub">
-        {item.action ? ACTION[item.action] : ''}{item.attribute ? ` · ${ATTRIBUTE[item.attribute] ?? item.attribute}` : ''}
-      </div>
+      {withAction && (
+        <div className="gh-muted source-sub">
+          {item.action ? ACTION[item.action] : ''}{item.attribute ? ` · ${ATTRIBUTE[item.attribute] ?? item.attribute}` : ''}
+        </div>
+      )}
     </>
   );
 }
@@ -199,7 +204,9 @@ export function SourceImportPanel({ rowKey, connectionId, reflectedOrder, onStal
   const selectable = data.items.filter((i) => i.selectable);
   const conflicts = data.items.filter((i) => !i.selectable && (i.reason === 'MODEL_EDITED' || i.reason === 'BOTH_CHANGED'));
   const removed = data.items.filter((i) => i.reason === 'REMOVED_IN_SOURCE');
-  const blocked = data.items.filter((i) => !i.selectable && !conflicts.includes(i) && !removed.includes(i));
+  // DEC-05 : 구성 차이를 안전하게 판단할 수 없는 객체 — 자동 교체하지 않고 기존 모델 객체를 그대로 둔다 (수동 검토)
+  const unknowns = data.items.filter((i) => !i.selectable && i.reason === 'UNKNOWN');
+  const blocked = data.items.filter((i) => !i.selectable && !conflicts.includes(i) && !removed.includes(i) && !unknowns.includes(i));
   const reimport = data.lastImport != null;
 
   return (
@@ -217,7 +224,7 @@ export function SourceImportPanel({ rowKey, connectionId, reflectedOrder, onStal
           <p className="form-help">
             {data.create
               ? t('매핑되지 않은 원본 TABLE 입니다. TABLE:CREATE 를 고르면 {0}.{1} 를 새로 만들고 매핑을 함께 확정합니다.', data.modelSchemaName ?? '', data.modelTableName ?? '')
-              : t('고른 항목만 반영합니다. 고르지 않은 속성은 바뀌지 않고, 삭제·이름 변경은 하지 않습니다. 원본 COMMENT 는 업무 설명과 따로 저장합니다.')}
+              : t('고른 항목만 반영합니다. 고르지 않은 속성은 바뀌지 않습니다. 교체 항목을 고른 객체만 지우고 다시 만들며, 이름은 바꾸지 않습니다. 원본 COMMENT 는 업무 설명과 따로 저장합니다.')}
           </p>
           {selectable.length === 0 ? <p className="gh-muted">{t('가져올 수 있는 차이가 없습니다.')}</p> : (
             <div className="source-table-wrap">
@@ -257,6 +264,27 @@ export function SourceImportPanel({ rowKey, connectionId, reflectedOrder, onStal
                         <td><Value value={item.before} /></td>
                         <td><Value value={item.baseline} /></td>
                         <td className="gh-muted">{item.reason ? REASON[item.reason] : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {unknowns.length > 0 && (
+            <div className="source-import-conflicts" role="group" aria-label={t('수동 검토 필요')}>
+              <h5 className="source-title-icon"><TriangleAlert size={14} aria-hidden="true" /> {t('수동 검토 필요 {0}개', unknowns.length)}</h5>
+              <p className="form-help">{t('원본과 모델의 구성 차이를 안전하게 판단할 수 없어(식 비교 불가, DBMS별 표현 차이, 정규화할 수 없는 정의) 자동으로 교체하지 않습니다. 기존 모델 객체는 그대로 둡니다. 두 정의를 비교해 필요하면 모델 관리에서 직접 고치세요.')}</p>
+              <div className="source-table-wrap">
+                <table className="source-table">
+                  <thead><tr><th>{t('객체')}</th><th>{t('원본 값')}</th><th>{t('현재 모델')}</th><th>{t('사유')}</th></tr></thead>
+                  <tbody>
+                    {unknowns.map((item) => (
+                      <tr key={item.id}>
+                        <td>{itemLabel(item, false)} <Label variant="attention">{t('수동 검토')}</Label></td>
+                        <td><Value value={item.source} /></td>
+                        <td><Value value={item.before} /></td>
+                        <td className="gh-muted">{t('판단 불가 — 자동 교체하지 않음')}</td>
                       </tr>
                     ))}
                   </tbody>

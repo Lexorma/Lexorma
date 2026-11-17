@@ -160,7 +160,7 @@ function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editab
     if (!name.trim()) return dialog.alert(t('엔터티명은(는) 필수 입력 항목입니다.'));
     dialog.confirm(t('수정하시겠습니까?'), async () => {
       // 이름 중복(모델 안, 대소문자 무시)·승인 상태는 서버에서 검증한다
-      await api('/api/logical/entity', { method: 'POST', body: { id: entity.id, entityName: name.trim(), entityDescription: description.trim() || null } });
+      await api('/api/logical/entity', { method: 'POST', body: { id: entity.id, entityName: name.trim(), entityDescription: description.trim() || null, modifiedAt: entity.modifiedAt ?? null } });
       dialog.alert(t('정상적으로 수정되었습니다.'), onSaved);
     });
   };
@@ -295,7 +295,7 @@ export function AttributeForm({ entityId, attribute, onSaved }: { entityId: numb
       // 도메인은 보내지 않는다 : 표준 용어의 도메인을 서버가 조회해 내려준다
       await api('/api/logical/attribute', {
         method: 'POST',
-        body: { id: attribute?.id ?? null, entityId, attributeName: name.trim(), attributeDescription: description.trim() || null, dataType: dataType.trim() || null, isRequired: required, termId: term?.id ?? null },
+        body: { id: attribute?.id ?? null, entityId, attributeName: name.trim(), attributeDescription: description.trim() || null, dataType: dataType.trim() || null, isRequired: required, termId: term?.id ?? null, modifiedAt: attribute?.modifiedAt ?? null },
       });
       onSaved();
     });
@@ -434,7 +434,7 @@ export function IdentifierForm({ entity, identifier, onSaved }: { entity: Logica
     if (!name.trim()) return dialog.alert(t('식별자명은(는) 필수 입력 항목입니다.'));
     if (!ids.length) return dialog.alert(t('식별자 속성을 1개 이상 선택해주세요.'));
     dialog.confirm(identifier ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
-      await api('/api/logical/identifier', { method: 'POST', body: { id: identifier?.id ?? null, entityId: entity.id, identifierName: name.trim(), isPrimary: primary, attributeIds: ids } });
+      await api('/api/logical/identifier', { method: 'POST', body: { id: identifier?.id ?? null, entityId: entity.id, identifierName: name.trim(), isPrimary: primary, attributeIds: ids, modifiedAt: identifier?.modifiedAt ?? null } });
       onSaved();
     });
   };

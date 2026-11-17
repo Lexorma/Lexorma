@@ -126,3 +126,6 @@ dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
 .erd-view-panel h4 { margin: 10px 0 2px; font-size: 12px; }
 .erd-view-panel .erd-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .erd-view-toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* 무효 FK 표시 (DEC-09) : 모델 구조 진단의 오류. 변경 표시와 같은 자리, 위험 색 */
+.erd-invalid-fk { --erd-diff: var(--gh-danger); text-decoration: none; }

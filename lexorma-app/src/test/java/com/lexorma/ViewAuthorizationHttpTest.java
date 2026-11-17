@@ -128,8 +128,8 @@ class ViewAuthorizationHttpTest {
         JsonNode created = ok(user.postJson("/api/physical/view", save("VW_BY_USER", "SELECT 2", null)));
         long own = created.path("id").asLong();
         assertThat(JSON.readTree(user.get("/api/physical/view/" + own).body()).path("isApproval").asBoolean()).as("승인 권한이 없으면 승인 대기로 등록").isFalse();
-        assertThat(ok(user.put("/api/physical/view/" + own, save("VW_BY_USER", "SELECT 3", null))).path("applied").asBoolean()).isTrue();
-        JsonNode request = ok(user.put("/api/physical/view/" + approved, save("VW_AUTH", "SELECT 9", tableId)));
+        assertThat(ok(user.put("/api/physical/view/" + own, withBase(user, own, save("VW_BY_USER", "SELECT 3", null)))).path("applied").asBoolean()).isTrue();
+        JsonNode request = ok(user.put("/api/physical/view/" + approved, withBase(user, approved, save("VW_AUTH", "SELECT 9", tableId))));
         assertThat(request.path("applied").asBoolean()).isFalse();
         long requestId = request.path("request").path("id").asLong();
         assertThat(JSON.readTree(user.get("/api/physical/view/" + approved).body()).path("view").path("definition").asString()).as("대기 중 확정 정의 유지").isEqualTo("SELECT 1");
@@ -159,7 +159,8 @@ class ViewAuthorizationHttpTest {
         Browser stranger = new Browser(port);
         assertThat(stranger.login("admin", otherProjectId).statusCode()).isEqualTo(200);
         for (HttpResponse<String> response : List.of(stranger.get("/api/physical/view/" + approved), stranger.get("/api/physical/view/" + approved + "/ddl"),
-                stranger.put("/api/physical/view/" + approved, save("VW_AUTH", "SELECT 7", null)), stranger.delete("/api/physical/view/" + approved),
+                // 기준값을 넣어도(값은 아무거나) 다른 프로젝트의 VIEW 는 없는 것과 같다 (기준값 검사보다 프로젝트 범위가 먼저 막는다)
+                stranger.put("/api/physical/view/" + approved, save("VW_AUTH", "SELECT 7", null).replaceFirst("}$", ",\"baseModifiedAt\":\"2026-01-01T00:00:00\"}")), stranger.delete("/api/physical/view/" + approved),
                 stranger.patch("/api/physical/view/" + approved + "/approval/false"), stranger.patch("/api/physical/view/request/" + requestId + "/true"),
                 stranger.postJson("/api/physical/view", save("VW_STEAL", "SELECT 1", tableId)))) {
             error(response, 400, "INVALID_PHYSICAL_MODEL");
@@ -189,6 +190,12 @@ class ViewAuthorizationHttpTest {
     private static String save(String name, String sql, Long tableId) {
         String references = tableId == null ? "[]" : "[{\"referenceType\":\"TABLE\",\"tableId\":" + tableId + "}]";
         return "{\"viewName\":\"" + name + "\",\"definition\":\"" + sql + "\",\"columns\":[{\"columnName\":\"C1\"}],\"references\":" + references + "}";
+    }
+
+    /** 수정 요청에 화면처럼 상세의 수정 일시를 기준값으로 넣는다 (DEC-13 3차 : 없으면 400) */
+    private static String withBase(Browser client, long id, String body) throws Exception {
+        String updated = JSON.readTree(client.get("/api/physical/view/" + id).body()).path("updated").asString();
+        return body.substring(0, body.length() - 1) + ",\"baseModifiedAt\":\"" + updated + "\"}";
     }
 
     private static JsonNode ok(HttpResponse<String> response) {

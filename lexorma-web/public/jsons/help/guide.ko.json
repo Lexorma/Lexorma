@@ -1,0 +1,523 @@
+[
+  {
+    "menuId": "standard-domain",
+    "path": "/standardDomain",
+    "title": "표준 도메인",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "데이터 타입·길이·소수점 자리로 값의 형식을 정의합니다. 표준 용어는 도메인을 하나 골라 타입을 정합니다.",
+          "예제 프로젝트(LEXORMA)의 29개 도메인을 참고해 비슷한 형식을 다시 쓰세요."
+        ]
+      },
+      {
+        "heading": "승인",
+        "items": [
+          "등록·수정한 항목은 승인 대기로 남고, 승인 권한(DBA 이상 또는 프로젝트 관리자)이 승인해야 확정됩니다. 승인된 항목은 승인 취소 뒤에 고칩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/standard-domain.jpg"
+  },
+  {
+    "menuId": "standard-word",
+    "path": "/standardWord",
+    "title": "표준 단어",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "용어와 테이블명을 만드는 단어와 영문 약어를 관리합니다. 같은 뜻의 단어는 하나만 두고 동의어로 연결하세요.",
+          "엑셀 업로드·다운로드는 USER 이상에서 쓸 수 있습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/standard-word.jpg"
+  },
+  {
+    "menuId": "standard-term",
+    "path": "/standardTerm",
+    "title": "표준 용어",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "단어를 조합한 용어와 도메인을 정합니다. 컬럼은 표준 용어에 연결되어 이름·타입의 기준이 됩니다.",
+          "코드 용어의 설명에는 코드 값 목록을 적어 두면 AI 설명 제안과 품질 진단에 도움이 됩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/standard-term.jpg"
+  },
+  {
+    "menuId": "table-manage",
+    "path": "/tableManage",
+    "title": "테이블 관리",
+    "sections": [
+      {
+        "heading": "등록·수정",
+        "items": [
+          "테이블 코멘트(한글명)를 입력하면 표준 단어로 테이블명을 만듭니다. 프로젝트의 테이블 접두어가 앞에 붙습니다.",
+          "미승인 테이블은 수정 화면에서 다른 스키마로 옮길 수 있습니다. 이 테이블을 참조하던 컬럼의 참조 테이블명은 함께 고쳐집니다. 승인된 테이블은 승인 취소 뒤에 옮깁니다."
+        ]
+      },
+      {
+        "heading": "업무 설명",
+        "items": [
+          "업무 설명은 DDL COMMENT(테이블 설명)와 따로 관리하는 확정 설명입니다. 최대 4,000자이며, 다른 사용자가 먼저 고쳤으면 저장하지 않고 알립니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/table-manage.jpg"
+  },
+  {
+    "menuId": "column-manage",
+    "path": "/columnManage",
+    "title": "컬럼 관리",
+    "sections": [
+      {
+        "heading": "표준 용어 연결",
+        "items": [
+          "상세에서 [표준 용어 변경]·[표준 용어 연결하기]로 미승인 컬럼의 연결을 바꾸거나 처음 연결하고, [연결 해제]로 끊습니다. 컬럼명·타입·설명은 그대로입니다.",
+          "여러 컬럼을 체크하고 [표준 용어 일괄 연결]을 누르면 컬럼명과 영문 약어가 같은 용어를 찾아 계획을 보여 줍니다. 하나라도 거부되면 아무것도 바뀌지 않습니다."
+        ]
+      },
+      {
+        "heading": "엑셀",
+        "items": [
+          "엑셀 업로드는 새 컬럼만 등록합니다. 다운로드는 현재 검색 조건 전체를 내려받으며, 참고 열은 다시 올려도 반영되지 않습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/column-manage.jpg"
+  },
+  {
+    "menuId": "index-manage",
+    "path": "/indexManage",
+    "title": "인덱스 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "복합·고유·조건부·표현식 인덱스를 관리합니다. 같은 정의의 인덱스는 등록할 수 없습니다.",
+          "PK 와 같은 컬럼의 일반 인덱스, 다른 인덱스의 앞부분과 같은 인덱스는 등록은 되지만 [모델 구조 진단]에 경고로 나타납니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/index-manage.jpg"
+  },
+  {
+    "menuId": "physical-erd",
+    "path": "/physicalErd",
+    "title": "물리 ERD",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "스키마별로 테이블과 관계를 그립니다. 편집 모드(USER 이상)에서 관계를 만들고 배치를 저장합니다.",
+          "관계로 확정하지 못한 참조 테이블명은 테이블 상세에 표시되고, [모델 구조 진단]에 무효 FK 로 나옵니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/physical-erd.jpg"
+  },
+  {
+    "menuId": "ddl-export",
+    "path": "/ddlExport",
+    "title": "DDL 내보내기",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "프로젝트 DBMS(PostgreSQL·Oracle·MySQL·MariaDB) 기준으로 DDL 을 만듭니다. 만들 수 없는 FK·규칙은 빼고 경고로 알립니다.",
+          "승인되지 않은 객체가 포함되면 함께 알립니다. 실제 DB 에 실행하기 전에 경고를 확인하세요."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/ddl-export.jpg"
+  },
+  {
+    "menuId": "source-collection",
+    "path": "/sourceCollection",
+    "title": "메타데이터 수집",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 DB(PostgreSQL)의 메타데이터를 읽기 전용으로 수집해 원본 카탈로그에 반영합니다. 원본 DB 에 DDL·DML 을 실행하지 않습니다.",
+          "수집은 프로젝트 관리자·ADMIN 이 실행합니다. 연결은 외부 연결 보안의 허용 규칙을 통과해야 합니다."
+        ]
+      },
+      {
+        "heading": "객체 급감 경고",
+        "items": [
+          "정상 완료된 수집의 테이블·컬럼 수가 직전 정상 수집의 절반 미만이면 [객체 급감] 경고를 보입니다. 수집 실패와는 다르며, 반영은 이미 된 상태입니다. 권한·대상 스키마가 바뀌었는지 확인하세요."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-collection.jpg"
+  },
+  {
+    "menuId": "source-compare",
+    "path": "/sourceCompare",
+    "title": "원본·모델 비교",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 카탈로그와 물리 모델을 비교하고, 고른 항목만 가져오기 계획 → 적용 순서로 모델에 반영합니다. 승인된 객체와 삭제·이름 변경은 가져오지 않습니다.",
+          "적용 전에 모델 버전이 자동으로 저장됩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-compare.jpg"
+  },
+  {
+    "menuId": "standardization-quality",
+    "path": "/standardizationQuality",
+    "title": "표준화 품질 진단",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "표준 용어 미연결, 컬럼명 불일치, 도메인 정의 불일치를 진단합니다. 조회만 하며 모델을 바꾸지 않습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/standardization-quality.jpg"
+  },
+  {
+    "menuId": "model-diagnostics",
+    "path": "/modelDiagnostics",
+    "title": "모델 구조 진단",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "무효 FK(오류)와 중복 인덱스(경고)를 진단합니다. 무효 FK 는 DDL 에서 만들어지지 않지만 모델 수정은 막지 않습니다. 행의 바로가기로 테이블 상세·ERD 에서 고치세요."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/model-diagnostics.jpg"
+  },
+  {
+    "menuId": "model-version",
+    "path": "/modelVersion",
+    "title": "모델 버전 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "모델 전체를 이름 있는 버전으로 저장하고 버전끼리 또는 현재 모델과 비교합니다. 버전과 모델 변경 이력은 보존되며 자동으로 지우지 않습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/model-version.jpg"
+  },
+  {
+    "menuId": "ai-dictionary",
+    "path": "/aiDictionary",
+    "title": "AI 설명 제안",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "AI 가 테이블·컬럼의 업무 설명 초안을 제안하고, 승인 권한자가 검토해 승인하면 업무 설명에만 반영됩니다. 표준 용어·DDL 설명·원본 COMMENT 는 바꾸지 않습니다.",
+          "블라인드 평가 중인 제안은 반려할 수 없습니다. 보류·반려에는 사유가 필요합니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/ai-dictionary.jpg"
+  },
+  {
+    "menuId": "ai-evaluation",
+    "path": "/aiEvaluation",
+    "title": "AI 품질 평가",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "사람이 확인한 실제 의미를 기준으로 AI 제안을 판정해 모델·프롬프트별 지표를 봅니다. 실제 의미는 AI 에 보내지 않습니다.",
+          "판정을 고칠 때는 사유가 필요하며, 변경 이력이 남습니다. 등록 뒤 같은 테이블이 바뀐 다음 만든 제안은 [입력 맥락 변경]으로 표시되어 같은 입력 조건 판정 수에서 빠집니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/ai-evaluation.jpg"
+  },
+  {
+    "menuId": "project-manage",
+    "path": "/projectManage",
+    "title": "프로젝트 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "프로젝트를 등록·수정하고 멤버 참여를 승인합니다. 관리하는 프로젝트가 없으면 안내와 [프로젝트 등록]이 보입니다. 등록한 사용자가 그 프로젝트의 관리자가 됩니다.",
+          "마지막 활성 프로젝트를 비활성화하면 시스템 ADMIN 의 복구 로그인으로만 되돌릴 수 있습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/project-manage.jpg"
+  },
+  {
+    "menuId": "schema-manage",
+    "path": "/schemaManage",
+    "title": "스키마 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "테이블·VIEW 를 묶는 스키마를 관리합니다. 테이블명은 스키마 안에서만 겹치지 않으면 됩니다.",
+          "기본 스키마는 테이블을 등록할 때 스키마를 고르지 않으면 쓰입니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/schema-manage.jpg"
+  },
+  {
+    "menuId": "view-manage",
+    "path": "/viewManage",
+    "title": "VIEW 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "VIEW 정의 SQL 과 컬럼·참조 객체를 관리합니다. 승인된 VIEW 를 고치면 변경 요청이 만들어집니다.",
+          "다른 사용자가 먼저 고친 VIEW 를 저장하면 저장하지 않고 알립니다. 입력한 SQL 은 화면에 남으니 다시 불러와 확인하세요."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/view-manage.jpg"
+  },
+  {
+    "menuId": "logical-model",
+    "path": "/logicalModel",
+    "title": "논리 모델 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "엔터티·속성·식별자·관계를 관리합니다. 속성은 표준 용어에 연결해 이름과 도메인을 맞춥니다.",
+          "다른 사용자가 먼저 고친 엔터티·속성을 저장하면 저장하지 않고 알립니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/logical-model.jpg"
+  },
+  {
+    "menuId": "logical-erd",
+    "path": "/logicalErd",
+    "title": "논리 ERD",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "논리 모델의 엔터티와 관계를 그립니다. 배치를 저장해 다음에도 같은 모양으로 볼 수 있습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/logical-erd.jpg"
+  },
+  {
+    "menuId": "model-mapping",
+    "path": "/modelMapping",
+    "title": "논리·물리 매핑",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "엔터티 ↔ 테이블, 속성 ↔ 컬럼을 연결하고 매핑되지 않은 객체·차이를 확인합니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/model-mapping.jpg"
+  },
+  {
+    "menuId": "source-connection",
+    "path": "/sourceConnection",
+    "title": "연결 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 DB 접속 정보를 등록합니다. 비밀번호는 암호화해 저장하고 화면에는 설정 여부만 보입니다.",
+          "실제 연결은 외부 연결 보안의 허용 규칙을 통과해야 하며 읽기 전용으로만 접속합니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-connection.jpg"
+  },
+  {
+    "menuId": "source-catalog",
+    "path": "/sourceCatalog",
+    "title": "원본 카탈로그",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "수집한 원본 스키마·테이블·컬럼·제약·인덱스·관계와 그 버전·변경 이력을 봅니다. 물리 모델과는 따로 저장됩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-catalog.jpg"
+  },
+  {
+    "menuId": "source-erd",
+    "path": "/sourceErd",
+    "title": "원본 DB ERD",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 카탈로그의 테이블과 FK 를 ERD 로 봅니다. 과거 반영 순서를 골라 그때의 모습도 볼 수 있습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-erd.jpg"
+  },
+  {
+    "menuId": "source-mapping",
+    "path": "/sourceMapping",
+    "title": "원본 매핑 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 스키마·테이블과 물리 모델을 연결합니다. 연결은 원본·모델 비교와 가져오기의 기준이 됩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/source-mapping.jpg"
+  },
+  {
+    "menuId": "model-history",
+    "path": "/modelHistory",
+    "title": "모델 변경 이력",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "물리·논리 모델의 변경을 누가·언제·무엇을 바꿨는지 봅니다. 이력은 지우지 않고 보존합니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/model-history.jpg"
+  },
+  {
+    "menuId": "notice",
+    "path": "/notice",
+    "title": "공지사항",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "프로젝트 공지를 확인합니다. 등록·수정은 권한이 있는 사용자만 할 수 있습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/notice.jpg"
+  },
+  {
+    "menuId": "user-manage",
+    "path": "/userManage",
+    "title": "사용자 관리",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "사용자 계정과 역할(ADMIN·MANAGER·DBA·USER·VIEWER)을 관리합니다. 마지막 활성 ADMIN 은 지우거나 낮출 수 없습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/user-manage.jpg"
+  },
+  {
+    "menuId": "system-log",
+    "path": "/systemLog",
+    "title": "시스템 로그",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "프로젝트의 API 요청 기록을 봅니다. 인증·원본·AI API 는 본문 없이 호출만 남고, 비밀 값은 가려집니다.",
+          "운영자가 보관 기간을 설정하면 그보다 오래된 요청 기록은 자동으로 정리됩니다(기본은 보관)."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/system-log.jpg"
+  },
+  {
+    "menuId": "connection-security",
+    "path": "/connectionSecurity",
+    "title": "외부 연결 보안",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "원본 DB·AI 서버로 나가는 연결의 허용 규칙을 관리합니다. 규칙에 맞지 않는 연결은 막히고 판정이 기록됩니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/connection-security.jpg"
+  },
+  {
+    "menuId": "ai-provider",
+    "path": "/aiProvider",
+    "title": "AI Provider 설정",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "AI 서버(Ollama)를 등록하고 시스템 기본 Provider 를 정합니다. 프로젝트 관리자는 [프로젝트 관리]에서 프로젝트별 Provider 를 따로 지정할 수 있습니다.",
+          "프로젝트가 지정한 Provider 를 쓸 수 없으면 그 프로젝트의 AI 기능은 멈추고 시스템 기본으로 바뀌지 않습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/ai-provider.jpg"
+  },
+  {
+    "menuId": "model-exchange",
+    "path": "/modelExchange",
+    "title": "모델 Export·Import",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "프로젝트 모델(스키마·TABLE·컬럼·키·인덱스·제약조건·관계·논리 모델·매핑)을 버전 있는 JSON 파일로 내보내고, 파일이나 지금 프로젝트의 모델을 관리하는 다른 프로젝트로 가져옵니다.",
+          "승인 상태·VIEW·원본 DB 정보·비밀 값은 파일에 넣지 않습니다."
+        ]
+      },
+      {
+        "heading": "가져오기",
+        "items": [
+          "계획 미리보기에서 새로 만들 것·이름이 겹쳐 가져오지 않을 것·제외할 것을 확인한 뒤 확정합니다. 같은 이름의 객체는 덮어쓰지 않습니다.",
+          "가져온 객체는 모두 미승인이며, 확정 직전 모델 버전이 남고 도중에 실패하면 아무것도 바뀌지 않습니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/model-exchange.jpg"
+  },
+  {
+    "menuId": "mcp-access",
+    "path": "/mcpAccess",
+    "title": "MCP 연결",
+    "sections": [
+      {
+        "heading": "하는 일",
+        "items": [
+          "외부 MCP 클라이언트가 이 프로젝트의 메타데이터를 읽기 전용으로 조회하도록 허용합니다. 서버 설정과 프로젝트 설정이 모두 켜져 있어야 합니다.",
+          "SQL 실행·원본 DB 접근·모델 변경·원본 VIEW 정의는 제공하지 않습니다."
+        ]
+      },
+      {
+        "heading": "토큰",
+        "items": [
+          "프로젝트 관리자가 만료일을 정해 토큰을 발급합니다. 원문은 발급 직후 한 번만 보이며 언제든 폐기할 수 있습니다.",
+          "토큰을 쓸 때마다 발급한 사람의 지금 권한을 다시 확인합니다."
+        ]
+      }
+    ],
+    "image": "/images/help/ko/mcp-access.jpg"
+  }
+]

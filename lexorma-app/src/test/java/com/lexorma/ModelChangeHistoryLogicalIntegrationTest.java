@@ -173,7 +173,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
         assertThat(since(projectId, mark)).isEmpty();
         tx.executeWithoutResult(s -> {
             logical.saveAttribute(admin, attribute(grade.id(), member, "회원 등급", "CODE", false, null));
-            tables.updateTable(TableInfoDto.builder().id(table.getId()).tableName("TB_MBR").tableDescription("회원").isMasterTable("N").build(), admin);
+            tables.updateTable(TableInfoDto.builder().id(table.getId()).tableName("TB_MBR").tableDescription("회원").isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(table.getId()).orElseThrow().modifiedAt()).build(), admin);
         });
         List<ModelChangeHistory> mixed = since(projectId, mark);
         assertThat(mixed).extracting(ModelChangeHistory::getTargetType).containsExactlyInAnyOrder(TargetType.LOGICAL_ATTRIBUTE, TargetType.PHYSICAL_TABLE);

@@ -114,5 +114,5 @@ function Reason({ part, compact }: { part: ReasonPart; compact: boolean }) {
 /** 검토 이력의 동작 이름 */
 export const ACTION_LABEL: Record<string, string> = {
   GENERATE: t('생성'), REVIEW: t('검토함'), APPROVE: t('승인'), APPROVE_EDITED: t('수정 후 승인'), REJECT: t('반려'), HOLD: t('보류'),
-  REVIEW_REQUIRED: t('재검토 필요'), RECHECK_FLAGGED: t('승인 뒤 근거 변경 표시'), SUPERSEDE: t('대체됨'), REVALIDATE: t('근거 재검증'), CLOSE: t('제안 종결'),
+  REVIEW_REQUIRED: t('재검토 필요'), RECHECK_FLAGGED: t('승인 뒤 근거 변경 표시'), SUPERSEDE: t('대체됨'), REVALIDATE: t('근거 재검증'), CLOSE: t('제안 종결'), CLOSE_UNCONFIRMABLE: t('제안 종결 (평가 확인 불가)'),
 };

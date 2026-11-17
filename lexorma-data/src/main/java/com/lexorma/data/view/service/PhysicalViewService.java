@@ -249,6 +249,8 @@ public class PhysicalViewService {
         PhysicalView current = viewRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalViewService::notFound);
         namespace.lock(projectId, true, current.getSchema().getId(), targetSchemaId(projectId, request));
         PhysicalView view = lockView(projectId, id);
+        // 낙관적 충돌 검사 (DEC-13) : 잠그고 다시 읽은 행의 수정 일시가 화면이 읽은 값과 다르면 409 — 정의 SQL 을 덮어쓰지 않는다
+        com.lexorma.common.jpa.ModelBase.verify(view, request.baseModifiedAt(), view.getViewName());
         Spec spec = spec(projectId, request, id);
         if (!Boolean.TRUE.equals(view.getIsApproval())) {
             apply(view, spec);

@@ -32,7 +32,7 @@ export type ReasonPart =
   | { type: 'text'; text: string };
 
 /** 사용자가 사유를 직접 쓰는 이력 동작 — 이 사유는 글 그대로 보인다. 그 밖의 동작(모르는 새 동작 포함)의 사유는 서버가 쓴 것으로 본다 */
-const USER_ACTIONS = new Set(['REVIEW', 'APPROVE', 'APPROVE_EDITED', 'REJECT', 'HOLD', 'CLOSE']);
+const USER_ACTIONS = new Set(['REVIEW', 'APPROVE', 'APPROVE_EDITED', 'REJECT', 'HOLD', 'CLOSE', 'CLOSE_UNCONFIRMABLE']);
 const GENERATED_CHANGED = '생성 중 대상이 바뀌었습니다';
 const REVALIDATE_CLEAN = '근거 재검증 : 생성 때와 달라진 근거가 없습니다';
 const REVALIDATE_ACK = '근거 재검증 : 변경 확인 후 계속 검토 (';

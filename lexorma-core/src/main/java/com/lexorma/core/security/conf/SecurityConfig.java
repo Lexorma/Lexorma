@@ -88,7 +88,9 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         // 토큰은 /api/auth/csrf 응답으로 받으므로 쿠키를 스크립트가 읽을 필요가 없다 (HttpOnly)
                         .csrfTokenRepository(new CookieCsrfTokenRepository())
-                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        // 내장 MCP (DEC-31) : 세션 쿠키가 아니라 Bearer 토큰으로만 인증하므로 CSRF 대상이 아니다 (꺼져 있으면 404)
+                        .ignoringRequestMatchers("/mcp"))
                 // 로그인 후 이동할 화면은 React 가 정한다. 401 응답마다 요청을 세션에 저장(익명 세션 생성)하지 않는다.
                 .requestCache(cache -> cache.requestCache(new NullRequestCache()))
                 .authenticationProvider(authenticationProvider)

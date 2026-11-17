@@ -5,12 +5,13 @@ import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useR
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import '../../styles/logical.css';
-import { CheckIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { CheckIcon, DownloadIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
+import { useErdExport, erdFileName } from '../erd/exportImage';
 import { t, tc } from '../../lib/i18n';
 // 물리 ERD 와 같이 쓰는 것 : 자동 배치(ELK 워커), 노드 크기 규칙, 축소 시 행 생략, 스타일(erd.css). 데이터·레이아웃 저장은 따로다
 import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/layout';
@@ -104,6 +105,8 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
   const canvas = useRef<HTMLDivElement>(null);
   const dialog = useDialog();
   const flow = useReactFlow<EntityNodeType, RelationshipEdgeType>();
+  const erdExport = useErdExport(canvas, () => (flow.getNodes().length ? flow.getNodesBounds(flow.getNodes()) : null), () => erdFileName(t('논리 ERD'), String(modelId)),
+    () => flow.getNodes().map((n) => n.data.entity.attributes.length));
   const openEntityDetail = useEntityDetail();
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNodeType>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -408,6 +411,8 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('논리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
           <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
+          <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('png')} title={t('지금 배치 그대로 ERD 전체를 PNG 이미지로 내려받습니다')}><DownloadIcon />PNG</button>
+          <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('svg')} title={t('지금 배치 그대로 ERD 전체를 SVG 이미지로 내려받습니다')}><DownloadIcon />SVG</button>
           <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
           <button type="button" className="grd-save btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
           {onManage && <button type="button" className="btn" onClick={() => onManage()}>{t('논리 모델 관리')}</button>}
@@ -451,7 +456,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
             onConnect={(connection) => openRelationshipForm(undefined, { sourceId: Number(connection.source), targetId: Number(connection.target) })}
             elementsSelectable={false}
             deleteKeyCode={null}
-            onlyRenderVisibleElements
+            onlyRenderVisibleElements={!erdExport.exporting}
             minZoom={0.05}
             maxZoom={2}
           >

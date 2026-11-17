@@ -212,3 +212,12 @@ AI-4 잔여([ai-tool-calling-ai4.md](ai-tool-calling-ai4.md) 12장)에서 Provid
   - `chatOptions(model, contextTokens, maxOutputTokens)` → Ollama `num_ctx`·`num_predict` (`OllamaChatOptions`).
   - `usage(response)` → `AiProviderDto.TokenUsage(promptTokens, completionTokens)`. Spring AI 2.0.2 는 없는 값을 0 으로 채우므로 Ollama 는 "0 이고 그 소요 시간도 없음" 을 알려 주지 않은 것(null)으로 본다.
 - 새 유형(OpenAI 호환 등)을 더할 때 이 세 메서드를 그 유형의 공식 기능으로 구현하지 않으면 모델 정보는 "모름"(Tool Calling 을 시도하고 명시적 거절로만 대체 흐름), 토큰 한도는 `maxTokens` 만, 사용량은 "미측정" 이 된다.
+
+## 15. 프로젝트별 AI Provider 지정 (DEC-18, 2026-11-16, V3)
+
+- 저장 : V3 `TB_PRJ_AI_STNG` (`ProjectAiSetting`) — 프로젝트마다 0~1행(UX_PRJ_AI_STNG_01), Provider FK(FK_PRJ_AI_STNG_02 — 지정된 Provider 는 지울 수 없다, `AI_PROVIDER_IN_USE`), 모델(비우면 Provider 기본 모델). 프로젝트 삭제 정리 목록에 있다.
+- 해석 : `AiDefaultProviderService.resolve(projectId)` — 지정이 있으면 그 Provider·모델, 없으면 `resolve()`(시스템 기본). 지정한 Provider 가 비활성·미지원·모델 없음이면 같은 오류 코드로 거절하고 **시스템 기본으로 대신하지 않는다**. `AiProviderClients.callDefaultWith` 는 `ExecutionContext.projectId()` 로 해석하므로 AI-4 질의·AI-5 초안 생성이 모두 프로젝트 지정을 따른다(초안 생성의 Provider 확인도 `resolve(projectId)`). 제안에는 지금처럼 실제 쓴 모델이 기록돼 평가 재현성이 유지된다.
+- API : `GET/PUT/DELETE /api/ai/projects/{projectId}/provider` (`lexorma-system` `ProjectAiProviderRestController`). 조회 VIEWER(로그인 프로젝트 또는 관리할 수 있는 프로젝트), 지정·해제 USER + 프로젝트 관리자·ADMIN(`ProjectAuthority.canManage`, DB 에서 다시 확인 — 아니면 `PROJECT_ACCESS_DENIED`). 고를 수 있는 목록은 관리할 수 있을 때만, 주소·설명 없이(`ProviderChoice`). 지정·해제는 설정 행(TB_AI_STNG)을 먼저 잠그고 Provider 행을 잠근다 — Provider 삭제와 같은 순서. `/api/ai/**` 라 요청 로그 본문은 남지 않는다.
+- 상태 : `/api/ai/metadata/status` 가 로그인 프로젝트 기준(`status(projectId)`)이 됐다 — 사이드바·AI 도우미·AI 화면 표시가 프로젝트 지정을 따른다.
+- 화면 : [프로젝트 관리]의 선택 프로젝트 아래 "프로젝트 AI Provider" (지정 범위·상태·Provider·모델, 관리할 수 있으면 선택·모델 입력·지정·해제).
+- 검증 : `ProjectAiProviderIntegrationTest` 2건(지정 없음 → 시스템 기본, 지정 → 그 Provider·모델, 다른 프로젝트 영향 없음, 비활성 → 거절·대신 안 함, 지정된 Provider 삭제 거부, 해제, 비관리자·다른 프로젝트·VIEWER 거부, 비활성·형식 오류 모델 거부), 기존 `AiDefaultProviderIntegrationTest` 8건 통과. 실제 AI 서버로 프로젝트 지정 호출을 해 보지는 않았다(호출 경로는 기존과 같고 해석만 바뀐다).

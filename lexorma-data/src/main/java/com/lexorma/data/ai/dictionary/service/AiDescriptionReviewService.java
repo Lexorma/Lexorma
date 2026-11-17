@@ -116,12 +116,22 @@ public class AiDescriptionReviewService {
         String reason = reasonOf(request);
         if (reason == null) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "반려 사유를 입력해주세요.");
         return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.ON_HOLD, ReviewStatus.REVIEW_REQUIRED),
-                ReviewStatus.REJECTED, Action.REJECT, reason);
+                ReviewStatus.REJECTED, p -> {
+                    // 블라인드 평가 중(실제 의미 미확인·확인 불가)에는 내용을 보지 않은 반려가 되어 반려율 지표를 흐린다 (DEC-29)
+                    ProposalEvaluationGate.Hold hold = evaluationGate.hold(p, true);
+                    if (hold == ProposalEvaluationGate.Hold.MEANING_PENDING || hold == ProposalEvaluationGate.Hold.MEANING_UNCONFIRMABLE) {
+                        throw new CustomException(ErrorCode.AI_PROPOSAL_EVALUATION_PENDING, "블라인드 평가 중인 제안은 반려할 수 없습니다. 실제 의미를 확인한 뒤 처리하거나 보류·종결하세요.");
+                    }
+                    return Action.REJECT;
+                }, reason);
     }
 
+    /** 보류 : 사유를 남긴다 (DEC-29 — 블라인드 평가 중에도 허용) */
     public AiDictionaryDto.ReviewResult hold(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
+        String reason = reasonOf(request);
+        if (reason == null) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "보류 사유를 입력해주세요.");
         return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.REVIEW_REQUIRED),
-                ReviewStatus.ON_HOLD, Action.HOLD, reasonOf(request));
+                ReviewStatus.ON_HOLD, p -> Action.HOLD, reason);
     }
 
     /**
@@ -131,8 +141,9 @@ public class AiDescriptionReviewService {
     public AiDictionaryDto.ReviewResult close(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
         String reason = reasonOf(request);
         if (reason == null) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "종결 사유를 입력해주세요.");
+        // 평가 대상의 실제 의미를 확인할 수 없어(확인 불가) 끝내는 제안은 별도 이력 사유로 남긴다 (DEC-29 — 상태는 같은 CLOSED)
         return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.ON_HOLD, ReviewStatus.REVIEW_REQUIRED),
-                ReviewStatus.CLOSED, Action.CLOSE, reason);
+                ReviewStatus.CLOSED, p -> evaluationGate.hold(p, true) == ProposalEvaluationGate.Hold.MEANING_UNCONFIRMABLE ? Action.CLOSE_UNCONFIRMABLE : Action.CLOSE, reason);
     }
 
     /**
@@ -181,7 +192,7 @@ public class AiDescriptionReviewService {
 
     /** 검토함 표시 (PROPOSED → REVIEWED). 보류한 제안을 다시 검토 대기로 돌릴 때도 쓴다 */
     public AiDictionaryDto.ReviewResult markReviewed(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request) {
-        return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.ON_HOLD), ReviewStatus.REVIEWED, Action.REVIEW, reasonOf(request));
+        return simple(context, id, request, EnumSet.of(ReviewStatus.PROPOSED, ReviewStatus.ON_HOLD), ReviewStatus.REVIEWED, p -> Action.REVIEW, reasonOf(request));
     }
 
     /** 일괄 검토 : 항목마다 따로(각자의 트랜잭션) 처리하고 결과를 모은다. 승인도 항목마다 재검증한다 */
@@ -253,13 +264,14 @@ public class AiDescriptionReviewService {
 
     // ------------------------------------------------------------------ 공통
 
+    /** @param action 잠근 제안을 보고 이력 동작을 정한다 (처리할 수 없으면 예외 — 평가 대상 행은 제안 다음에 잠근다) */
     private AiDictionaryDto.ReviewResult simple(ExecutionContext context, Long id, AiDictionaryDto.ReviewRequest request, Set<ReviewStatus> from, ReviewStatus to,
-                                                Action action, String reason) {
+                                                java.util.function.Function<AiDescriptionProposal, Action> action, String reason) {
         VerifiedExecution approver = approver(context);
         return tx.execute(status -> {
             AiDescriptionProposal p = locked(context.projectId(), id, request == null ? null : request.version());
             if (!from.contains(p.getStatus())) throw new CustomException(ErrorCode.AI_PROPOSAL_INVALID_STATE);
-            transition(p, to, action, approver.username(), LocalDateTime.now(), reason, null);
+            transition(p, to, action.apply(p), approver.username(), LocalDateTime.now(), reason, null);
             return new AiDictionaryDto.ReviewResult(to.name(), summary(p), List.of());
         });
     }

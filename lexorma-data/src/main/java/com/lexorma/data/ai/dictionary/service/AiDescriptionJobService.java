@@ -1,5 +1,6 @@
 package com.lexorma.data.ai.dictionary.service;
 
+import com.lexorma.common.i18n.Messages;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.execution.ExecutionContext;
@@ -317,10 +318,16 @@ public class AiDescriptionJobService {
         return new AiDictionaryDto.JobPreview(items.size() > 300 ? items.subList(0, 300) : items, create, open, described, create + open, MAX_TARGETS);
     }
 
+    /** 오류 코드의 사용자 문구 (요청 언어, DEC-32) : 오류 코드 문구(errors_{ko,en}.properties)를 그대로 쓰고, 등록된 문구가 없는 코드는 일반 문구 */
+    public static String errorMessage(String code) {
+        if (code != null && Messages.hasError(code)) return Messages.error(code);
+        return Messages.get("이 대상의 설명 초안을 만들지 못했습니다.");
+    }
+
     static AiDictionaryDto.JobSummary summary(AiDescriptionJob j) {
         List<AiDictionaryDto.JobError> errors = j.getErrors() == null ? List.of()
                 : JSON.readValue(j.getErrors(), new TypeReference<List<AiDictionaryDto.JobError>>() {
-        });
+        }).stream().map(e -> new AiDictionaryDto.JobError(e.target(), e.code(), errorMessage(e.code()))).toList();
         return new AiDictionaryDto.JobSummary(j.getId(), j.getStatus(), j.getTargetCount(), j.getCompletedCount(), j.getFailedCount(), j.getSkippedCount(),
                 j.audit() == null ? null : j.audit().created(), j.getStartedAt(), j.getEndedAt(), errors);
     }

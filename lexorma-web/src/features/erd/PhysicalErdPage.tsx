@@ -17,7 +17,7 @@ import { ErdModeToggle, findFreePosition, type ErdMode } from './editing';
 import { RelationForm, RelationPanel, TableKeys } from './physicalEditing';
 import { ColumnRecommendationNote } from '../mapping/MappingRecommendation';
 import { DICTIONARY_PATHS } from '../dictionary/columns';
-import { ArrowLeftIcon, CheckIcon, GitMergeIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { ArrowLeftIcon, CheckIcon, DownloadIcon, GitMergeIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -32,6 +32,7 @@ import {
   columnsByTable, columnType, NODE_WIDTH, nodeHeight,
   type ErdColumn, type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type Schema, type TableNode as TableNodeType, type XY,
 } from './model';
+import { useErdExport, erdFileName } from './exportImage';
 import { t, tx } from '../../lib/i18n';
 
 const PAGE_SIZE = 100;
@@ -107,6 +108,8 @@ function ErdWorkspace() {
   const dialog = useDialog();
   const navigate = useNavigate();
   const flow = useReactFlow<TableNodeType | ViewNodeType, ErdEdge>();
+  const erdExport = useErdExport(canvas, () => (flow.getNodes().length ? flow.getNodesBounds(flow.getNodes()) : null), () => erdFileName(t('물리 ERD'), user?.projectName),
+    () => flow.getNodes().map((n) => n.data.columns.length));
   const simple = useSimpleNodes();
   // 테이블 상세·컬럼 편집은 화면을 옮기지 않고 이 화면에서 연다 (테이블 관리와 같은 대화상자)
   const { openTableDetailById } = useTableDetail();
@@ -163,6 +166,22 @@ function ErdWorkspace() {
     structuralSharing: false,
     gcTime: 0,
   });
+  // 무효 FK (DEC-09) : 모델 구조 진단 API 를 그대로 쓰고 테이블별 오류 수를 노드에 붙인다 (진단 실패는 ERD 를 막지 않는다)
+  const diagnostics = useQuery({
+    queryKey: ['model-diagnostics', user?.projectId, ''],
+    queryFn: () => api<{ issues: { tableId: number; severity: 'ERROR' | 'WARNING' }[] }>('/api/physical/diagnostics', { silent: true }),
+    enabled: canView('model-diagnostics'),
+  });
+  const invalidFk = useMemo(() => {
+    const counts = new Map<number, number>();
+    (diagnostics.data?.issues ?? []).filter((i) => i.severity === 'ERROR').forEach((i) => counts.set(i.tableId, (counts.get(i.tableId) ?? 0) + 1));
+    return counts;
+  }, [diagnostics.data]);
+  const invalidFkRef = useRef(invalidFk);
+  invalidFkRef.current = invalidFk;
+  useEffect(() => {
+    setNodes((current) => current.map((n) => (n.data.invalidFk ?? 0) === (invalidFk.get(Number(n.id)) ?? 0) ? n : { ...n, data: { ...n.data, invalidFk: invalidFk.get(Number(n.id)) ?? 0 } }));
+  }, [invalidFk, setNodes]);
   const graphKey = graphUrl(scope);
   const graph = useQuery({
     queryKey: ['erd', user?.projectId, graphKey],
@@ -227,7 +246,7 @@ function ErdWorkspace() {
       id: String(table.id),
       type: 'table',
       position: positions.current.get(String(table.id)) ?? { x: 0, y: 0 },
-      data: { table, columns: columns.get(table.id) ?? [], fkColumns, linkedColumns,
+      data: { table, columns: columns.get(table.id) ?? [], fkColumns, linkedColumns, invalidFk: invalidFkRef.current.get(table.id) ?? 0,
         schemaPrefix: (nameCount.get(table.tableName) ?? 0) > 1 ? schemaName.get(table.schemaId) : undefined },
     }));
     const missing = built.filter((n) => !positions.current.has(n.id));
@@ -260,7 +279,8 @@ function ErdWorkspace() {
         markPending(missing, false);
       }
       if (cancelled) return;
-      setNodes(built);
+      // 자동 배치(비동기)가 끝난 뒤라 그 사이 도착한 진단 결과를 다시 붙인다 (DEC-09)
+      setNodes(built.map((n) => ({ ...n, data: { ...n.data, invalidFk: invalidFkRef.current.get(Number(n.id)) ?? 0 } })));
       setSelectedId((id) => (id && (isViewNodeId(id) || built.some((n) => n.id === id)) ? id : scope.kind === 'neighbors' && !focusRequest.current ? String(scope.tableId) : null));
       setSelectedRelation((id) => (id != null && data.relations.some((r) => r.id === id) ? id : null));
 
@@ -619,6 +639,8 @@ function ErdWorkspace() {
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
           <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
+          <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('png')} title={t('지금 배치 그대로 ERD 전체를 PNG 이미지로 내려받습니다')}><DownloadIcon />PNG</button>
+          <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('svg')} title={t('지금 배치 그대로 ERD 전체를 SVG 이미지로 내려받습니다')}><DownloadIcon />SVG</button>
           <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
           <button type="button" className="grd-save btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
         </div>
@@ -688,7 +710,7 @@ function ErdWorkspace() {
               && openRelationForm({ sourceTableId: Number(connection.source), targetTableId: Number(connection.target) })}
             elementsSelectable={false}
             deleteKeyCode={null}
-            onlyRenderVisibleElements
+            onlyRenderVisibleElements={!erdExport.exporting}
             minZoom={0.05}
             maxZoom={2}
           >

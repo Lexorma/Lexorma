@@ -15,9 +15,13 @@ import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Candidate;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Reason;
 import com.lexorma.data.sourcemapping.domain.dto.SourceMappingDto.Status;
 import com.lexorma.data.sourcemapping.domain.entity.ProjectSourceConnection;
+import com.lexorma.data.sourcemapping.domain.entity.SourceColumnMapping;
+import com.lexorma.data.sourcemapping.domain.entity.SourceMappingHistory.ChangeType;
+import com.lexorma.data.sourcemapping.domain.entity.SourceMappingHistory.TargetType;
 import com.lexorma.data.sourcemapping.domain.entity.SourceSchemaMapping;
 import com.lexorma.data.sourcemapping.domain.entity.SourceTableMapping;
 import com.lexorma.data.sourcemapping.repository.ProjectSourceConnectionRepository;
+import com.lexorma.data.sourcemapping.repository.SourceColumnMappingRepository;
 import com.lexorma.data.sourcemapping.repository.SourceSchemaMappingRepository;
 import com.lexorma.data.sourcemapping.repository.SourceTableMappingRepository;
 import lombok.RequiredArgsConstructor;
@@ -61,9 +65,11 @@ public class SourceMappingService {
     private final ProjectSourceConnectionRepository baseRepository;
     private final SourceSchemaMappingRepository schemaMappingRepository;
     private final SourceTableMappingRepository tableMappingRepository;
+    private final SourceColumnMappingRepository columnMappingRepository;
     private final SchemaInfoRepository schemaInfoRepository;
     private final ExecutionContextVerifier verifier;
     private final ProjectWriteGuard projectWriteGuard;
+    private final SourceMappingHistoryRecorder history;
 
     // ------------------------------------------------------------------ 조회
 
@@ -198,6 +204,8 @@ public class SourceMappingService {
                 .orElseThrow(() -> invalid("매핑되지 않은 원본 스키마입니다."));
         List<SourceTableMapping> tables = tableMappingRepository.findAllByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId).stream()
                 .filter(m -> !m.isExclusion()).toList();
+        State state = state(projectId, connectionId);
+        tables.forEach(t -> recordRelease(state, t));
         tableMappingRepository.deleteAll(tables);
         schemaMappingRepository.delete(mapping);
         return Map.of("result", true, "releasedTables", tables.size());
@@ -235,7 +243,10 @@ public class SourceMappingService {
             throw new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "모델 테이블 {0} 은(는) 이미 원본 테이블 {1} 에 매핑되어 있습니다.", table.name(),
                     other == null ? taken.getCompareName() : other.name());
         }
-        SourceTableMapping mapping = Optional.ofNullable(state.tableMappingBySource.get(source.id()))
+        SourceTableMapping previous = state.tableMappingBySource.get(source.id());
+        Map<String, Object> before = previous == null ? null : SourceMappingHistoryRecorder.table(previous, source.name(), state.modelTableName(previous.getTableId()));
+        if (previous != null && !Objects.equals(previous.getTableId(), table.id())) releaseColumns(state, previous);
+        SourceTableMapping mapping = Optional.ofNullable(previous)
                 .orElseGet(() -> SourceTableMapping.builder().projectId(projectId).connectionId(connectionId).sourceTableId(source.id()).build());
         mapping.setSourceSchemaId(source.schemaId());
         mapping.setPathKey(source.pathKey());
@@ -244,15 +255,19 @@ public class SourceMappingService {
         mapping.setReflectedOrder(state.snapshot.reflectedOrder());
         mapping.setTableId(table.id());
         SourceTableMapping saved = save(() -> tableMappingRepository.saveAndFlush(mapping));
+        history.record(projectId, connectionId, saved.getId(), TargetType.TABLE, previous == null ? ChangeType.CONFIRM : ChangeType.CHANGE, before,
+                SourceMappingHistoryRecorder.table(saved, source.name(), table.name()));
         return state(projectId, connectionId).tableRows().stream().filter(r -> saved.getId().equals(r.mappingId())).findFirst().orElseThrow();
     }
 
+    /** TABLE 매핑 해제 : 그 TABLE 의 컬럼 매핑(DEC-06)도 함께 지워진다 (FK ON DELETE CASCADE) — 둘 다 해제 이력을 남긴다 */
     @Transactional
     public Map<String, Object> unmapTable(AccountDto accountDto, Long mappingId) {
         Long projectId = manage(accountDto);
         Long connectionId = lockBase(projectId);
         SourceTableMapping mapping = tableMappingRepository.findByIdAndProjectId(mappingId, projectId)
                 .filter(m -> m.getConnectionId().equals(connectionId) && !m.isExclusion()).orElseThrow(() -> invalid("매핑을 찾을 수 없습니다."));
+        recordRelease(state(projectId, connectionId), mapping);
         tableMappingRepository.delete(mapping);
         return Map.of("result", true);
     }
@@ -296,8 +311,42 @@ public class SourceMappingService {
 
     // ------------------------------------------------------------------ 내부
 
+    /**
+     * 원본 삭제 반영(DEC-04)이 모델 TABLE 을 지울 때 : 그 TABLE 의 매핑(원본 없음)을 해제 이력과 함께 지운다 (모델 TABLE 이 지워지면 FK 로 "모델 없음" 이 되어 쓸모가 없다).
+     * 부르는 쪽이 기준 연결 행을 이미 잠갔다
+     */
+    void releaseForDeletion(Long projectId, Long connectionId, SourceTableMapping mapping) {
+        recordRelease(state(projectId, connectionId), mapping);
+        tableMappingRepository.delete(mapping);
+        tableMappingRepository.flush();
+    }
+
+    /** TABLE 매핑 하나의 해제 이력 (그 컬럼 매핑의 해제 이력 포함). 컬럼 매핑 행은 TABLE 매핑을 지우면 DB 가 지운다 */
+    private void recordRelease(State state, SourceTableMapping mapping) {
+        String sourceName = state.sourceTableName(mapping);
+        for (SourceColumnMapping column : state.columnMappingsOf(mapping.getId())) {
+            history.record(mapping.getProjectId(), mapping.getConnectionId(), mapping.getId(), TargetType.COLUMN, ChangeType.RELEASE,
+                    SourceMappingHistoryRecorder.column(column, sourceName, state.modelTableName(mapping.getTableId()), state.modelColumnName(column.getColumnId())), null);
+        }
+        history.record(mapping.getProjectId(), mapping.getConnectionId(), mapping.getId(), TargetType.TABLE, ChangeType.RELEASE,
+                SourceMappingHistoryRecorder.table(mapping, sourceName, state.modelTableName(mapping.getTableId())), null);
+    }
+
+    /** TABLE 매핑의 모델 TABLE 이 바뀔 때 : 이전 모델 TABLE 의 컬럼을 가리키는 컬럼 매핑은 쓸 수 없어 지우고 해제 이력을 남긴다 */
+    private void releaseColumns(State state, SourceTableMapping mapping) {
+        List<SourceColumnMapping> columns = state.columnMappingsOf(mapping.getId());
+        if (columns.isEmpty()) return;
+        String sourceName = state.sourceTableName(mapping);
+        for (SourceColumnMapping column : columns) {
+            history.record(mapping.getProjectId(), mapping.getConnectionId(), mapping.getId(), TargetType.COLUMN, ChangeType.RELEASE,
+                    SourceMappingHistoryRecorder.column(column, sourceName, state.modelTableName(mapping.getTableId()), state.modelColumnName(column.getColumnId())), null);
+        }
+        columnMappingRepository.deleteAll(columns);
+        columnMappingRepository.flush();
+    }
+
     /** 그 프로젝트의 관리자 또는 ADMIN (지금의 DB 기준). 프로젝트 행을 공유 잠금으로 먼저 잡는다 (잠금 순서 : 프로젝트 → 기준 연결 행) */
-    private Long manage(AccountDto accountDto) {
+    Long manage(AccountDto accountDto) {
         Long projectId = verifier.verifyProjectManager(ExecutionContext.user(accountDto)).projectId();
         projectWriteGuard.lock(projectId);
         return projectId;
@@ -315,14 +364,14 @@ public class SourceMappingService {
         return connectionId;
     }
 
-    private State requireSnapshot(Long projectId, Long connectionId) {
+    State requireSnapshot(Long projectId, Long connectionId) {
         State state = state(projectId, connectionId);
         if (state.connection == null) throw new CustomException(ErrorCode.SOURCE_CONNECTION_NOT_FOUND);
         if (state.snapshot.reflectedOrder() == null) throw invalid("기준 연결에 완료된 수집이 없어 매핑을 확정할 수 없습니다. 먼저 메타데이터를 수집해주세요.");
         return state;
     }
 
-    private <T> T save(java.util.function.Supplier<T> action) {
+    <T> T save(java.util.function.Supplier<T> action) {
         try {
             return action.get();
         } catch (DataIntegrityViolationException e) {
@@ -348,11 +397,11 @@ public class SourceMappingService {
         }
     }
 
-    private static CustomException concurrent() {
+    static CustomException concurrent() {
         return new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "다른 사용자가 같은 매핑을 바꾸었습니다. 화면을 새로 고친 뒤 다시 시도해주세요.");
     }
 
-    private static CustomException invalid(String message, Object... args) {
+    static CustomException invalid(String message, Object... args) {
         return new CustomException(ErrorCode.SOURCE_MAPPING_INVALID, message, args);
     }
 
@@ -383,14 +432,20 @@ public class SourceMappingService {
     record ModelTable(Long id, String name, Long schemaId, String korName, String description, String sourceComment) {
     }
 
-    private State state(Long projectId, Long connectionId) {
+    State state(Long projectId, Long connectionId) {
         Optional<SourceCatalogReader.Snapshot> snapshot = reader.latest(projectId, connectionId);
         List<SchemaInfo> schemas = schemaInfoRepository.findAllByProjectIdOrderByIsDefaultDescSchemaNameAsc(projectId);
         Map<Long, ModelTable> tables = new HashMap<>();
         for (Object[] row : tableMappingRepository.modelTables(projectId)) tables.put((Long) row[0], new ModelTable((Long) row[0], (String) row[1], (Long) row[2], (String) row[3], (String) row[4],
                 (String) row[5]));
+        List<SourceColumnMapping> columnMappings = columnMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId);
+        Map<Long, Object[]> columns = new HashMap<>();
+        List<Long> columnIds = columnMappings.stream().map(SourceColumnMapping::getColumnId).filter(Objects::nonNull).distinct().toList();
+        for (int from = 0; from < columnIds.size(); from += 1000) {
+            for (Object[] row : columnMappingRepository.modelColumns(projectId, columnIds.subList(from, Math.min(from + 1000, columnIds.size())))) columns.put((Long) row[0], row);
+        }
         return new State(snapshot.orElse(null), schemas, tables, schemaMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId),
-                tableMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId));
+                tableMappingRepository.findAllByProjectIdAndConnectionId(projectId, connectionId), columnMappings, columns);
     }
 
     /**
@@ -417,9 +472,13 @@ public class SourceMappingService {
         final List<SourceTableMapping> tableMappings;
         final Map<Long, SourceTableMapping> tableMappingBySource;
         final Map<Long, SourceTableMapping> tableMappingByModel;
+        final Map<Long, SourceTableMapping> tableMappingById;
+        /** 컬럼 매핑 (DEC-06) 과 그 모델 컬럼의 [ID, TABLE ID, 이름] (지워진 컬럼은 없다) */
+        final List<SourceColumnMapping> columnMappings;
+        final Map<Long, Object[]> mappedModelColumns;
 
         State(SourceCatalogReader.Snapshot snapshot, List<SchemaInfo> modelSchemas, Map<Long, ModelTable> modelTables, List<SourceSchemaMapping> schemaMappings,
-              List<SourceTableMapping> tableMappings) {
+              List<SourceTableMapping> tableMappings, List<SourceColumnMapping> columnMappings, Map<Long, Object[]> mappedModelColumns) {
             this.snapshot = snapshot;
             this.connection = snapshot == null ? null : snapshot.connection();
             this.sourceSchemas = snapshot == null ? Map.of() : snapshot.schemas().stream().collect(Collectors.toMap(SourceCatalogReader.Schema::id, Function.identity()));
@@ -433,6 +492,43 @@ public class SourceMappingService {
             this.tableMappings = tableMappings;
             this.tableMappingBySource = tableMappings.stream().collect(Collectors.toMap(SourceTableMapping::getSourceTableId, Function.identity()));
             this.tableMappingByModel = tableMappings.stream().filter(m -> m.getTableId() != null).collect(Collectors.toMap(SourceTableMapping::getTableId, Function.identity()));
+            this.tableMappingById = tableMappings.stream().collect(Collectors.toMap(SourceTableMapping::getId, Function.identity()));
+            this.columnMappings = columnMappings;
+            this.mappedModelColumns = mappedModelColumns;
+        }
+
+        List<SourceColumnMapping> columnMappingsOf(Long tableMappingId) {
+            return columnMappings.stream().filter(c -> c.getTableMappingId().equals(tableMappingId)).toList();
+        }
+
+        /**
+         * 비교·가져오기의 컬럼 짝짓기 키 (DEC-06) : 확정된 컬럼 매핑의 모델 컬럼 ID → 원본 컬럼 비교 이름. 모델 컬럼이 아직 그 매핑의 모델 TABLE 에 있을 때만 쓴다
+         * (지워졌거나 TABLE 매핑의 모델 TABLE 이 바뀐 것은 빼고 이름으로 짝짓는다). 원본 컬럼이 지금 있는지는 비교가 원본 상세로 판단한다
+         */
+        Map<Long, String> columnKeys() {
+            Map<Long, String> keys = new HashMap<>();
+            for (SourceColumnMapping column : columnMappings) {
+                SourceTableMapping table = tableMappingById.get(column.getTableMappingId());
+                Object[] model = column.getColumnId() == null ? null : mappedModelColumns.get(column.getColumnId());
+                if (table == null || table.isExclusion() || model == null || !Objects.equals(table.getTableId(), model[1])) continue;
+                keys.put(column.getColumnId(), column.getCompareName());
+            }
+            return keys;
+        }
+
+        String sourceTableName(SourceTableMapping mapping) {
+            SourceCatalogReader.Table source = sourceTables.get(mapping.getSourceTableId());
+            return source != null ? source.name() : mapping.getCompareName();
+        }
+
+        String modelTableName(Long tableId) {
+            ModelTable table = tableId == null ? null : modelTables.get(tableId);
+            return table == null ? null : table.name();
+        }
+
+        String modelColumnName(Long columnId) {
+            Object[] column = columnId == null ? null : mappedModelColumns.get(columnId);
+            return column == null ? null : (String) column[2];
         }
 
         Status schemaStatus(SourceSchemaMapping mapping) {

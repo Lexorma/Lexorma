@@ -31,6 +31,8 @@ public class SourceCatalogCleanup {
 
     /** 연결 하나의 카탈로그 (연결 행은 남긴다) */
     private static final List<String> BY_CONNECTION = List.of(
+            "delete from TB_SRC_VIEW_DFN_IDNTY_HSTRY where SRC_CNTN_SN = :id",
+            "delete from TB_SRC_VIEW_DFN where SRC_CNTN_SN = :id",
             "delete from TB_SRC_CHG_HSTRY where SRC_CNTN_SN = :id",
             "delete from TB_SRC_TBL_VER where SRC_CNTN_SN = :id",
             "delete from TB_SRC_SCHM_VER where SRC_CNTN_SN = :id",
@@ -48,6 +50,8 @@ public class SourceCatalogCleanup {
 
     /** 프로젝트의 카탈로그와 연결 전부 */
     private static final List<String> BY_PROJECT = List.of(
+            "delete from TB_SRC_VIEW_DFN_IDNTY_HSTRY where PRJ_SN = :projectId",
+            "delete from TB_SRC_VIEW_DFN where PRJ_SN = :projectId",
             "delete from TB_SRC_CHG_HSTRY where PRJ_SN = :projectId",
             "delete from TB_SRC_TBL_VER where PRJ_SN = :projectId",
             "delete from TB_SRC_SCHM_VER where PRJ_SN = :projectId",

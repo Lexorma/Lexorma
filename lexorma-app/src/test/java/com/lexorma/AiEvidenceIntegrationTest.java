@@ -3,10 +3,10 @@ package com.lexorma;
 import com.lexorma.MetadataToolIntegrationTest.ScriptedOllama;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
-import com.lexorma.core.ai.domain.dto.AiProviderDto;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.ProviderRequest;
-import com.lexorma.core.ai.service.AiDefaultProviderService;
-import com.lexorma.core.ai.service.AiProviderService;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.ProviderRequest;
+import com.lexorma.ai.provider.service.AiDefaultProviderService;
+import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.RuleRequest;
 import com.lexorma.core.network.service.ExternalConnectionRuleService;
@@ -20,14 +20,14 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
-import com.lexorma.data.ai.answer.StructuredAnswerParser;
-import com.lexorma.data.ai.domain.dto.AiMetadataQueryDto;
-import com.lexorma.data.ai.evidence.EvidenceType;
-import com.lexorma.data.ai.evidence.EvidenceVerifier;
-import com.lexorma.data.ai.evidence.EvidenceVerifier.Overall;
-import com.lexorma.data.ai.evidence.EvidenceVerifier.Reason;
-import com.lexorma.data.ai.evidence.EvidenceVerifier.Status;
-import com.lexorma.data.ai.service.AiMetadataQueryService;
+import com.lexorma.ai.answer.StructuredAnswerParser;
+import com.lexorma.ai.domain.dto.AiMetadataQueryDto;
+import com.lexorma.ai.evidence.EvidenceType;
+import com.lexorma.ai.evidence.EvidenceVerifier;
+import com.lexorma.ai.evidence.EvidenceVerifier.Overall;
+import com.lexorma.ai.evidence.EvidenceVerifier.Reason;
+import com.lexorma.ai.evidence.EvidenceVerifier.Status;
+import com.lexorma.ai.service.AiMetadataQueryService;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.repository.StandardTermRepository;
@@ -223,8 +223,8 @@ class AiEvidenceIntegrationTest {
                 .then(answer(MODEL, "ok", List.of(evidence("TABLE", table, "TB_AI_STNG"))));
         AiMetadataQueryDto.QueryResult result = queries.query(user(viewer, EXAMPLE_PROJECT), question("AI 설정?"));
         assertThat(result.tools()).extracting(c -> c.name(), c -> c.status())
-                .containsExactly(tuple("getTableDetail", com.lexorma.data.ai.tool.MetadataToolSession.Status.OK),
-                        tuple("getTableColumns", com.lexorma.data.ai.tool.MetadataToolSession.Status.REJECTED));
+                .containsExactly(tuple("getTableDetail", com.lexorma.ai.tool.MetadataToolSession.Status.OK),
+                        tuple("getTableColumns", com.lexorma.ai.tool.MetadataToolSession.Status.REJECTED));
     }
 
     // ------------------------------------------------------------------ 근거 검증

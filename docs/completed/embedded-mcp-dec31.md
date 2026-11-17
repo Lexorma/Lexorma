@@ -1,5 +1,7 @@
 # DEC-31 선택형 내장 MCP (Streamable HTTP, 읽기 전용)
 
+> **8차 (2026-11-17)** : 코드는 `lexorma-ai` 모듈로 옮겼다 — `lexorma-data` `mcp/…` → `com.lexorma.ai.mcp.…`, 프로젝트 삭제 정리는 `ai/hook/AiProjectDataCleanup`. `/mcp`·`/api/mcp`·도구 10개·토큰·설정은 그대로 ([ai-module-extraction.md](ai-module-extraction.md)).
+
 > 2026-11-16 구현 (5차 통합 구현). 정책 : [pending-work.md 7.2](../pending-work.md) DEC-31. 마이그레이션 `V6__embedded_mcp.sql` (PostgreSQL·H2 동일).
 > 같은 Spring Boot 프로세스·같은 JAR 안의 엔드포인트다 — 별도 서버·프로세스·Redis·인증 서버 없음. 원본 DB 에 연결하지 않는다.
 

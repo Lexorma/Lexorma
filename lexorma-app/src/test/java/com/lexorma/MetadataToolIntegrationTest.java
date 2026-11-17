@@ -2,10 +2,10 @@ package com.lexorma;
 
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
-import com.lexorma.core.ai.domain.dto.AiProviderDto;
-import com.lexorma.core.ai.domain.dto.AiProviderDto.ProviderRequest;
-import com.lexorma.core.ai.service.AiDefaultProviderService;
-import com.lexorma.core.ai.service.AiProviderService;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto;
+import com.lexorma.ai.provider.domain.dto.AiProviderDto.ProviderRequest;
+import com.lexorma.ai.provider.service.AiDefaultProviderService;
+import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.RuleRequest;
 import com.lexorma.core.network.service.ExternalConnectionRuleService;
@@ -19,12 +19,12 @@ import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.security.repository.RoleRepository;
 import com.lexorma.core.support.SecurityTestSupport;
-import com.lexorma.data.ai.controller.AiMetadataQueryRestController;
-import com.lexorma.data.ai.domain.dto.AiMetadataQueryDto;
-import com.lexorma.data.ai.service.AiMetadataQueryService;
-import com.lexorma.data.ai.tool.MetadataToolSession;
-import com.lexorma.data.ai.tool.MetadataToolSession.Status;
-import com.lexorma.data.ai.tool.MetadataToolset;
+import com.lexorma.ai.controller.AiMetadataQueryRestController;
+import com.lexorma.ai.domain.dto.AiMetadataQueryDto;
+import com.lexorma.ai.service.AiMetadataQueryService;
+import com.lexorma.ai.tool.MetadataToolSession;
+import com.lexorma.ai.tool.MetadataToolSession.Status;
+import com.lexorma.ai.tool.MetadataToolset;
 import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.schema.repository.SchemaInfoRepository;
 import com.lexorma.data.table.domain.entity.TableInfo;
@@ -273,9 +273,11 @@ class MetadataToolIntegrationTest {
         assertThat(JSON.readTree(tool("getMetadataHistory").getToolDefinition().inputSchema()).path("properties").propertyNames())
                 .containsExactlyInAnyOrder("targetType", "targetId", "targetName", "includeChildren", "limit");
 
-        Path dir = Path.of(System.getProperty("user.dir")).getParent().resolve("lexorma-data/src/main/java/com/lexorma/data/ai");
+        Path dir = Path.of(System.getProperty("user.dir")).getParent().resolve("lexorma-ai/src/main/java/com/lexorma/ai");
         try (var files = Files.walk(dir)) {
-            for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+            // AI 질의·Tool·설명 초안 코드 (8차 모듈 분리 전 lexorma-data 의 ai 패키지). Provider(HTTP 전송)·MCP·데이터 모듈 연결(hook : 프로젝트 삭제·삭제 영향 수)은 따로 본다
+            for (Path file : files.filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> !p.toString().matches(".*/ai/(provider|mcp|hook)/.*")).toList()) {
                 String code = Files.readString(file).replaceAll("(?s)/\\*.*?\\*/|//[^\\n]*", "");
                 assertThat(code).as(file.getFileName().toString())
                         .doesNotContain("JdbcTemplate", "EntityManager", "createNativeQuery", "createQuery", "com.lexorma.source", "java.io.File", "java.nio.file",
@@ -447,7 +449,7 @@ class MetadataToolIntegrationTest {
         assertThat(ollama.chats).as("Tool 라운드 3 + 초안 + 구조화").hasSize(5);
         JsonNode structuring = JSON.readTree(ollama.chats.get(4));
         assertThat(structuring.path("tools").isMissingNode() || structuring.path("tools").isEmpty()).as("구조화 단계에는 Tool 정의를 보내지 않는다").isTrue();
-        assertThat(result.verification().status()).as("근거를 들지 않은 답변").isEqualTo(com.lexorma.data.ai.evidence.EvidenceVerifier.Overall.NO_EVIDENCE);
+        assertThat(result.verification().status()).as("근거를 들지 않은 답변").isEqualTo(com.lexorma.ai.evidence.EvidenceVerifier.Overall.NO_EVIDENCE);
         JsonNode first = JSON.readTree(ollama.chats.getFirst());
         assertThat(first.path("model").asString()).isEqualTo("qwen3:8b");
         assertThat(first.path("stream").asBoolean()).isFalse();

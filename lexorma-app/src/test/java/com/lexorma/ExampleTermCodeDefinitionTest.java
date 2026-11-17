@@ -1,9 +1,9 @@
 package com.lexorma;
 
-import com.lexorma.core.ai.AiProviderType;
+import com.lexorma.ai.provider.AiProviderType;
 import com.lexorma.core.network.ConnectionType;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposal;
-import com.lexorma.data.ai.dictionary.domain.entity.AiDescriptionProposalHistory;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposal;
+import com.lexorma.ai.dictionary.domain.entity.AiDescriptionProposalHistory;
 import com.lexorma.data.physical.domain.entity.TableIndex;
 import com.lexorma.data.view.domain.entity.PhysicalViewReference;
 import org.junit.jupiter.api.DisplayName;

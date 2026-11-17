@@ -1,5 +1,7 @@
 # AI-5 데이터 사전 초안 생성 및 승인
 
+> **8차 (2026-11-17)** : 코드는 `lexorma-ai` 모듈로 옮겼다 — `lexorma-data` `ai/dictionary/…` → `com.lexorma.ai.dictionary.…`. 승인의 최종 업무 설명 쓰기는 data 의 `BizDescriptionService.writeAiApproval` 로 (같은 트랜잭션·잠금 순서 그대로), 프로젝트 삭제 정리는 `ai/hook/AiProjectDataCleanup`. API·DB·평가 정책은 그대로 ([ai-module-extraction.md](ai-module-extraction.md)).
+
 > **상태 : 기능 구현 완료 / 품질 평가 기준 데이터·업무 정확도 검증 미완료 (2026-11-15) — AI-5 일부 완료.** 로드맵 [5단계](../reference/ai-metadata-roadmap.md#5단계-ai-데이터-사전-초안-생성-및-승인).
 > 앞 단계 : [AI-4 Tool Calling](ai-tool-calling-ai4.md) (Tool·구조화 응답·근거 검증·토큰 예산), [AI-3 Provider](ai-provider-ai3.md), [SEC-1](../reference/external-connection-security-sec1.md).
 > 스키마 : 처음 V10 으로 만들었고, 2026-11-15 Flyway 초기화로 `V0__init.sql`·`V1__seed_data.sql` 의 '예전 V10' 구간에 합쳤다 (PostgreSQL·H2 같은 내용).

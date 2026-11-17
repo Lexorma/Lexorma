@@ -106,7 +106,7 @@ Browser ── React SPA (static files in the JAR)
    └── /api/** ── Spring Boot (Security · Session JDBC · JPA) ── PostgreSQL / H2
 ```
 
-Gradle modules (dependency direction `common ← core ← (system, operation, data, source) ← app`; modules on the same level do not depend on each other):
+Gradle modules (dependency direction `common ← core ← (system, operation, data, source) ← app`, plus `data ← ai ← app`; modules on the same level do not depend on each other and `data` never depends on `ai`):
 
 | Module | Responsibility |
 |---|---|
@@ -115,6 +115,7 @@ Gradle modules (dependency direction `common ← core ← (system, operation, da
 | `lexorma-system` | Users, projects, system logs |
 | `lexorma-operation` | Announcements |
 | `lexorma-data` | Data dictionary, tables, columns, views, physical and logical models, mappings, ERD, DDL, change history, model versions, and source ↔ model mapping, comparison and import |
+| `lexorma-ai` | AI providers (Ollama), metadata tool calling and the AI assistant, AI business-description proposals and their quality evaluation, and the optional embedded MCP endpoint (`/mcp`). A library module inside the same application — AI is optional and the app runs without any provider |
 | `lexorma-source` | Source database connections, metadata collection and the source metadata catalog with its versions and change history, stored separately from the physical model. Collection runs inside Lexorma over JDBC — no separate collector or MCP server is required |
 | `lexorma-app` | Spring Boot application, dashboard API, SPA routing, configuration, Flyway migrations; packages the React build into `lexorma.jar` |
 | `lexorma-web` | React frontend source (Vite). Not a Gradle module — its `dist/` is copied into the JAR by the `lexorma-app` build |

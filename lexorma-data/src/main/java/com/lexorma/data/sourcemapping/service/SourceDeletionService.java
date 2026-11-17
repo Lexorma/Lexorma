@@ -93,6 +93,7 @@ public class SourceDeletionService {
     private final TableDesignService tableDesignService;
     private final ModelVersionService versionService;
     private final ModelChangeRecorder recorder;
+    private final org.springframework.beans.factory.ObjectProvider<RelatedRecordCounter> relatedRecordCounters;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -366,10 +367,12 @@ public class SourceDeletionService {
                 for (Object[] row : list("select c.tableInfo.id, count(c) from TableConstraint c where c.projectId = :p and c.tableInfo.id in :ids group by c.tableInfo.id", tableIds)) {
                     constraints.put((Long) row[0], ((Number) row[1]).intValue());
                 }
-                for (Object[] row : list("select p.tableId, p.columnId from AiDescriptionProposal p where p.projectId = :p and p.tableId in :ids", tableIds)) {
-                    proposalsByTable.merge((Long) row[0], 1, Integer::sum);
-                    if (row[1] != null) proposalsByColumn.merge((Long) row[1], 1, Integer::sum);
-                }
+                // 다른 모듈이 이 TABLE·컬럼을 가리키는 기록 (lexorma-ai 의 AI 설명 제안) : 이 모듈은 그 모듈을 모른다 — 계약으로 받는다 (8차)
+                relatedRecordCounters.orderedStream().forEach(counter -> {
+                    RelatedRecordCounter.Counts counts = counter.count(projectId, tableIds);
+                    counts.byTable().forEach((id, n) -> proposalsByTable.merge(id, n, Integer::sum));
+                    counts.byColumn().forEach((id, n) -> proposalsByColumn.merge(id, n, Integer::sum));
+                });
                 if (columnIds.isEmpty()) return;
                 for (Object id : entityManager.createQuery("select m.column.id from AttributeColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
                     attributeMapped.add((Long) id);

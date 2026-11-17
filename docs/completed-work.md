@@ -217,6 +217,14 @@
 - 비교 허용 오차 1µs (PostgreSQL 은 timestamp(6) 를 반올림해 메모리 값과 1µs 다를 수 있다).
 - 검증 : `ModelOptimisticConflictIntegrationTest` 4건(3차 : 스키마·논리 모델·관계 규칙 409, 컨트롤러 400), 기준값을 보내도록 고친 기존 테스트(ModelChangeHistory·ModelVersion·ModelIntegrityHardening·ProjectDeletion·LogicalErdEdit·ViewAuthorizationHttp·SmokeTest). 전체 실행은 9장. 브라우저 E2E 는 3차에서 다시 하지 않았다(2차 테이블 충돌 E2E 만 있음).
 
+### [DEC-IMPL-8] 8차 인증 안정화 · AI/MCP 모듈 분리 (2026-11-17)
+
+마이그레이션 추가 없음 (다음은 그대로 V7). 7차까지는 커밋 `e56e2b7` 에 있다.
+- **재로그인 결함 (P0, 수정)** : 같은 계정의 유효 세션이 여럿 남은 DB 에서 로그인한 채 다시 로그인하면 200 인데 새 세션이 미인증이던 결함. 원인 : Spring Security `ConcurrentSessionControlAuthenticationStrategy` 는 유효 세션 수가 한도(1)보다 많으면 "남은 수 − 한도 + 1" = 전부를 오래된 순으로 만료시키는데, 로그인하는 지금 세션도 그 목록에 있으면 자기까지 만료시킨다 (한도와 같을 때만 지금 세션을 예외로 둔다). 유효 세션이 여럿 남는 것은 동시 로그인 경쟁(서로 커밋 전 세션을 못 본다) 때문이다. 같이 찾은 결함 : 동시 로그인이 같은 세션을 함께 만료시키면 Spring Session 의 만료 속성 INSERT 가 중복 키로 실패해 **로그인 500**. 수정 : `core/security/conf/LatestLoginSessionControlStrategy`(`SecurityConfig` 의 `ObjectPostProcessor` 로 기본 전략을 바꿈) — 지금 세션은 만료시키지 않고 같은 계정의 다른 유효 세션을 모두 만료, 동시 만료의 중복 키는 이미 만료된 것으로 넘어간다. 세션 고정 방어(`changeSessionId`)·세션 등록·만료 세션 안내 필터(DUPLICATE_LOGIN)·CSRF·Spring Session JDBC·프로젝트 선택 로그인은 그대로. 검증 : 새 `SessionReloginHttpTest` 6건(유효 세션 0·1·5·19개, 만료·유효 섞임, 같은 브라우저 재로그인(다른 프로젝트·같은 프로젝트 두 번), 다른 브라우저 로그인, 8개 동시 로그인) — **수정 전 코드로 5건 실패 확인**, H2·PostgreSQL 통과. 브라우저 두 개(별도 Chrome 프로세스) E2E : 유효 세션 41개가 남은 DB 에서 A(한국어·다크) 재로그인 → 인증 유지·유효 1·화면 이동, B(영어·라이트·390, 로그인 화면) 로그인 → A 만료·로그인 화면.
+- **`lexorma-ai` 모듈 분리** : AI Provider(`core/ai`·`system/ai`), Tool Calling·AI 비서·AI 설명 제안·평가(`data/ai`), 내장 MCP(`data/mcp`), 리소스·단위 테스트를 새 라이브러리 모듈 `lexorma-ai`(`com.lexorma.ai`)로 옮겼다 (77개 파일, 참조 93개). `data → ai` 의존 없음 — 숨은 결합 두 곳을 정리 : 프로젝트 삭제 때 AI·MCP 데이터 정리를 ai 의 `AiProjectDataCleanup` 으로, 원본 삭제 영향의 AI 제안 수를 data 계약 `RelatedRecordCounter` + ai 구현으로. AI 승인의 최종 업무 설명 쓰기는 data 의 `BizDescriptionService.writeAiApproval` 로 (워크플로·잠금 순서·트랜잭션은 그대로). Spring AI·JSON Schema 검증기는 ai 만. API·DB·메시지·보안 정책 그대로. 상세 [ai-module-extraction.md](completed/ai-module-extraction.md).
+- AI 미설정·MCP 꺼짐 단일 JAR 기동(H2·PostgreSQL), 실제 Ollama Tool Calling, 실제 Claude Code MCP(HTTP·HTTPS 프록시) — [ai-module-extraction.md 8장](completed/ai-module-extraction.md).
+- 전체 실행 : H2 899·실패 0·건너뜀 39, PostgreSQL 899·실패 0·건너뜀 9 (9장).
+
 ### [DEC-IMPL-7] 7차 통합 품질 개선 · DEC-22 보완 (2026-11-17)
 
 정책 결정(7차 지시)과 구현을 나눠 적는다. 마이그레이션 추가 없음 (다음은 그대로 V7).
@@ -509,7 +517,8 @@
 
 ## 9. 검증 및 테스트 현황
 
-- **최근 전체 실행 (2026-11-17, 7차 통합 품질 개선)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun --continue` 893건 실패 0 · 건너뜀 39, PostgreSQL(빈 임시 DB `lexorma_dec7_full`, `LEXORMA_TEST_POSTGRES_URL`·`LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 893건 실패 0 · 건너뜀 9 — 7차 마지막 백엔드 코드 기준, 임시 DB 는 실행 뒤 지웠다. 그 뒤 바꾼 것은 화면 문구 한 곳(수동 검토 묶음의 동작 표시)뿐이고 타입 검사·JAR 빌드·브라우저로 확인했다.
+- **최근 전체 실행 (2026-11-17, 8차 인증 안정화·AI 모듈 분리)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun --continue` 899건 실패 0 · 건너뜀 39, PostgreSQL(빈 임시 DB `lexorma_dec8_full`, 원본 PG 테스트 포함) 899건 실패 0 · 건너뜀 9 — 8차 마지막 코드 기준.
+- 이전 (7차) : **최근 전체 실행 (2026-11-17, 7차 통합 품질 개선)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun --continue` 893건 실패 0 · 건너뜀 39, PostgreSQL(빈 임시 DB `lexorma_dec7_full`, `LEXORMA_TEST_POSTGRES_URL`·`LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 893건 실패 0 · 건너뜀 9 — 7차 마지막 백엔드 코드 기준, 임시 DB 는 실행 뒤 지웠다. 그 뒤 바꾼 것은 화면 문구 한 곳(수동 검토 묶음의 동작 표시)뿐이고 타입 검사·JAR 빌드·브라우저로 확인했다.
 - 이전 : **최근 전체 실행 (2026-11-17, 6차 통합 안정화)** : H2 `./gradlew test -PfrontendPrebuilt=true --rerun` 886건 실패 0 · 건너뜀 39, PostgreSQL(`--rerun`, 빈 임시 DB `lexorma_dec6_full2`, `LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 886건 실패 0 · 건너뜀 9 — 6차 마지막 코드 기준, 임시 DB 는 실행 뒤 삭제. 첫 전체 실행에서 H2 1건 실패(새 롤백 테스트의 실패 주입 조건이 새 행 번호에 기대 — Hibernate 시퀀스 묶음 때문에 순서에 따라 달라짐)를 기존 인덱스 번호 기준으로 고쳐 다시 전체 실행. 프런트 `npm run typecheck`·프로덕션 빌드(`bootJar`) 통과. 이전 5차 : H2 `./gradlew test -PfrontendPrebuilt=true` 881건 실패 0 · 건너뜀 38, PostgreSQL(`--rerun`, 빈 임시 DB `lexorma_dec5_test`, 원본 JDBC 테스트용 `LEXORMA_TEST_SOURCE_POSTGRES_URL` 포함) 881건 실패 0 · 건너뜀 9 — 모두 5차 마지막 코드 기준, 임시 DB 는 실행 뒤 삭제. 프런트 `npm run typecheck`·프로덕션 빌드(`bootJar`) 통과. 이전 4차 : H2 `./gradlew test -PfrontendPrebuilt=true` 864건 실패 0 · 건너뜀 33 (DEC-06 반영 시점), PostgreSQL(`--rerun`, 별도 빈 DB) 868건 실패 0 · 건너뜀 25 (DEC-06·04·05·07 반영 시점), 그 뒤 추가한 `V4SourceRenameMigrationTest` H2·PostgreSQL 통과. 이전 3차 : H2 `./gradlew build` 성공(테스트 862건 — 2차 861 + 3차 1), PostgreSQL 862건 실패 0 · 건너뜀 25 (`--rerun`, 별도 빈 DB, 실행 뒤 삭제). 이전 2차 : H2 861건 실패 0 · 건너뜀 33 (마지막 `./gradlew build`), PostgreSQL 861건 실패 0 · 건너뜀 25 (미리보기 트랜잭션 수정 뒤 재실행). 이전 : 같은 날 1차 H2 853건 실패 0 · 건너뜀 33, PostgreSQL 853건 실패 0 · 건너뜀 25 (기존 PostgreSQL 18.6 컨테이너의 별도 빈 DB, `LEXORMA_TEST_POSTGRES_URL`, `--rerun`, 실행 뒤 DB 삭제). 이전 기록 : 같은 날 M-11 엑셀 Export 843건, AI-1d 안정성 후속 835건, AI-1d 길이 통일 825건, AI-5-EVAL 2차 보완 810건(건너뜀 33·25).
 - **단계별 기록된 검증** : 각 작업 항목의 "검증 결과"와 연결된 기록. 대부분의 단계는 H2·PostgreSQL 통합 테스트와 헤드리스 Chrome 화면 검증을 기록하고 있다. 기록에 미검증으로 남은 항목(대규모 성능, Oracle·MySQL·MariaDB 실제 실행, 일부 브라우저·역할·언어 조합)은 pending-work.md 에서 관리한다.
 - **검증 환경** : 단위 테스트(Mockito, 모듈별), 통합 테스트(`lexorma-app`, `@SpringBootTest` + Flyway H2), `SmokeTest`(실제 서버 + JDK `HttpClient`), PostgreSQL 은 빈 DB 를 가리켜 같은 테스트를 실행. 프론트엔드 검사는 `npm run typecheck` 뿐이다.
@@ -542,6 +551,7 @@
 | 2026-11-16 | [DEC-IMPL-1] 확정 정책 통합 구현 1차 추가 — DEC-27·29·32(AI 평가), DEC-26(표준 용어 처음 연결·해제·일괄), DEC-11·19(화면), DEC-09·12(모델 구조 진단), DEC-17(수집 급감 경고), DEC-14 1차(요청 로그 보관 기간), DEC-20(운영 복구 절차 문서), DEC-30 1차(화면 가이드). V2 마이그레이션. 미착수·보류 DEC 는 pending-work.md 7.3 |
 | 2026-11-17 | [DEC-IMPL-6] 6차 통합 안정화 — 결함 수정 4건(DEC-22 기본 스키마, DEC-08 구성만 바뀐 저장, 로그인 project_id 500, 충돌 문구)과 DEC-16 확인 이력 화면, V6·DEC-05·08·13·16·30·31·22 재검증 |
 | 2026-11-17 | 7차 통합 품질 개선 [DEC-IMPL-7] : 요청 로그 상태 코드 결함 수정, `searchTables` 검색 방식 표시, DEC-22 교환 형식 2(모델 VIEW·ERD 배치), DEC-05 UNKNOWN 수동 검토 표시, 대형 ERD 이미지 측정·크기 한도. 9장 최근 전체 실행 갱신 (893건) |
+| 2026-11-17 | 8차 [DEC-IMPL-8] : 재로그인 세션 결함 수정(동시 세션 전략), AI·MCP 를 `lexorma-ai` 모듈로 분리. 9장 최근 전체 실행 갱신 (899건) |
 | 2026-11-16 | [DEC-IMPL-5] 확정 정책 통합 구현 5차 — DEC-16 원본 VIEW 정의 수집(V5), DEC-22 ERD 이미지·모델 Export/Import/복사, DEC-31 내장 MCP(V6), DEC-30 가이드 이미지 |
 | 2026-11-16 | [DEC-IMPL-4] 확정 정책 통합 구현 4차 — DEC-06(V4 이름 변경 매핑)·04(원본 삭제 선택 반영)·05(제약·인덱스 교체)·07(원본 COMMENT 명시적 비우기). DEC-06·04 브라우저 E2E(실제 PostgreSQL 원본) |
 | 2026-11-16 | [DEC-IMPL-2] 확정 정책 통합 구현 2차 — DEC-08·13(일부 경로)·10·18, DEC-29·09·30 보완, DEC-22 선택 테이블 Export. V3 |

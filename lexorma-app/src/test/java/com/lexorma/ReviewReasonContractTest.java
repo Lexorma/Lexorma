@@ -27,7 +27,7 @@ class ReviewReasonContractTest {
     void kindsMatch() throws IOException {
         Set<String> server = new TreeSet<>();
         Pattern change = Pattern.compile("new (?:ProposalVersions\\.)?Change\\(\"([A-Z_]+)\"");
-        try (Stream<Path> files = Files.walk(ROOT.resolve("lexorma-data/src/main/java/com/lexorma/data/ai/dictionary"))) {
+        try (Stream<Path> files = Files.walk(ROOT.resolve("lexorma-ai/src/main/java/com/lexorma/ai/dictionary"))) {
             for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
                 Matcher m = change.matcher(Files.readString(file));
                 while (m.find()) server.add(m.group(1));

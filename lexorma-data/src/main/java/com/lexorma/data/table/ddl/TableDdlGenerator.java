@@ -196,7 +196,7 @@ public final class TableDdlGenerator {
         Set<Set<String>> uniqueKeys = new HashSet<>();
         if (!pkColumns.isEmpty()) {
             uniqueKeys.add(Set.copyOf(pkColumns));
-            lines.add("    CONSTRAINT " + constraintName(db, "PK_" + tableName) + " PRIMARY KEY (" + String.join(", ", pkColumns) + ")");
+            lines.add("    CONSTRAINT " + constraintName(db, DbIdentifierRules.primaryKeyName(tableName)) + " PRIMARY KEY (" + String.join(", ", pkColumns) + ")");
         } else {
             warnings.add(Messages.get("PK 컬럼이 없습니다."));
         }
@@ -205,7 +205,7 @@ public final class TableDdlGenerator {
                 .filter(c -> Boolean.TRUE.equals(c.getIsUnique()) && !Boolean.TRUE.equals(c.getIsPk()))
                 .forEach(c -> {
                     uniqueKeys.add(Set.of(c.getColumnName()));
-                    lines.add("    CONSTRAINT " + constraintName(db, "UK_" + tableName + "_" + c.getColumnName()) + " UNIQUE (" + c.getColumnName() + ")");
+                    lines.add("    CONSTRAINT " + constraintName(db, DbIdentifierRules.uniqueName(tableName, c.getColumnName())) + " UNIQUE (" + c.getColumnName() + ")");
                 });
 
         for (TableConstraint constraint : extras.constraints()) {
@@ -412,7 +412,7 @@ public final class TableDdlGenerator {
             } else {
                 ColumnInfo refPk = pk.get(0);
                 String refName = refPk.getTableInfo() == null ? refTable : qualifiedName(refPk.getTableInfo(), defaultSchemaName);
-                String fkName = "FK_" + tableName + "_" + column.getColumnName();
+                String fkName = DbIdentifierRules.foreignKeyName(tableName, column.getColumnName());
                 TableRelation reference = column.getId() == null || referenceRelations == null ? null : referenceRelations.get(column.getId());
                 statements.add("ALTER TABLE " + qualifiedName
                         + " ADD CONSTRAINT " + constraintName(db, fkName)
@@ -693,19 +693,14 @@ public final class TableDdlGenerator {
     }
 
     /**
-     * 제약/인덱스 이름 : Oracle(12.1 이하 30자), MySQL(64자) 제한을 넘으면 자른다.
+     * 제약/인덱스 이름 : Oracle(12.1 이하 30자), PostgreSQL(63자), MySQL·MariaDB(64자) 제한을 넘으면 자른다 ({@link DbIdentifierRules#ddlName}).
      */
     public static String objectName(DbType dbType, String name) {
         return constraintName(DbType.orDefault(dbType), name);
     }
 
     private static String constraintName(DbType db, String name) {
-        int max = switch (db) {
-            case ORACLE -> 30;
-            case POSTGRESQL -> 63;
-            default -> 64;
-        };
-        return name.length() > max ? name.substring(0, max) : name;
+        return DbIdentifierRules.ddlName(db, name);
     }
 
     private static boolean isMySqlFamily(DbType db) {

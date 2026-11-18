@@ -14,3 +14,24 @@
 .term-relink-table th, .term-relink-table td { padding: 4px 6px; border-bottom: 1px solid var(--gh-border); text-align: left; overflow-wrap: anywhere; vertical-align: top; }
 .term-relink-table thead th { color: var(--gh-fg-muted); font-weight: 600; }
 .term-relink-keep { margin: 8px 0; padding-left: 18px; font-size: 13px; }
+
+/* 논리 → 물리 생성 미리보기 (M-7 보강 1차) : DBMS 식별자 진단·관계 FK 미생성 사유 */
+.gen-section h4 { margin: 8px 0 4px; font-size: 14px; }
+.gen-section p { margin: 0 0 6px; font-size: 13px; }
+.gen-issues { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; }
+.gen-issues > li { min-width: 0; padding: 6px 8px; border: 1px solid var(--gh-border); border-radius: 6px; overflow-wrap: anywhere; }
+.gen-reasons { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.gen-ident-row td { background: var(--gh-attention-subtle); }
+.gen-ident-flag { background: var(--gh-attention-subtle); padding: 0 4px; border-radius: 4px; }
+/* 2차 : 속성 선택 (P7) · 요약 */
+.gen-attributes { margin: 4px 0 8px; font-size: 13px; }
+.gen-attributes summary { cursor: pointer; color: var(--gh-fg-muted); }
+.gen-attributes ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 12px; }
+.gen-attributes label { overflow-wrap: anywhere; }
+.gen-summary { margin: 0; font-size: 13px; }
+.gen-pairs { margin-top: 4px; min-width: 0; }
+.gen-pairs .logical-pair-list { margin-top: 2px; }
+/* 버튼이 셋일 때(오류 엔터티 제외 · 미리보기 · 생성) 좁은 화면에서 줄을 바꾼다 — 버튼 줄이 대화상자 폭을 넓히지 않게 */
+.term-relink .gh-dialog-actions { flex-wrap: wrap; row-gap: 6px; }
+.term-relink .gh-dialog-actions .btn { white-space: normal; }
+.gen-fk { margin-top: 4px; overflow-wrap: anywhere; }

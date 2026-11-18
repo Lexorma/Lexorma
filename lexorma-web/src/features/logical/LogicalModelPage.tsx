@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
 import { EntityForm, useEntityDetail } from './entityDetail';
 import { relationLabel, RelationshipForm } from './relationshipForm';
+import { PairStatusLabel, RelationshipPairsEditor } from './relationshipPairs';
 import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphEntity, type LogicalModel, type LogicalRelationship } from './model';
 import '../../styles/logical.css';
 
@@ -77,6 +78,14 @@ export function LogicalModelPage() {
     });
   };
 
+  // 관계 속성 짝 (M-7 보강 3차) : 편집 권한이 있고 승인 전인 관계만 바꿀 수 있다 (승인된 관계는 보기만)
+  const openPairs = (relationship: LogicalRelationship) => {
+    dialog.open({
+      title: t('관계 속성 짝 — {0}', relationLabel(relationship)),
+      className: 'dialog-wide',
+      content: () => <RelationshipPairsEditor relationshipId={relationship.id} readOnly={!canEdit || !!relationship.isApproval} onSaved={() => refresh()} />,
+    });
+  };
   const openRelationshipForm = (relationship?: LogicalRelationship) => {
     if (entities.length === 0) return dialog.alert(t('엔터티를 먼저 등록해주세요.'));
     dialog.open({
@@ -105,7 +114,7 @@ export function LogicalModelPage() {
 
   const modelDeleteBlocked = entities.length ? t('엔터티가 있는 논리 모델은 삭제할 수 없습니다. 엔터티를 먼저 삭제해주세요.') : '';
   const entityHeaders = [t('엔터티명'), t('설명'), t('속성 수'), t('관계 수'), t('승인 상태'), t('관리')];
-  const relationshipHeaders = [t('관계명'), t('출발 엔터티'), t('도착 엔터티'), t('식별 관계'), t('카디널리티'), t('승인 상태'), ...(canEdit || approvalAvailable ? [t('관리')] : [])];
+  const relationshipHeaders = [t('관계명'), t('출발 엔터티'), t('도착 엔터티'), t('식별 관계'), t('카디널리티'), t('속성 짝'), t('승인 상태'), ...(canEdit || approvalAvailable ? [t('관리')] : [])];
   const emptyText = graph.isPending ? t('불러오는 중입니다.') : graph.isError ? t('논리 모델을 불러오지 못했습니다.') : '';
 
   return (
@@ -192,6 +201,11 @@ export function LogicalModelPage() {
                           <td>{r.targetEntityName} <span className="gh-muted gh-mono">({participation(r.targetMin, r.targetMax)})</span></td>
                           <td>{r.isIdentifying ? <Label variant="accent">{t('식별')}</Label> : <span className="gh-muted">{t('비식별')}</span>}</td>
                           <td className="gh-mono" title={cardinalityText(r)}>{r.cardinality}</td>
+                          <td>
+                            <button type="button" className="logical-link" title={t('속성 짝 보기·편집')} onClick={() => openPairs(r)}>
+                              <PairStatusLabel state={r.attributePairs} />{r.attributePairs && r.attributePairs.pairs.length > 0 && <span className="gh-muted"> {r.attributePairs.pairs.length}</span>}
+                            </button>
+                          </td>
                           <td><ApprovalLabel value={r.isApproval} /></td>
                           {(canEdit || approvalAvailable) && (
                             <td>
@@ -223,8 +237,8 @@ export function LogicalModelPage() {
 
 /** 목록 컬럼 폭 (고정) : 엔터티 6열, 관계 6열 + 관리 */
 const ENTITY_WIDTHS = ['24%', '34%', '9%', '9%', '11%', '13%'];
-const RELATIONSHIP_WIDTHS = ['20%', '22%', '22%', '12%', '12%', '12%'];
-const RELATIONSHIP_WIDTHS_MANAGED = ['16%', '19%', '19%', '10%', '10%', '10%', '16%'];
+const RELATIONSHIP_WIDTHS = ['18%', '19%', '19%', '11%', '10%', '12%', '11%'];
+const RELATIONSHIP_WIDTHS_MANAGED = ['14%', '16%', '16%', '9%', '9%', '11%', '9%', '16%'];
 
 
 function ApprovalLabel({ value }: { value: boolean | null }) {

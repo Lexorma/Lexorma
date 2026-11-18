@@ -56,6 +56,7 @@ class ModelSnapshotFieldCoverageTest {
             Map.entry("LogicalIdentifier", Map.of("id", ID, "attributes", INVERSE)),
             Map.entry("LogicalIdentifierAttribute", Map.of("id", ID, "identifier", PARENT)),
             Map.entry("LogicalRelationship", Map.of("id", ID, "projectId", PROJECT)),
+            Map.entry("LogicalRelationshipAttribute", Map.of("id", ID, "relationship", PARENT)),
             Map.entry("EntityTableMapping", Map.of("id", ID, "projectId", PROJECT)),
             Map.entry("AttributeColumnMapping", Map.of("id", ID)));
 
@@ -65,8 +66,8 @@ class ModelSnapshotFieldCoverageTest {
     @DisplayName("이력·버전 대상 엔티티의 모든 영속 속성은 담는 필드이거나, 사유를 적은 제외 속성이다")
     void everyPersistentAttributeIsRecordedOrExcludedWithReason() {
         Map<Class<?>, List<String>> recorded = ModelChangeRecorder.recordedFields();
-        // 스키마 1 + 이력 대상 13 (VIEW 포함) + 자식 행 6 (VIEW 의 출력 컬럼·참조 객체 포함)
-        assertThat(recorded).hasSize(20);
+        // 스키마 1 + 이력 대상 13 (VIEW 포함) + 자식 행 7 (VIEW 의 출력 컬럼·참조 객체, 관계 속성 짝 포함)
+        assertThat(recorded).hasSize(21);
         assertThat(recorded.keySet()).extracting(Class::getSimpleName).containsExactlyInAnyOrderElementsOf(EXCLUDED.keySet());
 
         Map<String, Set<String>> missing = new TreeMap<>();   // 엔티티에는 있는데 어디에도 없는 속성

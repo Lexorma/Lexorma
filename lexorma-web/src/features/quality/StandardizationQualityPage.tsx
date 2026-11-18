@@ -10,14 +10,15 @@ import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { TableLinks } from '../dictionary/DictionaryUsage';
 import { useSchemas } from '../schema/schemas';
-import { QUALITY_MODEL_GRID_MIN_WIDTH, QUALITY_TERM_GRID_MIN_WIDTH, qualityModelColumns, qualityTermColumns } from './columns';
+import { QUALITY_IDENTIFIER_GRID_MIN_WIDTH, QUALITY_MODEL_GRID_MIN_WIDTH, QUALITY_TERM_GRID_MIN_WIDTH, qualityIdentifierColumns, qualityModelColumns, qualityTermColumns } from './columns';
 import {
-  MODEL_RULES, SEVERITIES, TARGET_TYPES, TERM_RULES,
-  type ColumnSummary, type ModelRule, type ModelSummary, type Severity, type TargetType, type TermGroup, type TermRule, type TermSummary,
+  IDENTIFIER_KINDS, IDENTIFIER_RULES, MODEL_RULES, SEVERITIES, TARGET_TYPES, TERM_RULES,
+  type ColumnSummary, type IdentifierKind, type IdentifierRule, type IdentifierSummary, type ModelRule, type ModelSummary, type Severity, type TargetType,
+  type TermGroup, type TermRule, type TermSummary,
 } from './model';
 import { ColumnSuggestionDetail, SeverityLabel, TermGroupDetail } from './qualityDialogs';
 
-type Tab = 'model' | 'terms';
+type Tab = 'model' | 'terms' | 'identifiers';
 
 const COLUMN_COUNTS: Partial<Record<ModelRule, keyof ColumnSummary>> = {
   TERM_NOT_LINKED: 'termNotLinked', COLUMN_NAME_MISMATCH: 'columnNameMismatch', DOMAIN_DEFINITION_MISMATCH: 'domainDefinitionMismatch',
@@ -32,12 +33,14 @@ const SUGGESTION_TYPES: ModelRule[] = ['TERM_NOT_LINKED', 'COLUMN_NAME_MISMATCH'
  * 표준화 품질 진단 (M-5, 조회 전용). 탭 두 개 :
  * - 모델 품질 진단 : 컬럼(표준 용어 미연결·컬럼명 불일치·도메인 정의 불일치) + 테이블명(프로젝트 접두어·승인된 표준 단어 약어). 컬럼 행에서 개선 후보 대화상자
  * - 표준 용어 진단 : 중복·유사어 그룹 (약어·도메인 중복, 용어명 중복, 같은 약어 다른 도메인, 같은 단어 구성, 이음동의어, 금칙어)
- * 주소 : ?tab=terms 로 용어 탭, ?type= 으로 모델 탭의 처음 유형 (대시보드의 품질 항목)
+ * - DBMS 식별자 진단 (M-7 보강 1차) : 프로젝트 DBMS 기준 이름 길이·문자, DDL 제약조건명 잘림·충돌. 모델 진단·대시보드 수치와 따로 집계한다
+ * 주소 : ?tab=terms 로 용어 탭, ?tab=identifiers 로 식별자 탭, ?type= 으로 모델 탭의 처음 유형 (대시보드의 품질 항목)
  */
 export function StandardizationQualityPage() {
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'terms' ? 'terms' : 'model');
-  const tabs: [Tab, string][] = [['model', t('모델 품질 진단')], ['terms', t('표준 용어 진단')]];
+  const initialTab = searchParams.get('tab');
+  const [tab, setTab] = useState<Tab>(initialTab === 'terms' || initialTab === 'identifiers' ? initialTab : 'model');
+  const tabs: [Tab, string][] = [['model', t('모델 품질 진단')], ['terms', t('표준 용어 진단')], ['identifiers', t('DBMS 식별자 진단')]];
 
   return (
     <>
@@ -52,7 +55,8 @@ export function StandardizationQualityPage() {
         ))}
       </ul>
       <div className="quality-tab">
-        {tab === 'model' ? <ModelQuality initialType={MODEL_RULES.find((item) => item.type === searchParams.get('type'))?.type ?? ''} /> : <TermQuality />}
+        {tab === 'model' ? <ModelQuality initialType={MODEL_RULES.find((item) => item.type === searchParams.get('type'))?.type ?? ''} />
+          : tab === 'terms' ? <TermQuality /> : <IdentifierQuality />}
       </div>
     </>
   );
@@ -301,6 +305,121 @@ function TermQuality() {
                 ))}
               </span>
             );
+          }
+          return undefined;
+        }}
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- DBMS 식별자 진단
+
+function IdentifierQuality() {
+  const grid = useRef<GridHandle>(null);
+  const { user } = useAuth();
+  const { schemas } = useSchemas();
+  const [type, setType] = useState<IdentifierRule | ''>('');
+  const [severity, setSeverity] = useState<Severity | ''>('');
+  const [kind, setKind] = useState<IdentifierKind | ''>('');
+  const [schemaId, setSchemaId] = useState('');
+  const summary = useQuery({
+    queryKey: ['standardization-quality-identifier-summary', user?.projectId],
+    queryFn: () => api<IdentifierSummary>('/api/standardizationQuality/identifiers/summary'),
+  });
+
+  const params: Record<string, string> = {};
+  if (type) params.type = type;
+  if (severity) params.severity = severity;
+  if (kind) params.kind = kind;
+  if (schemaId) params.schemaId = schemaId;
+
+  const reload = () => {
+    grid.current?.reload();
+    void summary.refetch();
+  };
+  const data = summary.data;
+  const count = (value: number | undefined) => (value == null ? '-' : value);
+
+  return (
+    <>
+      {summary.isError && <p className="gh-muted" role="alert">{t('진단 요약을 불러오지 못했습니다.')}</p>}
+      <p className="gh-muted quality-identifier-basis">
+        {data ? t('프로젝트 DBMS {0} 기준 — {1}. 예약어는 검사하지 않습니다.', data.dbLabel, data.lengthBasis) : ''}
+      </p>
+      <div className="dash dash-stats quality-stats" aria-label={t('DBMS 식별자 진단 요약')}>
+        <div className="dash-stat">
+          <div className="dash-stat-label">{t('검사 대상')}</div>
+          <div className="dash-stat-value">{count(data?.totalTables)}</div>
+          <div className="quality-stat-foot">{data ? t('테이블 {0} · 컬럼 {1} · 스키마 {2}', data.totalTables, data.totalColumns, data.totalSchemas) : ''}</div>
+        </div>
+        {SEVERITIES.filter((item) => item.severity !== 'INFO').map((item) => (
+          <button key={item.severity} type="button" className="dash-stat" aria-pressed={severity === item.severity && type === ''}
+            onClick={() => { setType(''); setSeverity(severity === item.severity && type === '' ? '' : item.severity); }}>
+            <div className="dash-stat-label">{item.label}</div>
+            <div className={`dash-stat-value${data && (item.severity === 'ERROR' ? data.errors : data.warnings) ? ' is-pending' : ''}`}>
+              {count(data ? (item.severity === 'ERROR' ? data.errors : data.warnings) : undefined)}
+            </div>
+          </button>
+        ))}
+      </div>
+      <div className="dash dash-stats quality-stats quality-rule-stats" aria-label={t('진단 유형별 건수')}>
+        {IDENTIFIER_RULES.map((item) => (
+          <button key={item.type} type="button" className="dash-stat" aria-pressed={type === item.type}
+            onClick={() => { setSeverity(''); setType(type === item.type ? '' : item.type); }}>
+            <div className="dash-stat-label">{item.label}</div>
+            <div className="dash-stat-value">{count(data?.rules[item.type])}</div>
+            <div className="quality-stat-foot">{item.hint}</div>
+          </button>
+        ))}
+      </div>
+
+      <Grid
+        ref={grid}
+        id="standardizationQualityIdentifierGrid"
+        minWidth={QUALITY_IDENTIFIER_GRID_MIN_WIDTH}
+        columns={qualityIdentifierColumns}
+        dataUrl="/api/standardizationQuality/identifiers"
+        params={params}
+        searchFilters={
+          <>
+            <select className="search-column-select" aria-label={t('진단 유형')} value={type} onChange={(e) => setType(e.target.value as IdentifierRule | '')}>
+              <option value="">{t('전체 유형')}</option>
+              {IDENTIFIER_RULES.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
+            </select>
+            <SeveritySelect value={severity} onChange={setSeverity} />
+            <select className="search-column-select" aria-label={t('대상')} value={kind} onChange={(e) => setKind(e.target.value as IdentifierKind | '')}>
+              <option value="">{t('전체 대상')}</option>
+              {IDENTIFIER_KINDS.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}
+            </select>
+            <select className="search-column-select" aria-label={t('스키마')} value={schemaId} onChange={(e) => setSchemaId(e.target.value)}>
+              <option value="">{t('전체 스키마')}</option>
+              {schemas.map((s) => <option key={s.id} value={s.id}>{s.schemaName}</option>)}
+            </select>
+          </>
+        }
+        emptyText={type || severity || kind || schemaId ? t('조건에 맞는 진단 결과가 없습니다.') : t('진단 결과가 없습니다. 모든 이름이 프로젝트 DBMS 식별자 기준을 따릅니다.')}
+        renderCell={(field, row) => {
+          if (field === 'type') {
+            const item = IDENTIFIER_RULES.find((e) => e.type === row.type);
+            return <Label variant={item?.variant}>{item?.label ?? row.type}</Label>;
+          }
+          if (field === 'severity') return <SeverityLabel severity={row.severity} />;
+          if (field === 'kind') return IDENTIFIER_KINDS.find((e) => e.kind === row.kind)?.label ?? row.kind;
+          if (field === 'schemaName' || field === 'tableName' || field === 'name') return row[field] ? <Mono>{row[field]}</Mono> : <Muted>-</Muted>;
+          if (field === 'ddlName') return row.ddlName ? <Mono>{row.ddlName}</Mono> : <Muted>-</Muted>;
+          if (field === 'length') return row.length != null ? `${row.length} / ${row.maxLength}` : <Muted>-</Muted>;
+          if (field === 'message') {
+            return (
+              <span className="quality-identifier-message">
+                {row.message}
+                <Muted>{t('기준')} : {row.basis}</Muted>
+                <Muted>{row.guide}</Muted>
+              </span>
+            );
+          }
+          if (field === 'links') {
+            return row.tableId ? <TableLinks tableId={row.tableId} schemaId={row.schemaId} columnId={row.columnId ?? undefined} onChanged={reload} /> : <Muted>-</Muted>;
           }
           return undefined;
         }}

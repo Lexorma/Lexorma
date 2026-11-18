@@ -7,15 +7,16 @@ import java.util.Map;
  * 모델 교환 파일 (DEC-22, docs/completed/model-exchange-dec22.md). 버전 있는 JSON : {@code format = "lexorma-model"}, {@code formatVersion = 2}.
  * 내용은 모델 버전·변경 이력과 같은 필드 목록(ModelChangeRecorder)으로 만든 종류별 객체 목록이다. 파일 안의 id 는 이 파일 안에서만 쓰는 참조 번호다 (가져올 때 모두 새로 받는다).
  * 버전 2 (7차) : 모델 VIEW(PHYSICAL_VIEW — 정의 SQL·출력 컬럼·참조 객체)와 내보낸 사용자의 저장된 ERD 배치({@link Layouts})를 더했다.
- * 버전 1 파일도 그대로 가져온다 (VIEW·배치가 없을 뿐이다).
+ * 버전 3 (M-7 보강 3차) : 논리 관계 state 에 속성 짝 attributes(부모 속성 → 자식 속성, 순서 — 파일 안의 속성 번호로 잇고 가져올 때 새 속성에 다시 잇는다).
+ * 버전 1·2 파일도 그대로 가져온다 (VIEW·배치 또는 속성 짝이 없을 뿐이다 — 버전 1·2 파일에 속성 짝이 있으면 거절한다).
  * 넣지 않는 것 : 승인 상태, 원본 DB 연결·원본 카탈로그·원본 DB 에서 수집한 VIEW 정의(DEC-16), 비밀번호·키·토큰, 감사 컬럼·사용자·감사 로그.
  */
 public final class ModelExchangeDto {
 
     public static final String FORMAT = "lexorma-model";
-    public static final int FORMAT_VERSION = 2;
-    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 */
-    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2);
+    public static final int FORMAT_VERSION = 3;
+    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 (관계 속성 짝 없음), 3 */
+    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2, 3);
 
     private ModelExchangeDto() {
     }

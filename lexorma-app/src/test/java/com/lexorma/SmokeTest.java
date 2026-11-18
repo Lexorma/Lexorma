@@ -555,7 +555,7 @@ class SmokeTest {
 
     @Test
     @Order(20)
-    @DisplayName("M-5 잔여 진단 API (테이블명·용어 중복·컬럼명 개선 후보) : 요약 = 목록, 조건 바인딩, 잘못된 값 400")
+    @DisplayName("M-5 잔여 진단 API (테이블명·용어 중복·컬럼명 개선 후보·DBMS 식별자) : 요약 = 목록, 조건 바인딩, 잘못된 값 400")
     void standardizationQualityRules() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
 
@@ -581,6 +581,19 @@ class SmokeTest {
             assertThat(group.path("members").size()).isEqualTo(group.path("memberCount").asInt()).isPositive();
         }
         assertThat(get("/api/standardizationQuality/terms/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+
+        // DBMS 식별자 진단 (M-7 보강 1차) : 요약의 심각도별 건수 = 목록 건수, 조건 바인딩, 잘못된 값 400. 기존 요약과 따로 집계한다
+        var identifiers = mapper.readTree(get("/api/standardizationQuality/identifiers/summary", true).body());
+        assertThat(identifiers.path("dbType").asString()).isEqualTo("POSTGRESQL");
+        assertThat(identifiers.path("rules").size()).isEqualTo(5);
+        assertThat(mapper.readTree(get("/api/standardizationQuality/identifiers/data?page=0&size=5&severity=ERROR", true).body()).path("recordsTotal").asLong())
+                .isEqualTo(identifiers.path("errors").asLong());
+        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&type=CONSTRAINT_NAME_COLLISION&kind=PRIMARY_KEY&schemaId=1&searchColumn=name&searchQuery=PK",
+                true).statusCode()).isEqualTo(200);
+        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&kind=VIEW", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/standardizationQuality/identifiers/data", true).statusCode()).as("page·size 없음").isEqualTo(400);
+        assertThat(mapper.readTree(get("/api/standardizationQuality/model/summary", true).body()).path("columns")).as("기존 요약 그대로").isEqualTo(columns);
 
         // 컬럼명 개선 후보 : 후보는 최대 5건이고, 없으면 사유가 있다. 없는 컬럼은 오류
         long columnId = mapper.readTree(get("/api/selectColumn/data?page=0&size=1", true).body()).path("data").get(0).path("id").asLong();
@@ -675,6 +688,7 @@ class SmokeTest {
             Map.entry("usageTermColumns", "/api/dictionaryUsage/word/12"),
             Map.entry("qualityModelColumns", "/api/standardizationQuality/model"),
             Map.entry("qualityTermColumns", "/api/standardizationQuality/terms"),
+            Map.entry("qualityIdentifierColumns", "/api/standardizationQuality/identifiers"),
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             Map.entry("modelHistoryColumns", "/api/modelHistory"),
             Map.entry("modelVersionColumns", "/api/modelVersion"),

@@ -200,6 +200,24 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveRelationship(accountDto, relationship));
     }
 
+    @Operation(summary = "관계 속성 짝 조회 (M-7 보강 3차)", description = "부모 주 식별자 속성 ↔ 자식 속성 짝과 판정(status·warnings), 편집 후보(부모 = 주 식별자 속성, 자식 = 자식 엔터티 속성)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/relationship/{relationshipId}/attributes")
+    public ResponseEntity<LogicalModelDto.RelationshipPairs> selectRelationshipPairs(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                    @PathVariable(name = "relationshipId") Long relationshipId) {
+        return ResponseEntity.ok(logicalModelService.selectRelationshipPairs(accountDto, relationshipId));
+    }
+
+    @Operation(summary = "관계 속성 짝 저장 (M-7 보강 3차)", description = "관계 단위 일괄 교체 (순서 = 목록 순서, 빈 목록이면 모두 해제). modifiedAt 필수 — 다르면 409. 승인된 관계는 바꿀 수 없다")
+    @PreAuthorize("hasRole('USER')")
+    @PutMapping("/relationship/{relationshipId}/attributes")
+    public ResponseEntity<LogicalModelDto.RelationshipPairs> saveRelationshipPairs(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                  @PathVariable(name = "relationshipId") Long relationshipId,
+                                                                                  @RequestBody LogicalModelDto.PairSave request) {
+        com.lexorma.common.jpa.ModelBase.require(true, request == null ? null : request.modifiedAt()); // DEC-08
+        return ResponseEntity.ok(logicalModelService.saveRelationshipPairs(accountDto, relationshipId, request));
+    }
+
     @Operation(summary = "관계 삭제", description = "승인된 관계는 삭제할 수 없다")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/relationship/{relationshipId}")

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface EntityTableMappingRepository extends JpaRepository<EntityTableMapping, Long> {
@@ -18,4 +19,8 @@ public interface EntityTableMappingRepository extends JpaRepository<EntityTableM
     Optional<EntityTableMapping> findByEntity_Id(Long entityId);
 
     Optional<EntityTableMapping> findByTable_Id(Long tableId);
+
+    /** 논리 → 물리 생성 : 여러 엔터티의 매핑과 테이블·스키마를 한 번에 */
+    @Query("select m from EntityTableMapping m join fetch m.table t join fetch t.schema where m.entity.id in :entityIds")
+    List<EntityTableMapping> findAllByEntityIds(@Param("entityIds") java.util.Collection<Long> entityIds);
 }

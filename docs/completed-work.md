@@ -8,7 +8,7 @@
   - 실제 구현과 기존 기록에서 완료가 확인된 범위만 적는다. 일부만 끝난 작업은 끝난 범위만 여기 두고, 남은 범위는 같은 작업 ID 로 pending-work.md 에 둔다.
   - 검증 결과는 각 기록에 남은 사실만 옮긴다. 기록에 없는 검증을 했다고 쓰지 않는다.
   - 작업 ID 는 기존 로드맵의 것을 유지한다 : `M-n`(데이터 모델링), `AI-n`(AI 로드맵 n단계), `SEC-1`, `D-nn`(모델링 결정), `U-nn`(AI 결정).
-- **최종 갱신일** : 2026-11-16
+- **최종 갱신일** : 2026-11-17
 
 ## 2. 프로젝트 기반 구조
 
@@ -333,6 +333,35 @@
   - 3차 : 표준 사전 기반 물리명 추천(컬럼명·테이블명) API·화면 — [physical-name-recommendation-m7.md](completed/physical-name-recommendation-m7.md).
 - 설계 결정 : D-08 논리 → 물리 일괄 생성은 초기 제외(연결·추천만).
 - 검증 결과 : H2/PostgreSQL 테스트 + 헤드리스 Chrome (ADMIN·MANAGER·DBA·USER·VIEWER·미승인).
+- **보강 1차 (2026-11-17, DEC-10 후속 · 사용자 확정 P1-a·P12·P13·P14·P15)** — [logical-physical-mapping-m7.md 12장](completed/logical-physical-mapping-m7.md)
+  - DBMS 식별자 규칙 `table/ddl/DbIdentifierRules`·`DbIdentifierCheck` : 길이(PostgreSQL 63바이트·Oracle 30바이트·MySQL/MariaDB 64자), 비인용 식별자 문자 ↔ Lexorma 권장 형식 구분, DDL 자동 제약조건명(PK_·UK_·FK_) 잘림, DBMS별 이름 공간의 최종 이름 충돌. 예약어 제외. DDL 생성기가 같은 함수를 쓴다 (DDL 출력 변경 없음).
+  - 생성 미리보기 응답에 `dbType`·`identifiers`·`relations` 추가 (기존 필드 그대로). 식별자 진단은 경고만 — 생성 가능 여부 그대로. 미승인 엔터티 경고.
+  - **동작 변경 (P1-a)** : 논리 관계로 FK 를 추론하지 않는다 — 관계마다 미생성 사유. 변경 전 코드에서 자기 참조(PK 에 자기 테이블 참조, DDL 은 건너뜀)·같은 부모의 두 관계(FK 하나로 합쳐짐) 결함을 재현했다.
+  - 표준화 품질 진단 규칙 5개와 `/api/standardizationQuality/identifiers/*`·[DBMS 식별자 진단] 탭 (기존 요약·모델 진단·대시보드와 따로 집계).
+  - 검증 : H2 `build` 949건·PostgreSQL 18.6 949건 실패 0, Chrome(한국어 라이트·다크, 1120·606px). 미검증 : 375px, 영어 화면 표시(API 메시지만 확인), 실제 Oracle·MySQL·MariaDB DDL 실행. DB 마이그레이션 없음 (다음 V7).
+- **보강 2차 (2026-11-17, 사용자 확정 P3·P7·P10·P11)** — [logical-physical-mapping-m7.md 13장](completed/logical-physical-mapping-m7.md)
+  - P3 : 새 테이블의 컬럼 = 주 식별자 속성(식별자 순서) → 나머지(속성 순서), 복합 PK 가 논리 식별자 순서. 기존 테이블·매핑은 그대로.
+  - P7 : `excludedAttributeIds` (선택, 없으면 전체) — 일반 속성 제외, 주 식별자 속성은 항상 포함(정규화·경고), 잘못된 ID 400. 응답 `TablePlan.attributes`.
+  - P10 : 화면 [오류 엔터티 제외 후 다시 미리보기] (서버는 오류가 있으면 그대로 거부, 새 미리보기·새 토큰만).
+  - P11 : 반영 직전 `GENERATE-<uuid>` 모델 버전 (`ModelVersionService.createBeforeModelChange` — 가져오기와 같은 진입점), 반영 잠금을 프로젝트 행 배타 → 논리 모델·스키마 NOWAIT 로 바꿈(가져오기와 같은 순서). 응답 `Result.versionId·versionName`.
+  - 검증 : H2 958건·PostgreSQL 18.6 958건 실패 0, 동시 반영·생성+모델 가져오기 동시·실패 롤백(버전 포함) 테스트, 헤드리스 Chrome 한국어·영어 × 라이트·다크 × 1440·375. 미검증 : 실제 Oracle·MySQL·MariaDB DDL 실행. 버전 복원 기능은 원래 없다. DB 마이그레이션 없음 (다음 V7).
+- **보강 3차 (2026-11-17, P1 · V7)** — [logical-physical-mapping-m7.md 14장](completed/logical-physical-mapping-m7.md)
+  - V7 `TB_LGCL_REL_ATRB` : 논리 관계의 부모 주 식별자 속성 ↔ 자식 속성 짝(순서), 관계별 부모·자식·순서 UNIQUE, FK(CASCADE 없음). 기존 관계에는 짝을 만들지 않았다(예제는 V7 의 새 관계 3개에만). 예제 인덱스 137·인덱스 컬럼 195·마이그레이션 8.
+  - `GET/PUT /api/logical/relationship/{id}/attributes` (VIEWER/USER) : 관계 단위 일괄 교체, 부모 주 식별자·자식 엔터티·중복 검사, 관계와 같은 잠금·`modifiedAt` 409·승인 잠금. 판정 `LogicalRelationshipPairs` (NONE·PARTIAL·COMPLETE·PARENT_KEY_MISSING·PARENT_KEY_MISMATCH, 경고 순서·자기 참조 키·P4·P5). 관계 삭제 시 짝 삭제, 짝에서 쓰는 속성 삭제 거절, 식별자 변경은 MISMATCH 로 표시.
+  - 변경 이력·모델 버전(형식 6, 예전 버전과 비교 호환)·모델 교환(형식 3, 새 속성 번호로 재연결·잘못된 참조 거절) 연계. 물리 생성 미리보기에 짝 상태(FK 는 여전히 만들지 않음 — 4차), planToken v4.
+  - 화면 : 논리 모델 관리 [관계] 표의 [속성 짝] 열·대화상자, 논리 ERD 관계 패널의 짝 목록·편집, 생성 대화상자의 짝 상태. 2차의 375px 생성 대화상자 버튼 줄 넘침 결함을 함께 고쳤다.
+  - 검증 : H2 968건·PostgreSQL 18.6 968건 실패 0, V6 → V7 업그레이드(H2·PostgreSQL), 헤드리스 Chrome 한국어·영어 × 라이트·다크 × 1440·375. 미검증 : 동시 짝 저장의 PostgreSQL 잠금 경쟁, MCP·AI 응답의 짝 노출, 관계선 속성별 연결 위치(범위 밖).
+- **보강 4차 (2026-11-17, P1·P2·P4·P5·P7 — 논리 관계 속성 짝 기반 FK 생성)** — [logical-physical-mapping-m7.md 15장](completed/logical-physical-mapping-m7.md)
+  - 완성된 속성 짝만 FK 근거 (추론 없음). 일반 단일 = 자식 컬럼의 참조 테이블명(→ 커밋 직전 REF_COLUMN 관계, 다른 스키마 부모는 `스키마.테이블`), 자기 참조 단일·복합·자기 참조 복합 = `TableRelation` (USER·FK·미승인, `PhysicalModelService.createGeneratedForeignKey` — `saveRelation` 과 같은 검사). 짝 순서 = 관계 컬럼 순서 = DDL 순서.
+  - FK 상태 READY·NO_PAIRS·PARTIAL_PAIRS·IDENTIFIER_MISMATCH·PARENT_TABLE_UNAVAILABLE·COLUMN_UNAVAILABLE·UNSUPPORTED·CONFLICT — READY 가 아니어도 생성은 막지 않는다(그 관계만 FK 없음). 같은 부모 관계 여럿 = FK 여럿, 순환은 모든 테이블 뒤에 FK, 이미 매핑된 부모(테이블 PK = 매핑 컬럼일 때만, 기존 테이블 무변경), 매핑된 자식은 건너뜀.
+  - P7 FK 필수 속성(`AttributeChoice.foreignKey`), P4·P5 경고를 관계 계획에(PK·NULL 자동 변경 없음), 계획한 FK 이름을 식별자 진단에, planToken v5(짝·컬럼·이름·상태 포함), 응답 `Result.foreignKeys`. 화면 : 생성 대화상자의 FK 유형·컬럼·제약조건명·상태·[FK 필수], 결과 알림 FK 수.
+  - 검증 : H2 977건·PostgreSQL 18.6 977건 실패 0, `PhysicalGenerationForeignKeyIntegrationTest` 8건·FK 실패 롤백, 헤드리스 Chrome 한국어·영어 × 라이트·다크 × 1440·375 (미리보기·생성·DDL·물리 ERD). 미검증 : 실제 Oracle·MySQL·MariaDB DDL 실행, READY 외 상태의 브라우저 표시(테스트로만). DB 마이그레이션 없음 (다음 V8).
+- **보강 5차 (2026-11-17, 통합 안정화 · 최종 검증)** — [logical-physical-mapping-m7.md 16장](completed/logical-physical-mapping-m7.md)
+  - 정합성 : FK 유형 4종의 계획 = 저장(테이블·컬럼 쌍 순서·이름) = DDL = ERD, 일반 단일 FK 는 참조 동기화·재조회·재시도 뒤에도 논리 관계당 하나, 다른 스키마의 같은 이름 테이블은 스키마까지 일치, 3단 순환·자기 참조는 동기화 뒤에도 유지, 결과 FK 수 = 저장된 수. DDL 4개 DBMS 문자열 확인 + PostgreSQL 격리 스키마 실제 실행(Oracle·MySQL·MariaDB 는 실행 환경 없음).
+  - 안전성 : 생성 전 버전은 성공한 반영에만 1개, 실패 시 테이블·컬럼·매핑·관계·관계 컬럼·이력·버전 모두 롤백, planToken 의 변경/비변경 경우, 생성과 다른 작업(다른 엔터티 생성·짝 저장·부모 매핑 해제·사용자 버전)의 동시 실행에서 교착·500 없이 성공 또는 409, 프로젝트 격리, 교환 형식 3 → 다른 프로젝트 → 같은 FK.
+  - 성능 : 엔터티·매핑 일괄 조회, 계획 계산과 FK 저장 동안 플러시 모드 COMMIT (JFR 로 자동 플러시가 미리보기 시간의 93% 이상임을 확인) — 엔터티 100개 미리보기 H2 1,029 → 75ms·PostgreSQL 1,201 → 198ms(중간 상태 대비), 반영 H2 3,137 → 1,293ms.
+  - 화면 : 생성 대화상자의 짝 경고(P4·P5·순서·자기 키)를 툴팁이 아닌 본문으로(375px·키보드에서 보이지 않던 결함). 브라우저 8조합에서 READY 외 7개 상태·오류 엔터티 제외·생성·ERD·DDL·버전·식별자 진단 확인.
+  - 검증 : H2 `build` 991건·PostgreSQL 18.6 991건 실패 0. 기존 결함(용어 등록 API 동의어 누락 500)은 pending-work [DICT-1]. DB 마이그레이션 없음 (다음 V8).
 
 ### [M-8] ERD 편집 (내부 모델) — 1차 · 2차 · 3차
 

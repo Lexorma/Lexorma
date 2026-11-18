@@ -22,6 +22,11 @@ public interface PhysicalModelService {
 
     PhysicalModelDto.Relation saveRelation(AccountDto accountDto, PhysicalModelDto.Relation relation);
 
+    /** 논리 → 물리 생성 전용 FK (미승인, saveRelation 과 같은 검사). 원본 = 자식 테이블, 대상 = 부모 테이블, 컬럼은 같은 순서 */
+    com.lexorma.data.physical.domain.entity.TableRelation createGeneratedForeignKey(Long projectId, com.lexorma.data.table.domain.entity.TableInfo child,
+            com.lexorma.data.table.domain.entity.TableInfo parent, java.util.List<com.lexorma.data.column.domain.entity.ColumnInfo> childColumns,
+            java.util.List<com.lexorma.data.column.domain.entity.ColumnInfo> parentColumns, String name);
+
     /** FK 의 삭제·수정 규칙만 바꾼다 (참조 컬럼 관계 포함, 승인된 관계는 거절) */
     PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules);
 

@@ -24,6 +24,7 @@ import com.lexorma.data.logical.domain.entity.LogicalIdentifier;
 import com.lexorma.data.logical.domain.entity.LogicalIdentifierAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalModel;
 import com.lexorma.data.logical.domain.entity.LogicalRelationship;
+import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -256,8 +257,51 @@ public class ModelExchangeService {
         if (document.formatVersion() == 1 && (document.layouts() != null || document.model().containsKey("PHYSICAL_VIEW"))) {
             throw invalid("형식 버전 1 파일에는 VIEW·ERD 배치가 들어갈 수 없습니다.");
         }
+        validatePairs(document);
         validateLayouts(document.layouts());
         return document;
+    }
+
+    /**
+     * 논리 관계 속성 짝 (형식 3, M-7 보강 3차) : 부모 속성은 관계 원본 엔터티의 주 식별자 속성, 자식 속성은 대상 엔터티의 속성, 부모·자식·순서 각각 중복 없음 (파일 안의 번호로 확인).
+     * 어기면 파일 전체를 거절한다 (가져오지 않은 것을 조용히 빼지 않는다). 형식 1·2 파일에는 속성 짝이 있을 수 없다
+     */
+    private static void validatePairs(ModelExchangeDto.Document document) {
+        List<Item> relationships = document.model().getOrDefault("LOGICAL_RELATIONSHIP", List.of());
+        if (relationships == null || relationships.stream().allMatch(r -> children(r, "attributes").isEmpty())) return;
+        if (document.formatVersion() < 3) throw invalid("형식 버전 {0} 파일에는 논리 관계 속성 짝이 들어갈 수 없습니다.", document.formatVersion());
+        Map<Long, Long> attributeEntity = new HashMap<>();
+        for (Item a : listOf(document, "LOGICAL_ATTRIBUTE")) attributeEntity.put(a.id(), ref(a, "entity"));
+        Map<Long, Set<Long>> primaryKeys = new HashMap<>();
+        for (Item i : listOf(document, "LOGICAL_IDENTIFIER")) {
+            if (!Boolean.TRUE.equals(bool(i, "isPrimary"))) continue;
+            Set<Long> key = primaryKeys.computeIfAbsent(ref(i, "entity"), id -> new HashSet<>());
+            children(i, "attributes").forEach(member -> key.add(longValue(member.get("attributeId"))));
+        }
+        for (Item r : relationships) {
+            List<Map<String, Object>> pairs = children(r, "attributes");
+            if (pairs.isEmpty()) continue;
+            Long source = ref(r, "sourceEntity");
+            Long target = ref(r, "targetEntity");
+            Set<Long> parents = new HashSet<>();
+            Set<Long> childs = new HashSet<>();
+            Set<Integer> orders = new HashSet<>();
+            for (Map<String, Object> pair : pairs) {
+                Long parent = longValue(pair.get("parentAttributeId"));
+                Long child = longValue(pair.get("childAttributeId"));
+                Integer order = intValue(pair.get("sortOrder"));
+                boolean ok = parent != null && child != null && order != null
+                        && Objects.equals(attributeEntity.get(parent), source) && primaryKeys.getOrDefault(source, Set.of()).contains(parent)
+                        && Objects.equals(attributeEntity.get(child), target)
+                        && parents.add(parent) && childs.add(child) && orders.add(order);
+                if (!ok) throw invalid("논리 관계 {0} 의 속성 짝이 올바르지 않습니다 (부모 주 식별자 속성 · 자식 엔터티 속성 · 중복 없는 순서).", String.valueOf(r.id()));
+            }
+        }
+    }
+
+    private static List<Item> listOf(ModelExchangeDto.Document document, String type) {
+        List<Item> items = document.model().get(type);
+        return items == null ? List.of() : items;
     }
 
     /** 배치 : 좌표는 유한한 숫자이고 ±1,000만 안, 확대 0.02~4, 배치 하나에 5,000개까지 (ERD 배치 저장과 같은 한도). 어기면 파일 전체를 거절한다 */
@@ -795,6 +839,7 @@ public class ModelExchangeService {
             Map<Long, LogicalEntity> entityMap = new HashMap<>();
             Map<Long, LogicalAttribute> attributeMap = new HashMap<>();
             int relationships = 0;
+            int relationshipPairs = 0;
             for (Item item : models.values()) {
                 if (!newModels.contains(item.id())) continue;
                 LogicalModel model = LogicalModel.builder().projectId(projectId).modelName(string(item, "modelName")).modelDescription(text(item, "modelDescription")).build();
@@ -831,17 +876,27 @@ public class ModelExchangeService {
                     LogicalEntity source = entityMap.get(ref(r, "sourceEntity"));
                     LogicalEntity targetEntity = entityMap.get(ref(r, "targetEntity"));
                     if (source == null || targetEntity == null) continue;
-                    entityManager.persist(LogicalRelationship.builder().projectId(projectId).model(model).sourceEntity(source).targetEntity(targetEntity)
+                    LogicalRelationship relationship = LogicalRelationship.builder().projectId(projectId).model(model).sourceEntity(source).targetEntity(targetEntity)
                             .relationshipName(string(r, "relationshipName")).relationshipDescription(text(r, "relationshipDescription")).isIdentifying(bool(r, "isIdentifying"))
                             .sourceMin(integer(r, "sourceMin")).sourceMax(integer(r, "sourceMax")).targetMin(integer(r, "targetMin")).targetMax(integer(r, "targetMax"))
-                            .isApproval(false).build());
+                            .isApproval(false).build();
+                    entityManager.persist(relationship);
                     relationships++;
+                    // 속성 짝 : 파일 안의 속성 번호를 방금 만든 속성으로 다시 잇는다 (파일 검사에서 소속·주 식별자·중복을 확인했다)
+                    for (Map<String, Object> pair : children(r, "attributes")) {
+                        entityManager.persist(LogicalRelationshipAttribute.builder().relationship(relationship)
+                                .parentAttribute(attributeMap.get(longValue(pair.get("parentAttributeId"))))
+                                .childAttribute(attributeMap.get(longValue(pair.get("childAttributeId"))))
+                                .sortOrder(intValue(pair.get("sortOrder"))).build());
+                        relationshipPairs++;
+                    }
                 }
             }
             count(created, "LOGICAL_MODEL", newModels.size());
             count(created, "LOGICAL_ENTITY", entityMap.size());
             count(created, "LOGICAL_ATTRIBUTE", attributeMap.size());
             count(created, "LOGICAL_RELATIONSHIP", relationships);
+            count(created, "LOGICAL_RELATIONSHIP_ATTRIBUTE", relationshipPairs);
             int columnMappings = 0;
             for (Item item : tableMappings) {
                 if (!newMappings.contains(item.id())) continue;

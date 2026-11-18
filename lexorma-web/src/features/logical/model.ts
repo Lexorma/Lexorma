@@ -76,6 +76,20 @@ export interface LogicalRelationship {
   targetMax: number | null;
   cardinality: string;
   isApproval: boolean | null;
+  /** 속성 짝과 판정 (목록·ERD 조회에만, M-7 보강 3차) */
+  attributePairs?: PairState | null;
+}
+
+/** 관계 속성 짝 (M-7 보강 3차) : 부모(출발) 주 식별자 속성 → 자식(도착) 속성, 순서 */
+export interface AttributePair { parentAttributeId: number; parentAttributeName: string; childAttributeId: number; childAttributeName: string; sortOrder: number }
+export type PairStatus = 'NONE' | 'PARENT_KEY_MISSING' | 'PARENT_KEY_MISMATCH' | 'PARTIAL' | 'COMPLETE';
+export type PairWarning = 'ORDER_DIFFERS' | 'SELF_KEY_REUSED' | 'IDENTIFYING_CHILD_NOT_KEY' | 'REQUIRED_CHILD_NULLABLE';
+export interface PairState { status: PairStatus; warnings: PairWarning[]; pairs: AttributePair[]; parentKeySize: number }
+export interface PairCandidate { attributeId: number; attributeName: string; primary: boolean; keyOrder: number | null; isRequired: boolean | null }
+/** GET·PUT /api/logical/relationship/{id}/attributes */
+export interface RelationshipPairs {
+  relationshipId: number; modifiedAt: string; parentEntityId: number; parentEntityName: string; childEntityId: number; childEntityName: string;
+  isIdentifying: boolean | null; state: PairState; parentCandidates: PairCandidate[]; childCandidates: PairCandidate[];
 }
 
 export interface GraphAttribute {

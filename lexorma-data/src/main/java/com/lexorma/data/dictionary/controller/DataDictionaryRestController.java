@@ -1,5 +1,8 @@
 package com.lexorma.data.dictionary.controller;
 
+import com.lexorma.common.jpa.ModelBase;
+import com.lexorma.core.util.AuthUtil;
+
 import com.lexorma.data.dictionary.domain.dto.StandardDomainDto;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
@@ -140,6 +143,9 @@ public class DataDictionaryRestController {
             , @AuthenticationPrincipal AccountDto accountDto
             , @PathVariable(value = "isChecked") boolean isChecked) {
 
+        // 행마다 화면이 불러온 기준값(modifiedAt)이 필요하다 — 승인자가 본 내용만 승인한다 (M-5 8차).
+        // 승인 권한이 없으면 기준값보다 권한 오류(APPROVAL_PERMISSION_DENIED, 서비스)가 먼저다
+        if (standardTerms != null && AuthUtil.isApprovalAvailable()) standardTerms.forEach(term -> ModelBase.require(true, term.getModifiedAt()));
         dataDictionaryService.approvalStandardTerms(standardTerms, accountDto, isChecked);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -224,6 +230,7 @@ public class DataDictionaryRestController {
     @PutMapping(value = "/updateDataDictionary/standardTerms")
     public ResponseEntity<Map<String, Boolean>> updateStandardTerms(@AuthenticationPrincipal AccountDto accountDto, @RequestBody StandardTermDto standardTermDto){
 
+        ModelBase.require(true, standardTermDto == null ? null : standardTermDto.getModifiedAt()); // 수정 기준값 필수 (M-5 8차, DEC-08)
         dataDictionaryService.updateStandardTerms(accountDto, standardTermDto);
 
         return ResponseEntity.ok(Map.of("result", true));

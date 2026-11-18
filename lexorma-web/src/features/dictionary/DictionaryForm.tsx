@@ -32,6 +32,7 @@ export function DictionaryForm({
   config,
   submitText,
   onSaved,
+  base,
 }: {
   tableId: DictionaryTable;
   type: 'C' | 'U';
@@ -39,6 +40,8 @@ export function DictionaryForm({
   config: FormConfig;
   submitText: string;
   onSaved: () => void;
+  /** 화면에 그리지 않고 그대로 돌려보내는 값 : 표준 용어 수정 기준값 modifiedAt (불러온 때의 값, 입력과 무관 — M-5 8차) */
+  base?: Record<string, unknown>;
 }) {
   const dialog = useDialog();
   // 읽기 전용 칸은 사용자가 입력하지 않으므로 필수 검사를 하지 않는다 (용어 수정의 도메인 허용값처럼 비어 있어도 정상인 표시 값 — M-5 6차)
@@ -77,8 +80,16 @@ export function DictionaryForm({
     const message = config.validate?.(data);
     if (message) return dialog.alert(message);
 
+    Object.assign(data, base);
+
     const url = `/api/${type === 'C' ? 'insertDataDictionary' : 'updateDataDictionary'}/${tableId}`;
-    const response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data });
+    let response: { result: boolean };
+    try {
+      response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data });
+    } catch {
+      // 오류는 공통 알림이 보여 준다. 폼은 닫지 않고 입력을 그대로 둔다 (409 충돌도 — 자동 재전송·덮어쓰기 없음)
+      return;
+    }
     if (response.result) dialog.alert(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'), onSaved);
   };
 

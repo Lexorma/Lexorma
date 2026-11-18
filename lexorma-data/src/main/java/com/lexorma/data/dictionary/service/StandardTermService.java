@@ -100,13 +100,11 @@ public class StandardTermService {
     public void approvalStandardTerms(List<StandardTermDto> standardTerms, AccountDto accountDto, boolean isApprovalAvailable) {
         Long projectId = accountDto.getProjectId();
 
-        standardTerms.forEach(standardTerm -> {
-            StandardTerm term = standardTermRepository.findByIdAndProjectId(standardTerm.getId(), projectId);
-            if(term != null){
+        // 행을 잠그고 바꾼다 : 같은 용어의 수정과 겹치면 수정이 끝난 뒤 그 내용을 읽어 승인 여부만 바꾼다 (잠그지 않으면 수정 전 내용으로 덮어쓴다).
+        // 여러 건은 ID 순서로 잠가 서로 기다리다 막히지 않게 한다 (M-5 7차)
+        standardTerms.stream().map(StandardTermDto::getId).filter(Objects::nonNull).distinct().sorted().forEach(id ->
                 // 승인/미승인 상태로 변경한다.
-                term.setIsApproval(isApprovalAvailable);
-            }
-        });
+                standardTermRepository.findForUpdate(id, projectId).ifPresent(term -> term.setIsApproval(isApprovalAvailable)));
     }
 
     @Transactional
@@ -498,10 +496,17 @@ public class StandardTermService {
     }
 
     @Transactional
-    public void updateStandardTerms(Long projectId, boolean isApprovalAvailable, StandardTermDto dto, String[] split) {
-        StandardTerm existingTerm = standardTermRepository.findByIdAndProjectId(dto.getId(), projectId);
-        if (existingTerm == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA);
+    public void updateStandardTerms(Long projectId, StandardTermDto dto, String[] split) {
+        // 행을 잠그고 승인 여부를 본다 : 승인·승인 취소와 겹치면 그쪽이 끝난 뒤의 상태로 판단한다 (M-5 7차)
+        StandardTerm existingTerm = standardTermRepository.findForUpdate(dto.getId(), projectId)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND_TERM_DATA));
+        // 승인된 용어는 고칠 수 없다 — 승인 취소 → 수정 → 재승인 (화면과 같은 규칙, 테이블·컬럼·논리 모델과 같은 오류)
+        if (Boolean.TRUE.equals(existingTerm.getIsApproval())) {
+            throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        }
+        // 영문약어를 보내지 않으면(null) 저장된 값을 그대로 둔다 (단어 약어 조합으로 바꾸지 않는다)
+        if (dto.getCommonStandardTermAbbreviation() == null) {
+            dto.setCommonStandardTermAbbreviation(existingTerm.getCommonStandardTermAbbreviation());
         }
 
         if (!Objects.equals(existingTerm.getCommonStandardTermName(), dto.getCommonStandardTermName())
@@ -537,7 +542,7 @@ public class StandardTermService {
         existingTerm.setResponsibleOrganization(dto.getResponsibleOrganization());
         // 이음동의어 : 화면은 항상 보낸다(빈 값 = 비우기). 필드가 없으면(null) 기존 목록을 그대로 둔다 — 지우지 않는다 ([DICT-1])
         if (dto.getSynonyms() != null) existingTerm.setSynonymList(DictionaryLists.split(dto.getSynonyms()));
-        existingTerm.setIsApproval(isApprovalAvailable);
+        // 승인 여부는 바꾸지 않는다 : 승인·승인 취소 API 만 바꾼다 (예전에는 승인 권한자가 고치면 승인, 그 밖에는 미승인으로 다시 정했다 — M-5 7차)
         existingTerm.setStandardDomain(standardDomain); // 연관관계 주입
 
         // 단어 매핑도 갱신 필요 시 추가

@@ -166,10 +166,8 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
     public void updateStandardTerms(AccountDto accountDto, StandardTermDto standardTermDto) {
         String domainName = standardTermDto.getCommonStandardTermAbbreviation();
 
-        // 관리자의 경우 승인으로 저장, 아닐경우 관리자가 승인할 수 있도록 저장
-        boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
-
-        standardTermService.updateStandardTerms(accountDto.getProjectId(), isApprovalAvailable, standardTermDto, abbreviationWords(domainName));
+        // 수정은 승인 여부를 바꾸지 않는다 (승인된 용어는 고칠 수 없다, 승인은 승인 API 로 — M-5 7차)
+        standardTermService.updateStandardTerms(accountDto.getProjectId(), standardTermDto, abbreviationWords(domainName));
     }
 
     @Override

@@ -1057,6 +1057,12 @@ class SmokeTest {
                 {"id":%d,"commonStandardTermName":"동의%s_목록%s","commonStandardTermDescription":"DICT-1 여럿",
                  "commonStandardTermAbbreviation":"SY%s_LS%s","commonStandardDomainName":"동의어도메인여럿%s"%s}""";
         long many = terms.get("여럿");
+        long none = terms.get("생략");
+        // 관리자가 등록한 용어는 승인 상태다 : 승인된 용어는 고칠 수 없고(M-5 7차), 승인 취소 뒤 고친다
+        HttpResponse<String> approved = putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ""));
+        assertThat(approved.statusCode()).as("승인된 용어 수정").isEqualTo(400);
+        assertThat(approved.body()).contains("APPROVED_DATA_CANNOT_BE_UPDATE");
+        assertThat(patchJson("/api/approvalStandardTerms/false", "[{\"id\":" + many + "},{\"id\":" + none + "}]").statusCode()).isEqualTo(200);
         assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, "")).statusCode()).isEqualTo(200);
         assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", many)).as("수정 : 생략 → 유지").isEqualTo(3);
         assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ",\"synonyms\":null")).statusCode()).isEqualTo(200);
@@ -1065,7 +1071,6 @@ class SmokeTest {
         assertThat(jdbcTemplate.queryForList("SELECT SYNM_NM FROM TB_STD_TRM_SYNM WHERE STD_TRM_SN = ?", String.class, many)).as("수정 : 값 → 교체").containsExactly("동의어C");
         assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ",\"synonyms\":\"\"")).statusCode()).isEqualTo(200);
         assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", many)).as("수정 : 빈 값 → 비우기 (화면 계약)").isZero();
-        long none = terms.get("생략");
         assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(none, suffix, suffix, suffix, suffix, suffix, "")
                 .replace("동의어도메인여럿", "동의어도메인생략").replace("DICT-1 여럿", "DICT-1 생략")).statusCode()).isEqualTo(200);
         assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", none)).as("동의어 없던 용어 수정").isZero();
@@ -1349,6 +1354,15 @@ class SmokeTest {
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("X-XSRF-TOKEN", csrfToken())
                 .PUT(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> patchJson(String path, String json) throws IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(uri(path))
+                .header("Content-Type", "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-XSRF-TOKEN", csrfToken())
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build(), HttpResponse.BodyHandlers.ofString());
     }
 

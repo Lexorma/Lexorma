@@ -164,6 +164,8 @@ class StandardDomainDuplicateIntegrationTest {
         long termId = jdbc.queryForObject("select STD_TRM_SN from TB_STD_TRM where PRJ_SN = ?", Long.class, a.projectId);
         assertThat(termDomain(termId)).as("요청 'code' → CODE").isEqualTo(code);
         assertThat(jdbc.queryForObject("select APRV_YN from TB_STD_TRM where STD_TRM_SN = ?", Boolean.class, termId)).isTrue();
+        // 승인된 용어는 고칠 수 없다 (M-5 7차) : 승인 취소 뒤 수정
+        dictionary.approvalStandardTerms(List.of(StandardTermDto.builder().id(termId).build()), a.user, false);
 
         transactions.executeWithoutResult(status1 -> dictionary.updateStandardTerms(a.user, term(termId, "status")));
         assertThat(termDomain(termId)).as("수정 : 다른 도메인으로, 대소문자 무시").isEqualTo(status);

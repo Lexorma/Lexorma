@@ -5,7 +5,9 @@ import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StandardTermRepository extends JpaRepository<StandardTerm, Long> {
@@ -38,6 +41,11 @@ public interface StandardTermRepository extends JpaRepository<StandardTerm, Long
 
     // 단건 조회
     StandardTerm findByIdAndProjectId(Long id, Long projectId);
+
+    /** 수정·승인이 승인 여부를 확인하고 바꾸는 동안 같은 용어의 다른 수정·승인을 기다리게 한다 (행 배타 잠금, M-5 7차) */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from StandardTerm t where t.id = :id and t.projectId = :projectId")
+    Optional<StandardTerm> findForUpdate(@Param("id") Long id, @Param("projectId") Long projectId);
 
     /**
      * 중복 기준 (M-5 5차) : 같은 프로젝트 + 영문약어 대소문자 무시 + 실제 도메인 ID. 앞뒤 공백·'_' 등 다른 정규화는 하지 않는다.

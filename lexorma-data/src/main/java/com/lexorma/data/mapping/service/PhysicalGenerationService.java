@@ -556,7 +556,7 @@ public class PhysicalGenerationService {
         if (term == null) {
             return new ColumnSpec(null, null, null, null, null, Messages.get("속성 {0} 에 표준 용어가 없습니다. 논리 모델에서 표준 용어를 먼저 연결해주세요.", attribute.getAttributeName()));
         }
-        String fromWords = StandardTermDto.fromEntity(term).getCommonStandardTermAbbreviation();
+        String fromWords = StandardTermDto.wordAbbreviation(term);
         String abbreviation = fromWords != null && !fromWords.isBlank() ? fromWords : term.getCommonStandardTermAbbreviation();
         String columnName = abbreviation == null || abbreviation.isBlank() ? null : abbreviation.strip().toUpperCase(Locale.ROOT);
         var domain = term.getStandardDomain();

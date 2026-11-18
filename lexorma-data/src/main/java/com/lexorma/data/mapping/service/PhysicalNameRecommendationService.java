@@ -7,6 +7,7 @@ import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.common.i18n.Messages;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.data.logical.repository.LogicalModelRepository;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnRow;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSearch;
@@ -78,16 +79,16 @@ public class PhysicalNameRecommendationService {
         if (termId == null) {
             return new ColumnName(null, Messages.get("논리 속성에 표준 용어가 없어 기대 컬럼명을 알 수 없습니다."));
         }
-        String name = abbreviation == null ? "" : abbreviation.trim();
-        if (name.isEmpty()) {
+        String name = StandardNames.expectedColumnName(abbreviation);
+        if (name == null) {
             return new ColumnName(null, Messages.get("논리 속성의 표준 용어에 영문약어가 없어 기대 컬럼명을 알 수 없습니다."));
         }
         return new ColumnName(name, null);
     }
 
-    /** 현재 이름이 추천명과 같은가 (앞뒤 공백 제거, 대소문자 무시) — 명칭 진단의 일치 기준과 같다 */
+    /** 현재 이름이 추천명과 같은가 (앞뒤 공백 제거, 대소문자 무시) — 명칭 진단의 일치 기준과 같은 함수 {@link StandardNames#sameColumnName} */
     public static boolean sameName(String current, String recommended) {
-        return recommended != null && recommended.trim().equalsIgnoreCase(current == null ? "" : current.trim());
+        return StandardNames.sameColumnName(current, recommended);
     }
 
     // ------------------------------------------------------------------ 컬럼명 추천

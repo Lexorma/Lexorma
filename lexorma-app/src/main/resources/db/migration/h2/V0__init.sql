@@ -9,7 +9,10 @@
 --   추가된 컬럼은 해당 create table 에 넣었고(예전 ALTER 와 같은 컬럼 순서), 새 테이블·시퀀스·인덱스·FK·COMMENT 는 맨 끝의 '예전 Vn' 구간에 그 순서대로 있다.
 --   이전 V0~V10 으로 만든 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다.
 -- 2026-11-15 (두 번째) : 그 뒤의 증분 V2~V5 를 다시 V0·V1 로 합쳤다. 스키마 변경은 V2(AI-5 품질 평가 테이블)뿐이라 맨 끝 'AI-5 품질 평가' 구간에 있다.
---   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다. 다음 스키마 변경은 V2 다.
+--   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다.
+-- 2026-11-18 (세 번째) : 그 뒤의 증분 V2~V7 (AI 설명 평가 판정 이력 DEC-27, 프로젝트 AI 설정 DEC-18, 출처 컬럼 매핑 DEC-06, 출처 VIEW 정의 DEC-16,
+--   내장 MCP DEC-31, 논리 관계 속성 짝 M-7) 을 다시 이 파일에 합쳤다. 모두 새 테이블이라 맨 끝 '예전 증분 Vn' 구간에 그 순서대로 있다.
+--   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 — 새로 만든다. 다음 스키마 변경은 V2 다.
 --   TABLE·VIEW 이름은 스키마 안에서 하나다 (UX_TBL_01·UX_VIEW_01 = SCHM_SN + 이름, 같은 스키마의 TABLE·VIEW 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 막는다).
 -- =====================================================================
 
@@ -2479,3 +2482,341 @@ comment on column TB_AI_EXPLN_EVL.REG_DT is '등록 일시';
 comment on column TB_AI_EXPLN_EVL.MDFCN_DT is '수정 일시';
 comment on column TB_AI_EXPLN_EVL.RGTR_ID is '등록자 아이디';
 comment on column TB_AI_EXPLN_EVL.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V2 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V2 : AI 설명 평가 판정 변경 이력 (DEC-27, 2026-11-16 — docs/completed/ai-dictionary-draft-ai5.md 29장). 판정(TB_AI_EXPLN_EVL)을 저장·수정할 때마다 추가만 한다.
+-- 기존 판정 데이터는 그대로 두고 이력을 소급해 만들지 않는다. 예제(프로젝트 0)에 같은 테이블을 용어 → 물리 → 논리 → 매핑 → 인덱스 → 업무 설명 순서로 넣는다 (V0SeedMigrationTest·SmokeTest).
+create sequence SQ_AI_EXPLN_EVL_HSTRY start with 1 increment by 50;
+create table TB_AI_EXPLN_EVL_HSTRY (
+    AI_EXPLN_EVL_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    AI_EXPLN_EVL_SN bigint not null,
+    AI_EXPLN_EVL_TRGT_SN bigint not null,
+    AI_EXPLN_SGSTN_SN bigint not null,
+    CHG_TYPE_CD varchar(20) not null,
+    RVWR_ID varchar(255) not null,
+    CHG_BFR_CN TEXT,
+    CHG_AFTR_CN TEXT not null,
+    PRCS_RSN_CN varchar(1000),
+    CHG_DT timestamp(6) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_AI_EXPLN_EVL_HSTRY primary key (AI_EXPLN_EVL_HSTRY_SN)
+);
+create index IX_AI_EXPLN_EVL_HSTRY_01 on TB_AI_EXPLN_EVL_HSTRY (AI_EXPLN_EVL_SN);
+comment on table TB_AI_EXPLN_EVL_HSTRY is 'AI 설명 평가 이력';
+comment on column TB_AI_EXPLN_EVL_HSTRY.AI_EXPLN_EVL_HSTRY_SN is 'AI 설명 평가 이력 일련번호';
+comment on column TB_AI_EXPLN_EVL_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_AI_EXPLN_EVL_HSTRY.AI_EXPLN_EVL_SN is 'AI 설명 평가 일련번호';
+comment on column TB_AI_EXPLN_EVL_HSTRY.AI_EXPLN_EVL_TRGT_SN is 'AI 설명 평가 대상 일련번호';
+comment on column TB_AI_EXPLN_EVL_HSTRY.AI_EXPLN_SGSTN_SN is 'AI 설명 제안 일련번호';
+comment on column TB_AI_EXPLN_EVL_HSTRY.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_AI_EXPLN_EVL_HSTRY.RVWR_ID is '검토자 아이디';
+comment on column TB_AI_EXPLN_EVL_HSTRY.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_AI_EXPLN_EVL_HSTRY.CHG_AFTR_CN is '변경 이후 내용';
+comment on column TB_AI_EXPLN_EVL_HSTRY.PRCS_RSN_CN is '처리 사유 내용';
+comment on column TB_AI_EXPLN_EVL_HSTRY.CHG_DT is '변경 일시';
+comment on column TB_AI_EXPLN_EVL_HSTRY.REG_DT is '등록 일시';
+comment on column TB_AI_EXPLN_EVL_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_AI_EXPLN_EVL_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_AI_EXPLN_EVL_HSTRY.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V3 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V3 : 프로젝트별 AI 제공자 지정 (DEC-18, 2026-11-16 — docs/completed/ai-provider-ai3.md 15장). 행이 없으면 시스템 기본 제공자(TB_AI_STNG)를 쓴다.
+-- 기존 데이터는 바꾸지 않는다 (지정 없는 상태로 시작). 예제(프로젝트 0)에 같은 테이블을 용어 → 물리 → 논리 → 매핑 → 관계 → 인덱스 → 업무 설명 순서로 넣는다.
+create sequence SQ_PRJ_AI_STNG start with 1 increment by 50;
+create table TB_PRJ_AI_STNG (
+    PRJ_AI_STNG_SN bigint not null,
+    PRJ_SN bigint not null,
+    AI_PRVDR_SN bigint not null,
+    MDL_NM varchar(255),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PRJ_AI_STNG primary key (PRJ_AI_STNG_SN)
+);
+create unique index UX_PRJ_AI_STNG_01 on TB_PRJ_AI_STNG (PRJ_SN);
+alter table TB_PRJ_AI_STNG add constraint FK_PRJ_AI_STNG_01 foreign key (PRJ_SN) references TB_PRJ;
+alter table TB_PRJ_AI_STNG add constraint FK_PRJ_AI_STNG_02 foreign key (AI_PRVDR_SN) references TB_AI_PRVDR;
+comment on table TB_PRJ_AI_STNG is '프로젝트 AI 설정';
+comment on column TB_PRJ_AI_STNG.PRJ_AI_STNG_SN is '프로젝트 AI 설정 일련번호';
+comment on column TB_PRJ_AI_STNG.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_PRJ_AI_STNG.AI_PRVDR_SN is 'AI 제공자 일련번호';
+comment on column TB_PRJ_AI_STNG.MDL_NM is '모델 명';
+comment on column TB_PRJ_AI_STNG.REG_DT is '등록 일시';
+comment on column TB_PRJ_AI_STNG.MDFCN_DT is '수정 일시';
+comment on column TB_PRJ_AI_STNG.RGTR_ID is '등록자 아이디';
+comment on column TB_PRJ_AI_STNG.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V4 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V4 : 출처 컬럼 매핑·매핑 이력 (DEC-06 이름 변경 매핑, 2026-11-16 — docs/completed/source-rename-mapping-dec06.md).
+-- 출처에서 이름이 바뀐 테이블·컬럼을 사용자가 확인해 기존 모델 객체와 잇는다 (자동 확정 없음). 기존 테이블 매핑(TB_SRC_TBL_MPNG)·데이터는 바꾸지 않는다.
+-- 예제(프로젝트 0)에 두 테이블을 용어 → 물리 → 논리 → 매핑 → 관계 → 인덱스 → 업무 설명 순서로 넣는다 (V3 와 같은 규칙).
+create sequence SQ_SRC_COL_MPNG start with 1 increment by 50;
+create table TB_SRC_COL_MPNG (
+    SRC_COL_MPNG_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_TBL_MPNG_SN bigint not null,
+    CMPR_NM varchar(255) not null,
+    COL_NM varchar(255) not null,
+    COL_SN bigint,
+    RFLT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_COL_MPNG primary key (SRC_COL_MPNG_SN)
+);
+create unique index UX_SRC_COL_MPNG_01 on TB_SRC_COL_MPNG (SRC_TBL_MPNG_SN, CMPR_NM);
+create unique index UX_SRC_COL_MPNG_02 on TB_SRC_COL_MPNG (SRC_TBL_MPNG_SN, COL_SN);
+create index IX_SRC_COL_MPNG_01 on TB_SRC_COL_MPNG (PRJ_SN);
+create index IX_SRC_COL_MPNG_02 on TB_SRC_COL_MPNG (COL_SN);
+alter table TB_SRC_COL_MPNG add constraint FK_SRC_COL_MPNG_01 foreign key (SRC_TBL_MPNG_SN) references TB_SRC_TBL_MPNG on delete cascade;
+alter table TB_SRC_COL_MPNG add constraint FK_SRC_COL_MPNG_02 foreign key (COL_SN) references TB_COL on delete set null;
+comment on table TB_SRC_COL_MPNG is '출처 컬럼 매핑';
+comment on column TB_SRC_COL_MPNG.SRC_COL_MPNG_SN is '출처 컬럼 매핑 일련번호';
+comment on column TB_SRC_COL_MPNG.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_COL_MPNG.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_COL_MPNG.SRC_TBL_MPNG_SN is '출처 테이블 매핑 일련번호';
+comment on column TB_SRC_COL_MPNG.CMPR_NM is '비교 명';
+comment on column TB_SRC_COL_MPNG.COL_NM is '컬럼 명';
+comment on column TB_SRC_COL_MPNG.COL_SN is '컬럼 일련번호';
+comment on column TB_SRC_COL_MPNG.RFLT_ORD is '반영 순서';
+comment on column TB_SRC_COL_MPNG.REG_DT is '등록 일시';
+comment on column TB_SRC_COL_MPNG.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_COL_MPNG.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_COL_MPNG.MDFR_ID is '수정자 아이디';
+create sequence SQ_SRC_MPNG_HSTRY start with 1 increment by 50;
+create table TB_SRC_MPNG_HSTRY (
+    SRC_MPNG_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_TBL_MPNG_SN bigint not null,
+    TRGT_TYPE_CD varchar(20) not null,
+    CHG_TYPE_CD varchar(20) not null,
+    CHG_BFR_CN TEXT,
+    CHG_AFTR_CN TEXT,
+    CHG_DT timestamp(6) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_MPNG_HSTRY primary key (SRC_MPNG_HSTRY_SN)
+);
+create index IX_SRC_MPNG_HSTRY_01 on TB_SRC_MPNG_HSTRY (SRC_TBL_MPNG_SN);
+create index IX_SRC_MPNG_HSTRY_02 on TB_SRC_MPNG_HSTRY (PRJ_SN);
+comment on table TB_SRC_MPNG_HSTRY is '출처 매핑 이력';
+comment on column TB_SRC_MPNG_HSTRY.SRC_MPNG_HSTRY_SN is '출처 매핑 이력 일련번호';
+comment on column TB_SRC_MPNG_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_MPNG_HSTRY.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_MPNG_HSTRY.SRC_TBL_MPNG_SN is '출처 테이블 매핑 일련번호';
+comment on column TB_SRC_MPNG_HSTRY.TRGT_TYPE_CD is '대상 유형 코드';
+comment on column TB_SRC_MPNG_HSTRY.CHG_TYPE_CD is '변경 유형 코드';
+comment on column TB_SRC_MPNG_HSTRY.CHG_BFR_CN is '변경 이전 내용';
+comment on column TB_SRC_MPNG_HSTRY.CHG_AFTR_CN is '변경 이후 내용';
+comment on column TB_SRC_MPNG_HSTRY.CHG_DT is '변경 일시';
+comment on column TB_SRC_MPNG_HSTRY.REG_DT is '등록 일시';
+comment on column TB_SRC_MPNG_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_MPNG_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_MPNG_HSTRY.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V5 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V5 : 출처 VIEW 정의·정의 확인 이력 (DEC-16 원본 VIEW 정의 수집, 2026-11-16 — docs/completed/source-view-definition-dec16.md).
+-- 정의 원문은 이 테이블에만 둔다 (카탈로그 버전·이력에는 해시만). 기존 원본 카탈로그 데이터는 바꾸지 않는다 : 정의는 다음 수집부터 채워진다.
+-- 예제(프로젝트 0)에 두 테이블을 용어 → 물리 → 논리 → 매핑 → 관계 → 인덱스 → 업무 설명 순서로 넣는다 (V3·V4 와 같은 규칙).
+create sequence SQ_SRC_VIEW_DFN start with 1 increment by 50;
+create table TB_SRC_VIEW_DFN (
+    SRC_VIEW_DFN_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    DFN_STTS_CD varchar(20) not null,
+    DFN_CN TEXT,
+    ENCPT_YN boolean not null,
+    HASH_VL varchar(255),
+    BFR_HASH_VL varchar(255),
+    DFN_LEN integer,
+    CLCT_DT timestamp(6),
+    CHG_RFLT_ORD integer,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_VIEW_DFN primary key (SRC_VIEW_DFN_SN)
+);
+create unique index UX_SRC_VIEW_DFN_01 on TB_SRC_VIEW_DFN (SRC_TBL_SN);
+create index IX_SRC_VIEW_DFN_01 on TB_SRC_VIEW_DFN (PRJ_SN);
+create index IX_SRC_VIEW_DFN_02 on TB_SRC_VIEW_DFN (SRC_CNTN_SN);
+alter table TB_SRC_VIEW_DFN add constraint FK_SRC_VIEW_DFN_01 foreign key (SRC_TBL_SN) references TB_SRC_TBL on delete cascade;
+comment on table TB_SRC_VIEW_DFN is '출처 뷰 정의';
+comment on column TB_SRC_VIEW_DFN.SRC_VIEW_DFN_SN is '출처 뷰 정의 일련번호';
+comment on column TB_SRC_VIEW_DFN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_VIEW_DFN.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_VIEW_DFN.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_VIEW_DFN.DFN_STTS_CD is '정의 상태 코드';
+comment on column TB_SRC_VIEW_DFN.DFN_CN is '정의 내용';
+comment on column TB_SRC_VIEW_DFN.ENCPT_YN is '암호화 여부';
+comment on column TB_SRC_VIEW_DFN.HASH_VL is '해시 값';
+comment on column TB_SRC_VIEW_DFN.BFR_HASH_VL is '이전 해시 값';
+comment on column TB_SRC_VIEW_DFN.DFN_LEN is '정의 길이';
+comment on column TB_SRC_VIEW_DFN.CLCT_DT is '수집 일시';
+comment on column TB_SRC_VIEW_DFN.CHG_RFLT_ORD is '변경 반영 순서';
+comment on column TB_SRC_VIEW_DFN.REG_DT is '등록 일시';
+comment on column TB_SRC_VIEW_DFN.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_VIEW_DFN.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_VIEW_DFN.MDFR_ID is '수정자 아이디';
+create sequence SQ_SRC_VIEW_DFN_IDNTY_HSTRY start with 1 increment by 50;
+create table TB_SRC_VIEW_DFN_IDNTY_HSTRY (
+    SRC_VIEW_DFN_IDNTY_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    SRC_CNTN_SN bigint not null,
+    SRC_TBL_SN bigint not null,
+    HASH_VL varchar(255),
+    IDNTY_DT timestamp(6) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SRC_VIEW_DFN_IDNTY_HSTRY primary key (SRC_VIEW_DFN_IDNTY_HSTRY_SN)
+);
+create index IX_SRC_VIEW_DFN_IDNTY_HSTRY_01 on TB_SRC_VIEW_DFN_IDNTY_HSTRY (SRC_TBL_SN);
+create index IX_SRC_VIEW_DFN_IDNTY_HSTRY_02 on TB_SRC_VIEW_DFN_IDNTY_HSTRY (PRJ_SN);
+comment on table TB_SRC_VIEW_DFN_IDNTY_HSTRY is '출처 뷰 정의 확인 이력';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.SRC_VIEW_DFN_IDNTY_HSTRY_SN is '출처 뷰 정의 확인 이력 일련번호';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.SRC_CNTN_SN is '출처 접속 일련번호';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.SRC_TBL_SN is '출처 테이블 일련번호';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.HASH_VL is '해시 값';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.IDNTY_DT is '확인 일시';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.REG_DT is '등록 일시';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_SRC_VIEW_DFN_IDNTY_HSTRY.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V6 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V6 : 선택형 내장 MCP — 프로젝트 MCP 설정·MCP 토큰·MCP 호출 이력 (DEC-31, 2026-11-16 — docs/completed/embedded-mcp-dec31.md).
+-- 토큰 원문은 저장하지 않는다 (해시만). 기존 데이터는 바꾸지 않는다 : 설정 행이 없는 프로젝트는 MCP 가 꺼져 있다.
+-- 예제(프로젝트 0)에 두 테이블을 용어 → 물리 → 논리 → 매핑 → 관계 → 인덱스 → 업무 설명 순서로 넣는다 (V3~V5 와 같은 규칙).
+create sequence SQ_PRJ_MCP_STNG start with 1 increment by 50;
+create table TB_PRJ_MCP_STNG (
+    PRJ_MCP_STNG_SN bigint not null,
+    PRJ_SN bigint not null,
+    ACTVTN_YN boolean not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_PRJ_MCP_STNG primary key (PRJ_MCP_STNG_SN)
+);
+create unique index UX_PRJ_MCP_STNG_01 on TB_PRJ_MCP_STNG (PRJ_SN);
+alter table TB_PRJ_MCP_STNG add constraint FK_PRJ_MCP_STNG_01 foreign key (PRJ_SN) references TB_PRJ;
+comment on table TB_PRJ_MCP_STNG is '프로젝트 MCP 설정';
+comment on column TB_PRJ_MCP_STNG.PRJ_MCP_STNG_SN is '프로젝트 MCP 설정 일련번호';
+comment on column TB_PRJ_MCP_STNG.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_PRJ_MCP_STNG.ACTVTN_YN is '활성 여부';
+comment on column TB_PRJ_MCP_STNG.REG_DT is '등록 일시';
+comment on column TB_PRJ_MCP_STNG.MDFCN_DT is '수정 일시';
+comment on column TB_PRJ_MCP_STNG.RGTR_ID is '등록자 아이디';
+comment on column TB_PRJ_MCP_STNG.MDFR_ID is '수정자 아이디';
+create sequence SQ_MCP_TKN start with 1 increment by 50;
+create table TB_MCP_TKN (
+    MCP_TKN_SN bigint not null,
+    PRJ_SN bigint not null,
+    ACNT_SN bigint not null,
+    TKN_NM varchar(100) not null,
+    HASH_VL varchar(255) not null,
+    TKN_PFX_NM varchar(20) not null,
+    EXPRY_DT timestamp(6) not null,
+    DSCD_DT timestamp(6),
+    LAST_USE_DT timestamp(6),
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_MCP_TKN primary key (MCP_TKN_SN)
+);
+create unique index UX_MCP_TKN_01 on TB_MCP_TKN (HASH_VL);
+create index IX_MCP_TKN_01 on TB_MCP_TKN (PRJ_SN);
+alter table TB_MCP_TKN add constraint FK_MCP_TKN_01 foreign key (PRJ_SN) references TB_PRJ;
+comment on table TB_MCP_TKN is 'MCP 토큰';
+comment on column TB_MCP_TKN.MCP_TKN_SN is 'MCP 토큰 일련번호';
+comment on column TB_MCP_TKN.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_MCP_TKN.ACNT_SN is '계정 일련번호';
+comment on column TB_MCP_TKN.TKN_NM is '토큰 명';
+comment on column TB_MCP_TKN.HASH_VL is '해시 값';
+comment on column TB_MCP_TKN.TKN_PFX_NM is '토큰 접두어 명';
+comment on column TB_MCP_TKN.EXPRY_DT is '만료 일시';
+comment on column TB_MCP_TKN.DSCD_DT is '폐기 일시';
+comment on column TB_MCP_TKN.LAST_USE_DT is '최종 사용 일시';
+comment on column TB_MCP_TKN.REG_DT is '등록 일시';
+comment on column TB_MCP_TKN.MDFCN_DT is '수정 일시';
+comment on column TB_MCP_TKN.RGTR_ID is '등록자 아이디';
+comment on column TB_MCP_TKN.MDFR_ID is '수정자 아이디';
+create sequence SQ_MCP_CALL_HSTRY start with 1 increment by 50;
+create table TB_MCP_CALL_HSTRY (
+    MCP_CALL_HSTRY_SN bigint not null,
+    PRJ_SN bigint not null,
+    MCP_TKN_SN bigint not null,
+    TOOL_NM varchar(100) not null,
+    RSLT_CD varchar(20) not null,
+    CALL_DT timestamp(6) not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_MCP_CALL_HSTRY primary key (MCP_CALL_HSTRY_SN)
+);
+create index IX_MCP_CALL_HSTRY_01 on TB_MCP_CALL_HSTRY (MCP_TKN_SN);
+create index IX_MCP_CALL_HSTRY_02 on TB_MCP_CALL_HSTRY (PRJ_SN);
+comment on table TB_MCP_CALL_HSTRY is 'MCP 호출 이력';
+comment on column TB_MCP_CALL_HSTRY.MCP_CALL_HSTRY_SN is 'MCP 호출 이력 일련번호';
+comment on column TB_MCP_CALL_HSTRY.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_MCP_CALL_HSTRY.MCP_TKN_SN is 'MCP 토큰 일련번호';
+comment on column TB_MCP_CALL_HSTRY.TOOL_NM is '도구 명';
+comment on column TB_MCP_CALL_HSTRY.RSLT_CD is '결과 코드';
+comment on column TB_MCP_CALL_HSTRY.CALL_DT is '호출 일시';
+comment on column TB_MCP_CALL_HSTRY.REG_DT is '등록 일시';
+comment on column TB_MCP_CALL_HSTRY.MDFCN_DT is '수정 일시';
+comment on column TB_MCP_CALL_HSTRY.RGTR_ID is '등록자 아이디';
+comment on column TB_MCP_CALL_HSTRY.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V7 (2026-11-18 세 번째 합침) ----------
+-- 예전 증분 V7 : 논리 관계 속성 짝 (M-7 보강 3차 P1, 2026-11-17 — docs/completed/logical-physical-mapping-m7.md 14장).
+-- 관계(원본 = 부모, 대상 = 자식)마다 부모 주 식별자 속성 ↔ 자식 속성 짝을 순서대로 저장한다. 기존 관계에는 짝을 만들지 않는다 (추론하지 않는다 — 짝이 없는 관계는 FK 를 만들지 않는다, P1-a).
+-- 관계를 지울 때는 서비스가 짝을 먼저 지운다 (변경 이력이 남도록 FK 에 CASCADE 를 두지 않는다). 속성은 짝에서 쓰는 동안 지울 수 없다.
+-- 예제(프로젝트 0)에 새 테이블을 용어 → 물리 → 논리 → 매핑 → 관계(+ 그 관계의 속성 짝) → 인덱스 → 업무 설명 순서로 넣는다 (V3~V6 과 같은 규칙).
+create sequence SQ_LGCL_REL_ATRB start with 1 increment by 50;
+create table TB_LGCL_REL_ATRB (
+    LGCL_REL_ATRB_SN bigint not null,
+    LGCL_REL_SN bigint not null,
+    ORGNL_ATRB_SN bigint not null,
+    TRGT_ATRB_SN bigint not null,
+    SORT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_LGCL_REL_ATRB primary key (LGCL_REL_ATRB_SN)
+);
+create unique index UX_LGCL_REL_ATRB_01 on TB_LGCL_REL_ATRB (LGCL_REL_SN, ORGNL_ATRB_SN);
+create unique index UX_LGCL_REL_ATRB_02 on TB_LGCL_REL_ATRB (LGCL_REL_SN, TRGT_ATRB_SN);
+create unique index UX_LGCL_REL_ATRB_03 on TB_LGCL_REL_ATRB (LGCL_REL_SN, SORT_ORD);
+create index IX_LGCL_REL_ATRB_01 on TB_LGCL_REL_ATRB (ORGNL_ATRB_SN);
+create index IX_LGCL_REL_ATRB_02 on TB_LGCL_REL_ATRB (TRGT_ATRB_SN);
+alter table TB_LGCL_REL_ATRB add constraint FK_LGCL_REL_ATRB_01 foreign key (LGCL_REL_SN) references TB_LGCL_REL;
+alter table TB_LGCL_REL_ATRB add constraint FK_LGCL_REL_ATRB_02 foreign key (ORGNL_ATRB_SN) references TB_LGCL_ATRB;
+alter table TB_LGCL_REL_ATRB add constraint FK_LGCL_REL_ATRB_03 foreign key (TRGT_ATRB_SN) references TB_LGCL_ATRB;
+comment on table TB_LGCL_REL_ATRB is '논리 관계 속성';
+comment on column TB_LGCL_REL_ATRB.LGCL_REL_ATRB_SN is '논리 관계 속성 일련번호';
+comment on column TB_LGCL_REL_ATRB.LGCL_REL_SN is '논리 관계 일련번호';
+comment on column TB_LGCL_REL_ATRB.ORGNL_ATRB_SN is '원본 속성 일련번호';
+comment on column TB_LGCL_REL_ATRB.TRGT_ATRB_SN is '대상 속성 일련번호';
+comment on column TB_LGCL_REL_ATRB.SORT_ORD is '정렬 순서';
+comment on column TB_LGCL_REL_ATRB.REG_DT is '등록 일시';
+comment on column TB_LGCL_REL_ATRB.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_REL_ATRB.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_REL_ATRB.MDFR_ID is '수정자 아이디';

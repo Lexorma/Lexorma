@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * LEXORMA 예제 인덱스 (V1 의 9)·10)) : 개수가 아니라 인덱스별 정의를 비교한다 (docs/completed/index-management-m14.md 13).
- * 예전 V3~V6 은 2026-11-13 에, 예전 V2~V10 은 2026-11-15 Flyway 초기화 때 V0·V1 로 합쳤다 (예전 설치의 업그레이드 경로는 없다).
+ * 예전 V3~V6 은 2026-11-13 에, 예전 V2~V10 은 2026-11-15 Flyway 초기화 때, 그 뒤의 증분 V2~V7 은 2026-11-18 에 V0·V1 로 합쳤다 (예전 설치의 업그레이드 경로는 없다).
  * 정의 = 인덱스명 → "테이블|UNIQUE 여부|컬럼,컬럼(순서대로)". 정규화는 식별자 대문자뿐이다.
  * PostgreSQL 은 LEXORMA_TEST_POSTGRES_URL 이 있을 때만 (UUID 스키마를 만들고 지운다).
  */
@@ -38,12 +38,12 @@ class LexormaIndexSeedTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, vendor, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(8); // V0·V1·V2·V3·V4·V5·V6·V7
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2); // V0·V1 (2026-11-18 세 번째 합침)
             var jdbc = new JdbcTemplate(dataSource);
             Map<String, String> declared = declaredIndexes(vendor);
             Map<String, String> model = modelIndexes(jdbc, s);
 
-            // 누락·추가·불일치 없이 같다 (115·168 은 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개·평가 판정 이력 1개(V2) 포함,
+            // 누락·추가·불일치 없이 같다 (137·195 는 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개·평가 판정 이력 1개·프로젝트 AI 설정 1개·출처 컬럼 매핑·이력 6개·출처 VIEW 정의 5개·MCP 5개·논리 관계 속성 5개 포함,
             // TABLE·VIEW 이름은 스키마 단위라 UX_TBL_01·UX_VIEW_01 = 스키마 + 이름이고 IX_TBL_01·IX_VIEW_01 은 없다)
             assertThat(model).isEqualTo(declared).hasSize(137);
             assertThat(model).isEqualTo(realIndexes(jdbc, vendor, schema));

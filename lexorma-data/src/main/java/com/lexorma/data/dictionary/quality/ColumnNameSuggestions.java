@@ -16,7 +16,6 @@ import com.lexorma.data.dictionary.domain.dto.TermQualityDto.TermWordRow;
 import com.lexorma.data.dictionary.domain.dto.TermQualityDto.WordRow;
 import com.lexorma.data.dictionary.service.StandardizationQualityService;
 import com.lexorma.data.dictionary.service.StandardizationQualityService.DomainComparison;
-import com.lexorma.data.mapping.service.PhysicalNameRecommendationService;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,7 +23,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -34,7 +32,7 @@ import java.util.stream.Collectors;
  * 비표준 컬럼명 개선 후보 (M-5 잔여). 대상은 표준 용어 미연결·컬럼명 불일치 컬럼이며, 정해진 규칙으로만 후보를 찾고 점수를 매긴다
  * ({@code SimilarColumnService} 와 같은 방식 : 출처별 고정 점수, 여러 출처면 가장 높은 것 + 출처 목록). AI·편집거리·임베딩은 쓰지 않는다.
  * <table>
- *   <tr><td>LINKED_TERM</td><td>100</td><td>컬럼명 불일치 : 연결된 용어의 영문약어로 이름을 바꾼다 (컬럼명 규칙 {@link PhysicalNameRecommendationService#recommendColumnName})</td></tr>
+ *   <tr><td>LINKED_TERM</td><td>100</td><td>컬럼명 불일치 : 연결된 용어의 영문약어로 이름을 바꾼다 (컬럼명 규칙 {@link StandardNames#expectedColumnName})</td></tr>
  *   <tr><td>ABBR_EXACT</td><td>95</td><td>용어 영문약어 = 현재 컬럼명 (대소문자·앞뒤 공백 무시) → 용어만 연결</td></tr>
  *   <tr><td>NAME_EXACT</td><td>85</td><td>용어명 = 컬럼 논리명 (공백·'_'·대소문자 무시)</td></tr>
  *   <tr><td>SYNONYM</td><td>75</td><td>용어의 이음동의어 = 컬럼 논리명</td></tr>
@@ -78,8 +76,8 @@ public final class ColumnNameSuggestions {
         ColumnRow column = in.column();
         Long linked = column.termId();
         String name = column.columnName() == null ? "" : column.columnName().trim();
-        String upperName = name.toUpperCase(Locale.ROOT);
-        String desc = TermDuplicateRules.normalizeName(column.columnDesc());
+        String upperName = StandardNames.physicalNameKey(name);
+        String desc = StandardNames.termNameKey(column.columnDesc());
 
         Map<Long, TermCandidateRow> terms = new LinkedHashMap<>();
         in.terms().forEach(term -> terms.put(term.termId(), term));
@@ -90,16 +88,16 @@ public final class ColumnNameSuggestions {
         }
         for (TermCandidateRow term : terms.values()) {
             if (term.termId().equals(linked)) continue;
-            if (!upperName.isEmpty() && term.abbreviation() != null && term.abbreviation().trim().toUpperCase(Locale.ROOT).equals(upperName)) {
+            if (!upperName.isEmpty() && term.abbreviation() != null && StandardNames.physicalNameKey(term.abbreviation()).equals(upperName)) {
                 hit(hits, term.termId(), Source.ABBR_EXACT);
             }
-            if (!desc.isEmpty() && TermDuplicateRules.normalizeName(term.termName()).equals(desc)) {
+            if (!desc.isEmpty() && StandardNames.termNameKey(term.termName()).equals(desc)) {
                 hit(hits, term.termId(), Source.NAME_EXACT);
             }
         }
         if (!desc.isEmpty()) {
             in.termSynonyms().stream()
-                    .filter(row -> terms.containsKey(row.ownerId()) && !row.ownerId().equals(linked) && TermDuplicateRules.normalizeName(row.name()).equals(desc))
+                    .filter(row -> terms.containsKey(row.ownerId()) && !row.ownerId().equals(linked) && StandardNames.termNameKey(row.name()).equals(desc))
                     .forEach(row -> hit(hits, row.ownerId(), Source.SYNONYM));
         }
 
@@ -127,10 +125,10 @@ public final class ColumnNameSuggestions {
 
         List<Candidate> candidates = new ArrayList<>();
         hits.forEach((termId, sources) -> candidates.add(candidate(in, terms.get(termId), sources, name)));
-        String composedAbbreviation = composedWords.stream().map(word -> word.abbreviation().trim().toUpperCase(Locale.ROOT)).collect(Collectors.joining("_"));
+        String composedAbbreviation = composedWords.stream().map(word -> StandardNames.physicalNameKey(word.abbreviation())).collect(Collectors.joining("_"));
         // 그 약어의 용어가 이미 있으면(단어 매핑이 없는 용어 포함) 새 용어 후보가 아니다
         boolean abbreviationTaken = terms.values().stream()
-                .anyMatch(term -> term.abbreviation() != null && term.abbreviation().trim().toUpperCase(Locale.ROOT).equals(composedAbbreviation));
+                .anyMatch(term -> term.abbreviation() != null && StandardNames.physicalNameKey(term.abbreviation()).equals(composedAbbreviation));
         if (composed != null && !composedTermFound && !abbreviationTaken) {
             String proposed = composedWords.stream().map(Word::wordName).collect(Collectors.joining("_"));
             String abbreviation = composedAbbreviation;
@@ -164,7 +162,7 @@ public final class ColumnNameSuggestions {
         Map<String, List<WordRow>> byAbbreviation = new HashMap<>();
         words.stream().filter(word -> word.abbreviation() != null && !word.abbreviation().isBlank())
                 .sorted(Comparator.comparing(WordRow::wordId))
-                .forEach(word -> byAbbreviation.computeIfAbsent(word.abbreviation().trim().toUpperCase(Locale.ROOT), key -> new ArrayList<>()).add(word));
+                .forEach(word -> byAbbreviation.computeIfAbsent(StandardNames.physicalNameKey(word.abbreviation()), key -> new ArrayList<>()).add(word));
         List<List<WordRow>> composed = new ArrayList<>();
         for (String token : upperName.split("_", -1)) {
             List<WordRow> options = byAbbreviation.get(token);
@@ -186,9 +184,9 @@ public final class ColumnNameSuggestions {
 
     private static Candidate candidate(Input in, TermCandidateRow term, EnumSet<Source> sources, String currentName) {
         Source source = sources.iterator().next(); // EnumSet 은 선언 순서 = 우선순위
-        String recommended = PhysicalNameRecommendationService.recommendColumnName(term.termId(), term.abbreviation()).name();
+        String recommended = term.termId() == null ? null : StandardNames.expectedColumnName(term.abbreviation());
         Action action = source == Source.LINKED_TERM ? Action.RENAME
-                : recommended == null || PhysicalNameRecommendationService.sameName(currentName, recommended) ? Action.LINK_TERM : Action.LINK_TERM_AND_RENAME;
+                : recommended == null || StandardNames.sameColumnName(currentName, recommended) ? Action.LINK_TERM : Action.LINK_TERM_AND_RENAME;
         boolean rename = action != Action.LINK_TERM;
 
         ColumnRow column = in.column();
@@ -207,10 +205,10 @@ public final class ColumnNameSuggestions {
 
         List<TableColumnRow> others = in.tableColumns().stream().filter(other -> !Objects.equals(other.columnId(), column.columnId())).toList();
         List<String> conflicts = !rename || recommended == null ? List.of() : others.stream()
-                .filter(other -> PhysicalNameRecommendationService.sameName(other.columnName(), recommended)).map(TableColumnRow::columnName).toList();
+                .filter(other -> StandardNames.sameColumnName(other.columnName(), recommended)).map(TableColumnRow::columnName).toList();
         List<String> expecting = recommended == null ? List.of() : others.stream()
-                .filter(other -> PhysicalNameRecommendationService.sameName(other.termAbbreviation(), recommended)
-                        && !PhysicalNameRecommendationService.sameName(other.columnName(), recommended))
+                .filter(other -> StandardNames.sameColumnName(other.termAbbreviation(), recommended)
+                        && !StandardNames.sameColumnName(other.columnName(), recommended))
                 .map(TableColumnRow::columnName).toList();
 
         int score = SCORES.get(source);

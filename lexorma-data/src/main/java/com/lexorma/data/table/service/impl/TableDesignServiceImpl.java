@@ -12,6 +12,7 @@ import com.lexorma.data.table.domain.dto.TableDdlDto;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.repository.StandardWordRepository;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.dto.TableNameDto;
@@ -164,11 +165,9 @@ public class TableDesignServiceImpl implements TableDesignService {
                 .orElse(null);
     }
 
-    /** "사용_내역_관리", "사용 내역 관리" 모두 허용 */
+    /** "사용_내역_관리", "사용 내역 관리" 모두 허용 (금칙어 진단과 같은 단어 경계 {@link StandardNames#splitWords}) */
     private static List<String> splitWords(String tableKorName) {
-        return Arrays.stream((tableKorName == null ? "" : tableKorName).trim().split("[_\\s]+"))
-                .filter(word -> !word.isBlank())
-                .toList();
+        return StandardNames.splitWords(tableKorName);
     }
 
     private TableNameDto generateTableName(String tableKorName, String tablePrefix, java.util.function.Function<String, List<StandardWord>> wordLookup) {

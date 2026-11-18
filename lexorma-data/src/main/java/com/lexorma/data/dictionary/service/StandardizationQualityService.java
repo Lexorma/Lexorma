@@ -20,6 +20,7 @@ import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Summary;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.TokenStatus;
 import com.lexorma.data.dictionary.quality.Finding;
 import com.lexorma.data.dictionary.quality.FindingFingerprint;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.dictionary.quality.StandardizationRule.TargetType;
@@ -282,10 +283,10 @@ public class StandardizationQualityService {
                 issues.add(issue(row, IssueType.TERM_NOT_LINKED, null, null, List.of(), Messages.get("표준 용어가 연결되지 않았습니다.")));
                 continue;
             }
-            // 영문약어가 없는 용어는 기대 컬럼명을 알 수 없으므로 위반으로 보지 않는다
-            String abbreviation = row.termAbbreviation() == null ? "" : row.termAbbreviation().trim();
-            if (!abbreviation.isEmpty() && !abbreviation.equalsIgnoreCase(row.columnName() == null ? "" : row.columnName().trim())) {
-                issues.add(issue(row, IssueType.COLUMN_NAME_MISMATCH, row.columnName(), abbreviation, List.of(),
+            // 영문약어가 없는 용어는 기대 컬럼명을 알 수 없으므로 위반으로 보지 않는다 (컬럼명 규칙 = StandardNames, 물리명 추천·정합성 비교와 같다)
+            String expected = StandardNames.expectedColumnName(row.termAbbreviation());
+            if (expected != null && !StandardNames.sameColumnName(row.columnName(), expected)) {
+                issues.add(issue(row, IssueType.COLUMN_NAME_MISMATCH, row.columnName(), expected, List.of(),
                         Messages.get("컬럼명이 표준 용어의 영문약어와 다릅니다.")));
             }
             if (row.domainId() != null) {

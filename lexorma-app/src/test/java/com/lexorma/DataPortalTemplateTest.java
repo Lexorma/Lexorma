@@ -89,7 +89,12 @@ class DataPortalTemplateTest {
         ExcelUtils.readExcelRows(template(), 0, List.of("id", "revision", "name"), 1, row -> {
             if (!row.get("name").isEmpty()) terms.add(row);
         });
-        assertThat(standardTermRepository.count() - before).isEqualTo(terms.size());
+        // 이 프로젝트는 데이터 사전 약어를 쓰지 않아 용어 영문명을 단어 영문명으로 만든다. 템플릿의 두 쌍은 뜻이 다르지만 같은 영문명·같은 도메인(명V100)이 된다 —
+        // 그룹_명/단체_명 → GROUP_NAME, 문서_명/서류_명 → DOCUMENT_NAME. 중복 키(영문약어 대소문자 무시 + 도메인 ID, M-5 5차)로는 같은 용어라 뒤의 행은 건너뛴다
+        // (예전 키는 용어명까지 봐서 모두 등록했다 — 화면 등록도 같은 키로 거절한다. 정책 결정 대기 : pending-work.md [M-5])
+        List<String> names = standardTermRepository.findAllByProjectId(project.getId()).stream().map(term -> term.getCommonStandardTermName()).toList();
+        assertThat(names).contains("그룹_명", "문서_명").doesNotContain("단체_명", "서류_명");
+        assertThat(standardTermRepository.count() - before).isEqualTo(terms.size() - 2);
     }
 
     @Test

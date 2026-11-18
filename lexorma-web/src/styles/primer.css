@@ -631,6 +631,8 @@ dialog .dict-detail-columns tr.is-highlight > td {
 .quality-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .quality-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
 .quality-chips .Label { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+/* 도메인 이름 중복 진단 ([DICT-2]) : 긴 칩(이름·번호·승인·참조 수)이 좁은 화면에서 상자를 넘지 않게 줄을 나눈다 */
+.quality-candidate .gh-label { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
 .quality-subtitle { margin: 16px 0 8px; font-size: 14px; }
 .quality-candidates { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .quality-candidate { padding: 10px 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); overflow-wrap: anywhere; }

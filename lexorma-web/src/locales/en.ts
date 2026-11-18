@@ -756,6 +756,12 @@ export const en = {
   // M-5 잔여 : 테이블명 · 표준 용어 중복·유사어 · 컬럼명 개선 후보
   '모델 품질 진단': 'Model quality',
   '표준 용어 진단': 'Standard term check',
+  '표준 도메인 이름 중복 (대소문자 무시)': 'Duplicate standard domain names (ignoring case)',
+  '도메인 이름 중복 진단을 불러오지 못했습니다.': 'Could not load the duplicate domain name check.',
+  '같은 이름의 표준 도메인이 없습니다.': 'No standard domains share a name.',
+  '같은 이름의 표준 도메인이 {0}묶음 있습니다. 이 이름을 쓰는 표준 용어는 등록·수정할 수 없습니다. 자동으로 정리하지 않으니 표준 도메인 화면에서 확인해주세요.': '{0} group(s) of standard domains share a name. Standard terms using these names cannot be registered or edited. Nothing is cleaned up automatically — review them on the standard domain screen.',
+  '도메인 {0}개': '{0} domains',
+  '용어 {0} · 컬럼 {1}': 'Terms {0} · Columns {1}',
   '심각도': 'Severity',
   '전체 심각도': 'All severities',
   '주의': 'Warning',

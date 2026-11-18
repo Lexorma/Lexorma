@@ -1,13 +1,12 @@
 package com.lexorma.data.dictionary.domain.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.lexorma.data.dictionary.domain.dto.DictionaryLists;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
 import com.lexorma.common.jpa.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 @Getter
@@ -71,16 +70,8 @@ public class StandardWord extends BaseEntity {
 
     public static StandardWord fromEntity(StandardWordDto standardWordDto) {
 
-        List<String> synonyms = new ArrayList<>();
-
-        if(!standardWordDto.getSynonyms().isEmpty()){
-            synonyms.addAll(Arrays.asList(standardWordDto.getSynonyms().split(",")));
-        }
-
-        List<String> restrictedWords = new ArrayList<>();
-        if(!standardWordDto.getRestrictedWords().isEmpty()){
-            restrictedWords.addAll(Arrays.asList(standardWordDto.getRestrictedWords().split(",")));
-        }
+        List<String> synonyms = DictionaryLists.split(standardWordDto.getSynonyms());
+        List<String> restrictedWords = DictionaryLists.split(standardWordDto.getRestrictedWords());
 
 
         return StandardWord.builder()

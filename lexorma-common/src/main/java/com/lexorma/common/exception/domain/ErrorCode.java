@@ -67,6 +67,11 @@ public enum ErrorCode {
     TERM_WORD_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "TERM_WORD_COUNT_MISMATCH"),
 
     /**
+     * 표준 사전(단어·용어) 등록·수정 요청의 필수 항목이 없거나 올바르지 않습니다.
+     */
+    INVALID_DICTIONARY_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_DICTIONARY_REQUEST"),
+
+    /**
      * 테이블 코멘트 중 승인된 표준 단어가 아닌 단어가 존재합니다.
      */
     TABLE_WORD_NOT_STANDARD(HttpStatus.BAD_REQUEST, "TABLE_WORD_NOT_STANDARD"),
@@ -95,6 +100,16 @@ public enum ErrorCode {
      * 해당 도메인을 찾을 수 없습니다.
      */
     NOT_FOUND_DOMAIN_DATA(HttpStatus.BAD_REQUEST, "NOT_FOUND_DOMAIN_DATA"),
+
+    /**
+     * 같은 프로젝트에 대소문자를 무시하고 같은 이름의 표준 도메인이 이미 있습니다. ([DICT-2])
+     */
+    DUPLICATE_STANDARD_DOMAIN_NAME(HttpStatus.BAD_REQUEST, "DUPLICATE_STANDARD_DOMAIN_NAME"),
+
+    /**
+     * 같은 이름의 표준 도메인이 여러 개(예전 데이터) 있어 하나로 정할 수 없습니다. ([DICT-2])
+     */
+    AMBIGUOUS_STANDARD_DOMAIN(HttpStatus.CONFLICT, "AMBIGUOUS_STANDARD_DOMAIN"),
 
     /**
      * 권한이 없어 작업을 수행할 수 없습니다.

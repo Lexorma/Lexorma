@@ -52,11 +52,13 @@ class TermUploadNameGenerationTest {
     private static final int COL_NAME = 2;
     private static final int COL_DESCRIPTION = 3;
     private static final int COL_ABBREVIATION = 4;
+    private static final int COL_SYNONYMS = 11;
 
     @Autowired DataDictionaryService dataDictionaryService;
     @Autowired StandardTermRepository standardTermRepository;
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void tearDown() {
@@ -130,9 +132,153 @@ class TermUploadNameGenerationTest {
         assertThat(term.getCommonStandardTermAbbreviation()).isEqualTo("SMS_SENDING_YN");
     }
 
+    @Test
+    @DisplayName("[DICT-1] 이음동의어·금칙어 빈 셀은 빈 목록 (예전에는 빈 문자열 한 건), 값이 있는 셀은 기존 규칙대로 ',' 로 나눈다 — 템플릿 열 구조 그대로")
+    void emptyListCells() throws IOException {
+        MockMultipartFile file = templateWithTerms(List.of(
+                new TermRow("GIS_자료_여부", "동의어 빈 셀", "GIS_DATA_YN", ""),
+                new TermRow("SMS_사용_여부", "동의어 공백 셀", "SMS_USE_YN", "  "),
+                new TermRow("HTML_사용_여부", "동의어 두 개", "HTML_USE_YN", "웹문서사용여부,HTML여부")
+        ));
+        AccountDto login = loginToNewProject("term-upload-synonyms", true);
+
+        dataDictionaryService.uploadDictionaryExcelFile(file, login);
+
+        Map<String, StandardTerm> byDescription = standardTermRepository.findAllByProjectId(login.getProjectId()).stream()
+                .collect(Collectors.toMap(StandardTerm::getCommonStandardTermDescription, Function.identity()));
+        assertThat(synonyms(byDescription.get("동의어 빈 셀"))).isEmpty();
+        assertThat(synonyms(byDescription.get("동의어 공백 셀"))).isEmpty();
+        assertThat(synonyms(byDescription.get("동의어 두 개"))).containsExactlyInAnyOrder("웹문서사용여부", "HTML여부");
+        // 단어 시트(템플릿 그대로) : 빈 셀이 빈 문자열 행으로 남지 않는다
+        for (String table : List.of("TB_STD_WORD_SYNM", "TB_STD_WORD_PRHBT")) {
+            String column = table.endsWith("SYNM") ? "SYNM_NM" : "PRHBT_WORD_NM";
+            assertThat(jdbcTemplate.queryForObject("select count(*) from " + table + " l join TB_STD_WORD w on w.STD_WORD_SN = l.STD_WORD_SN"
+                    + " where w.PRJ_SN = ? and trim(l." + column + ") = ''", Integer.class, login.getProjectId())).as(table).isZero();
+        }
+    }
+
+    @Test
+    @DisplayName("[DICT-2] 용어 시트가 쓰는 도메인명이 프로젝트에 여럿(예전 데이터)이면 임의로 고르지 않고 409 AMBIGUOUS_STANDARD_DOMAIN, 업로드 전체 롤백")
+    void ambiguousDomainCancelsUpload() throws IOException {
+        MockMultipartFile file = templateWithTerms(List.of(new TermRow("GIS_자료_여부", "도메인 여럿", "GIS_DATA_YN")));
+        String domainName = templateTermDomain("GIS_DATA_YN");
+        AccountDto login = loginToNewProject("term-upload-ambiguous-domain", true);
+        for (int i = 0; i < 2; i++) {
+            jdbcTemplate.update("insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_CLSF_NM, DMN_NM, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                    + " values (?, ?, 1, ?, ?, 'VARCHAR', 1, 0, true, current_timestamp, current_timestamp, 'test', 'test')",
+                    877_000_000L + login.getProjectId() * 10 + i, login.getProjectId(), templateDomainCategory(domainName), domainName);
+        }
+
+        assertThatThrownBy(() -> dataDictionaryService.uploadDictionaryExcelFile(file, login))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.AMBIGUOUS_STANDARD_DOMAIN);
+        assertThat(standardTermRepository.findAllByProjectId(login.getProjectId())).isEmpty();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from TB_STD_DMN where PRJ_SN = ?", Integer.class, login.getProjectId()))
+                .as("도메인 시트도 롤백 — 넣어 둔 두 건만").isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from TB_STD_WORD where PRJ_SN = ?", Integer.class, login.getProjectId())).isZero();
+    }
+
+    @Test
+    @DisplayName("[DICT-2] 도메인 시트 : 프로젝트에 대소문자만 다른 같은 이름이 있으면 그 행은 건너뛴다 (기존 '이미 등록된 도메인은 건너뜀' 을 대소문자 무시로)")
+    void domainSheetSkipsCaseInsensitiveDuplicates() throws IOException {
+        MockMultipartFile file = templateWithTerms(List.of(new TermRow("GIS_자료_여부", "대소문자", "GIS_DATA_YN")));
+        String used = templateTermDomain("GIS_DATA_YN");
+        String target = templateDomainNames().stream().filter(name -> !name.equals(name.toLowerCase(java.util.Locale.ROOT)) && !name.equals(used))
+                .findFirst().orElseThrow(() -> new AssertionError("템플릿에 영문 대문자가 있는 도메인명이 있어야 한다"));
+        String lower = target.toLowerCase(java.util.Locale.ROOT);
+        AccountDto login = loginToNewProject("domain-upload-case", true);
+        jdbcTemplate.update("insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_CLSF_NM, DMN_NM, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 1, ?, ?, 'VARCHAR', 1, 0, true, current_timestamp, current_timestamp, 'test', 'test')",
+                877_500_000L + login.getProjectId(), login.getProjectId(), templateDomainCategory(target), lower);
+
+        dataDictionaryService.uploadDictionaryExcelFile(file, login);
+
+        assertThat(jdbcTemplate.queryForList("select DMN_NM from TB_STD_DMN where PRJ_SN = ? and lower(DMN_NM) = ?", String.class, login.getProjectId(), lower))
+                .as(target + " 행은 건너뜀").containsExactly(lower);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from TB_STD_DMN where PRJ_SN = ?", Integer.class, login.getProjectId())).isEqualTo(templateDomainNames().stream()
+                .map(name -> name.toLowerCase(java.util.Locale.ROOT)).distinct().count());
+    }
+
+    @Test
+    @DisplayName("[DICT-2 후속] 용어 시트의 도메인명은 대소문자를 무시하고 찾는다 : 프로젝트에 대소문자만 다른 도메인 하나 → 그 도메인에 연결, 대소문자만 다른 둘 → 409 + 업로드 전체 롤백")
+    void termSheetDomainIgnoresCase() throws IOException {
+        String domainName = templateTermDomain("GIS_DATA_YN");
+        String lower = domainName.toLowerCase(java.util.Locale.ROOT);
+        String upper = domainName.toUpperCase(java.util.Locale.ROOT);
+        assertThat(lower).as("템플릿 도메인명에 영문이 있어야 대소문자를 바꿀 수 있다").isNotEqualTo(upper);
+        String category = templateDomainCategory(domainName);
+
+        AccountDto single = loginToNewProject("term-upload-domain-case", true);
+        long id = 877_700_000L + single.getProjectId();
+        jdbcTemplate.update("insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_CLSF_NM, DMN_NM, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 1, ?, ?, 'VARCHAR', 1, 0, true, current_timestamp, current_timestamp, 'test', 'test')", id, single.getProjectId(), category, lower);
+        dataDictionaryService.uploadDictionaryExcelFile(templateWithTerms(List.of(new TermRow("GIS_자료_여부", "대소문자 다른 도메인", "GIS_DATA_YN", ""))), single);
+        StandardTerm linked = standardTermRepository.findAllByProjectId(single.getProjectId()).getFirst();
+        assertThat(linked.getStandardDomain().getId()).as(domainName + " → " + lower).isEqualTo(id);
+        assertThat(jdbcTemplate.queryForObject("select DMN_NM from TB_STD_DMN where STD_DMN_SN = ?", String.class, id)).as("도메인명 그대로").isEqualTo(lower);
+
+        AccountDto ambiguous = loginToNewProject("term-upload-domain-case-ambiguous", true);
+        for (int i = 0; i < 2; i++) {
+            jdbcTemplate.update("insert into TB_STD_DMN(STD_DMN_SN, PRJ_SN, ENCT_CYCL, DMN_CLSF_NM, DMN_NM, DATA_TYPE_NM, DATA_LEN, DATA_DCPT_LEN, APRV_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                    + " values (?, ?, 1, ?, ?, 'VARCHAR', 1, 0, true, current_timestamp, current_timestamp, 'test', 'test')",
+                    877_800_000L + ambiguous.getProjectId() * 10 + i, ambiguous.getProjectId(), category, i == 0 ? lower : upper);
+        }
+        MockMultipartFile file = templateWithTerms(List.of(new TermRow("SMS_사용_여부", "정상 행", "SMS_USE_YN", ""), new TermRow("GIS_자료_여부", "모호한 도메인", "GIS_DATA_YN", "")));
+        assertThatThrownBy(() -> dataDictionaryService.uploadDictionaryExcelFile(file, ambiguous))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.AMBIGUOUS_STANDARD_DOMAIN);
+        assertThat(standardTermRepository.findAllByProjectId(ambiguous.getProjectId())).as("앞 행도 남지 않는다").isEmpty();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from TB_STD_DMN where PRJ_SN = ?", Integer.class, ambiguous.getProjectId())).isEqualTo(2);
+    }
+
+    /** 템플릿 용어 시트에서 그 영문약어 행의 도메인명 (열 5) */
+    private static String templateTermDomain(String abbreviation) throws IOException {
+        try (InputStream in = TermUploadNameGenerationTest.class.getClassLoader().getResourceAsStream("static/excel/dataPortal.xlsx");
+             Workbook workbook = new XSSFWorkbook(in)) {
+            DataFormatter formatter = new DataFormatter();
+            for (Row row : workbook.getSheetAt(0)) {
+                if (abbreviation.equals(formatter.formatCellValue(row.getCell(COL_ABBREVIATION)))) return formatter.formatCellValue(row.getCell(5));
+            }
+            throw new AssertionError("템플릿에 " + abbreviation + " 행이 있어야 한다");
+        }
+    }
+
+    /** 템플릿 도메인 시트에서 그 도메인의 분류 (열 3) — 단어 시트가 분류 등록 여부를 확인하므로 미리 넣는 도메인도 같은 분류로 */
+    private static String templateDomainCategory(String domainName) throws IOException {
+        try (InputStream in = TermUploadNameGenerationTest.class.getClassLoader().getResourceAsStream("static/excel/dataPortal.xlsx");
+             Workbook workbook = new XSSFWorkbook(in)) {
+            DataFormatter formatter = new DataFormatter();
+            for (Row row : workbook.getSheetAt(2)) {
+                if (domainName.equals(formatter.formatCellValue(row.getCell(4)))) return formatter.formatCellValue(row.getCell(3));
+            }
+            throw new AssertionError("템플릿 도메인 시트에 " + domainName + " 이 있어야 한다");
+        }
+    }
+
+    /** 템플릿 도메인 시트(2)의 도메인명 (열 4, 머리글 제외, 빈 값 제외) */
+    private static List<String> templateDomainNames() throws IOException {
+        try (InputStream in = TermUploadNameGenerationTest.class.getClassLoader().getResourceAsStream("static/excel/dataPortal.xlsx");
+             Workbook workbook = new XSSFWorkbook(in)) {
+            DataFormatter formatter = new DataFormatter();
+            List<String> names = new java.util.ArrayList<>();
+            for (Row row : workbook.getSheetAt(2)) {
+                if (row.getRowNum() == 0) continue;
+                String name = formatter.formatCellValue(row.getCell(4));
+                if (!name.isEmpty()) names.add(name);
+            }
+            return names;
+        }
+    }
+
+    private List<String> synonyms(StandardTerm term) {
+        return jdbcTemplate.queryForList("select SYNM_NM from TB_STD_TRM_SYNM where STD_TRM_SN = ?", String.class, term.getId());
+    }
+
     // ------------------------------------------------------------------ 보조
 
-    private record TermRow(String name, String description, String abbreviation) {}
+    private record TermRow(String name, String description, String abbreviation, String synonyms) {
+        TermRow(String name, String description, String abbreviation) {
+            this(name, description, abbreviation, null);
+        }
+    }
 
     private AccountDto loginToNewProject(String projectName, boolean isDicAbbrUsed) {
         Account admin = accountRepository.findAll().stream()
@@ -180,6 +326,7 @@ class TermUploadNameGenerationTest {
                 row.getCell(COL_NAME).setCellValue(termRow.name());
                 row.getCell(COL_DESCRIPTION).setCellValue(termRow.description());
                 row.getCell(COL_ABBREVIATION).setCellValue(termRow.abbreviation());
+                if (termRow.synonyms() != null) row.getCell(COL_SYNONYMS).setCellValue(termRow.synonyms());
             }
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();

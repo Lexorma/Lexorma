@@ -1,5 +1,6 @@
 package com.lexorma.data.dictionary.service;
 
+import com.lexorma.data.dictionary.domain.dto.DictionaryLists;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
@@ -136,7 +137,7 @@ public class StandardTermService {
                 "responsibleOrganization",
                 "synonyms"
         );
-        // 업로드 중에는 단어/도메인이 바뀌지 않으므로 조회 결과를 캐시한다. (영문약어 → 단어 목록, 도메인명 → 도메인 ID)
+        // 업로드 중에는 단어/도메인이 바뀌지 않으므로 조회 결과를 캐시한다. (영문약어 → 단어 목록, 대소문자 무시 도메인명 → 도메인 ID)
         Map<String, List<StandardWord>> wordsByAbbreviation = new HashMap<>();
         Map<String, Long> domainIdByName = new HashMap<>();
 
@@ -192,14 +193,13 @@ public class StandardTermService {
                     .forEach(word -> wordsByAbbreviation.get(word.getCommonStandardWordAbbreviation()).add(word));
         }
 
-        Set<String> domainNames = termRows.stream()
-                .map(row -> row.get("standardDomainName"))
-                .filter(name -> name != null && !domainIdByName.containsKey(name))
-                .collect(Collectors.toSet());
-
-        if (!domainNames.isEmpty()) {
-            standardDomainRepository.findAllByProjectIdAndCommonStandardDomainNameIn(projectId, domainNames)
-                    .forEach(domain -> domainIdByName.putIfAbsent(domain.getCommonStandardDomainName(), domain.getId()));
+        // 도메인 : 처음 한 번 프로젝트 도메인 전체를 대소문자 무시 키로 묶는다 (도메인 시트를 먼저 올린 뒤라 새 도메인도 들어 있다).
+        // 키가 같은 도메인이 여럿이면(예전 데이터) 임의로 고르지 않고 표시만 해 두었다가 그 이름을 쓰는 행에서 거절한다 ([DICT-2] 후속)
+        if (domainIdByName.isEmpty()) {
+            domainIdByName.put(DOMAINS_LOADED, 0L);
+            for (Object[] row : standardDomainRepository.findIdAndNamesByProjectId(projectId)) {
+                domainIdByName.merge(StandardDomainService.nameKey((String) row[1]), (Long) row[0], (a, b) -> AMBIGUOUS_DOMAIN);
+            }
         }
     }
 
@@ -207,6 +207,11 @@ public class StandardTermService {
      * 엑셀 한 행으로 표준용어를 만든다. (단어 매핑 / 도메인은 조회 없이 ID 참조로 연결)
      * 검증 순서와 오류는 기존과 같다 : 단어 매핑(NOT_FOUND_WORD_DATA) → 도메인(NOT_FOUND_DOMAIN_DATA)
      */
+    /** 업로드 도메인 캐시에서 "같은 이름(대소문자 무시)이 여럿" 표시 (실제 ID 는 양수) */
+    private static final long AMBIGUOUS_DOMAIN = -1L;
+    /** 업로드 도메인 캐시를 채웠다는 표시 (도메인명 키와 겹치지 않는 값 — 키는 소문자다) */
+    private static final String DOMAINS_LOADED = "\u0000LOADED";
+
     private static String termKey(StandardTerm term) {
         return term.getCommonStandardTermName() + "|" + term.getCommonStandardTermAbbreviation() + "|"
                 + (term.getStandardDomain() == null ? null : term.getStandardDomain().getId());
@@ -231,9 +236,13 @@ public class StandardTermService {
             mappings.add(mapping);
         }
 
-        Long domainId = domainIdByName.get(standardTermEntry.get("standardDomainName"));
+        String domainName = standardTermEntry.get("standardDomainName");
+        Long domainId = domainName == null ? null : domainIdByName.get(StandardDomainService.nameKey(domainName));
         if (domainId == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_DOMAIN_DATA);
+        }
+        if (domainId == AMBIGUOUS_DOMAIN) {
+            throw new CustomException(ErrorCode.AMBIGUOUS_STANDARD_DOMAIN, "같은 이름의 도메인 : {0}", domainName);
         }
 
         StandardTerm standardTerm = StandardTerm.builder()
@@ -244,7 +253,7 @@ public class StandardTermService {
                 .commonStandardTermAbbreviation(isDicAbbrUsed ? abbreviation : toEnglishTermName(resolved.words()))
                 .administrativeStandardCodeName(standardTermEntry.get("administrativeStandardCodeName"))
                 .responsibleOrganization(standardTermEntry.get("responsibleOrganization"))
-                .synonymList(List.of(standardTermEntry.get("synonyms").split(",")))
+                .synonymList(DictionaryLists.split(standardTermEntry.get("synonyms")))
                 .projectId(projectId)
                 .isApproval(isApprovalAvailable)
                 .standardDomain(entityManager.getReference(StandardDomain.class, domainId))
@@ -454,7 +463,7 @@ public class StandardTermService {
                 .commonStandardTermAbbreviation(dto.getCommonStandardTermAbbreviation())
                 .administrativeStandardCodeName(dto.getAdministrativeStandardCodeName())
                 .responsibleOrganization(dto.getResponsibleOrganization())
-                .synonymList(List.of(dto.getSynonyms().split(",")))
+                .synonymList(DictionaryLists.split(dto.getSynonyms()))
                 .projectId(projectId)
                 .isApproval(isApprovalAvailable)
                 .standardDomain(standardDomain) // 연관관계 설정
@@ -488,7 +497,8 @@ public class StandardTermService {
         existingTerm.setCommonStandardTermAbbreviation(dto.getCommonStandardTermAbbreviation());
         existingTerm.setAdministrativeStandardCodeName(dto.getAdministrativeStandardCodeName());
         existingTerm.setResponsibleOrganization(dto.getResponsibleOrganization());
-        existingTerm.setSynonymList(List.of(dto.getSynonyms().split(",")));
+        // 이음동의어 : 화면은 항상 보낸다(빈 값 = 비우기). 필드가 없으면(null) 기존 목록을 그대로 둔다 — 지우지 않는다 ([DICT-1])
+        if (dto.getSynonyms() != null) existingTerm.setSynonymList(DictionaryLists.split(dto.getSynonyms()));
         existingTerm.setIsApproval(isApprovalAvailable);
         existingTerm.setStandardDomain(standardDomain); // 연관관계 주입
 

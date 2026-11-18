@@ -37,6 +37,9 @@ final class EnglishMessages {
 
         // ---------------------------------------------------------------- 데이터 사전
         add("누락된 문자열 : {0}", "Missing word: {0}");
+        add("필수 항목이 없습니다 : {0}", "A required field is missing: {0}");
+        add("이미 등록된 도메인 : {0}", "Existing domain: {0}");
+        add("같은 이름의 도메인 : {0}", "Domain name: {0}");
         add("도메인을 찾을 수 없습니다: {0}", "Domain not found: {0}");
         add("표준 단어를 찾을 수 없습니다.", "The standard word could not be found.");
         add("표준 용어가 연결되지 않았습니다.", "No standard term is linked.");

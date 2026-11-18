@@ -10,6 +10,7 @@ import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.service.ColumnNameSuggestionService;
 import com.lexorma.data.dictionary.service.IdentifierQualityService;
 import com.lexorma.data.dictionary.service.StandardizationQualityService;
+import com.lexorma.data.dictionary.service.StandardDomainService;
 import com.lexorma.data.dictionary.service.TermQualityService;
 import com.lexorma.data.table.ddl.DbIdentifierRules;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,6 +39,7 @@ public class StandardizationQualityRestController {
     private final TermQualityService termQualityService;
     private final ColumnNameSuggestionService columnNameSuggestionService;
     private final IdentifierQualityService identifierQualityService;
+    private final StandardDomainService standardDomainService;
 
     @Operation(summary = "진단 요약", description = "검사 대상 컬럼 수, 문제가 있는 컬럼 수, 진단 유형별 건수 (한 컬럼에 여러 문제가 있을 수 있다)")
     @GetMapping("/summary")
@@ -102,6 +104,12 @@ public class StandardizationQualityRestController {
                                                                 @RequestParam(value = "severity", required = false) StandardizationRule.Severity severity) {
         return PageableUtil.getGridPageableMap(termQualityService.selectGroups(accountDto,
                 new TermQualityDto.Search(type, severity, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+    }
+
+    @Operation(summary = "표준 도메인 이름 중복", description = "로그인 프로젝트에서 이름이 대소문자를 무시하고 같은 도메인 묶음 (예전 데이터 진단, [DICT-2]). 조회만 한다 — 지우거나 합치지 않는다")
+    @GetMapping("/domains/duplicates")
+    public ResponseEntity<Map<String, Object>> selectDomainDuplicates(@AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(Map.of("groups", standardDomainService.findDuplicateGroups(accountDto.getProjectId())));
     }
 
     @Operation(summary = "DBMS 식별자 진단 요약", description = "프로젝트 DBMS 기준 스키마·테이블·컬럼 이름 길이·문자, DDL 제약조건명 잘림·충돌 (M-7 보강 1차). 기존 요약·모델 진단과 따로 집계한다")

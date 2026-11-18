@@ -36,7 +36,7 @@ public class ModelMappingRestController {
     private final PhysicalNameRecommendationService recommendationService;
     private final com.lexorma.data.mapping.service.PhysicalGenerationService generationService;
 
-    @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK·FK 계획과 막는 문제·경고, planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
+    @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK 계획과 막는 문제·경고, 논리 관계별 FK 미생성 사유(relations), DBMS 식별자 진단(identifiers), planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/generate/preview")
     public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Plan> generatePreview(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Request request,

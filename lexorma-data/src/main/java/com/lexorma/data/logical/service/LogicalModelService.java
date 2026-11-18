@@ -49,6 +49,7 @@ public class LogicalModelService {
 
     private static final int NAME_MAX = 255;
     private static final int DESCRIPTION_MAX = 1000;
+    static final int PAIR_MAX = 50;
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
     private static final TypeReference<Map<Long, LogicalModelDto.Point>> NODES_TYPE = new TypeReference<>() {
     };
@@ -65,6 +66,7 @@ public class LogicalModelService {
     private final LogicalErdLayoutRepository layoutRepository;
     private final EntityTableMappingRepository entityTableMappingRepository;
     private final AttributeColumnMappingRepository attributeColumnMappingRepository;
+    private final LogicalRelationshipAttributeRepository pairRepository;
     private final jakarta.persistence.EntityManager entityManager;
 
     // ------------------------------------------------------------------ 논리 모델
@@ -219,6 +221,10 @@ public class LogicalModelService {
         attributeColumnMappingRepository.findByAttribute_Id(attributeId).ifPresent(m -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "컬럼 {0} 에 매핑된 속성입니다. 매핑을 먼저 해제해주세요.", m.getColumn().getColumnName());
         });
+        // 관계 속성 짝(M-7 보강 3차)에서 쓰는 속성 : 다른 관계의 짝을 말없이 지우지 않는다 — 짝을 먼저 해제한다
+        pairRepository.findFirstUsing(attributeId).ifPresent(p -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 {0} 의 속성 짝에서 사용 중인 속성입니다. 속성 짝을 먼저 해제해주세요.", relationLabel(p.getRelationship()));
+        });
         entity.getAttributes().removeIf(a -> a.getId().equals(attributeId));
     }
 
@@ -306,7 +312,96 @@ public class LogicalModelService {
     @Transactional(readOnly = true)
     public List<LogicalModelDto.Relationship> selectRelationships(AccountDto accountDto, Long modelId) {
         model(accountDto.getProjectId(), modelId);
-        return relationshipRepository.findAllByModelId(modelId).stream().map(LogicalModelDto.Relationship::fromEntity).toList();
+        return withPairs(relationshipRepository.findAllByModelId(modelId), LogicalRelationshipPairs::primaryKeyIds);
+    }
+
+    /** 관계 목록 + 관계마다 속성 짝과 판정 (짝은 한 번에 읽는다) */
+    private List<LogicalModelDto.Relationship> withPairs(List<LogicalRelationship> relationships, Function<LogicalEntity, List<Long>> primaryKeys) {
+        Map<Long, List<LogicalRelationshipAttribute>> pairs = new LinkedHashMap<>();
+        if (!relationships.isEmpty()) {
+            pairRepository.findAllByRelationshipIds(relationships.stream().map(LogicalRelationship::getId).toList())
+                    .forEach(p -> pairs.computeIfAbsent(p.getRelationship().getId(), id -> new java.util.ArrayList<>()).add(p));
+        }
+        return relationships.stream()
+                .map(r -> LogicalModelDto.Relationship.fromEntity(r, LogicalRelationshipPairs.evaluate(r, pairs.getOrDefault(r.getId(), List.of()), primaryKeys))).toList();
+    }
+
+    // ------------------------------------------------------------------ 관계 속성 짝 (M-7 보강 3차, P1)
+
+    @Transactional(readOnly = true)
+    public LogicalModelDto.RelationshipPairs selectRelationshipPairs(AccountDto accountDto, Long relationshipId) {
+        LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, accountDto.getProjectId()).orElseThrow(() -> notFound("관계"));
+        return pairsView(relationship);
+    }
+
+    /**
+     * 관계의 속성 짝을 통째로 바꾼다 (관계 단위 일괄 교체). 순서 = 요청 목록 순서. 검사 (하나라도 어기면 아무것도 바꾸지 않는다, 400) :
+     * 부모 속성은 관계의 부모 엔터티 주 식별자 속성, 자식 속성은 관계의 자식 엔터티 속성, 부모·자식 속성 각각 중복 없음. 부모 주 식별자의 일부만 잇는 것은 저장하되 PARTIAL 로 보인다.
+     * 잠금·충돌 : 관계 저장과 같다 (논리 모델 행 잠금 → 관계를 다시 읽어 modifiedAt 비교, 다르면 409). 승인된 관계는 바꿀 수 없다.
+     * 짝이 바뀌면 관계의 수정 일시를 올린다 (구성만 바뀌어도 기준값이 바뀐다 — 식별자 구성과 같은 규칙)
+     */
+    @Transactional
+    public LogicalModelDto.RelationshipPairs saveRelationshipPairs(AccountDto accountDto, Long relationshipId, LogicalModelDto.PairSave request) {
+        Long projectId = accountDto.getProjectId();
+        lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
+        LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
+        entityManager.refresh(relationship);
+        rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        com.lexorma.common.jpa.ModelBase.verify(relationship, request == null ? null : request.modifiedAt(), relationLabel(relationship)); // DEC-08 (모델 잠금 뒤)
+
+        List<LogicalModelDto.PairInput> inputs = request == null || request.pairs() == null ? List.of() : request.pairs();
+        if (inputs.size() > PAIR_MAX) throw invalid("속성 짝은 {0}개까지 지정할 수 있습니다.", PAIR_MAX);
+        LogicalEntity parent = relationship.getSourceEntity();
+        LogicalEntity child = relationship.getTargetEntity();
+        List<LogicalAttribute> parentKey = LogicalRelationshipPairs.primaryKey(parent);
+        if (!inputs.isEmpty() && parentKey.isEmpty()) throw invalid("부모 엔터티 {0} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName());
+        Map<Long, LogicalAttribute> parentKeyById = parentKey.stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
+        Map<Long, LogicalAttribute> childById = child.getAttributes().stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
+        Set<Long> parentAttributes = new HashSet<>();
+        Set<Long> childAttributes = new HashSet<>();
+        List<LogicalAttribute[]> resolved = new java.util.ArrayList<>();
+        for (LogicalModelDto.PairInput input : inputs) {
+            if (input == null || input.parentAttributeId() == null || input.childAttributeId() == null) throw invalid("속성 짝의 부모 속성과 자식 속성을 모두 골라주세요.");
+            LogicalAttribute parentAttribute = parentKeyById.get(input.parentAttributeId());
+            if (parentAttribute == null) throw invalid("부모 속성은 부모 엔터티 {0} 의 주 식별자 속성이어야 합니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
+            LogicalAttribute childAttribute = childById.get(input.childAttributeId());
+            if (childAttribute == null) throw invalid("자식 속성은 자식 엔터티 {0} 의 속성이어야 합니다. (ID {1})", child.getEntityName(), input.childAttributeId());
+            if (!parentAttributes.add(parentAttribute.getId())) throw invalid("같은 부모 속성 {0} 을(를) 두 번 지정할 수 없습니다.", parentAttribute.getAttributeName());
+            if (!childAttributes.add(childAttribute.getId())) throw invalid("같은 자식 속성 {0} 을(를) 두 번 지정할 수 없습니다.", childAttribute.getAttributeName());
+            resolved.add(new LogicalAttribute[]{parentAttribute, childAttribute});
+        }
+
+        List<LogicalRelationshipAttribute> current = pairRepository.findAllByRelationshipIds(List.of(relationshipId));
+        List<List<Long>> before = current.stream().map(p -> List.of(p.getParentAttribute().getId(), p.getChildAttribute().getId())).toList();
+        List<List<Long>> after = resolved.stream().map(p -> List.of(p[0].getId(), p[1].getId())).toList();
+        if (!before.equals(after)) {
+            // 지운 것을 먼저 내보낸다 (UNIQUE(관계, 속성·순서) 충돌을 피한다)
+            pairRepository.deleteAll(current);
+            pairRepository.flush();
+            for (int i = 0; i < resolved.size(); i++) {
+                pairRepository.save(LogicalRelationshipAttribute.builder().relationship(relationship).parentAttribute(resolved.get(i)[0])
+                        .childAttribute(resolved.get(i)[1]).sortOrder(i + 1).build());
+            }
+            relationship.markModified();
+            pairRepository.flush();
+            relationshipRepository.flush();
+        }
+        return pairsView(relationship);
+    }
+
+    private LogicalModelDto.RelationshipPairs pairsView(LogicalRelationship relationship) {
+        LogicalEntity parent = relationship.getSourceEntity();
+        LogicalEntity child = relationship.getTargetEntity();
+        List<Long> parentKey = LogicalRelationshipPairs.primaryKeyIds(parent);
+        List<Long> childKey = LogicalRelationshipPairs.primaryKeyIds(child);
+        List<LogicalModelDto.PairCandidate> parentCandidates = LogicalRelationshipPairs.primaryKey(parent).stream()
+                .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), true, parentKey.indexOf(a.getId()) + 1, a.getIsRequired())).toList();
+        List<LogicalModelDto.PairCandidate> childCandidates = child.getAttributes().stream()
+                .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), childKey.contains(a.getId()),
+                        childKey.contains(a.getId()) ? childKey.indexOf(a.getId()) + 1 : null, a.getIsRequired())).toList();
+        LogicalModelDto.PairState state = LogicalRelationshipPairs.evaluate(relationship, pairRepository.findAllByRelationshipIds(List.of(relationship.getId())));
+        return new LogicalModelDto.RelationshipPairs(relationship.getId(), relationship.modifiedAt(), parent.getId(), parent.getEntityName(), child.getId(),
+                child.getEntityName(), relationship.getIsIdentifying(), state, parentCandidates, childCandidates);
     }
 
     @Transactional
@@ -342,6 +437,9 @@ public class LogicalModelService {
         lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
         LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
         rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        // 관계의 속성 짝을 먼저 지운다 (엔티티 삭제라 변경 이력에 남는다 — DB 의 CASCADE 에 맡기지 않는다)
+        pairRepository.deleteAll(pairRepository.findAllByRelationshipIds(List.of(relationshipId)));
+        pairRepository.flush();
         relationshipRepository.delete(relationship);
     }
 
@@ -353,21 +451,28 @@ public class LogicalModelService {
 
     // ------------------------------------------------------------------ 논리 ERD
 
-    /** 모델의 엔터티(속성·식별자 표시 포함)와 관계. 조회 수는 데이터 크기와 관계없이 4번 (모델, 엔터티+속성, 식별자, 관계) */
+    /** 모델의 엔터티(속성·식별자 표시 포함)와 관계(속성 짝 포함). 조회 수는 데이터 크기와 관계없이 5번 (모델, 엔터티+속성, 식별자, 관계, 관계 속성 짝) */
     @Transactional(readOnly = true)
     public LogicalModelDto.Graph selectGraph(AccountDto accountDto, Long modelId) {
         LogicalModel model = model(accountDto.getProjectId(), modelId);
         Set<Long> identifierAttributes = new HashSet<>();
         Set<Long> primaryAttributes = new HashSet<>();
+        Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>(); // 엔터티 → 주 식별자 속성 (식별자 순서) : 관계 속성 짝 판정
         for (LogicalIdentifier identifier : identifierRepository.findAllByModelId(modelId)) {
             for (LogicalIdentifierAttribute attribute : identifier.getAttributes()) {
                 identifierAttributes.add(attribute.getAttribute().getId());
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
             }
+            if (Boolean.TRUE.equals(identifier.getIsPrimary())) {
+                primaryKeys.put(identifier.getEntity().getId(), identifier.getAttributes().stream()
+                        .sorted(java.util.Comparator.comparing(LogicalIdentifierAttribute::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                                .thenComparing(LogicalIdentifierAttribute::getId))
+                        .map(a -> a.getAttribute().getId()).distinct().toList());
+            }
         }
         return new LogicalModelDto.Graph(model.getId(), model.getModelName(),
                 entityRepository.findGraph(modelId).stream().map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList(),
-                relationshipRepository.findAllByModelId(modelId).stream().map(LogicalModelDto.Relationship::fromEntity).toList());
+                withPairs(relationshipRepository.findAllByModelId(modelId), e -> primaryKeys.getOrDefault(e.getId(), List.of())));
     }
 
     // ------------------------------------------------------------------ 논리 ERD 레이아웃 (내 배치, 모델별)

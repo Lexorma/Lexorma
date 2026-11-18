@@ -66,7 +66,7 @@ class ModelExchangeIntegrationTest {
         ModelExchangeDto.Document document = exchange.export(admin);
         String json = JSON.writeValueAsString(document);
         assertThat(document.format()).isEqualTo("lexorma-model");
-        assertThat(document.formatVersion()).isEqualTo(2);
+        assertThat(document.formatVersion()).isEqualTo(3);
         assertThat(document.model().get("PHYSICAL_VIEW")).as("예제에는 모델 VIEW 가 없다").isEmpty();
         assertThat(json).doesNotContain("\"isApproval\"");
         int tables = count("select count(*) from TB_TBL where PRJ_SN = 0");
@@ -199,8 +199,8 @@ class ModelExchangeIntegrationTest {
         assertThat(count("select count(*) from TB_TBL_CNSTRT where PRJ_SN = ?", unsafe)).isEqualTo(count("select count(*) from TB_TBL_CNSTRT where PRJ_SN = 0") - 1);
 
         // 형식 : 다른 버전·모르는 종류·겹치는 번호
-        ModelExchangeDto.Document v3 = new ModelExchangeDto.Document(document.format(), 3, document.exportedAt(), document.dbType(), document.counts(), document.model(), null);
-        assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, v3, null))).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.MODEL_EXCHANGE_INVALID));
+        ModelExchangeDto.Document v4 = new ModelExchangeDto.Document(document.format(), 4, document.exportedAt(), document.dbType(), document.counts(), document.model(), null);
+        assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, v4, null))).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.MODEL_EXCHANGE_INVALID));
         Map<String, List<Item>> unknown = new LinkedHashMap<>(document.model());
         unknown.put("PHYSICAL_SEQUENCE", List.of());
         assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, new ModelExchangeDto.Document(document.format(), 2, null, null, null, unknown, null), null)))
@@ -244,7 +244,7 @@ class ModelExchangeIntegrationTest {
 
         ModelExchangeDto.Document document = exchange.export(admin(source));
         String json = JSON.writeValueAsString(document);
-        assertThat(document.formatVersion()).isEqualTo(2);
+        assertThat(document.formatVersion()).isEqualTo(3);
         assertThat(document.model().get("PHYSICAL_VIEW")).hasSize(3);
         assertThat(json).contains("WITH a AS (SELECT * FROM VW_ACCOUNT)").doesNotContain("\"isApproval\"");
         assertThat(document.layouts().physical().nodes()).as("지워진 객체의 좌표는 내보내지 않는다").containsOnlyKeys(account, project);
@@ -320,6 +320,12 @@ class ModelExchangeIntegrationTest {
         // 형식 1 파일 (VIEW·배치 없음) : 그대로 가져온다, 배치는 만들지 않는다 (화면의 자동 배치)
         Map<String, List<Item>> withoutViews = new LinkedHashMap<>(file.model());
         withoutViews.remove("PHYSICAL_VIEW");
+        // 형식 1·2 파일에는 관계 속성 짝(형식 3)도 없다 (예제의 V7 관계 3개에는 짝이 있다)
+        withoutViews.put("LOGICAL_RELATIONSHIP", withoutViews.get("LOGICAL_RELATIONSHIP").stream().map(item -> {
+            Map<String, Object> state = new LinkedHashMap<>(item.state());
+            state.remove("attributes");
+            return new Item(item.id(), item.name(), state);
+        }).toList());
         ModelExchangeDto.Document v1 = new ModelExchangeDto.Document(file.format(), 1, file.exportedAt(), file.dbType(), file.counts(), withoutViews, null);
         Long legacy = project("exchange-v1");
         ModelExchangeDto.Plan legacyPlan = exchange.plan(admin, new ModelExchangeDto.PlanRequest(legacy, JSON.readValue(JSON.writeValueAsString(v1), ModelExchangeDto.Document.class), null));

@@ -34,10 +34,22 @@ public enum StandardizationRule {
     /** 이음동의어로 같은 뜻이 되는 용어 (용어 이음동의어, 단어 이음동의어 치환) */
     TERM_SYNONYM(TargetType.TERM, Severity.INFO),
     /** 용어명의 단어가 다른 표준 단어의 금칙어다 */
-    TERM_RESTRICTED_WORD(TargetType.TERM, Severity.WARNING);
+    TERM_RESTRICTED_WORD(TargetType.TERM, Severity.WARNING),
 
-    /** 진단 대상. WORD 는 AI-6 용으로 남겨 둔다 (지금 단어를 대상으로 하는 규칙은 없다) */
-    public enum TargetType { TABLE, COLUMN, TERM, WORD }
+    // ---- DBMS 식별자 (M-7 보강 1차 — M-5 D3. 판정 = DbIdentifierRules/DbIdentifierCheck, 조회·집계는 /identifiers/* 로 따로 — 기존 요약·모델 진단에 넣지 않는다)
+    /** 스키마·테이블·컬럼 이름이 프로젝트 DBMS 의 식별자 길이 기준을 넘는다 */
+    IDENTIFIER_LENGTH_EXCEEDED(TargetType.IDENTIFIER, Severity.ERROR),
+    /** 프로젝트 DBMS 가 따옴표 없는 식별자로 받지 않는 문자·시작 문자 (DDL 은 따옴표를 쓰지 않는다) */
+    IDENTIFIER_INVALID_CHARACTER(TargetType.IDENTIFIER, Severity.ERROR),
+    /** DBMS 는 받지만 Lexorma 권장 형식(영문 또는 _ 로 시작, 영문·숫자·_·$)과 다르다 */
+    IDENTIFIER_NOT_RECOMMENDED(TargetType.IDENTIFIER, Severity.WARNING),
+    /** DDL 이 자동으로 만드는 제약조건명(PK_·UK_·FK_)이 길이 기준을 넘어 잘린다 */
+    CONSTRAINT_NAME_TRUNCATED(TargetType.IDENTIFIER, Severity.WARNING),
+    /** DDL 의 최종 제약조건·인덱스 이름이 같은 이름 공간에서 겹친다 (자동 이름·잘린 이름이 낀 것) */
+    CONSTRAINT_NAME_COLLISION(TargetType.IDENTIFIER, Severity.ERROR);
+
+    /** 진단 대상. WORD 는 AI-6 용으로 남겨 둔다 (지금 단어를 대상으로 하는 규칙은 없다). IDENTIFIER : DDL 이 쓰는 이름 (스키마·테이블·컬럼·제약조건 — 대상 종류는 진단 결과의 kind) */
+    public enum TargetType { TABLE, COLUMN, TERM, WORD, IDENTIFIER }
 
     public enum Severity { ERROR, WARNING, INFO }
 

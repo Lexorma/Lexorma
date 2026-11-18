@@ -26,3 +26,16 @@
 .logical-edge-label.selected { color: var(--gh-accent); font-weight: 600; }
 .logical-edge-name.selected { border-color: var(--gh-accent); color: var(--gh-accent); }
 .erd-legend b { color: var(--gh-accent); font-size: 11px; }
+
+/* 관계 속성 짝 (M-7 보강 3차) */
+.logical-pairs { display: grid; gap: 8px; padding: 16px; min-width: 0; font-size: 13px; }
+.logical-pairs-head { margin: 0; overflow-wrap: anywhere; }
+.logical-pairs-scroll { overflow-x: auto; }
+.logical-pairs-table select { min-width: 0; width: 100%; }
+.logical-pairs-move { white-space: nowrap; }
+.logical-pairs-move .btn + .btn { margin-left: 4px; }
+.logical-pairs-dup td { background: var(--gh-danger-subtle); }
+.logical-pairs-warnings { margin: 0; padding-left: 18px; color: var(--gh-attention-fg, var(--gh-fg)); }
+.logical-pair-list { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+.logical-pairs-error { color: var(--gh-danger); }
+.erd-subtitle { margin: 12px 0 4px; font-size: 13px; }

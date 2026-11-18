@@ -83,20 +83,33 @@ public final class LogicalModelDto {
     public record Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
                                Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
                                Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
-                               String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt) {
+                               String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt, PairState attributePairs) {
         public Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
                             Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
                             Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
                             String cardinality, Boolean isApproval) {
             this(id, modelId, relationshipName, relationshipDescription, sourceEntityId, sourceEntityName, targetEntityId, targetEntityName,
-                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, null);
+                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, null, null);
         }
 
+        public Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
+                            Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
+                            Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
+                            String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt) {
+            this(id, modelId, relationshipName, relationshipDescription, sourceEntityId, sourceEntityName, targetEntityId, targetEntityName,
+                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, modifiedAt, null);
+        }
+
+        /** 속성 짝 없이 (저장 응답 등 — 속성 짝은 따로 저장·조회한다) */
         public static Relationship fromEntity(LogicalRelationship r) {
+            return fromEntity(r, null);
+        }
+
+        public static Relationship fromEntity(LogicalRelationship r, PairState attributePairs) {
             return new Relationship(r.getId(), r.getModel().getId(), r.getRelationshipName(), r.getRelationshipDescription(),
                     r.getSourceEntity().getId(), r.getSourceEntity().getEntityName(), r.getTargetEntity().getId(), r.getTargetEntity().getEntityName(),
                     r.getIsIdentifying(), r.getSourceMin(), r.getSourceMax(), r.getTargetMin(), r.getTargetMax(),
-                    cardinality(r.getSourceMax(), r.getTargetMax()), r.getIsApproval(), r.modifiedAt());
+                    cardinality(r.getSourceMax(), r.getTargetMax()), r.getIsApproval(), r.modifiedAt(), attributePairs);
         }
 
         private static String cardinality(Integer sourceMax, Integer targetMax) {
@@ -104,6 +117,37 @@ public final class LogicalModelDto {
             boolean targetOne = targetMax != null && targetMax == 1;
             return sourceOne ? (targetOne ? "1:1" : "1:N") : (targetOne ? "N:1" : "N:M");
         }
+    }
+
+    // ------------------------------------------------------------------ 관계 속성 짝 (M-7 보강 3차, P1)
+
+    /** 부모(원본) 속성 → 자식(대상) 속성, 순서 */
+    public record AttributePair(Long parentAttributeId, String parentAttributeName, Long childAttributeId, String childAttributeName, Integer sortOrder) {
+    }
+
+    /**
+     * 관계의 속성 짝과 판정 ({@code LogicalRelationshipPairs}). status : NONE · PARENT_KEY_MISSING · PARENT_KEY_MISMATCH · PARTIAL · COMPLETE,
+     * warnings : ORDER_DIFFERS · SELF_KEY_REUSED · IDENTIFYING_CHILD_NOT_KEY · REQUIRED_CHILD_NULLABLE, parentKeySize : 부모 주 식별자 속성 수
+     */
+    public record PairState(String status, List<String> warnings, List<AttributePair> pairs, int parentKeySize) {
+    }
+
+    /** 짝 하나의 입력 (순서는 목록 순서) */
+    public record PairInput(Long parentAttributeId, Long childAttributeId) {
+    }
+
+    /** 관계의 속성 짝 전체 교체. modifiedAt : 화면이 읽은 관계의 수정 일시 (DEC-08 기준값, 필수). pairs 가 비면 짝을 모두 지운다 */
+    public record PairSave(java.time.LocalDateTime modifiedAt, List<PairInput> pairs) {
+    }
+
+    /** 편집 화면용 속성 후보. primary : 그 엔터티 주 식별자 속성, keyOrder : 주 식별자 안의 순서 (아니면 null) */
+    public record PairCandidate(Long attributeId, String attributeName, boolean primary, Integer keyOrder, Boolean isRequired) {
+    }
+
+    /** 관계 속성 짝 조회·저장 응답 : 부모 후보 = 부모 주 식별자 속성(순서대로), 자식 후보 = 자식 엔터티의 모든 속성 */
+    public record RelationshipPairs(Long relationshipId, java.time.LocalDateTime modifiedAt, Long parentEntityId, String parentEntityName, Long childEntityId,
+                                    String childEntityName, Boolean isIdentifying, PairState state, List<PairCandidate> parentCandidates,
+                                    List<PairCandidate> childCandidates) {
     }
 
     // ------------------------------------------------------------------ 논리 ERD

@@ -28,6 +28,43 @@ export const MODEL_RULES: { type: ModelRule; label: string; variant: LabelVarian
   { type: 'TABLE_WORD_NOT_STANDARD', label: t('비표준 단어 약어'), variant: 'danger', target: 'TABLE' },
 ];
 
+/** DBMS 식별자 규칙 (M-7 보강 1차, 기존 모델 진단과 따로 집계) */
+export type IdentifierRule = 'IDENTIFIER_LENGTH_EXCEEDED' | 'IDENTIFIER_INVALID_CHARACTER' | 'IDENTIFIER_NOT_RECOMMENDED' | 'CONSTRAINT_NAME_TRUNCATED' | 'CONSTRAINT_NAME_COLLISION';
+export type IdentifierKind = 'SCHEMA' | 'TABLE' | 'COLUMN' | 'PRIMARY_KEY' | 'UNIQUE' | 'FOREIGN_KEY' | 'CHECK' | 'INDEX';
+
+export const IDENTIFIER_RULES: { type: IdentifierRule; label: string; hint: string; variant: LabelVariant }[] = [
+  { type: 'IDENTIFIER_LENGTH_EXCEEDED', label: t('식별자 길이 초과'), hint: t('DBMS 길이 기준'), variant: 'danger' },
+  { type: 'IDENTIFIER_INVALID_CHARACTER', label: t('DBMS 허용 문자 위반'), hint: t('따옴표 없는 식별자 기준'), variant: 'danger' },
+  { type: 'IDENTIFIER_NOT_RECOMMENDED', label: t('권장 형식 아님'), hint: t('DBMS 는 허용 · Lexorma 권장 형식과 다름'), variant: 'attention' },
+  { type: 'CONSTRAINT_NAME_TRUNCATED', label: t('제약조건명 잘림'), hint: t('DDL 이 만드는 PK_·UK_·FK_ 이름'), variant: 'attention' },
+  { type: 'CONSTRAINT_NAME_COLLISION', label: t('제약조건명 충돌'), hint: t('잘린 최종 이름 기준'), variant: 'danger' },
+];
+
+export const IDENTIFIER_KINDS: { kind: IdentifierKind; label: string }[] = [
+  { kind: 'SCHEMA', label: t('스키마') },
+  { kind: 'TABLE', label: t('테이블') },
+  { kind: 'COLUMN', label: t('컬럼') },
+  { kind: 'PRIMARY_KEY', label: 'PK' },
+  { kind: 'UNIQUE', label: 'UNIQUE' },
+  { kind: 'FOREIGN_KEY', label: 'FK' },
+  { kind: 'CHECK', label: 'CHECK' },
+  { kind: 'INDEX', label: t('인덱스') },
+];
+
+/** GET /api/standardizationQuality/identifiers/summary */
+export interface IdentifierSummary {
+  dbType: string;
+  dbLabel: string;
+  lengthBasis: string;
+  totalSchemas: number;
+  totalTables: number;
+  totalColumns: number;
+  rules: Partial<Record<IdentifierRule, number>>;
+  errors: number;
+  warnings: number;
+  infos: number;
+}
+
 export const TERM_RULES: { type: TermRule; label: string; hint: string }[] = [
   { type: 'TERM_ABBR_DUPLICATE', label: t('약어·도메인 중복'), hint: t('등록 중복 기준 · 대소문자 무시') },
   { type: 'TERM_NAME_DUPLICATE', label: t('용어명 중복'), hint: t('공백·_·대소문자 무시') },

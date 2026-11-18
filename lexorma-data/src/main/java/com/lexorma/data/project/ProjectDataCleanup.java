@@ -43,6 +43,7 @@ public class ProjectDataCleanup {
             "delete from TB_ENTT_TBL_MPNG where PRJ_SN = :projectId",
             // 논리 모델 : 배치·관계 → 식별자 → 속성 → 엔터티 → 모델
             "delete from TB_LGCL_ERD_LYT where PRJ_SN = :projectId",
+            "delete from TB_LGCL_REL_ATRB where LGCL_REL_SN in (select LGCL_REL_SN from TB_LGCL_REL where PRJ_SN = :projectId)",
             "delete from TB_LGCL_REL where PRJ_SN = :projectId",
             "delete from TB_LGCL_IDNTFR_ATRB where LGCL_IDNTFR_SN in (select LGCL_IDNTFR_SN from TB_LGCL_IDNTFR where LGCL_ENTT_SN in " + ENTITIES + ")",
             "delete from TB_LGCL_IDNTFR where LGCL_ENTT_SN in " + ENTITIES,

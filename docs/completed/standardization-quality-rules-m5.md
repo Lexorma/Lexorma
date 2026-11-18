@@ -217,8 +217,8 @@ H2 전체 `./gradlew build` : 926 건, 실패 0, 건너뜀 41. PostgreSQL 18 전
 
 ### 9.2 M-7 로 이관 (pending-work [M-7])
 
-- DBMS별 식별자 문자·길이 검사 (D3).
-- DBMS별 예약어 검사 — **구현하기로 확정한 것이 아니라** 정책 검토 대상이다 (D4).
+- DBMS별 식별자 문자·길이 검사 (D3). **후속 반영 (2026-11-17, M-7 보강 1차)** : 규칙 5개(`IDENTIFIER_*`·`CONSTRAINT_NAME_*`, `TargetType.IDENTIFIER`)와 `/api/standardizationQuality/identifiers/*`·[DBMS 식별자 진단] 탭으로 구현했다. 이 문서의 기존 규칙·`/summary`·`/model/*`·대시보드 수치는 그대로이고 식별자 결과는 따로 집계한다 — [logical-physical-mapping-m7.md 12장](logical-physical-mapping-m7.md).
+- DBMS별 예약어 검사 — **구현하기로 확정한 것이 아니라** 정책 검토 대상이다 (D4). M-7 보강 1차에서도 제외했다 (P13).
 
 ### 9.3 AI-6 연계 (pending-work [AI-6])
 

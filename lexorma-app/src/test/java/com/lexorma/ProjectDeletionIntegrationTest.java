@@ -343,7 +343,12 @@ class ProjectDeletionIntegrationTest {
         Entity itemEntity = logical.saveEntity(admin, new Entity(null, model.id(), "주문 상품", null, null, null, null));
         Attribute orderNoAttribute = logical.saveAttribute(admin, new Attribute(null, orderEntity.id(), "주문 번호", null, null, true, null, null, null, null, null));
         logical.saveIdentifier(admin, new Identifier(null, orderEntity.id(), "주문 식별자", true, List.of(orderNoAttribute.id()), null));
-        logical.saveRelationship(admin, new Relationship(null, model.id(), null, null, orderEntity.id(), null, itemEntity.id(), null, false, 1, 1, 0, null, null, null));
+        Relationship relationship = logical.saveRelationship(admin, new Relationship(null, model.id(), null, null, orderEntity.id(), null, itemEntity.id(), null, false, 1, 1, 0, null, null, null));
+        // 관계 속성 짝 (V7, M-7 보강 3차) : 주문 번호 → 주문 상품의 주문 번호
+        Attribute itemOrderNo = logical.saveAttribute(admin, new Attribute(null, itemEntity.id(), "주문 번호", null, null, true, null, null, null, null, null));
+        jdbc.update("update TB_LGCL_REL set APRV_YN = false where LGCL_REL_SN = ?", relationship.id());
+        logical.saveRelationshipPairs(admin, relationship.id(), new com.lexorma.data.logical.domain.dto.LogicalModelDto.PairSave(relationship.modifiedAt(),
+                List.of(new com.lexorma.data.logical.domain.dto.LogicalModelDto.PairInput(orderNoAttribute.id(), itemOrderNo.id()))));
         jdbc.update("update TB_LGCL_ATRB set STD_TRM_SN = ? where LGCL_ATRB_SN = ?", base - 1, orderNoAttribute.id());
         EntityMapping entityMapping = mappings.saveEntityMapping(admin, new EntityMapping(null, orderEntity.id(), order.getId()));
         mappings.saveAttributeMapping(admin, new AttributeMapping(null, entityMapping.id(), orderNoAttribute.id(), orderNo.getId()));

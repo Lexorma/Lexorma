@@ -626,6 +626,8 @@ dialog .dict-detail-columns tr.is-highlight > td {
 .quality-tab .dash-stats.quality-stats + .dash-stats.quality-stats { margin-top: -8px; }
 .dash-stats.quality-stats.quality-rule-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .quality-stat-foot { margin-top: 4px; font-size: 12px; color: var(--gh-fg-muted); overflow-wrap: anywhere; }
+.quality-identifier-message { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.quality-identifier-basis { margin: 0 0 8px; font-size: 13px; }
 .quality-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .quality-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
 .quality-chips .Label { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }

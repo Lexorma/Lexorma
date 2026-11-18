@@ -108,7 +108,27 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
         List<ColumnInfo> sourceColumns = tableColumns(projectId, source, pairs.stream().map(PhysicalModelDto.ColumnPair::sourceColumnId).toList());
         List<ColumnInfo> targetColumns = tableColumns(projectId, target, pairs.stream().map(PhysicalModelDto.ColumnPair::targetColumnId).toList());
+        TableRelation.Type type = parse(TableRelation.Type.class, request.relationType(), TableRelation.Type.FK);
+        TableRelation relation = buildRelation(projectId, source, target, sourceColumns, targetColumns, type,
+                objectName(request.relationName(), "FK_" + source.getTableName() + "_" + sourceColumns.get(0).getColumnName()), AuthUtil.isApprovalAvailable(),
+                type == TableRelation.Type.FK ? rule(request.deleteRule()) : null, type == TableRelation.Type.FK ? rule(request.updateRule()) : null);
+        return PhysicalModelDto.Relation.fromEntity(relationRepository.save(relation));
+    }
 
+    /**
+     * 논리 → 물리 생성(M-7 보강 4차) 전용 FK : {@link #saveRelation} 과 같은 검사(참조 테이블명 컬럼 제외·같은 컬럼 구성 중복·대상 키·타입 호환)를 거쳐
+     * 미승인 USER 관계로 만든다. 승인 여부를 로그인 사용자로 정하지 않는다 (생성은 모두 미승인). 자기 참조(원본 = 대상 테이블)도 같은 경로다.
+     * 부르는 쪽이 같은 트랜잭션에서 방금 만든 테이블·컬럼을 넘긴다 (PK 는 컬럼의 isPk, 대상 테이블의 컬럼 목록으로 본다)
+     */
+    @Override
+    public TableRelation createGeneratedForeignKey(Long projectId, TableInfo child, TableInfo parent, List<ColumnInfo> childColumns, List<ColumnInfo> parentColumns, String name) {
+        if (childColumns.isEmpty() || childColumns.size() != parentColumns.size()) throw invalid("관계 컬럼 쌍을 1개 이상 지정해주세요.");
+        return relationRepository.save(buildRelation(projectId, child, parent, childColumns, parentColumns, TableRelation.Type.FK, objectName(name, name), false, null, null));
+    }
+
+    /** 관계 저장 공통 : 검사 후 엔티티를 만든다 (저장은 부르는 쪽) */
+    private TableRelation buildRelation(Long projectId, TableInfo source, TableInfo target, List<ColumnInfo> sourceColumns, List<ColumnInfo> targetColumns,
+                                        TableRelation.Type type, String name, boolean approved, TableRelation.Rule deleteRule, TableRelation.Rule updateRule) {
         // 참조 테이블명(단일 FK 약식 입력)이 있는 컬럼은 그 값으로 관계가 만들어지므로 두 곳에서 정의하지 않는다
         sourceColumns.stream().filter(c -> notBlank(c.getRefTableName())).findFirst().ifPresent(c -> {
             throw invalid("{0} 은(는) 참조 테이블({1})이 지정된 컬럼입니다. 컬럼 관리에서 참조 테이블을 비운 뒤 등록해주세요.", c.getColumnName(), normalize(c.getRefTableName()));
@@ -120,7 +140,6 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                         && r.getColumns().stream().map(c -> c.getSourceColumn().getId()).toList().equals(sourceIds));
         if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, source.getTableName() + " → " + target.getTableName());
 
-        TableRelation.Type type = parse(TableRelation.Type.class, request.relationType(), TableRelation.Type.FK);
         // FK 는 DDL 로 나가므로 실제 DB 에서 만들 수 있는 정의만 받는다. 논리 관계(LOGICAL)는 제약이 아니라서 검사하지 않는다
         if (type == TableRelation.Type.FK) validateForeignKey(projectId, source, target, sourceColumns, targetColumns);
 
@@ -128,18 +147,18 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .projectId(projectId)
                 .sourceTable(source)
                 .targetTable(target)
-                .relationName(objectName(request.relationName(), "FK_" + source.getTableName() + "_" + sourceColumns.get(0).getColumnName()))
+                .relationName(name)
                 .relationType(type)
                 .relationSource(TableRelation.Source.USER)
-                .isApproval(AuthUtil.isApprovalAvailable())
-                .deleteRule(type == TableRelation.Type.FK ? rule(request.deleteRule()) : null)
-                .updateRule(type == TableRelation.Type.FK ? rule(request.updateRule()) : null)
+                .isApproval(approved)
+                .deleteRule(deleteRule)
+                .updateRule(updateRule)
                 .build();
-        for (int i = 0; i < pairs.size(); i++) {
+        for (int i = 0; i < sourceColumns.size(); i++) {
             relation.getColumns().add(TableRelationColumn.builder().relation(relation)
                     .sourceColumn(sourceColumns.get(i)).targetColumn(targetColumns.get(i)).columnOrder(i + 1).build());
         }
-        return PhysicalModelDto.Relation.fromEntity(relationRepository.save(relation));
+        return relation;
     }
 
     @Override

@@ -4,6 +4,7 @@ import { t } from '../../lib/i18n';
 /** 열이 많아 좁은 화면에서는 그리드 안에서 가로로 넘긴다 (본문은 넘치지 않는다) */
 export const QUALITY_MODEL_GRID_MIN_WIDTH = 1280;
 export const QUALITY_TERM_GRID_MIN_WIDTH = 900;
+export const QUALITY_IDENTIFIER_GRID_MIN_WIDTH = 1200;
 
 /** 모델 품질 진단 목록 (GET /api/standardizationQuality/model/data) : 행 1개 = 대상(테이블 또는 컬럼) 1개의 규칙 1개 */
 export const qualityModelColumns: GridColumn[] = [
@@ -31,4 +32,18 @@ export const qualityTermColumns: GridColumn[] = [
   { columnName: t('판정 근거'), column: 'message', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '29%' },
   { columnName: t('표준용어명'), column: 'termName', columnType: 'STRING', isSearch: true, isFilter: false, isVisible: false },
   { columnName: t('표준용어영문약어명'), column: 'abbreviation', columnType: 'STRING', isSearch: true, isFilter: false, isVisible: false },
+];
+
+/** DBMS 식별자 진단 목록 (GET /api/standardizationQuality/identifiers/data) : 행 1개 = 이름 1개의 규칙 1개 */
+export const qualityIdentifierColumns: GridColumn[] = [
+  { columnName: t('테이블명'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '11%' },
+  { columnName: t('심각도'), column: 'severity', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '6%' },
+  { columnName: t('진단 유형'), column: 'type', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '10%' },
+  { columnName: t('대상'), column: 'kind', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '6%' },
+  { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '6%' },
+  { columnName: t('이름'), column: 'name', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '13%' },
+  { columnName: t('DDL 이름'), column: 'ddlName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
+  { columnName: t('길이'), column: 'length', columnType: 'NUMBER', isSearch: false, isFilter: true, rowType: 'TEXT', width: '6%' },
+  { columnName: t('문제 설명'), column: 'message', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '22%' },
+  { columnName: t('이동'), column: 'links', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '9%' },
 ];

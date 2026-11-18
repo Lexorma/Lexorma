@@ -20,6 +20,7 @@ import { ErdModeToggle, findFreePosition, type ErdMode } from '../erd/editing';
 import { AttributeForm, EntityForm, IdentifierForm, useEntityDetail, type EntityDetailTab } from './entityDetail';
 import { edgeTypes, EndMarkers, LAYER_GAP, nodeTypes, relationshipEdges, type EntityNodeType, type RelationshipEdgeType } from './erdNodes';
 import { relationLabel, RelationshipForm } from './relationshipForm';
+import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
 import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalIdentifier, type LogicalRelationship } from './model';
 
@@ -342,6 +343,14 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
 
   // ------------------------------------------------------------------ 편집 (M-8 2차 : 관계·식별자)
   // 연결점을 잇는 것은 관계 등록의 시작일 뿐이다. 화면에 선을 추가하지 않고 관계 폼을 열며, 저장에 성공해 다시 조회한 뒤에야 선이 생긴다.
+  // 관계 속성 짝 (M-7 보강 3차) : 편집 모드 + 승인 전 관계만 바꾼다. 저장하면 ERD 를 다시 읽는다
+  const openPairs = (relationship: LogicalRelationship) => {
+    dialog.open({
+      title: t('관계 속성 짝 — {0}', relationLabel(relationship)),
+      className: 'dialog-wide',
+      content: () => <RelationshipPairsEditor relationshipId={relationship.id} readOnly={!editing || !!relationship.isApproval} onSaved={() => void refresh()} />,
+    });
+  };
   const openRelationshipForm = (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
     const entities = graph.data?.entities ?? [];
     if (!entities.length) return;
@@ -499,7 +508,8 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
           ) : relationship ? (
             <RelationshipPanel relationship={relationship} onEntity={focus}
               onApproval={approvalAvailable ? () => toggleRelationshipApproval(relationship) : undefined}
-              edit={editing ? { onEdit: () => openRelationshipForm(relationship), onDelete: () => removeRelationship(relationship) } : undefined} />
+              edit={editing ? { onEdit: () => openRelationshipForm(relationship), onDelete: () => removeRelationship(relationship) } : undefined}
+              onPairs={() => openPairs(relationship)} />
           ) : (
             <p className="erd-muted">{t('엔터티나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}
@@ -642,9 +652,11 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
   );
 }
 
-function RelationshipPanel({ relationship: r, onEntity, onApproval, edit }: {
+function RelationshipPanel({ relationship: r, onEntity, onApproval, edit, onPairs }: {
   relationship: LogicalRelationship;
   onEntity: (entityId: string) => void;
+  /** 속성 짝 대화상자 (조회 모드는 보기만, 편집 모드 + 승인 전이면 편집) */
+  onPairs: () => void;
   /** 승인·승인취소 (승인 권한자만). 편집이 아니라 승인 절차라 조회 모드에서도 보인다 */
   onApproval?: () => void;
   /** 편집 모드의 수정·삭제. 승인된 관계는 승인취소 후에 바꿀 수 있다 (서버도 같은 기준) */
@@ -678,6 +690,13 @@ function RelationshipPanel({ relationship: r, onEntity, onApproval, edit }: {
         {side(t('도착 엔터티'), r.targetEntityId, r.targetEntityName, r.targetMin, r.targetMax)}
       </ul>
       <p className="erd-muted">{t('참여 수 {0} · 식별 여부는 관계에만 저장됩니다. 관계를 바꿔도 엔터티의 식별자는 자동으로 바뀌지 않습니다.', cardinalityText(r))}</p>
+      <h4 className="erd-subtitle">{t('속성 짝')} <PairStatusLabel state={r.attributePairs} /></h4>
+      <PairList state={r.attributePairs} />
+      {r.attributePairs && r.attributePairs.warnings.length > 0 && <ul className="erd-muted">{r.attributePairs.warnings.map((w) => <li key={w}>{PAIR_WARNINGS[w]}</li>)}</ul>}
+      {r.attributePairs?.status === 'NONE' && <p className="erd-muted">{t('속성 짝이 없는 관계는 물리 모델 생성에서 FK 를 만들지 않습니다.')}</p>}
+      <div className="erd-toolbar erd-links">
+        <button type="button" className="btn btn-sm" onClick={onPairs}>{edit && !r.isApproval ? t('속성 짝 편집') : t('속성 짝 보기')}</button>
+      </div>
     </>
   );
 }

@@ -13,6 +13,7 @@ import com.lexorma.data.logical.domain.entity.LogicalIdentifier;
 import com.lexorma.data.logical.domain.entity.LogicalIdentifierAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalModel;
 import com.lexorma.data.logical.domain.entity.LogicalRelationship;
+import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -138,6 +139,9 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             TableIndexColumn.class, new Child(TableIndex.class, "tableIndex", "columns", "columnOrder", List.of("column", "expression", "sort", "columnOrder")),
             TableConstraintColumn.class, new Child(TableConstraint.class, "tableConstraint", "columns", "columnOrder", List.of("column", "columnOrder")),
             LogicalIdentifierAttribute.class, new Child(LogicalIdentifier.class, "identifier", "attributes", "sortOrder", List.of("attribute", "sortOrder")),
+            // 관계의 속성 짝 (M-7 보강 3차) : 관계 이력·버전의 attributes 배열 (부모 속성 → 자식 속성, 순서대로)
+            LogicalRelationshipAttribute.class, new Child(LogicalRelationship.class, "relationship", "attributes", "sortOrder",
+                    List.of("parentAttribute", "childAttribute", "sortOrder")),
             PhysicalViewColumn.class, new Child(PhysicalView.class, "view", "columns", "columnOrder",
                     List.of("columnName", "columnKorName", "dataType", "columnOrder", "columnDescription")),
             PhysicalViewReference.class, new Child(PhysicalView.class, "view", "references", "id",

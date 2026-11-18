@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -274,9 +275,9 @@ class StandardTermServiceTest {
         void notFound() {
             StandardTermDto dto = termDto();
             dto.setId(9L);
-            when(standardTermRepository.findByIdAndProjectId(9L, PROJECT_ID)).thenReturn(null);
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.updateStandardTerms(PROJECT_ID, true, dto, new String[]{}))
+            assertThatThrownBy(() -> service.updateStandardTerms(PROJECT_ID, dto, new String[]{}))
                     .extracting("errorCode").isEqualTo(ErrorCode.NOT_FOUND_TERM_DATA);
         }
 
@@ -289,14 +290,47 @@ class StandardTermServiceTest {
             StandardTerm existing = StandardTerm.builder().id(9L).projectId(PROJECT_ID).isApproval(false)
                     .commonStandardTermName("사용자_이름").commonStandardTermAbbreviation("USER_NM").build();
             StandardDomain domain = domain();
-            when(standardTermRepository.findByIdAndProjectId(9L, PROJECT_ID)).thenReturn(existing);
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.of(existing));
             when(standardDomainService.findByCommonStandardDomainNameAndProjectId("명칭V100", PROJECT_ID)).thenReturn(domain);
 
-            service.updateStandardTerms(PROJECT_ID, true, dto, new String[]{});
+            service.updateStandardTerms(PROJECT_ID, dto, new String[]{});
 
             assertThat(existing.getCommonStandardTermDescription()).isEqualTo("변경된 설명");
             assertThat(existing.getStandardDomain()).isSameAs(domain);
+            assertThat(existing.getIsApproval()).as("수정은 승인 여부를 바꾸지 않는다 (M-5 7차)").isFalse();
+        }
+
+        @Test
+        @DisplayName("승인된 용어는 APPROVED_DATA_CANNOT_BE_UPDATE 로 거절하고 아무것도 바꾸지 않는다 (M-5 7차)")
+        void approvedRejected() {
+            StandardTermDto dto = termDto();
+            dto.setId(9L);
+            dto.setCommonStandardTermDescription("변경된 설명");
+            StandardTerm existing = StandardTerm.builder().id(9L).projectId(PROJECT_ID).isApproval(true).commonStandardTermDescription("원래 설명")
+                    .commonStandardTermName("사용자_이름").commonStandardTermAbbreviation("USER_NM").build();
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> service.updateStandardTerms(PROJECT_ID, dto, new String[]{}))
+                    .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+            assertThat(existing.getCommonStandardTermDescription()).isEqualTo("원래 설명");
             assertThat(existing.getIsApproval()).isTrue();
+        }
+
+        @Test
+        @DisplayName("영문약어를 보내지 않으면(null) 저장된 영문약어를 그대로 둔다 (M-5 7차)")
+        void omittedAbbreviationKept() {
+            StandardTermDto dto = termDto();
+            dto.setId(9L);
+            dto.setCommonStandardTermAbbreviation(null);
+            StandardTerm existing = StandardTerm.builder().id(9L).projectId(PROJECT_ID).isApproval(false)
+                    .commonStandardTermName("사용자_이름").commonStandardTermAbbreviation("USR_NM").build();
+            StandardDomain domain = domain();
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.of(existing));
+            when(standardDomainService.findByCommonStandardDomainNameAndProjectId("명칭V100", PROJECT_ID)).thenReturn(domain);
+
+            service.updateStandardTerms(PROJECT_ID, dto, new String[]{});
+
+            assertThat(existing.getCommonStandardTermAbbreviation()).isEqualTo("USR_NM");
         }
 
         @Test
@@ -307,12 +341,12 @@ class StandardTermServiceTest {
             dto.setCommonStandardTermName("사용자 이름");
             StandardTerm existing = StandardTerm.builder().id(9L).projectId(PROJECT_ID).isApproval(false)
                     .commonStandardTermName("사용자 이름").commonStandardTermAbbreviation("USER_NM").build();
-            when(standardTermRepository.findByIdAndProjectId(9L, PROJECT_ID)).thenReturn(existing);
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.of(existing));
             when(standardDomainService.findByCommonStandardDomainNameAndProjectId("명칭V100", PROJECT_ID)).thenReturn(domain());
 
-            service.updateStandardTerms(PROJECT_ID, true, dto, new String[]{});
+            service.updateStandardTerms(PROJECT_ID, dto, new String[]{});
 
-            assertThat(existing.getIsApproval()).isTrue();
+            assertThat(existing.getIsApproval()).isFalse();
         }
 
         @Test
@@ -323,9 +357,9 @@ class StandardTermServiceTest {
             dto.setCommonStandardTermName("사용자이름");
             StandardTerm existing = StandardTerm.builder().id(9L).projectId(PROJECT_ID)
                     .commonStandardTermName("사용자_이름").commonStandardTermAbbreviation("USER_NM").build();
-            when(standardTermRepository.findByIdAndProjectId(9L, PROJECT_ID)).thenReturn(existing);
+            when(standardTermRepository.findForUpdate(9L, PROJECT_ID)).thenReturn(Optional.of(existing));
 
-            assertThatThrownBy(() -> service.updateStandardTerms(PROJECT_ID, true, dto, new String[]{}))
+            assertThatThrownBy(() -> service.updateStandardTerms(PROJECT_ID, dto, new String[]{}))
                     .extracting("errorCode").isEqualTo(ErrorCode.TERM_WORD_COUNT_MISMATCH);
             assertThat(existing.getCommonStandardTermName()).isEqualTo("사용자_이름");
         }

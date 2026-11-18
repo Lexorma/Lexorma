@@ -373,6 +373,8 @@ class StandardTermDuplicateIntegrationTest {
 
     private void update(Context context, long id, String name, String abbreviation, String domainName, String description) {
         login(context);
+        // 승인된 용어는 고칠 수 없다 (M-5 7차) : 관리자가 등록해 승인된 용어를 미승인으로 돌린 뒤 고친다 — 중복 판정은 승인 여부와 무관하다
+        jdbc.update("update TB_STD_TRM set APRV_YN = false where STD_TRM_SN = ?", id);
         dictionary.updateStandardTerms(context.user, term(id, name, abbreviation, domainName, description));
     }
 

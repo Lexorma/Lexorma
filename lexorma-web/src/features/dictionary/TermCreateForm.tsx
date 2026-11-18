@@ -27,9 +27,10 @@ const FIELDS: FieldDef[] = [
   { key: 'commonStandardTermDescription', label: t('표준용어설명'), type: 'textarea', required: true },
   { key: 'commonStandardTermAbbreviation', label: t('표준용어영문약어명'), readonly: true, mono: true },
   { key: 'commonStandardDomainName', label: t('표준도메인명'), readonly: true, required: true },
-  { key: 'allowedValues', label: t('허용값'), type: 'textarea', readonly: true, required: true },
-  { key: 'storageFormat', label: t('저장 형식'), readonly: true, required: true },
-  { key: 'displayFormat', label: t('표현 형식'), readonly: true, required: true },
+  // 도메인 항목은 고른 도메인의 값을 보여 줄 뿐이다 : 도메인 등록에서 허용값·형식은 선택이라 비어 있어도 등록할 수 있다 (M-5 6차)
+  { key: 'allowedValues', label: t('허용값'), type: 'textarea', readonly: true },
+  { key: 'storageFormat', label: t('저장 형식'), readonly: true },
+  { key: 'displayFormat', label: t('표현 형식'), readonly: true },
   { key: 'administrativeStandardCodeName', label: t('행정표준코드명') },
   { key: 'responsibleOrganization', label: t('소관기관명') },
   { key: 'synonyms', label: t('용어 이음동의어 목록'), readonly: true },

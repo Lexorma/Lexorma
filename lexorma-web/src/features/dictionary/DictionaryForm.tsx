@@ -41,6 +41,8 @@ export function DictionaryForm({
   onSaved: () => void;
 }) {
   const dialog = useDialog();
+  // 읽기 전용 칸은 사용자가 입력하지 않으므로 필수 검사를 하지 않는다 (용어 수정의 도메인 허용값처럼 비어 있어도 정상인 표시 값 — M-5 6차)
+  const isReadOnly = (key: string) => key === 'id' || key === 'projectId' || !!config.readonly?.(key);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => {
       const control = config.control?.(f.key);
@@ -53,7 +55,7 @@ export function DictionaryForm({
     e.preventDefault();
 
     for (const f of fields) {
-      if (config.required(f.key) && values[f.key].trim() === '') {
+      if (!isReadOnly(f.key) && config.required(f.key) && values[f.key].trim() === '') {
         dialog.alert(t('필수값 누락: {0}', f.label));
         document.getElementById(`dict-${f.key}`)?.focus();
         return;
@@ -68,7 +70,8 @@ export function DictionaryForm({
         if (value.trim() !== '') data[f.key] = Number(value);
         return;
       }
-      data[f.key] = value;
+      // 수정 폼 : 불러올 때 NULL 이던 칸을 건드리지 않았으면 NULL 그대로 보낸다 (빈 문자열로 바꿔 저장하지 않는다)
+      data[f.key] = type === 'U' && (f.value === null || f.value === undefined) && value === '' ? null : value;
     });
 
     const message = config.validate?.(data);
@@ -83,7 +86,7 @@ export function DictionaryForm({
     <form id={`${type === 'C' ? 'add' : 'edit'}-${tableId}`} onSubmit={onSubmit} noValidate>
       {fields.map((f) => {
         const control = config.control?.(f.key) ?? 'text';
-        const readOnly = f.key === 'id' || f.key === 'projectId' || !!config.readonly?.(f.key);
+        const readOnly = isReadOnly(f.key);
         const common = {
           id: `dict-${f.key}`,
           name: f.key,

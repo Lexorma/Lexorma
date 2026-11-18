@@ -82,7 +82,8 @@ const FORM_CONFIG: Record<DictionaryTable, { add?: FormConfig; edit: FormConfig 
     edit: {
       control: (k) => (['commonStandardTermDescription', 'synonyms'].includes(k) ? 'textarea' : k === 'revisionNumber' ? 'number' : 'text'),
       readonly: (k) => ['commonStandardDomainName', 'allowedValues', 'storageFormat', 'displayFormat', 'synonyms', 'commonStandardTermName', 'commonStandardTermAbbreviation'].includes(k),
-      required: (k) => ['commonStandardDomainName', 'allowedValues', 'storageFormat', 'displayFormat', 'commonStandardTermName', 'commonStandardTermDescription'].includes(k),
+      // 필수는 고칠 수 있는 칸만 : 용어명·도메인·허용값·저장/표현 형식은 읽기 전용 표시라 비어 있을 수 있다 (도메인 등록에서 허용값은 선택 — M-5 6차)
+      required: (k) => k === 'commonStandardTermDescription',
     },
   },
 };

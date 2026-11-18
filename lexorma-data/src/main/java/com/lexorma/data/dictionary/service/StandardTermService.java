@@ -1,10 +1,12 @@
 package com.lexorma.data.dictionary.service;
 
+import com.lexorma.data.dictionary.domain.dto.DictionaryLists;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.repository.StandardDomainRepository;
 import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.logical.repository.LogicalAttributeRepository;
@@ -136,7 +138,7 @@ public class StandardTermService {
                 "responsibleOrganization",
                 "synonyms"
         );
-        // 업로드 중에는 단어/도메인이 바뀌지 않으므로 조회 결과를 캐시한다. (영문약어 → 단어 목록, 도메인명 → 도메인 ID)
+        // 업로드 중에는 단어/도메인이 바뀌지 않으므로 조회 결과를 캐시한다. (영문약어 → 단어 목록, 대소문자 무시 도메인명 → 도메인 ID)
         Map<String, List<StandardWord>> wordsByAbbreviation = new HashMap<>();
         Map<String, Long> domainIdByName = new HashMap<>();
 
@@ -145,7 +147,8 @@ public class StandardTermService {
                 .map(project -> Boolean.TRUE.equals(project.getIsDicAbbrUsed()))
                 .orElse(true);
 
-        // 중복 기준 : 용어명 + 영문약어명 + 도메인이 모두 같은 용어 (도메인만 다른 폐기 행, 생성된 영문명이 우연히 같은 다른 용어는 등록한다)
+        // 중복 기준 : 화면 등록·수정과 같은 키 — 영문약어(대소문자 무시) + 도메인 ID (M-5 5차). 중복 행은 예전처럼 건너뛴다 (오류 아님).
+        // 도메인만 다른 행은 다른 키라 등록된다. 업로드는 도메인 시트 단계에서 잡은 프로젝트 행 배타 잠금 안에서 돈다 (화면 등록과 직렬화)
         Set<String> uploadedTermKeys = new HashSet<>();
 
         // 청크(500행) 단위 : 단어/도메인은 청크당 IN 조회, 저장은 JDBC 배치(용어 + 매핑 + 이음동의어), 저장 후 영속성 컨텍스트 비우기
@@ -161,11 +164,12 @@ public class StandardTermService {
                 built.add(buildUploadedTerm(projectId, isApprovalAvailable, isDicAbbrUsed, standardTermEntry, wordsByAbbreviation, domainIdByName));
             }
 
-            // 이미 등록된 용어 / 파일 안에서 앞에 나온 같은 용어는 건너뛴다
-            Set<String> abbreviations = built.stream().map(StandardTerm::getCommonStandardTermAbbreviation).collect(Collectors.toSet());
-            Set<String> existingTermKeys = standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations).stream()
-                    .map(StandardTermService::termKey)
-                    .collect(Collectors.toSet());
+            // 이미 등록된 용어 / 파일 안에서 앞에 나온 같은 키의 용어는 건너뛴다
+            Set<String> abbreviationKeys = built.stream().map(term -> abbreviationKey(term.getCommonStandardTermAbbreviation())).collect(Collectors.toSet());
+            Set<String> existingTermKeys = abbreviationKeys.isEmpty() ? Set.of()
+                    : standardTermRepository.findAbbreviationDomainsByKeys(projectId, abbreviationKeys).stream()
+                        .map(row -> duplicateKey((String) row[0], (Long) row[1]))
+                        .collect(Collectors.toSet());
             List<StandardTerm> standardTerms = built.stream()
                     .filter(term -> !existingTermKeys.contains(termKey(term)) && uploadedTermKeys.add(termKey(term)))
                     .toList();
@@ -192,14 +196,13 @@ public class StandardTermService {
                     .forEach(word -> wordsByAbbreviation.get(word.getCommonStandardWordAbbreviation()).add(word));
         }
 
-        Set<String> domainNames = termRows.stream()
-                .map(row -> row.get("standardDomainName"))
-                .filter(name -> name != null && !domainIdByName.containsKey(name))
-                .collect(Collectors.toSet());
-
-        if (!domainNames.isEmpty()) {
-            standardDomainRepository.findAllByProjectIdAndCommonStandardDomainNameIn(projectId, domainNames)
-                    .forEach(domain -> domainIdByName.putIfAbsent(domain.getCommonStandardDomainName(), domain.getId()));
+        // 도메인 : 처음 한 번 프로젝트 도메인 전체를 대소문자 무시 키로 묶는다 (도메인 시트를 먼저 올린 뒤라 새 도메인도 들어 있다).
+        // 키가 같은 도메인이 여럿이면(예전 데이터) 임의로 고르지 않고 표시만 해 두었다가 그 이름을 쓰는 행에서 거절한다 ([DICT-2] 후속)
+        if (domainIdByName.isEmpty()) {
+            domainIdByName.put(DOMAINS_LOADED, 0L);
+            for (Object[] row : standardDomainRepository.findIdAndNamesByProjectId(projectId)) {
+                domainIdByName.merge(StandardDomainService.nameKey((String) row[1]), (Long) row[0], (a, b) -> AMBIGUOUS_DOMAIN);
+            }
         }
     }
 
@@ -207,9 +210,25 @@ public class StandardTermService {
      * 엑셀 한 행으로 표준용어를 만든다. (단어 매핑 / 도메인은 조회 없이 ID 참조로 연결)
      * 검증 순서와 오류는 기존과 같다 : 단어 매핑(NOT_FOUND_WORD_DATA) → 도메인(NOT_FOUND_DOMAIN_DATA)
      */
+    /** 업로드 도메인 캐시에서 "같은 이름(대소문자 무시)이 여럿" 표시 (실제 ID 는 양수) */
+    private static final long AMBIGUOUS_DOMAIN = -1L;
+    /** 업로드 도메인 캐시를 채웠다는 표시 (도메인명 키와 겹치지 않는 값 — 키는 소문자다) */
+    private static final String DOMAINS_LOADED = "\u0000LOADED";
+
     private static String termKey(StandardTerm term) {
-        return term.getCommonStandardTermName() + "|" + term.getCommonStandardTermAbbreviation() + "|"
-                + (term.getStandardDomain() == null ? null : term.getStandardDomain().getId());
+        return duplicateKey(term.getCommonStandardTermAbbreviation(), term.getStandardDomain() == null ? null : term.getStandardDomain().getId());
+    }
+
+    /**
+     * 표준 용어 중복 키 (M-5 5차, 등록·수정·엑셀 공통) : 영문약어 대소문자 무시 + 도메인 ID. 앞뒤 공백·'_'·유니코드 정규화는 하지 않는다.
+     * DB 조회는 같은 조건을 {@code lower()} 로 쓴다 ({@link StandardTermRepository#findDuplicates})
+     */
+    static String duplicateKey(String abbreviation, Long domainId) {
+        return abbreviationKey(abbreviation) + "|" + domainId;
+    }
+
+    private static String abbreviationKey(String abbreviation) {
+        return abbreviation == null ? "" : abbreviation.toLowerCase(Locale.ROOT);
     }
 
     private StandardTerm buildUploadedTerm(Long projectId, boolean isApprovalAvailable, boolean isDicAbbrUsed, Map<String, String> standardTermEntry,
@@ -231,9 +250,13 @@ public class StandardTermService {
             mappings.add(mapping);
         }
 
-        Long domainId = domainIdByName.get(standardTermEntry.get("standardDomainName"));
+        String domainName = standardTermEntry.get("standardDomainName");
+        Long domainId = domainName == null ? null : domainIdByName.get(StandardDomainService.nameKey(domainName));
         if (domainId == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_DOMAIN_DATA);
+        }
+        if (domainId == AMBIGUOUS_DOMAIN) {
+            throw new CustomException(ErrorCode.AMBIGUOUS_STANDARD_DOMAIN, "같은 이름의 도메인 : {0}", domainName);
         }
 
         StandardTerm standardTerm = StandardTerm.builder()
@@ -244,7 +267,7 @@ public class StandardTermService {
                 .commonStandardTermAbbreviation(isDicAbbrUsed ? abbreviation : toEnglishTermName(resolved.words()))
                 .administrativeStandardCodeName(standardTermEntry.get("administrativeStandardCodeName"))
                 .responsibleOrganization(standardTermEntry.get("responsibleOrganization"))
-                .synonymList(List.of(standardTermEntry.get("synonyms").split(",")))
+                .synonymList(DictionaryLists.split(standardTermEntry.get("synonyms")))
                 .projectId(projectId)
                 .isApproval(isApprovalAvailable)
                 .standardDomain(entityManager.getReference(StandardDomain.class, domainId))
@@ -353,7 +376,7 @@ public class StandardTermService {
         }
 
         // 2) 영문약어명의 표준 단어로 용어명을 만든다.
-        String compactName = name.replaceAll("[_\\s]", "");
+        String compactName = StandardNames.compact(name);
         List<StandardWord> words = new ArrayList<>();
         for (String part : abbrWords) {
             List<StandardWord> candidates = wordsByAbbreviation.getOrDefault(part, List.of());
@@ -370,7 +393,7 @@ public class StandardTermService {
     private static StandardWord pickWord(List<StandardWord> candidates, String compactName) {
         return candidates.stream()
                 .filter(word -> word.getCommonStandardWordName() != null && !compactName.isEmpty()
-                        && compactName.contains(word.getCommonStandardWordName().replaceAll("[_\\s]", "")))
+                        && compactName.contains(StandardNames.compact(word.getCommonStandardWordName())))
                 .max(Comparator.comparingInt(word -> word.getCommonStandardWordName().length()))
                 .or(() -> candidates.stream().filter(word -> Boolean.TRUE.equals(word.getIsApproval())).findFirst())
                 .orElse(candidates.get(0));
@@ -395,6 +418,10 @@ public class StandardTermService {
 
     private static final int DESCRIPTION_MAX_LENGTH = 1000; // standard_term.common_standard_term_description
 
+    private void lockProject(Long projectId) {
+        projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+    }
+
     /**
      * 같은 영문약어의 단어 중 이름이 정확히 같은 단어 (없으면 null)
      */
@@ -406,20 +433,29 @@ public class StandardTermService {
     }
 
     /**
-     * 같은 영문약어명 + 도메인으로 이미 등록된 용어 (등록 시 중복 기준)
+     * 중복 확인 API(화면의 등록 전 확인) : 도메인명으로 찾은 도메인(대소문자 무시, [DICT-2])에 영문약어(대소문자 무시)가 같은 용어 (M-5 5차).
+     * 도메인이 없으면 빈 목록, 같은 이름이 여럿이면 409 AMBIGUOUS_STANDARD_DOMAIN — 등록과 같은 판정
      */
     public List<StandardTerm> findDuplicateTerms(String abbreviation, String domainName, Long projectId) {
-        return standardTermRepository.findByCommonStandardTermAbbreviationAndStandardDomain_CommonStandardDomainNameAndProjectId(abbreviation, domainName, projectId);
+        StandardDomain domain = standardDomainService.findByCommonStandardDomainNameAndProjectId(domainName, projectId);
+        return domain == null || abbreviation == null ? List.of() : standardTermRepository.findDuplicates(projectId, abbreviation, domain.getId());
     }
 
+    /**
+     * 등록. 검사 순서는 예전과 같다 : 단어 수(400) → 중복(400 DUPLICATE_TERM_DATA) → 단어(400) → 도메인(없음 400 / 모호 409).
+     * 중복은 같은 프로젝트에서 영문약어(대소문자 무시) + 실제 도메인 ID 가 같은 용어다 (M-5 5차 — 예전에는 약어·도메인명 정확 일치라
+     * 'code' 처럼 도메인명 대소문자만 다르면 같은 도메인의 중복 용어가 생겼다). 도메인 이름이 모호하면 중복을 판단하지 않고 도메인 단계에서 409 를 낸다.
+     * 검사와 저장 사이에 다른 등록이 끼지 않도록 프로젝트 행을 먼저 배타 잠금으로 잡는다 (도메인 등록·엑셀 업로드와 같은 잠금)
+     */
     public void saveStandardTerms(Long projectId, boolean isApprovalAvailable, StandardTermDto standardTermDto, String[] split) {
 
         validateWordCount(standardTermDto.getCommonStandardTermName(), standardTermDto.getCommonStandardTermAbbreviation());
 
-        List<StandardTerm> byCommonStandardTermAbbreviationAndProjectId = findDuplicateTerms(standardTermDto.getCommonStandardTermAbbreviation(), standardTermDto.getCommonStandardDomainName(), projectId);
-
-        if(!byCommonStandardTermAbbreviationAndProjectId.isEmpty()){
-            // 이미 등록된 정보가 있기 떄문에 Error처리
+        lockProject(projectId);
+        List<StandardDomain> domains = standardTermDto.getCommonStandardDomainName() == null ? List.of()
+                : standardDomainRepository.findAllByNameIgnoreCase(projectId, standardTermDto.getCommonStandardDomainName());
+        if (domains.size() == 1
+                && !standardTermRepository.findDuplicates(projectId, standardTermDto.getCommonStandardTermAbbreviation(), domains.getFirst().getId()).isEmpty()) {
             throw new CustomException(ErrorCode.DUPLICATE_TERM_DATA);
         }
 
@@ -454,7 +490,7 @@ public class StandardTermService {
                 .commonStandardTermAbbreviation(dto.getCommonStandardTermAbbreviation())
                 .administrativeStandardCodeName(dto.getAdministrativeStandardCodeName())
                 .responsibleOrganization(dto.getResponsibleOrganization())
-                .synonymList(List.of(dto.getSynonyms().split(",")))
+                .synonymList(DictionaryLists.split(dto.getSynonyms()))
                 .projectId(projectId)
                 .isApproval(isApprovalAvailable)
                 .standardDomain(standardDomain) // 연관관계 설정
@@ -482,13 +518,25 @@ public class StandardTermService {
                     "도메인을 찾을 수 없습니다: {0}", dto.getCommonStandardDomainName());
         }
 
+        // 중복 키(영문약어 대소문자 무시 + 도메인 ID)를 바꾸는 수정만 다른 용어와 겹치는지 본다 (M-5 5차). 키가 그대로인 수정
+        // (설명 등, 약어 대소문자만 바꾸기, 이미 중복인 예전 데이터의 수정)은 예전처럼 검사하지 않는다. 자기 자신은 빼고, 승인 여부와 무관하다
+        Long currentDomainId = existingTerm.getStandardDomain() == null ? null : existingTerm.getStandardDomain().getId();
+        if (!duplicateKey(existingTerm.getCommonStandardTermAbbreviation(), currentDomainId).equals(duplicateKey(dto.getCommonStandardTermAbbreviation(), standardDomain.getId()))) {
+            lockProject(projectId);
+            if (standardTermRepository.findDuplicates(projectId, dto.getCommonStandardTermAbbreviation(), standardDomain.getId()).stream()
+                    .anyMatch(other -> !other.getId().equals(existingTerm.getId()))) {
+                throw new CustomException(ErrorCode.DUPLICATE_TERM_DATA);
+            }
+        }
+
         existingTerm.setRevisionNumber(dto.getRevisionNumber());
         existingTerm.setCommonStandardTermName(dto.getCommonStandardTermName());
         existingTerm.setCommonStandardTermDescription(dto.getCommonStandardTermDescription());
         existingTerm.setCommonStandardTermAbbreviation(dto.getCommonStandardTermAbbreviation());
         existingTerm.setAdministrativeStandardCodeName(dto.getAdministrativeStandardCodeName());
         existingTerm.setResponsibleOrganization(dto.getResponsibleOrganization());
-        existingTerm.setSynonymList(List.of(dto.getSynonyms().split(",")));
+        // 이음동의어 : 화면은 항상 보낸다(빈 값 = 비우기). 필드가 없으면(null) 기존 목록을 그대로 둔다 — 지우지 않는다 ([DICT-1])
+        if (dto.getSynonyms() != null) existingTerm.setSynonymList(DictionaryLists.split(dto.getSynonyms()));
         existingTerm.setIsApproval(isApprovalAvailable);
         existingTerm.setStandardDomain(standardDomain); // 연관관계 주입
 

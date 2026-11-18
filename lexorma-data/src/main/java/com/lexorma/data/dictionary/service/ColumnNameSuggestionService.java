@@ -13,7 +13,7 @@ import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ColumnRo
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Issue;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.IssueType;
 import com.lexorma.data.dictionary.quality.ColumnNameSuggestions;
-import com.lexorma.data.dictionary.quality.TermDuplicateRules;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.repository.DictionaryUsageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -52,7 +52,7 @@ public class ColumnNameSuggestionService {
                     Messages.get("표준 용어가 연결되어 있고 컬럼명이 영문약어와 같아 개선 후보를 계산하지 않습니다."));
         }
 
-        String desc = TermDuplicateRules.normalizeName(column.columnDesc());
+        String desc = StandardNames.termNameKey(column.columnDesc());
         Map<Long, Long> sameDesc = desc.isEmpty() ? Map.of() : usageRepository.countSameDescColumnsByTerm(projectId, desc, column.columnId());
         ColumnNameSuggestions.Result result = ColumnNameSuggestions.suggest(new ColumnNameSuggestions.Input(db, column, issues,
                 usageRepository.findSuggestionTerms(projectId), usageRepository.findTermSynonyms(projectId), usageRepository.findQualityWords(projectId),

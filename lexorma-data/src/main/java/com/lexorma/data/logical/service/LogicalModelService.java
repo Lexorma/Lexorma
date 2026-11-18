@@ -385,6 +385,9 @@ public class LogicalModelService {
             relationship.markModified();
             pairRepository.flush();
             relationshipRepository.flush();
+            // 응답의 기준값은 DB 에 저장된 값이어야 한다 : now() 는 OS 에 따라 나노초(Linux)인데 MDFCN_DT 는 timestamp(6) 라,
+            // 메모리 값을 그대로 돌려주면 다음 요청이 다시 읽은 값과 달라진다 (같은 구성 재저장의 기준값 비교)
+            entityManager.refresh(relationship);
         }
         return pairsView(relationship);
     }

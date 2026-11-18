@@ -32,9 +32,11 @@ public final class TermQualityDto {
 
     /**
      * 그룹에 속한 용어. note 는 이 용어가 그룹에 들어온 근거 (예: 가진 이음동의어, 쓰인 금칙어), 없으면 null.
-     * columnCount 는 그 용어를 쓰는 물리 컬럼 수 (목록의 한 페이지 분량만 한 번에 센다)
+     * columnCount 는 그 용어를 쓰는 물리 컬럼 수 (목록의 한 페이지 분량만 한 번에 센다).
+     * domainId·registeredAt·modifiedAt (M-5 5차, 중복 정리 판단용) : 등록·수정 일시는 columnCount 와 같이 목록의 한 페이지 분량만 채운다 (그 밖에는 null)
      */
-    public record Member(Long termId, String termName, String abbreviation, String domainName, Boolean isApproval, Long columnCount, String note) {
+    public record Member(Long termId, String termName, String abbreviation, String domainName, Boolean isApproval, Long columnCount, String note,
+                         Long domainId, java.time.LocalDateTime registeredAt, java.time.LocalDateTime modifiedAt) {
     }
 
     /**

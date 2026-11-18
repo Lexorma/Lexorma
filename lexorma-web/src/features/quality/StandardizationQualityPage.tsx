@@ -14,7 +14,7 @@ import { QUALITY_IDENTIFIER_GRID_MIN_WIDTH, QUALITY_MODEL_GRID_MIN_WIDTH, QUALIT
 import {
   IDENTIFIER_KINDS, IDENTIFIER_RULES, MODEL_RULES, SEVERITIES, TARGET_TYPES, TERM_RULES,
   type ColumnSummary, type IdentifierKind, type IdentifierRule, type IdentifierSummary, type ModelRule, type ModelSummary, type Severity, type TargetType,
-  type TermGroup, type TermRule, type TermSummary,
+  type DomainDuplicateGroup, type TermGroup, type TermRule, type TermSummary,
 } from './model';
 import { ColumnSuggestionDetail, SeverityLabel, TermGroupDetail } from './qualityDialogs';
 
@@ -309,7 +309,51 @@ function TermQuality() {
           return undefined;
         }}
       />
+      <DomainDuplicates />
     </>
+  );
+}
+
+/**
+ * 표준 도메인 이름 중복 ([DICT-2]) : 같은 프로젝트에서 대소문자를 무시하고 이름이 같은 도메인 묶음. 예전 데이터 진단만 한다 — 정리(삭제·합치기)는 사람이 표준 도메인 화면에서.
+ * 이 이름을 쓰는 표준 용어 등록·수정은 409 로 거절된다
+ */
+function DomainDuplicates() {
+  const { user } = useAuth();
+  const query = useQuery({
+    queryKey: ['standardization-quality-domain-duplicates', user?.projectId],
+    queryFn: () => api<{ groups: DomainDuplicateGroup[] }>('/api/standardizationQuality/domains/duplicates'),
+  });
+  const groups = query.data?.groups ?? [];
+  return (
+    <section aria-labelledby="quality-domain-duplicates-title">
+      <h2 id="quality-domain-duplicates-title" className="quality-subtitle">{t('표준 도메인 이름 중복 (대소문자 무시)')}</h2>
+      {query.isError ? <p className="gh-muted" role="alert">{t('도메인 이름 중복 진단을 불러오지 못했습니다.')}</p>
+        : query.isLoading ? <p className="gh-muted">{t('불러오는 중…')}</p>
+          : groups.length === 0 ? <p className="gh-muted">{t('같은 이름의 표준 도메인이 없습니다.')}</p>
+            : (
+              <>
+                <p className="gh-muted">{t('같은 이름의 표준 도메인이 {0}묶음 있습니다. 이 이름을 쓰는 표준 용어는 등록·수정할 수 없습니다. 자동으로 정리하지 않으니 표준 도메인 화면에서 확인해주세요.', groups.length)}</p>
+                <ul className="quality-candidates">
+                  {groups.map((group) => (
+                    <li key={group.normalizedName} className="quality-candidate">
+                      <div className="quality-candidate-head">
+                        <Mono>{group.normalizedName}</Mono>
+                        <Muted>{t('도메인 {0}개', group.count)}</Muted>
+                      </div>
+                      <span className="quality-chips">
+                        {group.members.map((member) => (
+                          <Label key={member.domainId} variant={member.isApproval ? '' : 'attention'}>
+                            {member.domainName} · #{member.domainId} · {member.isApproval ? t('승인') : t('미승인')} · {t('용어 {0} · 컬럼 {1}', member.termCount, member.columnCount)}
+                          </Label>
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+    </section>
   );
 }
 

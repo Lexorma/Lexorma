@@ -159,7 +159,7 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
         // 관리자의 경우 승인으로 저장, 아닐경우 관리자가 승인할 수 있도록 저장
         boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
 
-        standardTermService.saveStandardTerms(accountDto.getProjectId(), isApprovalAvailable, standardTermDto, domainName.split("_"));
+        standardTermService.saveStandardTerms(accountDto.getProjectId(), isApprovalAvailable, standardTermDto, abbreviationWords(domainName));
     }
 
     @Override
@@ -169,7 +169,7 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
         // 관리자의 경우 승인으로 저장, 아닐경우 관리자가 승인할 수 있도록 저장
         boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
 
-        standardTermService.updateStandardTerms(accountDto.getProjectId(), isApprovalAvailable, standardTermDto, domainName.split("_"));
+        standardTermService.updateStandardTerms(accountDto.getProjectId(), isApprovalAvailable, standardTermDto, abbreviationWords(domainName));
     }
 
     @Override
@@ -207,9 +207,15 @@ public class DataDictionaryServiceImpl implements DataDictionaryService {
         standardWordDto.setUseAbbreviation(isApprovalAvailable ? "Y" : "N");
         standardWordDto.setProjectId(accountDto.getProjectId());
         standardWordDto.setIsApprovalYn(isApprovalAvailable ? "Y" : "N");
+        StandardWordService.requireYn(standardWordDto.getIsFormatWord(), "isFormatWord");
         StandardWord standardWord = StandardWord.fromEntity(standardWordDto);
 
         standardWordService.insertStandardWords(standardWord);
+    }
+
+    /** 영문약어명의 단어 ('_' 구분). 없으면 빈 배열 — 단어 수 검사가 400(TERM_WORD_COUNT_MISMATCH)으로 거절한다 ([DICT-1]) */
+    private static String[] abbreviationWords(String abbreviation) {
+        return abbreviation == null ? new String[0] : abbreviation.split("_");
     }
 
     /**

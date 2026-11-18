@@ -51,7 +51,7 @@ public final class TableNameRules {
                 continue;
             }
             TokenStatus status = Boolean.TRUE.equals(word.isApproval()) ? TokenStatus.APPROVED : TokenStatus.NOT_APPROVED;
-            statuses.merge(word.abbreviation().trim().toUpperCase(Locale.ROOT), status,
+            statuses.merge(StandardNames.physicalNameKey(word.abbreviation()), status,
                     (a, b) -> a == TokenStatus.APPROVED || b == TokenStatus.APPROVED ? TokenStatus.APPROVED : TokenStatus.NOT_APPROVED);
         }
         return statuses;
@@ -63,7 +63,7 @@ public final class TableNameRules {
         List<TableIssue> issues = new ArrayList<>();
         for (TableRow row : rows) {
             String name = row.tableName() == null ? "" : row.tableName().trim();
-            String upper = name.toUpperCase(Locale.ROOT);
+            String upper = StandardNames.physicalNameKey(name);
             String rest = upper;
             if (prefix != null) {
                 if (upper.startsWith(prefix)) {

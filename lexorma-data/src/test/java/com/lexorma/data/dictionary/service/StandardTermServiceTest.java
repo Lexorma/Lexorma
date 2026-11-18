@@ -43,11 +43,22 @@ class StandardTermServiceTest {
     StandardWordService standardWordService;
     @Mock
     com.lexorma.data.logical.repository.LogicalAttributeRepository logicalAttributeRepository;
+    @Mock
+    com.lexorma.data.dictionary.repository.StandardDomainRepository standardDomainRepository;
+    @Mock
+    com.lexorma.core.project.repository.ProjectRepository projectRepository;
 
     @InjectMocks
     StandardTermService service;
 
     private static final Long PROJECT_ID = 1L;
+
+    /** 등록·키를 바꾸는 수정은 프로젝트 행을 먼저 잠근다 (M-5 5차) */
+    @org.junit.jupiter.api.BeforeEach
+    void projectLock() {
+        org.mockito.Mockito.lenient().when(projectRepository.findByIdForUpdate(PROJECT_ID))
+                .thenReturn(java.util.Optional.of(com.lexorma.core.project.domain.entity.Project.builder().id(PROJECT_ID).build()));
+    }
 
     @Test
     @DisplayName("도메인 정렬 경로를 변환하면서 페이지와 복합 정렬 조건을 유지한다")
@@ -90,14 +101,16 @@ class StandardTermServiceTest {
     class Save {
 
         @Test
-        @DisplayName("같은 약어 + 도메인의 용어가 있으면 DUPLICATE_TERM_DATA")
+        @DisplayName("같은 약어(대소문자 무시) + 같은 도메인 ID 의 용어가 있으면 DUPLICATE_TERM_DATA — 도메인명으로 찾은 ID 로 비교하고 프로젝트를 먼저 잠근다 (M-5 5차)")
         void duplicate() {
-            when(standardTermRepository.findByCommonStandardTermAbbreviationAndStandardDomain_CommonStandardDomainNameAndProjectId(
-                    "USER_NM", "명칭V100", PROJECT_ID)).thenReturn(List.of(new StandardTerm()));
+            when(standardDomainRepository.findAllByNameIgnoreCase(PROJECT_ID, "명칭V100")).thenReturn(List.of(domain()));
+            when(standardTermRepository.findDuplicates(PROJECT_ID, "USER_NM", 3L)).thenReturn(List.of(new StandardTerm()));
 
             assertThatThrownBy(() -> service.saveStandardTerms(PROJECT_ID, true, termDto(), new String[]{"USER", "NM"}))
                     .isInstanceOf(CustomException.class)
                     .extracting("errorCode").isEqualTo(ErrorCode.DUPLICATE_TERM_DATA);
+            verify(projectRepository).findByIdForUpdate(PROJECT_ID);
+            verify(standardTermRepository, never()).save(any());
         }
 
         @Test

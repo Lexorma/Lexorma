@@ -320,7 +320,7 @@ class ModelExchangeIntegrationTest {
         // 형식 1 파일 (VIEW·배치 없음) : 그대로 가져온다, 배치는 만들지 않는다 (화면의 자동 배치)
         Map<String, List<Item>> withoutViews = new LinkedHashMap<>(file.model());
         withoutViews.remove("PHYSICAL_VIEW");
-        // 형식 1·2 파일에는 관계 속성 짝(형식 3)도 없다 (예제의 V7 관계 3개에는 짝이 있다)
+        // 형식 1·2 파일에는 관계 속성 짝(형식 3)도 없다 (예제 관계에는 짝이 있다)
         withoutViews.put("LOGICAL_RELATIONSHIP", withoutViews.get("LOGICAL_RELATIONSHIP").stream().map(item -> {
             Map<String, Object> state = new LinkedHashMap<>(item.state());
             state.remove("attributes");

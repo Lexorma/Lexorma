@@ -999,6 +999,116 @@ class SmokeTest {
 
     @Test
     @Order(24)
+    @DisplayName("[DICT-1] 이음동의어·금칙어는 선택 항목 : 생략·null·빈 값·공백 → 빈 목록 200, 수정에서 생략·null → 기존 목록 유지, 필수 항목 누락 → 400 (500 없음)")
+    void dictionaryOptionalLists() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 6).toUpperCase().replaceAll("[^A-Z]", "X");
+        String category = "동의어분류" + suffix;
+        // 용어 : 경우마다 다른 도메인 (중복 기준 = 영문약어명 + 도메인). 단어의 도메인 분류가 먼저 있어야 해서 도메인부터
+        String[][] cases = {{"생략", ""}, {"null", ",\"synonyms\":null"}, {"빈값", ",\"synonyms\":\"\""}, {"공백", ",\"synonyms\":\"   \""},
+                {"하나", ",\"synonyms\":\"동의어A\""}, {"여럿", ",\"synonyms\":\"동의어A,동의어B,동의어A\""}};
+        for (String[] c : cases) {
+            assertThat(postJson("/api/insertDataDictionary/standardDomains", """
+                    {"revisionNumber":1,"commonStandardDomainGroupName":"문자","commonStandardDomainCategory":"%s",
+                     "commonStandardDomainName":"%s","commonStandardDomainDescription":"DICT-1","dataType":"VARCHAR",
+                     "dataLength":100,"dataDecimalLength":0,"storageFormat":"","displayFormat":"","unit":"","allowedValues":""}
+                    """.formatted(category, "동의어도메인" + c[0] + suffix)).statusCode()).isEqualTo(200);
+        }
+        String word = """
+                {"revisionNumber":1,"commonStandardWordName":"%s","commonStandardWordAbbreviation":"%s",
+                 "commonStandardWordEnglishName":"Synonym","commonStandardWordDescription":"DICT-1","isFormatWord":"N",
+                 "commonStandardDomainCategory":"%s"%s}""";
+        assertThat(postJson("/api/insertDataDictionary/standardWords", word.formatted("동의" + suffix, "SY" + suffix, category, "")).statusCode())
+                .as("단어 : synonyms·restrictedWords 생략").isEqualTo(200);
+        assertThat(postJson("/api/insertDataDictionary/standardWords", word.formatted("목록" + suffix, "LS" + suffix, "-",
+                ",\"synonyms\":null,\"restrictedWords\":\"  \"")).statusCode()).as("단어 : null·공백").isEqualTo(200);
+        HttpResponse<String> noFormat = postJson("/api/insertDataDictionary/standardWords",
+                word.formatted("형식" + suffix, "FM" + suffix, "-", "").replace(",\"isFormatWord\":\"N\"", ""));
+        assertThat(noFormat.statusCode()).as("단어 : 필수 isFormatWord 누락").isEqualTo(400);
+        assertThat(noFormat.body()).contains("INVALID_DICTIONARY_REQUEST").contains("isFormatWord");
+        long wordId = jdbcTemplate.queryForObject("SELECT STD_WORD_SN FROM TB_STD_WORD WHERE PRJ_SN = ? AND WORD_NM = ?", Long.class, PROJECT_ID, "동의" + suffix);
+        assertThat(lists("TB_STD_WORD_SYNM", "STD_WORD_SN", wordId)).isZero();
+        assertThat(lists("TB_STD_WORD_PRHBT", "STD_WORD_SN", wordId)).isZero();
+
+        Map<String, Long> terms = new java.util.HashMap<>();
+        for (String[] c : cases) {
+            String domain = "동의어도메인" + c[0] + suffix;
+            HttpResponse<String> saved = postJson("/api/insertDataDictionary/standardTerms", """
+                    {"commonStandardTermName":"동의%s_목록%s","commonStandardTermDescription":"DICT-1 %s",
+                     "commonStandardTermAbbreviation":"SY%s_LS%s","commonStandardDomainName":"%s"%s}
+                    """.formatted(suffix, suffix, c[0], suffix, suffix, domain, c[1]));
+            assertThat(saved.statusCode()).as("용어 등록 : synonyms " + c[0]).isEqualTo(200);
+            assertThat(saved.body()).isEqualTo("{\"result\":true}");
+            terms.put(c[0], jdbcTemplate.queryForObject("SELECT STD_TRM_SN FROM TB_STD_TRM WHERE PRJ_SN = ? AND TRM_EXPLN = ?", Long.class, PROJECT_ID, "DICT-1 " + c[0]));
+        }
+        for (String empty : List.of("생략", "null", "빈값", "공백")) {
+            assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", terms.get(empty))).as("빈 목록 : " + empty).isZero();
+        }
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", terms.get("하나"))).isEqualTo(1);
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", terms.get("여럿"))).as("기존 규칙 : ',' 로만 나누고 중복은 그대로").isEqualTo(3);
+
+        HttpResponse<String> noAbbreviation = postJson("/api/insertDataDictionary/standardTerms", """
+                {"commonStandardTermName":"동의%s_목록%s","commonStandardTermDescription":"DICT-1","commonStandardDomainName":"동의어도메인생략%s"}
+                """.formatted(suffix, suffix, suffix));
+        assertThat(noAbbreviation.statusCode()).as("용어 : 필수 영문약어명 누락").isEqualTo(400);
+        assertThat(noAbbreviation.body()).contains("TERM_WORD_COUNT_MISMATCH");
+
+        // 용어 수정 : 화면처럼 전체를 보내되 synonyms 만 바꿔 가며
+        String update = """
+                {"id":%d,"commonStandardTermName":"동의%s_목록%s","commonStandardTermDescription":"DICT-1 여럿",
+                 "commonStandardTermAbbreviation":"SY%s_LS%s","commonStandardDomainName":"동의어도메인여럿%s"%s}""";
+        long many = terms.get("여럿");
+        assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, "")).statusCode()).isEqualTo(200);
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", many)).as("수정 : 생략 → 유지").isEqualTo(3);
+        assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ",\"synonyms\":null")).statusCode()).isEqualTo(200);
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", many)).as("수정 : null → 유지").isEqualTo(3);
+        assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ",\"synonyms\":\"동의어C\"")).statusCode()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForList("SELECT SYNM_NM FROM TB_STD_TRM_SYNM WHERE STD_TRM_SN = ?", String.class, many)).as("수정 : 값 → 교체").containsExactly("동의어C");
+        assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(many, suffix, suffix, suffix, suffix, suffix, ",\"synonyms\":\"\"")).statusCode()).isEqualTo(200);
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", many)).as("수정 : 빈 값 → 비우기 (화면 계약)").isZero();
+        long none = terms.get("생략");
+        assertThat(putJson("/api/updateDataDictionary/standardTerms", update.formatted(none, suffix, suffix, suffix, suffix, suffix, "")
+                .replace("동의어도메인여럿", "동의어도메인생략").replace("DICT-1 여럿", "DICT-1 생략")).statusCode()).isEqualTo(200);
+        assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", none)).as("동의어 없던 용어 수정").isZero();
+
+        // 단어 수정 : 금칙어 생략 → 유지, 값 → 교체, 필수 Y/N 누락 → 400, 없는 단어 → 400
+        String wordUpdate = """
+                {"id":%d,"revisionNumber":1,"commonStandardWordDescription":"DICT-1 수정","isFormatWord":"N","useAbbreviation":"Y"%s}""";
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, ",\"restrictedWords\":\"금칙A,금칙B\"")).statusCode()).isEqualTo(200);
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, "")).statusCode()).isEqualTo(200);
+        assertThat(lists("TB_STD_WORD_PRHBT", "STD_WORD_SN", wordId)).as("단어 수정 : 금칙어 생략 → 유지").isEqualTo(2);
+        HttpResponse<String> noUseAbbreviation = putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, "").replace(",\"useAbbreviation\":\"Y\"", ""));
+        assertThat(noUseAbbreviation.statusCode()).isEqualTo(400);
+        assertThat(noUseAbbreviation.body()).contains("INVALID_DICTIONARY_REQUEST");
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(-1L, "")).body()).contains("NOT_FOUND_WORD_DATA");
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("[DICT-2] 도메인 등록 : 대소문자만 다른 같은 이름은 400 DUPLICATE_STANDARD_DOMAIN_NAME, 예제 프로젝트의 도메인 이름 중복 진단은 0 묶음")
+    void domainDuplicateHttp() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 6).toUpperCase().replaceAll("[^A-Z]", "X");
+        String body = """
+                {"revisionNumber":1,"commonStandardDomainGroupName":"문자","commonStandardDomainCategory":"중복분류%s",
+                 "commonStandardDomainName":"%s","commonStandardDomainDescription":"DICT-2","dataType":"VARCHAR",
+                 "dataLength":10,"dataDecimalLength":0,"storageFormat":"","displayFormat":"","unit":"","allowedValues":""}""";
+        assertThat(postJson("/api/insertDataDictionary/standardDomains", body.formatted(suffix, "CODE" + suffix)).statusCode()).isEqualTo(200);
+        HttpResponse<String> duplicate = postJson("/api/insertDataDictionary/standardDomains", body.formatted(suffix, "code" + suffix.toLowerCase()));
+        assertThat(duplicate.statusCode()).isEqualTo(400);
+        assertThat(duplicate.body()).contains("\"code\":\"DUPLICATE_STANDARD_DOMAIN_NAME\"").contains("CODE" + suffix);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TB_STD_DMN WHERE PRJ_SN = ? AND LOWER(DMN_NM) = ?", Integer.class, PROJECT_ID, "code" + suffix.toLowerCase()))
+                .isEqualTo(1);
+
+        HttpResponse<String> groups = get("/api/standardizationQuality/domains/duplicates", true);
+        assertThat(groups.statusCode()).isEqualTo(200);
+        assertThat(groups.body()).isEqualTo("{\"groups\":[]}");
+    }
+
+    private int lists(String table, String ownerColumn, long ownerId) {
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE " + ownerColumn + " = ?", Integer.class, ownerId);
+    }
+
+    @Test
+    @Order(24)
     @DisplayName("등록 데이터 엑셀 다운로드 (M-11) : 검색 조건이 HTTP 로 넘어가고, 업로드 양식 열(테이블 A~E, 컬럼 A~U) 위치에 예제 데이터가 들어간다")
     void exportModelExcel() throws Exception {
         HttpResponse<byte[]> tables = getBytes("/api/exportExcel/tables?searchColumn=tableName&searchQuery=TB_ACNT");

@@ -126,6 +126,23 @@ export interface TermGroup {
   evidence: Record<string, string>;
 }
 
+/** 표준 도메인 이름 중복 ([DICT-2] 예전 데이터 진단 — 같은 프로젝트에서 대소문자를 무시하고 같은 이름) */
+export interface DomainDuplicateMember {
+  domainId: number;
+  domainName: string;
+  isApproval: boolean;
+  termCount: number;
+  columnCount: number;
+  registeredAt: string | null;
+  modifiedAt: string | null;
+}
+
+export interface DomainDuplicateGroup {
+  normalizedName: string;
+  count: number;
+  members: DomainDuplicateMember[];
+}
+
 // ---------------------------------------------------------------- 컬럼명 개선 후보
 
 export type SuggestionSource = 'LINKED_TERM' | 'ABBR_EXACT' | 'NAME_EXACT' | 'SYNONYM' | 'WORD_COMPOSE' | 'SAME_DESC_COLUMN' | 'UNREGISTERED';

@@ -12,6 +12,7 @@ import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules.TermGroup;
 import com.lexorma.data.dictionary.repository.DictionaryUsageRepository;
+import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -49,6 +50,7 @@ public class TermQualityService {
             .thenComparing(group -> group.members().get(0).termId());
 
     private final DictionaryUsageRepository usageRepository;
+    private final StandardTermRepository termRepository;
 
     public Summary selectSummary(AccountDto accountDto) {
         Diagnosis diagnosis = diagnose(accountDto.getProjectId());
@@ -76,18 +78,21 @@ public class TermQualityService {
                 .filter(group -> keyword.isEmpty() || !(byName || byAbbreviation) || group.termIds().stream()
                         .map(diagnosis.terms()::get)
                         .anyMatch(term -> lower(byName ? term.termName() : term.abbreviation()).contains(keyword)))
-                .map(group -> toGroup(group, diagnosis.terms(), Map.of()))
+                .map(group -> toGroup(group, diagnosis.terms(), Map.of(), Map.of()))
                 .sorted(order(pageable.getSort()))
                 .toList();
         int from = (int) Math.min(pageable.getOffset(), groups.size());
         List<Group> page = groups.subList(from, Math.min(from + pageable.getPageSize(), groups.size()));
 
         // 사용 컬럼 수 : 이 페이지의 용어만 한 번에 센다 (그룹마다 조회하지 않는다)
-        Map<Long, Long> counts = usageRepository.countColumnsByTerm(projectId,
-                page.stream().flatMap(group -> group.members().stream()).map(Member::termId).distinct().toList());
+        List<Long> pageTermIds = page.stream().flatMap(group -> group.members().stream()).map(Member::termId).distinct().toList();
+        Map<Long, Long> counts = usageRepository.countColumnsByTerm(projectId, pageTermIds);
+        // 등록·수정 일시 : 같은 페이지 용어만 한 번에 (M-5 5차)
+        Map<Long, Object[]> audits = new HashMap<>();
+        if (!pageTermIds.isEmpty()) termRepository.findAuditByIds(projectId, pageTermIds).forEach(row -> audits.put((Long) row[0], row));
         Map<String, TermGroup> byId = new HashMap<>();
         diagnosis.groups().forEach(group -> byId.put(group.finding().fingerprint(), group));
-        List<Group> content = page.stream().map(group -> toGroup(byId.get(group.id()), diagnosis.terms(), counts)).toList();
+        List<Group> content = page.stream().map(group -> toGroup(byId.get(group.id()), diagnosis.terms(), counts, audits)).toList();
         return new PageImpl<>(content, pageable, groups.size());
     }
 
@@ -131,15 +136,17 @@ public class TermQualityService {
 
     // ------------------------------------------------------------------ 표시
 
-    private static Group toGroup(TermGroup group, Map<Long, TermRow> terms, Map<Long, Long> counts) {
+    private static Group toGroup(TermGroup group, Map<Long, TermRow> terms, Map<Long, Long> counts, Map<Long, Object[]> audits) {
         StandardizationRule rule = group.finding().rule();
         Map<String, String> evidence = group.finding().evidence();
         boolean wordSynonym = rule == StandardizationRule.TERM_SYNONYM && "WORD".equals(evidence.get("kind"));
         List<Member> members = group.termIds().stream().map(id -> {
             TermRow term = terms.get(id);
             String note = group.notes().get(id);
+            Object[] audit = audits.get(id);
             return new Member(id, term.termName(), term.abbreviation(), term.domainName(), term.isApproval(),
-                    counts.isEmpty() ? null : counts.getOrDefault(id, 0L), note == null ? null : note(rule, wordSynonym, note));
+                    counts.isEmpty() ? null : counts.getOrDefault(id, 0L), note == null ? null : note(rule, wordSynonym, note),
+                    term.domainId(), audit == null ? null : (java.time.LocalDateTime) audit[1], audit == null ? null : (java.time.LocalDateTime) audit[2]);
         }).toList();
         return new Group(group.finding().fingerprint(), rule, rule.severity(), group.groupKey(), members.size(), members,
                 message(rule, wordSynonym, members.size(), evidence), evidence);

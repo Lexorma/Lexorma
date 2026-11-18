@@ -1,5 +1,6 @@
 package com.lexorma.data.dictionary.service;
 
+import com.lexorma.data.dictionary.domain.dto.DictionaryLists;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
@@ -20,7 +21,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -150,8 +150,8 @@ public class StandardWordService {
                         .commonStandardWordDescription(standardWordEntry.get("standardWordDescription"))
                         .isFormatWord(standardWordEntry.containsKey("isFormatWord"))
                         .commonStandardDomainCategory(standardWordEntry.get("standardDomainCategoryName"))
-                        .synonymList(List.of(standardWordEntry.get("synonyms").split(",")))
-                        .restrictedWords(List.of(standardWordEntry.get("prohibitedWords").split(",")))
+                        .synonymList(DictionaryLists.split(standardWordEntry.get("synonyms")))
+                        .restrictedWords(DictionaryLists.split(standardWordEntry.get("prohibitedWords")))
                         .projectId(projectId)
                         .isApproval(isApprovalAvailable)
                         .useAbbreviation(standardWordEntry.get("standardWordEnglishName").split(" ").length > 1)
@@ -220,7 +220,7 @@ public class StandardWordService {
     private void domainIsNotDefinedCheck(StandardWord standardWord) {
         String domainCategory = standardWord.getCommonStandardDomainCategory();
 
-        if(!domainCategory.isEmpty() && !domainCategory.equals("-")){
+        if(domainCategory != null && !domainCategory.isEmpty() && !domainCategory.equals("-")){
             List<StandardDomain> standardDomains = standardDomainRepository.findAllByProjectIdAndCommonStandardDomainCategory(standardWord.getProjectId(), domainCategory);
 
             if(standardDomains.isEmpty()){
@@ -232,19 +232,25 @@ public class StandardWordService {
     @Transactional
     public void updateStandardWords(StandardWordDto standardWordDto) {
 
-        List<String> restrictedWordList = new ArrayList<>();
-        String restrictedWords = standardWordDto.getRestrictedWords();
-
-        if(!restrictedWords.isEmpty()) {
-            restrictedWordList.addAll(Arrays.asList(restrictedWords.split(",")));
-        }
-
         StandardWord standardWord = standardWordRepository.findByIdAndProjectId(standardWordDto.getId(), standardWordDto.getProjectId());
+        if (standardWord == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA);
+        }
+        requireYn(standardWordDto.getUseAbbreviation(), "useAbbreviation");
+        requireYn(standardWordDto.getIsFormatWord(), "isFormatWord");
 
         standardWord.setUseAbbreviation(standardWordDto.getUseAbbreviation().equals("Y"));
         standardWord.setRevisionNumber(standardWordDto.getRevisionNumber());
         standardWord.setCommonStandardWordDescription(standardWordDto.getCommonStandardWordDescription());
         standardWord.setIsFormatWord(standardWordDto.getIsFormatWord().equals("Y"));
-        standardWord.setRestrictedWords(restrictedWordList);
+        // 금칙어 : 화면은 항상 보낸다(빈 값 = 비우기). 필드가 없으면(null) 기존 목록을 그대로 둔다 ([DICT-1])
+        if (standardWordDto.getRestrictedWords() != null) standardWord.setRestrictedWords(DictionaryLists.split(standardWordDto.getRestrictedWords()));
+    }
+
+    /** Y/N 필수 항목 : 없으면 400 (예전에는 NullPointerException 으로 500 — [DICT-1]) */
+    public static void requireYn(String value, String field) {
+        if (value == null) {
+            throw new CustomException(ErrorCode.INVALID_DICTIONARY_REQUEST, "필수 항목이 없습니다 : {0}", field);
+        }
     }
 }

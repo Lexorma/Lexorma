@@ -59,7 +59,8 @@ public class StandardizationQualityRestController {
                                                             @RequestParam(value = "schemaId", required = false) Long schemaId,
                                                             @RequestParam(value = "isApproval", required = false) Boolean isApproval) {
         return PageableUtil.getGridPageableMap(standardizationQualityService.selectIssues(accountDto,
-                new StandardizationQualityDto.Search(type, schemaId, isApproval, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new StandardizationQualityDto.Search(type, schemaId, isApproval, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, StandardizationQualityService.SORT_FIELDS)));
     }
 
     @Operation(summary = "모델 진단 요약", description = "컬럼 진단 요약(기존 요약과 같은 값) + 테이블명 진단 건수 + 심각도별 건수")
@@ -83,7 +84,7 @@ public class StandardizationQualityRestController {
                                                                  @RequestParam(value = "isApproval", required = false) Boolean isApproval) {
         return PageableUtil.getGridPageableMap(standardizationQualityService.selectModelIssues(accountDto,
                 new StandardizationQualityDto.ModelSearch(type, severity, targetType, schemaId, isApproval, searchColumn, searchQuery),
-                PageableUtil.getGridPageable(page, size, sort)));
+                PageableUtil.getGridPageable(page, size, sort, StandardizationQualityService.MODEL_SORT_FIELDS)));
     }
 
     @Operation(summary = "표준 용어 진단 요약", description = "전체 용어 수, 한 그룹 이상에 속한 용어 수, 규칙별 그룹 수, 심각도별 그룹 수")
@@ -103,7 +104,7 @@ public class StandardizationQualityRestController {
                                                                 @RequestParam(value = "type", required = false) StandardizationRule type,
                                                                 @RequestParam(value = "severity", required = false) StandardizationRule.Severity severity) {
         return PageableUtil.getGridPageableMap(termQualityService.selectGroups(accountDto,
-                new TermQualityDto.Search(type, severity, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new TermQualityDto.Search(type, severity, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort, TermQualityService.SORT_FIELDS)));
     }
 
     @Operation(summary = "표준 도메인 이름 중복", description = "로그인 프로젝트에서 이름이 대소문자를 무시하고 같은 도메인 묶음 (예전 데이터 진단, [DICT-2]). 조회만 한다 — 지우거나 합치지 않는다")
@@ -131,7 +132,8 @@ public class StandardizationQualityRestController {
                                                                       @RequestParam(value = "kind", required = false) DbIdentifierRules.Kind kind,
                                                                       @RequestParam(value = "schemaId", required = false) Long schemaId) {
         return PageableUtil.getGridPageableMap(identifierQualityService.selectIssues(accountDto,
-                new IdentifierQualityDto.Search(type, severity, kind, schemaId, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new IdentifierQualityDto.Search(type, severity, kind, schemaId, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, IdentifierQualityService.SORT_FIELDS)));
     }
 
     @Operation(summary = "컬럼명 개선 후보", description = "표준 용어 미연결·컬럼명 불일치 컬럼의 후보 최대 5건 (점수 순, 추천만 — 아무것도 바꾸지 않는다). 다른 프로젝트의 컬럼이면 오류")

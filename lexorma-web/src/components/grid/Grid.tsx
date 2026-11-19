@@ -55,6 +55,8 @@ const ACTION_BUTTONS: { action: GridAction; label: string; className: string }[]
 ];
 
 export const PAGE_SIZES = [10, 25, 50, 100];
+/** 처음 조회 중 스켈레톤 줄 수 (페이지 크기와 무관하게 짧게 — 큰 표 전체를 움직이지 않는다) */
+const SKELETON_ROWS = [0, 1, 2, 3, 4];
 
 export interface GridHandle {
   /** 현재 조건으로 다시 조회 (체크 해제) */
@@ -433,12 +435,25 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
                   })}
                 </tr>
               </thead>
-              <tbody>
-                {tableRows.length === 0 ? (
+              {/* 다른 조건으로 다시 조회하는 동안 앞 결과를 잠깐 뒤에 흐리게 (UI-1 — 새 결과로 오인하지 않게, 자리는 그대로) */}
+              <tbody className={dataQuery.isPlaceholderData ? 'is-refreshing' : 'is-refresh-ready'} aria-busy={dataQuery.isFetching || undefined}>
+                {tableRows.length === 0 && dataQuery.isPending ? (
+                  // 처음 조회 : 실제 행 높이의 스켈레톤 5줄 (늦게 나타나 빠른 응답에서는 깜빡이지 않는다). 상태 문구는 보조 기술에만
+                  SKELETON_ROWS.map((row) => (
+                    <tr key={row} className="skeleton-row" aria-hidden={row > 0 || undefined}>
+                      {headers.map((header, index) => (
+                        <td key={header.id}>
+                          {row === 0 && index === 0 && <span className="visually-hidden" role="status">{t('조회 중입니다.')}</span>}
+                          {(header.column.columnDef.meta as GridColumn).rowType !== 'CHECKBOX' && <span className="skeleton" style={{ width: `${55 + ((row * 17 + index * 23) % 40)}%` }} aria-hidden="true" />}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : tableRows.length === 0 ? (
                   <tr>
-                    <td colSpan={Math.max(headers.length, 1)} className="dt-empty">
-                      {dataQuery.isPending
-                        ? t('조회 중입니다.')
+                    <td colSpan={Math.max(headers.length, 1)} className="dt-empty" role={dataQuery.isError ? 'alert' : undefined}>
+                      {dataQuery.isError
+                        ? t('목록을 불러오지 못했습니다.') // 400·500 등 : 빈 목록처럼 보이지 않게 (사유는 api() 알림)
                         : search.query
                           ? t('검색된 데이터가 없습니다.')
                           : (emptyText ?? t('조회된 데이터가 없습니다.'))}

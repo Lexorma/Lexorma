@@ -303,8 +303,13 @@ class ProjectAccessRevokeTest {
     /** 사용자 관리 화면의 권한 변경 */
     private void setRole(String username, String role) throws Exception {
         String accountId = null;
-        for (JsonNode account : JSON.readTree(admin.get("/api/selectUser/data?page=0&size=1000").body()).path("data")) {
-            if (username.equals(account.path("username").asString())) accountId = account.path("id").asString();
+        // 사용자 목록은 한 번에 100명까지 (공통 페이징 안정성 개선) : 페이지를 넘기며 찾는다
+        for (int page = 0; accountId == null; page++) {
+            JsonNode data = JSON.readTree(admin.get("/api/selectUser/data?page=" + page + "&size=100").body()).path("data");
+            if (data.isEmpty()) break;
+            for (JsonNode account : data) {
+                if (username.equals(account.path("username").asString())) accountId = account.path("id").asString();
+            }
         }
         assertThat(accountId).isNotNull();
         HttpResponse<String> response = admin.send(HttpRequest.newBuilder(admin.uri("/api/saveUser/update"))

@@ -53,7 +53,7 @@ H2 파일 URL 일 때만, DataSource·Flyway 보다 먼저 :
 java -jar lexorma-app/build/libs/lexorma.jar --spring.profiles.active=h2-local     # 또는 ./gradlew bootRun --args='--spring.profiles.active=h2-local'
 ```
 
-- 처음 : DB 파일을 만들고 Flyway 가 V0~최신을 적용한다 (`admin` / `admin`, 첫 로그인에서 비밀번호 변경).
+- 처음 : DB 파일을 만들고 Flyway 가 V0~최신을 적용한다 (계정이 없으므로 첫 화면에서 최초 관리자 계정을 만든다 — 기본 계정 `admin`/`admin` 은 2026-11-19 에 V1 에서 뺐다).
 - 다음부터 : 같은 파일을 열고 `Schema "PUBLIC" is up to date` — 새 버전이 있을 때만 그 버전을 적용한다. 테이블을 다시 만들거나 데이터를 초기화하지 않는다 (`ddl-auto: validate` 그대로).
 - 종료는 정상 종료로 (`Ctrl+C`, `kill -TERM`, IDE 의 Stop). 강제 종료(`kill -9`, 전원 차단)하면 마지막 순간의 쓰기가 반영되지 않을 수 있다 — H2 가 다음 시작 때 파일을 복구한다.
 

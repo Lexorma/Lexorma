@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -16,6 +17,7 @@ const CANDIDATE_PAGE_SIZE = 10;
  */
 export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const { schemas } = useSchemas();
   const [schemaId, setSchemaId] = useState('');
   const [input, setInput] = useState('');
@@ -46,7 +48,8 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
     if (!selected) return dialog.alert(t('매핑할 물리 테이블을 선택해주세요.'));
     dialog.confirm(t('{0} 엔터티를 {1} 테이블에 매핑하시겠습니까?', row.entityName, selected.tableName), async () => {
       await api('/api/modelMapping/entity', { method: 'POST', body: { id: row.mappingId, entityId: row.entityId, tableId: selected.tableId } });
-      dialog.alert(t('정상적으로 저장되었습니다.'), onSaved);
+      onSaved();
+      toast.success(t('정상적으로 저장되었습니다.'));
     });
   };
 

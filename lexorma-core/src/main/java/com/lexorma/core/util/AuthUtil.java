@@ -53,5 +53,10 @@ public class AuthUtil {
         return Pattern.matches(pattern, password);
     }
 
+    /** 아이디 규칙 : 5~20자 소문자·숫자·밑줄, 밑줄은 처음·끝과 연속 불가 (USERNAME_IS_NON_VALIDATOR) */
+    public static boolean isValidUsername(String username) {
+        return username != null && Pattern.matches("^[a-z0-9](?!.*__)[a-z0-9_]{3,18}[a-z0-9]$", username);
+    }
+
 
 }

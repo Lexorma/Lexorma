@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
@@ -42,6 +43,7 @@ type Tab = EntityDetailTab;
 
 function EntityDetail({ entityId, options, controls }: { entityId: number; options: EntityDetailOptions; controls: DialogControls }) {
   const dialog = useDialog();
+  const toast = useToast();
   const navigate = useNavigate();
   const { canView, approvalAvailable } = useAuth();
   const [tab, setTab] = useState<Tab>(options.initialTab ?? 'attributes');
@@ -80,7 +82,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
   const toggleApproval = () => {
     dialog.confirm(approved ? t('이 엔터티를 승인취소하시겠습니까?') : t('이 엔터티를 승인하시겠습니까?'), async () => {
       await api(`/api/logical/entity/${entityId}/approval/${!approved}`, { method: 'PATCH' });
-      dialog.alert(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'), changed);
+      changed();
+      toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
     });
   };
 
@@ -88,7 +91,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     dialog.confirm(t('{0} 엔터티를 삭제하시겠습니까? 속성과 식별자도 함께 삭제됩니다.', data.entityName), async () => {
       await api(`/api/logical/entity/${entityId}`, { method: 'DELETE' });
       controls.close();
-      dialog.alert(t('정상적으로 삭제되었습니다.'), options.onChanged);
+      options.onChanged?.();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -151,6 +155,7 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
 
 function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editable: boolean; onSaved: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const [name, setName] = useState(entity.entityName);
   const [description, setDescription] = useState(entity.entityDescription ?? '');
 
@@ -160,7 +165,8 @@ function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editab
     dialog.confirm(t('수정하시겠습니까?'), async () => {
       // 이름 중복(모델 안, 대소문자 무시)·승인 상태는 서버에서 검증한다
       await api('/api/logical/entity', { method: 'POST', body: { id: entity.id, entityName: name.trim(), entityDescription: description.trim() || null, modifiedAt: entity.modifiedAt ?? null } });
-      dialog.alert(t('정상적으로 수정되었습니다.'), onSaved);
+      onSaved();
+      toast.success(t('정상적으로 수정되었습니다.'));
     });
   };
 

@@ -67,8 +67,8 @@ public class SecurityConfig {
         http
                 .authorizeHttpRequests(auth -> auth
                         // 로그인 전 화면에서 호출 (익명 허용, 컨트롤러에서 @PreAuthorize로 제어)
-                        .requestMatchers(HttpMethod.GET, "/api/auth/me", "/api/auth/csrf", "/api/auth/signup/projects").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/login/projects", "/api/login/password", "/api/auth/signup").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me", "/api/auth/csrf", "/api/auth/signup/projects", "/api/auth/setup").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/login/projects", "/api/login/password", "/api/auth/signup", "/api/auth/setup").permitAll()
 
                         // 복구 세션(ROLE_RECOVERY)은 복구 API 만 쓸 수 있고, 복구 API 는 복구 세션만 쓸 수 있다 (일반 ADMIN 세션도 불가)
                         .requestMatchers("/api/recovery/**").hasRole("RECOVERY")

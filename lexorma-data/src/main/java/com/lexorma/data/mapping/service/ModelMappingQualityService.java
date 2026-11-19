@@ -61,6 +61,9 @@ public class ModelMappingQualityService {
             "type", Comparator.comparing(Row::type),
             "status", Comparator.comparing(Row::status));
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
+
     private final ModelMappingService mappingService;
     private final ModelMappingQueryRepository queryRepository;
     private final ProjectRepository projectRepository;

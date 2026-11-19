@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, User } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -13,6 +14,7 @@ import { t } from '../../lib/i18n';
 /** 공지사항 목록 : 안 읽은 글은 파란 점 + 굵은 제목 (GitHub 알림 목록 형태) */
 export function NoticeListPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const grid = useRef<GridHandle>(null);
   const { openNoticeDetail, openNoticeSave } = useNoticeDialogs();
 
@@ -24,14 +26,19 @@ export function NoticeListPage() {
   });
   if (!permission) return null;
 
-  const saved = () => dialog.alert(t('정상적으로 공지사항이 저장되었습니다.'), () => grid.current?.reload());
+  const saved = () => {
+    grid.current?.reload();
+    toast.success(t('정상적으로 공지사항이 저장되었습니다.'));
+  };
 
   const remove = () => {
     const checked = grid.current?.getCheckedOrAlert();
     if (!checked) return;
     dialog.confirm(t('선택한 공지사항을 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteNotice', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('선택한 공지사항이 삭제되었습니다.'), () => grid.current?.reload());
+      if (!response.result) return;
+      grid.current?.reload();
+      toast.success(t('선택한 공지사항이 삭제되었습니다.'));
     });
   };
 

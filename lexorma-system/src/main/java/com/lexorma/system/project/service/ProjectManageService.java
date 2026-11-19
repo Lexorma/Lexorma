@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 public interface ProjectManageService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (구성원 목록은 정렬 가능한 열이 없다) (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> MEMBER_SORT_FIELDS = java.util.Set.of("id");
+
     Page<ProjectMemberDto> getProjectData(Pageable pageable, String searchColumn, String searchQuery, Long projectId);
 
     ProjectDto getEditProjectData(Long projectId, AccountDto accountDto);

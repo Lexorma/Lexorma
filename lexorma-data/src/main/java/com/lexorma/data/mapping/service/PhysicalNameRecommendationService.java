@@ -53,6 +53,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PhysicalNameRecommendationService {
+    /** 테이블명 추천 정렬 필드 : 화면 필드(logicalName·currentPhysicalName) + 매핑 목록 필드를 그대로 (아래 selectTableRows 의 변환과 같다 — 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> TABLE_SORT_FIELDS = java.util.stream.Stream.concat(java.util.stream.Stream.of("logicalName", "currentPhysicalName"),
+            com.lexorma.data.mapping.repository.ModelMappingQueryRepository.ENTITY_SORT_FIELDS.stream()).collect(java.util.stream.Collectors.toUnmodifiableSet());
+
 
     private final PhysicalNameRecommendationQueryRepository queryRepository;
     private final ModelMappingQueryRepository mappingQueryRepository;

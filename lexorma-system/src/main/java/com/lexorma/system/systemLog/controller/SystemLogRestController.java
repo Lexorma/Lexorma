@@ -45,7 +45,7 @@ public class SystemLogRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn) {
 
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, SystemLogService.LOG_SORT_FIELDS);
 
         Page<LogsDto> logsPage = systemLogService.getSystemLogData(pageable, accountDto, searchQuery, searchColumn);
 

@@ -162,12 +162,17 @@ class LogicalModelManagementIntegrationTest {
 
         assertThatThrownBy(() -> rows(f, null, -1, 10, null)).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> rows(f, null, 0, 0, null)).isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> rows(f, null, 0, 101, null)).as("최대 100 (공용 그리드 선택지와 같다)").isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> rows(f, null, 0, 101, null)).as("최대 100 (공용 그리드 선택지와 같다)").isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(com.lexorma.common.exception.domain.ErrorCode.INVALID_PAGE_REQUEST);
+        // 거절된 요청은 목록·수 조회를 하지 않는다 (모델 확인 1문장뿐)
+        assertThat(statementsOrRejected(() -> rows(f, null, 0, 100_000, null))).isLessThanOrEqualTo(1);
+        assertThat(statementsOrRejected(() -> rows(f, null, 0, 10, "password,asc"))).isLessThanOrEqualTo(1);
+        assertThat(statementsOrRejected(() -> logical.selectRelationshipRows(f.user, f.modelId, null, null, 0, 100_000, null))).isLessThanOrEqualTo(1);
         assertThatThrownBy(() -> rows(f, "가".repeat(101), 0, 10, null)).as("검색어 100자").isInstanceOf(CustomException.class);
     }
 
     @Test
-    @DisplayName("정렬 : 이름·설명·승인 상태 오름·내림, 같은 값은 ID 순, 허용하지 않은 필드는 무시(이름순)")
+    @DisplayName("정렬 : 이름·설명·승인 상태 오름·내림, 같은 값은 ID 순, 허용하지 않은 필드는 400 (공통 페이징 안정성 개선 — 예전에는 무시하고 이름순)")
     void sorting() {
         GenerationFixture f = GenerationFixture.create(context, "lmng-sort-" + System.nanoTime(), DbType.POSTGRESQL);
         long b = logical.saveEntity(f.user, new LogicalModelDto.Entity(null, f.modelId, "나", "같은 설명", null, null, null)).id();
@@ -179,7 +184,8 @@ class LogicalModelManagementIntegrationTest {
         assertThat(ids(rows(f, null, 0, 10, "entityDescription,asc"))).as("같은 설명(가·나)은 ID 순, 앞 설명은 뒤").containsExactly(b, a, c);
         assertThat(ids(rows(f, null, 0, 10, "entityDescription,desc"))).as("내림차순에서도 같은 값은 ID 오름차순").containsExactly(c, b, a);
         assertThat(ids(rows(f, null, 0, 10, "isApproval,asc")).getFirst()).as("승인 대기(false) 먼저").isEqualTo(c);
-        assertThat(ids(rows(f, null, 0, 10, "LGCL_ENTT_SN,desc"))).as("모르는 필드 무시 → 이름순").containsExactly(a, b, c);
+        assertThatThrownBy(() -> rows(f, null, 0, 10, "LGCL_ENTT_SN,desc")).as("모르는 필드 → 400").isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(com.lexorma.common.exception.domain.ErrorCode.INVALID_PAGE_REQUEST);
         assertThat(ids(rows(f, null, 0, 10, null))).containsExactly(a, b, c);
     }
 
@@ -283,15 +289,17 @@ class LogicalModelManagementIntegrationTest {
     }
 
     @Test
-    @DisplayName("관계 정렬 (후속 3차 보완) : 관계명·출발·도착 엔터티명 오름·내림, 같은 값은 관계 ID 순, 이름 없는 관계는 뒤, 모르는 필드·정렬 없음 = 예전 ID 순, 페이지 사이 빠짐·겹침 없음")
+    @DisplayName("관계 정렬 (후속 3차 보완) : 관계명·출발·도착 엔터티명 오름·내림, 같은 값은 관계 ID 순, 이름 없는 관계는 뒤, 정렬 없음 = 예전 ID 순, 모르는 필드·허용 목록 밖은 400 (공통 페이징 안정성 개선), 페이지 사이 빠짐·겹침 없음")
     void relationshipSorting() {
         Model m = model("lmng-rel-sort");
         LogicalModelDto.Relationship unnamed = m.f.rel(null, m.team, m.employee, false, 1);
         List<LogicalModelDto.Relationship> whole = logical.selectRelationships(m.f.user, m.f.modelId);
         List<Long> byId = whole.stream().map(LogicalModelDto.Relationship::id).sorted().toList();
         assertThat(relationIds(relationRows(m, null, null, 0, 100, null))).as("정렬 없음 = 예전 ID 순").isEqualTo(byId);
-        assertThat(relationIds(relationRows(m, null, null, 0, 100, "LGCL_REL_SN,desc"))).as("모르는 필드 무시").isEqualTo(byId);
-        assertThat(relationIds(relationRows(m, null, null, 0, 100, "isIdentifying,desc"))).as("허용 목록 밖").isEqualTo(byId);
+        for (String unknown : new String[]{"LGCL_REL_SN,desc", "isIdentifying,desc", "sourceEntity.entityName,asc"}) {
+            assertThatThrownBy(() -> relationRows(m, null, null, 0, 100, unknown)).as("%s → 400", unknown).isInstanceOf(CustomException.class)
+                    .extracting("errorCode").isEqualTo(com.lexorma.common.exception.domain.ErrorCode.INVALID_PAGE_REQUEST);
+        }
         java.util.Comparator<LogicalModelDto.Relationship> id = java.util.Comparator.comparing(LogicalModelDto.Relationship::id);
         Map<String, java.util.function.Function<LogicalModelDto.Relationship, String>> fields = Map.of(
                 "relationshipName", LogicalModelDto.Relationship::relationshipName,
@@ -351,6 +359,14 @@ class LogicalModelManagementIntegrationTest {
         long searchedLarge = statements(() -> logical.selectRelationshipRows(f.user, f.modelId, "엔터티", false, 0, 29, "targetEntityName,desc"));
         assertThat(searchedLarge).as("검색·필터·정렬 관계 페이지 5개·29개의 SQL 수").isEqualTo(searchedSmall).isLessThanOrEqualTo(6);
         assertThat(statements(() -> logical.selectSummary(f.user, f.modelId))).isLessThanOrEqualTo(3);
+    }
+
+    /** 거절(CustomException)되는 호출의 준비 문장 수 */
+    private long statementsOrRejected(Supplier<Object> action) {
+        return statements(() -> {
+            assertThatThrownBy(action::get).isInstanceOf(CustomException.class);
+            return null;
+        });
     }
 
     private long statements(Supplier<Object> action) {

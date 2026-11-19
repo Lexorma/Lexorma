@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { api } from '../../lib/api';
 import { searchTerms, termLabel, type Term, type TermSearchType } from './terms';
 import { t } from '../../lib/i18n';
@@ -43,6 +44,7 @@ function defaultsFor(term: Term): CommonColumnItem {
  */
 export function CommonColumnSet({ controls, onSaved }: { controls: DialogControls; onSaved?: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const { data } = useQuery({
     queryKey: ['common-column'],
     queryFn: () => api<{ items?: CommonColumnItem[] }>('/api/commonColumn'),
@@ -103,7 +105,8 @@ export function CommonColumnSet({ controls, onSaved }: { controls: DialogControl
       const response = await api<{ result: boolean }>('/api/commonColumn', { method: 'PUT', body: payload });
       if (!response.result) return;
       controls.close();
-      dialog.alert(t('공통 컬럼 세트를 저장했습니다.'), () => onSaved?.());
+      onSaved?.();
+      toast.success(t('공통 컬럼 세트를 저장했습니다.'));
     });
   };
 

@@ -101,7 +101,7 @@ public class PhysicalModelRestController {
                                                              @RequestParam(required = false, value = "tableId") Long tableId,
                                                              @RequestParam(required = false, value = "isApproval") String isApproval,
                                                              @RequestParam(required = false, value = "indexSource") String indexSource) {
-        return PageableUtil.getGridPageableMap(physicalModelService.selectIndexes(accountDto, PageableUtil.getGridPageable(page, size, sort),
+        return PageableUtil.getGridPageableMap(physicalModelService.selectIndexes(accountDto, PageableUtil.getGridPageable(page, size, sort, PhysicalModelService.INDEX_SORT_FIELDS),
                 searchColumn, searchQuery, schemaId, tableId, isApproval, indexSource));
     }
 

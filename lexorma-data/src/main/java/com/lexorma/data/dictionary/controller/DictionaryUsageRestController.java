@@ -40,7 +40,8 @@ public class DictionaryUsageRestController {
                                                                  @RequestParam(value = "schemaId", required = false) Long schemaId,
                                                                  @RequestParam(value = "isApproval", required = false) Boolean isApproval) {
         return PageableUtil.getGridPageableMap(dictionaryUsageService.selectTermColumns(accountDto, termId,
-                new DictionaryUsageDto.ColumnSearch(schemaId, isApproval, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new DictionaryUsageDto.ColumnSearch(schemaId, isApproval, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.dictionary.repository.DictionaryUsageRepository.COLUMN_SORT_FIELDS)));
     }
 
     @Operation(summary = "표준 도메인 사용 컬럼", description = "표준 도메인에 속한 표준 용어를 참조하는 컬럼 (컬럼은 도메인을 직접 참조하지 않는다)")
@@ -55,7 +56,8 @@ public class DictionaryUsageRestController {
                                                                    @RequestParam(value = "schemaId", required = false) Long schemaId,
                                                                    @RequestParam(value = "isApproval", required = false) Boolean isApproval) {
         return PageableUtil.getGridPageableMap(dictionaryUsageService.selectDomainColumns(accountDto, domainId,
-                new DictionaryUsageDto.ColumnSearch(schemaId, isApproval, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new DictionaryUsageDto.ColumnSearch(schemaId, isApproval, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.dictionary.repository.DictionaryUsageRepository.COLUMN_SORT_FIELDS)));
     }
 
     @Operation(summary = "표준 단어 사용 용어", description = "표준 단어로 만든 표준 용어와 용어별 사용 컬럼 수. 검색 : termName / termAbbreviation")
@@ -68,6 +70,6 @@ public class DictionaryUsageRestController {
                                                                @RequestParam(value = "searchColumn", required = false) String searchColumn,
                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery) {
         return PageableUtil.getGridPageableMap(dictionaryUsageService.selectWordTerms(accountDto, wordId, searchColumn, searchQuery,
-                PageableUtil.getGridPageable(page, size, sort)));
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.dictionary.repository.DictionaryUsageRepository.TERM_SORT_FIELDS)));
     }
 }

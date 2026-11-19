@@ -15,6 +15,15 @@ import java.util.List;
 import java.util.Map;
 
 public interface DataDictionaryService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> TERM_SORT_FIELDS = java.util.Set.of("id", "revisionNumber", "commonStandardTermName", "commonStandardTermDescription", "commonStandardTermAbbreviation", "commonStandardDomainName", "allowedValues", "storageFormat", "displayFormat", "administrativeStandardCodeName", "responsibleOrganization");
+
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> WORD_SORT_FIELDS = java.util.Set.of("id", "revisionNumber", "commonStandardWordName", "commonStandardWordAbbreviation", "commonStandardWordEnglishName", "commonStandardWordDescription", "commonStandardDomainCategory");
+
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> DOMAIN_SORT_FIELDS = java.util.Set.of("id", "revisionNumber", "commonStandardDomainGroupName", "commonStandardDomainCategory", "commonStandardDomainName", "commonStandardDomainDescription", "dataType", "dataLength", "dataDecimalLength", "storageFormat", "displayFormat", "unit", "allowedValues");
+
 
     Page<StandardTermDto> getStandardTermsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);
     Page<StandardWordDto> getStandardWordsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery);

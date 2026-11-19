@@ -1,6 +1,8 @@
 -- =====================================================================
 -- Lexorma 초기 데이터 (V1) : 스키마는 V0__init.sql.
---  1) 기본 데이터 : 권한, 관리자 계정(admin/admin), 기본 프로젝트(LEXORMA, PRJ_SN 0)·기본 스키마, 게시물 범주(NOTICE)·안내 공지
+--  1) 기본 데이터 : 권한, 기본 프로젝트(LEXORMA, PRJ_SN 0)·기본 스키마, 게시물 범주(NOTICE)·안내 공지
+--     계정은 넣지 않는다 (2026-11-19 사용자 결정) : 계정이 하나도 없으면 첫 화면에서 최초 관리자 계정을 만든다
+--     (POST /api/auth/setup, core/login/service/InitialSetupService — 모든 프로젝트의 멤버, 관리자가 없는 프로젝트의 관리자가 된다)
 --  2) 예제 데이터 사전(단어·용어·도메인)과 물리 모델 (Lexorma 자체 테이블·컬럼·관계) : 고정 ID (1..), 시퀀스는 1001 부터
 --  3) 예제 논리 모델 : 물리 모델과 같은 내용 (엔터티 = 테이블 한글명, 속성 = 컬럼, 주 식별자 = PK, 관계 = FK)
 --  4) 매핑 테이블·모델 변경 이력 테이블·모델 버전 테이블의 예제 (데이터 사전 → 물리 → 논리) : ID 는 시퀀스에서 받고 부모는 이름으로 찾는다
@@ -26,13 +28,8 @@ insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) val
 insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(5, null, 'User Pending Approval', 'ROLE_NOT_APPROVE', 'SYSTEM', 'SYSTEM');
 insert into TB_ROLE(ROLE_SN, EXPR_YN, ROLE_EXPLN, ROLE_NM, RGTR_ID, MDFR_ID) values(6, null, 'Anonymous User', 'ROLE_ANONYMOUS', 'SYSTEM', 'SYSTEM');
 
-/* 관리자 계정 (admin/admin, 최초 로그인 시 비밀번호 변경 필요) */
-insert into TB_ACNT(ACNT_SN, PSWD, USER_ID, USER_NM, PSWD_CHG_YN, RGTR_ID, MDFR_ID, ACTVTN_YN) values(0, '{bcrypt}$2a$10$GN1YfMyJLcWhDuslP6P/UuqRwIfJk2VF5tl9mXsRjLJ18ivQfIAoW', 'admin', 'Admin', false, 'SYSTEM', 'SYSTEM', true);
-insert into TB_ACNT_ROLE(ACNT_SN, ROLE_SN) values(0, 0);
-
-/* 기본 프로젝트·기본 스키마 */
-insert into TB_PRJ(ACTVTN_YN, PRJ_SN, RGTR_ID, PRJ_NM, MDFR_ID, AUTO_APRV_YN, DIC_ABBR_USE_YN, MNGR_ACNT_SN, TBL_PFX_NM) values(true, 0, 'SYSTEM', 'LEXORMA', 'SYSTEM', true, true, 0, 'TB_');
-insert into TB_PRJ_MBR(ACNT_SN, PRJ_MBR_SN, PRJ_SN, RGTR_ID, MDFR_ID, ACTVTN_YN) values(0, 0, 0, 'SYSTEM', 'SYSTEM', true);
+/* 기본 프로젝트·기본 스키마 (관리자·멤버는 최초 관리자 계정을 만들 때 정해진다) */
+insert into TB_PRJ(ACTVTN_YN, PRJ_SN, RGTR_ID, PRJ_NM, MDFR_ID, AUTO_APRV_YN, DIC_ABBR_USE_YN, MNGR_ACNT_SN, TBL_PFX_NM) values(true, 0, 'SYSTEM', 'LEXORMA', 'SYSTEM', true, true, null, 'TB_');
 insert into TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, SCHM_EXPLN, BSC_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) values(0, 0, 'DEFAULT', '기본 스키마', true, current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM');
 
 /* 게시물 범주 */
@@ -40,7 +37,7 @@ insert into TB_PST_CTGRY(CTGRY_CD, CTGRY_NM, SORT_ORD, USE_YN) values('NOTICE', 
 
 /* 기본 안내 공지: 초기 게시글은 1번, 이후 등록과 충돌하지 않도록 SQ_PST는 51부터 할당한다. */
 insert into TB_PST(PST_SN, PRJ_SN, CTGRY_CD, WRTR_ID, PST_TTL, PST_CN, DEL_YN, PST_MDFCN_DT, PRJ_SN_LIST, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)
-select 1, p.PRJ_SN, c.CTGRY_CD, a.USER_ID, '[안내] Lexorma에 오신 것을 환영합니다.',
+select 1, p.PRJ_SN, c.CTGRY_CD, 'SYSTEM', '[안내] Lexorma에 오신 것을 환영합니다.',
        '안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
 
 Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, ERD로 구조와 관계를 확인하며, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
@@ -124,15 +121,10 @@ Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하
 
 감사합니다.
 **Lexorma**',
-       'N', current_timestamp, ARRAY[p.PRJ_SN], current_timestamp, current_timestamp, a.USER_ID, a.USER_ID
+       'N', current_timestamp, ARRAY[p.PRJ_SN], current_timestamp, current_timestamp, 'SYSTEM', 'SYSTEM'
 from TB_PRJ p
-join TB_ACNT a on a.ACNT_SN = p.MNGR_ACNT_SN
 join TB_PST_CTGRY c on c.CTGRY_CD = 'NOTICE'
 where p.PRJ_SN = 0;
-
--- 기존 등록 정책과 동일하게 작성자를 조회자로 기록한다.
-insert into TB_PST_ACNT(PST_SN, ACNT_SN)
-select b.PST_SN, a.ACNT_SN from TB_PST b join TB_ACNT a on a.USER_ID = b.WRTR_ID where b.PST_SN = 1;
 
 
 -- ---------- 2) 예제 데이터 사전 + 물리 모델 (DEFAULT 스키마) ----------
@@ -4815,7 +4807,7 @@ update TB_COL set TASK_EXPLN = '로그인할 때 입력하는 아이디. 계정�
 update TB_COL set TASK_EXPLN = '로그인 비밀번호의 해시 값. 원문은 저장하지 않는다.' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'PSWD' and TASK_EXPLN is null;
 update TB_COL set TASK_EXPLN = '화면에 표시하는 사용자 이름.' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'USER_NM' and TASK_EXPLN is null;
 update TB_COL set TASK_EXPLN = '계정 사용 가능 여부. 비활성 계정은 로그인할 수 없다.' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'ACTVTN_YN' and TASK_EXPLN is null;
-update TB_COL set TASK_EXPLN = '비밀번호를 바꿨는지 여부. 기본 관리자 계정이 아직 바꾸지 않았으면(거짓) 로그인 뒤 내 정보 화면으로 보내 비밀번호부터 바꾸게 한다.' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'PSWD_CHG_YN' and TASK_EXPLN is null;
+update TB_COL set TASK_EXPLN = '비밀번호를 바꿨는지 여부. 관리자가 비밀번호를 초기화한 계정은 거짓이 되어, 바꾸기 전에는 로그인할 수 없고 로그인 화면에서 비밀번호부터 바꾸게 한다.' where PRJ_SN = 0 and TBL_NM = 'TB_ACNT' and COL_NM = 'PSWD_CHG_YN' and TASK_EXPLN is null;
 -- TB_ROLE
 update TB_COL set TASK_EXPLN = '역할을 구분하는 내부 번호.' where PRJ_SN = 0 and TBL_NM = 'TB_ROLE' and COL_NM = 'ROLE_SN' and TASK_EXPLN is null;
 update TB_COL set TASK_EXPLN = 'Spring Security 역할 이름 (ROLE_ADMIN, ROLE_MANAGER 등). 화면 메뉴·버튼과 API 권한 검사가 이 이름을 기준으로 한다.' where PRJ_SN = 0 and TBL_NM = 'TB_ROLE' and COL_NM = 'ROLE_NM' and TASK_EXPLN is null;

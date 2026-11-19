@@ -39,6 +39,9 @@ public class LogicalModelQueryRepository {
             "entityDescription", entity.entityDescription,
             "isApproval", entity.isApproval);
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> ENTITY_SORT_FIELDS = ENTITY_SORTS.keySet();
+
     /** 관계 목록 정렬 필드 (M-6 후속 3차 보완). 출발·도착은 그 엔터티의 이름. 이름 없는 관계는 방향과 무관하게 뒤로 (H2·PostgreSQL 같은 순서), 같은 값은 관계 ID 순 */
     private static final QLogicalEntity source = new QLogicalEntity("source");
     private static final QLogicalEntity target = new QLogicalEntity("target");
@@ -46,6 +49,9 @@ public class LogicalModelQueryRepository {
             "relationshipName", relationship.relationshipName,
             "sourceEntityName", source.entityName,
             "targetEntityName", target.entityName);
+
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> RELATIONSHIP_SORT_FIELDS = RELATIONSHIP_SORTS.keySet();
 
     private final JPAQueryFactory query;
 

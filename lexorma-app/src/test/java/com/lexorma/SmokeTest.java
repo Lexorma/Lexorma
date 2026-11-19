@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -325,7 +326,7 @@ class SmokeTest {
         HttpResponse<String> view = get("/api/selectNotice/view/1", true);
         assertThat(view.statusCode()).isEqualTo(200);
         var notice = mapper.readTree(view.body());
-        assertThat(notice.path("username").asString()).isEqualTo("admin");
+        assertThat(notice.path("username").asString()).isEqualTo("SYSTEM"); // 초기 데이터에는 계정이 없어 시스템이 작성자
         assertThat(notice.path("content").asString()).contains("물리 ERD", "이용 안내", "문의 및 오류 신고",
                 "https://github.com/Lexorma/Lexorma/issues");
         assertThat(notice.path("accounts").size()).isEqualTo(1);
@@ -922,6 +923,80 @@ class SmokeTest {
         // 숫자 컬럼(응답 상태코드) 검색은 부분 일치로 찾는다.
         assertThat(get("/api/getSystemLog/data?page=0&size=10&sort=id,desc&searchColumn=statusCode&searchQuery=20", true).body())
                 .contains("\"statusCode\":200");
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("공용 그리드 페이지 요청 (공통 페이징 안정성 개선) : PageableUtil 을 쓰는 목록 API 25개 모두 — 정상 정렬·크기 100 은 200, "
+            + "모르는 필드·중첩 경로·잘못된 방향·크기 0·101·100000·음수 페이지·int 를 넘는 오프셋은 400 INVALID_PAGE_REQUEST (내부 정보 없음), 숫자 아닌 값은 400")
+    void gridPageRequests() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        long model = exampleModelId();
+        String required = "&modelId=" + model;
+        // 목록 API → (정상 정렬 필드, 필수 조건)
+        Map<String, String[]> endpoints = new LinkedHashMap<>();
+        endpoints.put("/api/getStandardTerms/data", new String[]{"commonStandardTermName", ""});
+        endpoints.put("/api/getStandardWords/data", new String[]{"commonStandardWordName", ""});
+        endpoints.put("/api/getStandardDomains/data", new String[]{"commonStandardDomainName", ""});
+        endpoints.put("/api/selectTable/data", new String[]{"tableName", ""});
+        endpoints.put("/api/selectColumn/data", new String[]{"columnName", ""});
+        endpoints.put("/api/physical/index/data", new String[]{"indexName", ""});
+        endpoints.put("/api/physical/view/data", new String[]{"viewName", ""});
+        endpoints.put("/api/selectNotice/data", new String[]{"title", ""});
+        endpoints.put("/api/selectUser/data", new String[]{"username", ""});
+        endpoints.put("/api/getSystemLog/data", new String[]{"statusCode", ""});
+        endpoints.put("/api/getProject/" + PROJECT_ID + "/data", new String[]{"id", ""});
+        endpoints.put("/api/dictionaryUsage/term/1/data", new String[]{"tableName", ""});
+        endpoints.put("/api/dictionaryUsage/domain/1/data", new String[]{"tableName", ""});
+        endpoints.put("/api/dictionaryUsage/word/12/data", new String[]{"termName", ""});
+        endpoints.put("/api/standardizationQuality/data", new String[]{"tableName", ""});
+        endpoints.put("/api/standardizationQuality/model/data", new String[]{"tableName", ""});
+        endpoints.put("/api/standardizationQuality/terms/data", new String[]{"severity", ""});
+        endpoints.put("/api/standardizationQuality/identifiers/data", new String[]{"tableName", ""});
+        endpoints.put("/api/modelMapping/entity/data", new String[]{"entityName", ""});
+        endpoints.put("/api/modelMapping/table/data", new String[]{"tableName", ""});
+        endpoints.put("/api/modelMapping/quality/data", new String[]{"entityName", required});
+        endpoints.put("/api/modelMapping/recommendation/column/data", new String[]{"entityName", required});
+        endpoints.put("/api/modelMapping/recommendation/table/data", new String[]{"logicalName", required});
+        endpoints.put("/api/logical/model/" + model + "/entity/data", new String[]{"entityName", ""});
+        endpoints.put("/api/logical/model/" + model + "/relationship/data", new String[]{"relationshipName", ""});
+
+        List<String> failed = new ArrayList<>();
+        for (var endpoint : endpoints.entrySet()) {
+            String url = endpoint.getKey(), field = endpoint.getValue()[0], extra = endpoint.getValue()[1];
+            Map<String, Integer> cases = new LinkedHashMap<>();
+            cases.put("page=0&size=10&sort=" + field + ",asc", 200);
+            cases.put("page=0&size=100&sort=" + field + ",DESC", 200);
+            cases.put("page=0&size=10&sort=", 200);
+            cases.put("page=999&size=10&sort=" + field + ",asc", 200); // 마지막 뒤 : 빈 목록
+            cases.put("page=0&size=101&sort=" + field + ",asc", 400);
+            cases.put("page=0&size=100000&sort=" + field + ",asc", 400);
+            cases.put("page=0&size=0&sort=" + field + ",asc", 400);
+            cases.put("page=-1&size=10&sort=" + field + ",asc", 400);
+            cases.put("page=2147483647&size=10&sort=" + field + ",asc", 400);
+            cases.put("page=0&size=10&sort=noSuchField,asc", 400);
+            cases.put("page=0&size=10&sort=account.password,desc", 400);
+            cases.put("page=0&size=10&sort=" + field + ",asc;noSuchField,desc", 400);
+            cases.put("page=0&size=10&sort=" + field + ",sideways", 400);
+            for (var c : cases.entrySet()) {
+                HttpResponse<String> response = get(url + "?" + c.getKey() + extra, true);
+                boolean ok = response.statusCode() == c.getValue()
+                        && (c.getValue() == 200 ? response.body().contains("\"recordsTotal\"")
+                        : "INVALID_PAGE_REQUEST".equals(mapper.readTree(response.body()).path("code").asString())
+                                && !response.body().matches("(?s).*(Exception|org\\.|java\\.|hibernate|select ).*"));
+                if (!ok) failed.add(url + "?" + c.getKey() + " → " + response.statusCode() + " " + response.body().substring(0, Math.min(160, response.body().length())));
+            }
+            // 숫자가 아닌 값은 Spring 변환 오류 400 (컨트롤러 전에)
+            if (get(url + "?page=abc&size=10" + extra, true).statusCode() != 400) failed.add(url + "?page=abc → not 400");
+        }
+        assertThat(failed).isEmpty();
+
+        // 오류 문구는 요청 언어를 따른다
+        HttpResponse<String> en = client.send(HttpRequest.newBuilder(uri("/api/selectTable/data?page=0&size=101&sort=tableName,asc")).header("X-Requested-With", "XMLHttpRequest")
+                .header("Accept-Language", "en").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(mapper.readTree(en.body()).path("message").asString()).contains("The list request (page or sort) is invalid.").contains("The page size must be between 1 and 100.");
+        assertThat(mapper.readTree(get("/api/selectTable/data?page=0&size=10&sort=password,asc", true).body()).path("message").asString())
+                .contains("목록 조회 조건(페이지·정렬)이 올바르지 않습니다.").contains("허용하지 않는 정렬 항목입니다.");
     }
 
     @ParameterizedTest(name = "API {0}")

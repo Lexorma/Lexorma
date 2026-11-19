@@ -77,6 +77,9 @@ public class StandardizationQualityService {
             "columnDesc", Comparator.comparing(Issue::columnDesc, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
             "isApproval", Comparator.comparing((Issue issue) -> Boolean.TRUE.equals(issue.isApproval())));
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
+
     private final DictionaryUsageRepository usageRepository;
     private final ProjectRepository projectRepository;
 
@@ -123,6 +126,9 @@ public class StandardizationQualityService {
             "columnName", Comparator.comparing(ModelIssue::columnName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
             "columnDesc", Comparator.comparing(ModelIssue::columnDesc, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
             "isApproval", Comparator.comparing((ModelIssue issue) -> Boolean.TRUE.equals(issue.isApproval())));
+
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> MODEL_SORT_FIELDS = MODEL_SORTS.keySet();
 
     /** 기본 순서 : 테이블명 → 테이블 진단 → 그 테이블의 컬럼 진단(컬럼 순서 → 유형) */
     private static final Comparator<ModelIssue> MODEL_DEFAULT_ORDER = Comparator

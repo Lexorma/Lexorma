@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
@@ -16,6 +17,7 @@ import { t } from '../../lib/i18n';
 /** 테이블 관리 : 테이블 설계 정보 등록·승인, 상세(컬럼 목록 / 컬럼 일괄 편집 / DDL) */
 export function TableManagePage() {
   const dialog = useDialog();
+  const toast = useToast();
   const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { openTableDetail } = useTableDetail();
@@ -47,7 +49,9 @@ export function TableManagePage() {
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteTable', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -60,7 +64,9 @@ export function TableManagePage() {
         return;
       }
       const response = await api<{ result: boolean }>(`/api/saveTable/${isApproval}`, { method: 'PATCH', body: checked });
-      if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
     });
   };
 

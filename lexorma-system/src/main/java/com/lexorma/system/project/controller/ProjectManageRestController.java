@@ -65,7 +65,7 @@ public class ProjectManageRestController {
             @AuthenticationPrincipal AccountDto accountDto
     ) {
         requireManager(projectManageService.selectLoginProject(projectId, accountDto.getId()));
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, ProjectManageService.MEMBER_SORT_FIELDS);
         Page<ProjectMemberDto> standardTermDataPage = projectManageService.getProjectData(pageable, searchColumn, searchQuery, projectId);
         return PageableUtil.getGridPageableMap(standardTermDataPage);
     }

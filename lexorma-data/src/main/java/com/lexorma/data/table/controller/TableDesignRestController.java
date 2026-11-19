@@ -53,7 +53,7 @@ public class TableDesignRestController {
             @Parameter(description = "스키마 ID (없으면 전체 스키마)")
             @RequestParam(required = false, value = "schemaId") Long schemaId
     ) {
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, TableDesignService.TABLE_SORT_FIELDS);
         Page<TableInfoDto> tableDesigns = tableDesignService.selectTableInfoData(pageable, accountDto, searchColumn, searchQuery, schemaId);
         return PageableUtil.getGridPageableMap(tableDesigns);
     }

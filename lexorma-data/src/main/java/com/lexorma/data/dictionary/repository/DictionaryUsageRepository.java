@@ -65,12 +65,18 @@ public class DictionaryUsageRepository {
             "isApproval", column.isApproval,
             "id", column.id);
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> COLUMN_SORT_FIELDS = COLUMN_SORTS.keySet();
+
     private static final Map<String, ComparableExpressionBase<?>> TERM_SORTS = Map.of(
             "termName", term.commonStandardTermName,
             "termAbbreviation", term.commonStandardTermAbbreviation,
             "domainName", domain.commonStandardDomainName,
             "isApproval", term.isApproval,
             "id", term.id);
+
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> TERM_SORT_FIELDS = TERM_SORTS.keySet();
 
     private final JPAQueryFactory query;
 

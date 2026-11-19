@@ -29,6 +29,17 @@ export function LoginPage() {
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // 서버에 로그인 정보를 확인·로그인하는 동안 (UI-1) : 버튼에 처리 중 표시, 다시 누르기·Enter 로 같은 요청을 또 보내지 않는다 (실제 요청 동안만)
+  const [busy, setBusy] = useState(false);
+  const during = async (work: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await work();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const from = (location.state as { from?: string } | null)?.from;
 
@@ -39,7 +50,7 @@ export function LoginPage() {
   });
   const noActiveProject = activeProjects?.length === 0;
 
-  const recoveryLogin = async (user: string, pass: string) => {
+  const recoveryLogin = (user: string, pass: string) => during(async () => {
     try {
       await api('/api/auth/login', {
         method: 'POST',
@@ -57,12 +68,12 @@ export function LoginPage() {
     resetCsrf();
     await refresh();
     navigate(RECOVERY_PATH, { replace: true });
-  };
+  });
 
   /** 로그인 시작 : 평소에는 프로젝트 선택, 활성 프로젝트가 없으면 복구 로그인 */
   const start = (user: string, pass: string) => (noActiveProject ? recoveryLogin(user, pass) : openProjectDialog(user, pass));
 
-  const login = async (user: string, pass: string, project: LoginProject) => {
+  const login = (user: string, pass: string, project: LoginProject) => during(async () => {
     try {
       await api('/api/auth/login', {
         method: 'POST',
@@ -77,17 +88,27 @@ export function LoginPage() {
     resetCsrf();
     await refresh();
     navigate(from && from !== '/login' ? from : '/', { replace: true });
-  };
+  });
 
   const openProjectDialog = async (user: string, pass: string) => {
     if (!user) return dialog.alert(t('아이디를 입력하세요.'));
     if (!pass) return dialog.alert(t('패스워드를 입력하세요.'));
 
-    let projects: LoginProject[];
-    try {
-      projects = await api<LoginProject[]>('/api/login/projects', { method: 'POST', body: { username: user, password: pass }, silent: true });
-    } catch (e) {
-      // 초기 비밀번호(admin/admin, 관리자 초기화) 사용 중 : 비밀번호를 바꾸기 전에는 로그인할 수 없다
+    let projects: LoginProject[] = [];
+    let failed: unknown = null;
+    let ran = false;
+    await during(async () => {
+      ran = true;
+      try {
+        projects = await api<LoginProject[]>('/api/login/projects', { method: 'POST', body: { username: user, password: pass }, silent: true });
+      } catch (e) {
+        failed = e;
+      }
+    });
+    if (!ran) return; // 이미 처리 중
+    if (failed) {
+      const e = failed;
+      // 초기 비밀번호(관리자 초기화) 사용 중 : 비밀번호를 바꾸기 전에는 로그인할 수 없다
       if (e instanceof ApiError && e.code === 'PASSWORD_CHANGE_REQUIRED') {
         openChangePasswordDialog(user, pass);
         return;
@@ -150,6 +171,7 @@ export function LoginPage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     start(username.trim(), password);
   };
 
@@ -179,7 +201,11 @@ export function LoginPage() {
               value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
 
-          <button type="submit" id="project-btn" className="btn btn-primary auth-submit">{noActiveProject ? t('관리자 복구 로그인') : t('로그인')}</button>
+          <button type="submit" id="project-btn" className={`btn btn-primary auth-submit${busy ? ' is-busy' : ''}`} disabled={busy} aria-busy={busy}>
+            {/* 처리 중에는 글자 자리를 그대로 두고 그 위에 처리 중 아이콘 (버튼 폭·줄이 움직이지 않는다) */}
+            <span className="motion-busy-label">{noActiveProject ? t('관리자 복구 로그인') : t('로그인')}</span>
+            {busy && <span className="motion-spinner" aria-hidden="true" />}
+          </button>
           {!noActiveProject && <p className="auth-hint">{t('로그인할 프로젝트는 다음 단계에서 선택합니다.')}</p>}
         </form>
       </div>

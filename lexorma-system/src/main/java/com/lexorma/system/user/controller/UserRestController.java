@@ -51,7 +51,7 @@ public class UserRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn) {
 
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, UserManageService.USER_SORT_FIELDS);
 
         Page<AccountDto> accountDtos = userManageService.selectUserData(pageable, accountDto, searchQuery, searchColumn);
 

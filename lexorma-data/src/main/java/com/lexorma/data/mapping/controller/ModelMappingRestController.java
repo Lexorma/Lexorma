@@ -66,7 +66,8 @@ public class ModelMappingRestController {
                                                                 @RequestParam(value = "mapped", required = false) Boolean mapped,
                                                                 @RequestParam(value = "entityId", required = false) Long entityId) {
         return PageableUtil.getGridPageableMap(modelMappingService.selectEntityRows(accountDto,
-                new ModelMappingDto.EntitySearch(modelId, schemaId, mapped, searchColumn, searchQuery, entityId), PageableUtil.getGridPageable(page, size, sort)));
+                new ModelMappingDto.EntitySearch(modelId, schemaId, mapped, searchColumn, searchQuery, entityId),
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.ModelMappingQueryRepository.ENTITY_SORT_FIELDS)));
     }
 
     @Operation(summary = "엔터티 또는 테이블의 매핑 1건", description = "entityId 와 tableId 중 하나만 준다. 엔터티는 매핑이 없어도 1행(mappingId null), 테이블은 매핑된 경우만. 없으면 본문 없음")
@@ -124,7 +125,8 @@ public class ModelMappingRestController {
                                                                     @RequestParam(value = "sort", required = false) String sort,
                                                                     @RequestParam(value = "searchQuery", required = false) String searchQuery,
                                                                     @RequestParam(value = "schemaId", required = false) Long schemaId) {
-        return PageableUtil.getGridPageableMap(modelMappingService.selectUnmappedTables(accountDto, schemaId, searchQuery, PageableUtil.getGridPageable(page, size, sort)));
+        return PageableUtil.getGridPageableMap(modelMappingService.selectUnmappedTables(accountDto, schemaId, searchQuery,
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.ModelMappingQueryRepository.TABLE_SORT_FIELDS)));
     }
 
     @Operation(summary = "매핑 현황", description = "논리 모델별 엔터티·속성의 전체·매핑·미매핑 수. modelId 가 없으면 프로젝트의 모든 논리 모델")
@@ -155,7 +157,8 @@ public class ModelMappingRestController {
                                                                  @RequestParam(value = "type", required = false) ModelMappingQualityDto.CheckType type,
                                                                  @RequestParam(value = "status", required = false) ModelMappingQualityDto.CheckStatus status) {
         return PageableUtil.getGridPageableMap(modelMappingQualityService.selectRows(accountDto,
-                new ModelMappingQualityDto.Search(modelId, entityId, type, status, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new ModelMappingQualityDto.Search(modelId, entityId, type, status, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, ModelMappingQualityService.SORT_FIELDS)));
     }
 
     @Operation(summary = "컬럼명 추천 요약", description = "논리 모델 1개의 속성 수와 추천 상태별 건수 : 추천 가능·일치·추천 불가·충돌")
@@ -180,7 +183,8 @@ public class ModelMappingRestController {
                                                                            @RequestParam(value = "columnId", required = false) Long columnId,
                                                                            @RequestParam(value = "status", required = false) PhysicalNameRecommendationDto.Status status) {
         return PageableUtil.getGridPageableMap(recommendationService.selectColumnRows(accountDto,
-                new PhysicalNameRecommendationDto.ColumnSearch(modelId, entityId, attributeId, columnId, status, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new PhysicalNameRecommendationDto.ColumnSearch(modelId, entityId, attributeId, columnId, status, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.COLUMN_SORT_FIELDS)));
     }
 
     @Operation(summary = "테이블명 추천 목록", description = "엔터티명을 표준 단어로 나눠 테이블명 생성 규칙(접두어 + 승인된 단어의 영문약어)으로 만든 추천 테이블명. 조회 전용. 조건 : modelId(entityId 가 없으면 필수), entityId, 검색 : entityName / tableName")
@@ -195,6 +199,7 @@ public class ModelMappingRestController {
                                                                           @RequestParam(value = "modelId", required = false) Long modelId,
                                                                           @RequestParam(value = "entityId", required = false) Long entityId) {
         return PageableUtil.getGridPageableMap(recommendationService.selectTableRows(accountDto,
-                new PhysicalNameRecommendationDto.TableSearch(modelId, entityId, searchColumn, searchQuery), PageableUtil.getGridPageable(page, size, sort)));
+                new PhysicalNameRecommendationDto.TableSearch(modelId, entityId, searchColumn, searchQuery),
+                PageableUtil.getGridPageable(page, size, sort, PhysicalNameRecommendationService.TABLE_SORT_FIELDS)));
     }
 }

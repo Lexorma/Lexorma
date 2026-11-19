@@ -628,7 +628,22 @@ public enum ErrorCode {
     /**
      * 평가 대상으로 등록된 제안은 평가(실제 의미 확인 + 정확성 판정)를 마치기 전에 승인할 수 없다 (AI-5-EVAL).
      */
-    AI_PROPOSAL_EVALUATION_PENDING(HttpStatus.CONFLICT, "AI_PROPOSAL_EVALUATION_PENDING");
+    AI_PROPOSAL_EVALUATION_PENDING(HttpStatus.CONFLICT, "AI_PROPOSAL_EVALUATION_PENDING"),
+
+    /**
+     * 계정이 하나도 없다 : 최초 관리자 계정을 먼저 만들어야 한다 (회원가입 불가).
+     */
+    SETUP_REQUIRED(HttpStatus.CONFLICT, "SETUP_REQUIRED"),
+
+    /**
+     * 이미 계정이 있어 최초 관리자 계정을 만들 수 없다.
+     */
+    SETUP_ALREADY_COMPLETED(HttpStatus.CONFLICT, "SETUP_ALREADY_COMPLETED"),
+
+    /**
+     * 사용자명이 비어 있다.
+     */
+    USER_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "USER_NAME_REQUIRED");
 
     private final HttpStatus httpStatus;
     private final String code;

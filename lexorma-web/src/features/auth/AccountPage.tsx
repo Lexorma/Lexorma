@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError } from '../../lib/api';
@@ -11,6 +12,7 @@ import { roleLabel } from '../../lib/roles';
 /** 내 정보 (GitHub 설정 화면 형태 : 왼쪽 프로필 / 오른쪽 설정 항목) */
 export function AccountPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const navigate = useNavigate();
   const { user, displayName, refresh, logout } = useAuth();
 
@@ -28,7 +30,9 @@ export function AccountPage() {
     if (name === '') return dialog.alert(t('사용자명을 입력해주세요.'));
     try {
       const response = await api<{ result: string }>('/api/updateName', { method: 'POST', body: { name }, silent: true });
-      if (response.result === 'success') dialog.alert(t('사용자명이 성공적으로 변경되었습니다.'), () => refresh());
+      if (response.result !== 'success') return;
+      void refresh();
+      toast.success(t('사용자명이 성공적으로 변경되었습니다.'));
     } catch (err) {
       dialog.alert(err instanceof ApiError ? err.message : t('사용자명 변경 중 문제가 발생했습니다.'));
     }

@@ -34,6 +34,7 @@ import {
 } from './model';
 import { useErdExport, erdFileName } from './exportImage';
 import { t, tx } from '../../lib/i18n';
+import { motionMs } from '../../lib/motion';
 
 const PAGE_SIZE = 100;
 const nodeTypes = { table: TableNode, view: ViewNode };
@@ -408,7 +409,7 @@ function ErdWorkspace() {
     setSelectedId(id);
     setSelectedRelation(null);
     const node = flow.getNode(id);
-    if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(node.data.columns.length) / 2, { zoom: 1, duration: 300 });
+    if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(node.data.columns.length) / 2, { zoom: 1, duration: motionMs(300) });
   };
 
   const search = (event: FormEvent) => {
@@ -515,7 +516,7 @@ function ErdWorkspace() {
       setSelectedId(id);
       requestAnimationFrame(() => {
         const node = flow.getNode(id);
-        if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(0) / 2, { zoom: 1, duration: 300 });
+        if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(0) / 2, { zoom: 1, duration: motionMs(300) });
       });
       return;
     }
@@ -638,7 +639,7 @@ function ErdWorkspace() {
           <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
-          <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
+          <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: motionMs(300) })}><ScreenFullIcon />{t('전체 보기')}</button>
           <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('png')} title={t('지금 배치 그대로 ERD 전체를 PNG 이미지로 내려받습니다')}><DownloadIcon />PNG</button>
           <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('svg')} title={t('지금 배치 그대로 ERD 전체를 SVG 이미지로 내려받습니다')}><DownloadIcon />SVG</button>
           <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>

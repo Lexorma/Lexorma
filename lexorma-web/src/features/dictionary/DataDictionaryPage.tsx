@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useDialog, type DialogApi, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridColumn, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
@@ -196,6 +197,7 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
 }) {
   // 승인·승인취소 : 승인 API 의 역할(DBA 이상)이면서 승인 권한(그리드의 소문자 버튼)이 있을 때만
   const canApprove = useAuth().canView('dictionary-approve');
+  const toast = useToast();
   const reload = () => gridRef.current?.reload();
 
   const approve = (isApproval: boolean) => {
@@ -216,7 +218,9 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
         if (error instanceof ApiError && error.code === 'MODEL_CONFLICT') reload();
         return;
       }
-      if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
     });
   };
 
@@ -229,7 +233,9 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>(`/api/deleteDataDictionary/${tab.id}`, { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('정상적으로 삭제처리 되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(t('정상적으로 삭제처리 되었습니다.'));
     });
   };
 
@@ -238,7 +244,7 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
       dialog.open({
         title: t('표준용어 추가'),
         content: ({ close }: DialogControls) => (
-          <TermCreateForm onSaved={() => dialog.alert(t('정상적으로 등록되었습니다.'), () => { close(); reload(); })} />
+          <TermCreateForm onSaved={() => { close(); reload(); toast.success(t('정상적으로 등록되었습니다.')); }} />
         ),
       });
       return;

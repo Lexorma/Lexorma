@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Approval, DateTime, Label, Mono, User } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -130,6 +131,7 @@ function ViewDetailView({ viewId, onChanged, onNavigate, onClose, onOpenView, se
   setTitle: DialogControls['setTitle'];
 }) {
   const dialog = useDialog();
+  const toast = useToast();
   const { approvalAvailable, canView } = useAuth();
   const { openTableDetailById } = useTableDetail();
   const canEdit = canView('physical-model-edit');
@@ -161,7 +163,7 @@ function ViewDetailView({ viewId, onChanged, onNavigate, onClose, onOpenView, se
         <ViewForm detail={detail.data} onCancel={close} onSaved={(result: ViewSaveResult) => {
           close();
           changed();
-          if (!result.applied) dialog.alert(t('변경 요청을 만들었습니다. 승인되면 반영됩니다.'));
+          if (!result.applied) toast.info(t('변경 요청을 만들었습니다. 승인되면 반영됩니다.'));
         }} />
       ),
     });
@@ -189,7 +191,7 @@ function ViewDetailView({ viewId, onChanged, onNavigate, onClose, onOpenView, se
   const copySql = async () => {
     try {
       await navigator.clipboard.writeText(view.definition);
-      dialog.alert(t('정의 SQL 을 복사했습니다.'));
+      toast.success(t('정의 SQL 을 복사했습니다.'));
     } catch {
       dialog.alert(t('복사하지 못했습니다. 정의 SQL 을 직접 선택해 복사해주세요.'));
     }

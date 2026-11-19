@@ -4,6 +4,7 @@ import { BizDescriptionInfo, useObjectStatuses } from '../dictionary/ai/BizDescr
 import { proposalPath, STATUS_CLASS, STATUS_LABEL, type ObjectStatus } from '../dictionary/ai/aiDictionary';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import type { Row } from '../../components/grid/Grid';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError, enc } from '../../lib/api';
@@ -34,6 +35,7 @@ interface TableDetailOptions {
  */
 export function useTableDetail() {
   const dialog = useDialog();
+  const toast = useToast();
   const { approvalAvailable, canView } = useAuth();
   const navigate = useNavigate();
   const openColumnBulkEditor = useColumnBulkEditor();
@@ -59,7 +61,8 @@ export function useTableDetail() {
         const response = await api<{ result: boolean }>(`/api/saveTable/${!approved}`, { method: 'PATCH', body: [row] });
         if (!response.result) return;
         close();
-        dialog.alert(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'), changed);
+        changed();
+        toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
       });
     };
 

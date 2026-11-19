@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -32,6 +33,7 @@ const initialTab = (value: string | null): Tab => (value === 'quality' || value 
  */
 export function ModelMappingPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const { canView, user } = useAuth();
   const canEdit = canView('model-mapping-edit');
   // 논리 → 물리 생성 (DEC-10) : 물리 모델 변경 권한(USER)과 같다. 스키마 목록은 화면에서 넘긴다 (대화상자는 AuthProvider 밖)
@@ -112,7 +114,8 @@ export function ModelMappingPage() {
     }
     dialog.confirm(t('{0} 엔터티와 {1} 테이블의 매핑을 해제하시겠습니까? 엔터티와 테이블은 삭제되지 않습니다.', row.entityName, row.tableName ?? ''), async () => {
       await api(`/api/modelMapping/entity/${row.mappingId}`, { method: 'DELETE' });
-      dialog.alert(t('매핑을 해제했습니다.'), reload);
+      reload();
+      toast.success(t('매핑을 해제했습니다.'));
     });
   };
 

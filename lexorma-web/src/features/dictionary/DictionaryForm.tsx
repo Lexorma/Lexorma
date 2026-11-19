@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { api } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
 import { t } from '../../lib/i18n';
@@ -44,6 +45,7 @@ export function DictionaryForm({
   base?: Record<string, unknown>;
 }) {
   const dialog = useDialog();
+  const toast = useToast();
   // 읽기 전용 칸은 사용자가 입력하지 않으므로 필수 검사를 하지 않는다 (용어 수정의 도메인 허용값처럼 비어 있어도 정상인 표시 값 — M-5 6차)
   const isReadOnly = (key: string) => key === 'id' || key === 'projectId' || !!config.readonly?.(key);
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -90,7 +92,9 @@ export function DictionaryForm({
       // 오류는 공통 알림이 보여 준다. 폼은 닫지 않고 입력을 그대로 둔다 (409 충돌도 — 자동 재전송·덮어쓰기 없음)
       return;
     }
-    if (response.result) dialog.alert(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'), onSaved);
+    if (!response.result) return;
+    onSaved();
+    toast.success(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'));
   };
 
   return (

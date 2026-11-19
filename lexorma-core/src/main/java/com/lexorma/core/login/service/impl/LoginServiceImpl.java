@@ -39,7 +39,7 @@ public class LoginServiceImpl implements LoginService {
      *
      * @param username
      * @param password
-     * 초기 비밀번호(admin/admin, 관리자 초기화)를 사용 중이면 프로젝트를 조회하지 않고 PASSWORD_CHANGE_REQUIRED 로 막는다.
+     * 초기 비밀번호(관리자 초기화)를 사용 중이면 프로젝트를 조회하지 않고 PASSWORD_CHANGE_REQUIRED 로 막는다.
      *
      * @return 접근 가능한 프로젝트 목록 (1건 이상)
      */

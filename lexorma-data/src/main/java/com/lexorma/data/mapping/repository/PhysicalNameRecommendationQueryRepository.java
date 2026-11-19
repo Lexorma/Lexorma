@@ -79,6 +79,9 @@ public class PhysicalNameRecommendationQueryRepository {
             "currentPhysicalName", column.columnName,
             "recommendedPhysicalName", term.commonStandardTermAbbreviation);
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> COLUMN_SORT_FIELDS = COLUMN_SORTS.keySet();
+
     private final JPAQueryFactory query;
 
     /** 컬럼명 추천 원본 : 속성 1개 = 1행 (기본 정렬 엔터티명 → 속성 순서). 모델·엔터티·속성·컬럼·상태·이름 조건을 DB 에서 거른다 */

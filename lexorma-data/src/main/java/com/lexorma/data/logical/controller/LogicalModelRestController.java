@@ -67,6 +67,34 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.selectGraph(accountDto, modelId));
     }
 
+    @Operation(summary = "논리 ERD 범위 조회", description = "이름·설명 검색어(없으면 모델 전체)에 맞는 엔터티를 이름순 page 번째 size 개(1~300, 기본 100). 양 끝이 모두 범위 안인 관계만, 범위 밖 관계는 엔터티별 수")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/erd/part")
+    public ResponseEntity<LogicalModelDto.GraphPart> selectGraphPart(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                                     @RequestParam(value = "keyword", required = false) String keyword,
+                                                                     @RequestParam(value = "page", defaultValue = "0") int page,
+                                                                     @RequestParam(value = "size", defaultValue = "100") int size) {
+        return ResponseEntity.ok(logicalModelService.selectGraphPart(accountDto, modelId, keyword, page, size));
+    }
+
+    @Operation(summary = "논리 ERD 이웃 탐색", description = "엔터티에서 관계(출발·도착 모두)로 1~3단계 이어진 엔터티 (최대 300)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/erd/neighbors/{entityId}")
+    public ResponseEntity<LogicalModelDto.GraphPart> selectNeighbors(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                                     @PathVariable(name = "entityId") Long entityId,
+                                                                     @RequestParam(value = "depth", defaultValue = "1") int depth) {
+        return ResponseEntity.ok(logicalModelService.selectNeighbors(accountDto, modelId, entityId, depth));
+    }
+
+    @Operation(summary = "논리 ERD 엔터티 찾기", description = "이름·설명 검색, 이름순 최대 size 개(1~50, 기본 20)와 전체 수. 속성은 주지 않는다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/erd/entities")
+    public ResponseEntity<LogicalModelDto.EntityHits> searchEntities(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                                     @RequestParam(value = "keyword", required = false) String keyword,
+                                                                     @RequestParam(value = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(logicalModelService.searchEntities(accountDto, modelId, keyword, size));
+    }
+
     @Operation(summary = "내 논리 ERD 레이아웃 조회", description = "모델별·사용자별. 저장한 적 없으면 version·viewport 가 null")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/model/{modelId}/erd/layout")

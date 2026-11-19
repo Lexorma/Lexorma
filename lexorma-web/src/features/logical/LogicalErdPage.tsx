@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import '../../styles/logical.css';
-import { CheckIcon, DownloadIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
+import { ArrowLeftIcon, CheckIcon, DownloadIcon, GitMergeIcon, PlusIcon, ScreenFullIcon, SyncIcon, UndoIcon, WorkflowIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api } from '../../lib/api';
+import { api, enc } from '../../lib/api';
 import { useErdExport, erdFileName } from '../erd/exportImage';
-import { t, tc } from '../../lib/i18n';
+import { t, tc, tx } from '../../lib/i18n';
 // 물리 ERD 와 같이 쓰는 것 : 자동 배치(ELK 워커), 노드 크기 규칙, 축소 시 행 생략, 스타일(erd.css). 데이터·레이아웃 저장은 따로다
 import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/layout';
 import { NODE_WIDTH, nodeHeight, type ErdLayout, type XY } from '../erd/model';
@@ -22,9 +22,33 @@ import { edgeTypes, EndMarkers, LAYER_GAP, nodeTypes, relationshipEdges, type En
 import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
-import { cardinalityText, participation, useLogicalGraph, useLogicalModels, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
 
 const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) });
+
+/**
+ * 조회 범위 (M-6 후속 1차, 물리 ERD 와 같은 방식) : 서버가 고른 엔터티만 준다 — 전체를 받아 화면에서 거르지 않는다.
+ * 범위 조회 = 이름·설명 검색(비우면 모델 전체)을 이름순 PAGE_SIZE 개씩, 이웃 = 고른 엔터티에서 관계(출발·도착 모두)로 1~3단계
+ */
+interface SearchScope {
+  kind: 'search';
+  keyword: string;
+  page: number;
+}
+type Scope = SearchScope | { kind: 'neighbors'; entityId: number; entityName: string; depth: number; back: SearchScope };
+const PAGE_SIZE = 100;
+/** 범례의 Crow's Foot 기호 (관계선 끝 표기와 같은 marker) */
+const CROWS_FOOT: [string, string][] = [
+  ['one', t('정확히 하나 (1)')], ['zero-one', t('없거나 하나 (0..1)')], ['one-many', t('하나 이상 (1..N)')], ['zero-many', t('없거나 여러 건 (0..N)')],
+];
+const INITIAL_SCOPE: SearchScope = { kind: 'search', keyword: '', page: 0 };
+
+function partUrl(modelId: number, scope: Scope) {
+  if (scope.kind === 'neighbors') return `/api/logical/model/${modelId}/erd/neighbors/${scope.entityId}?depth=${scope.depth}`;
+  const params = new URLSearchParams({ page: String(scope.page), size: String(PAGE_SIZE) });
+  if (scope.keyword) params.set('keyword', scope.keyword);
+  return `/api/logical/model/${modelId}/erd/part?${params}`;
+}
 
 /** 논리 ERD : 논리 모델 1개의 엔터티·관계 조회 전용 (논리 모델은 바꾸지 않는다) + 내 배치 저장 (모델별·사용자별) */
 export default function LogicalErdPage() {
@@ -136,7 +160,37 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
     structuralSharing: false,
     gcTime: 0,
   });
-  const graph = useLogicalGraph(modelId, layout.isSuccess);
+  const [scope, setScope] = useState<Scope>(INITIAL_SCOPE);
+  const [keyword, setKeyword] = useState('');
+  const [depth, setDepth] = useState(1);
+  const graphUrl = partUrl(modelId, scope);
+  // 관리 화면과 같은 키 아래에 둔다 : 모델이 바뀌어 graphQueryKey 를 무효화하면 이 조회도 다시 받는다
+  const graph = useQuery({
+    queryKey: [...graphQueryKey(user?.projectId, modelId), 'part', graphUrl],
+    queryFn: ({ signal }) => api<LogicalGraphPart>(graphUrl, { signal, silent: true }),
+    enabled: layout.isSuccess,
+  });
+  // 저장하지 않은 배치 : 범위를 바꿔도 잃지 않도록 화면 밖 엔터티의 옮긴 좌표도 기억했다가 [배치 저장] 때 함께 보낸다 (서버는 기존 좌표에 합친다)
+  const pending = useRef(new Set<string>());
+  const [pendingCount, setPendingCount] = useState(0);
+  const markPending = (ids: string[]) => {
+    ids.forEach((id) => pending.current.add(id));
+    setPendingCount(pending.current.size);
+    setDirty(pending.current.size > 0);
+  };
+  const clearPending = () => {
+    pending.current.clear();
+    setPendingCount(0);
+    setDirty(false);
+  };
+  const neighborsOf = (entityId: number, entityName: string, nextDepth = depth) => {
+    focusRequest.current = String(entityId);
+    setScope({ kind: 'neighbors', entityId, entityName, depth: nextDepth, back: scope.kind === 'neighbors' ? scope.back : scope });
+  };
+  const search = (event: FormEvent) => {
+    event.preventDefault();
+    setScope({ kind: 'search', keyword: keyword.trim(), page: 0 });
+  };
 
   useEffect(() => () => onDirty(false), []);
 
@@ -148,7 +202,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       appliedLayout.current = layout.data;
       savedVersion.current = layout.data.version;
       positions.current = new Map(Object.entries(layout.data.nodes));
-      setDirty(false);
+      clearPending();
       shown.current = false;
     }
     const built: EntityNodeType[] = data.entities.map((entity) => ({
@@ -185,8 +239,13 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       setSelectedRelationship((id) => (id != null && data.relationships.some((r) => r.id === id) ? id : null));
 
       const requested = focusRequest.current;
+      const target = requested ? built.find((n) => n.id === requested) : undefined;
+      // 다른 화면에서 넘어온 엔터티가 지금 범위에 없으면 그 엔터티의 이웃을 불러와 보여 준다 (다른 모델·프로젝트 ID 는 서버가 거절한다)
+      if (requested && !target && scope.kind === 'search') {
+        setScope({ kind: 'neighbors', entityId: Number(requested), entityName: `#${requested}`, depth: 1, back: scope });
+        return;
+      }
       focusRequest.current = null;
-      const target = requested ? built.find((n) => n.id === requested) : undefined; // 없는 ID 는 조용히 무시한다
       if (target) {
         shown.current = true;
         setSelectedId(target.id);
@@ -233,10 +292,16 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
     try {
       const result = await api<ErdLayout>(layoutUrl, {
         method: 'PUT',
-        body: { version: savedVersion.current, nodes: Object.fromEntries(nodes.map((n) => [n.id, n.position])), viewport: flow.getViewport() },
+        // 화면의 엔터티 + 범위를 바꾸기 전에 옮겨 둔 엔터티. 저장하지 않은 범위 밖 엔터티의 좌표는 서버에 있는 그대로 둔다
+        body: {
+          version: savedVersion.current,
+          nodes: Object.fromEntries([...nodes.map((n) => [n.id, n.position] as const),
+            ...[...pending.current].filter((id) => positions.current.has(id)).map((id) => [id, positions.current.get(id)!] as const)]),
+          viewport: flow.getViewport(),
+        },
       });
       savedVersion.current = result.version;
-      setDirty(false);
+      clearPending();
       setMessage(t('배치를 저장했습니다.'));
     } catch {
       setMessage(t('배치를 저장하지 못했습니다.'));
@@ -262,7 +327,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       const moved = nodes.map((n) => ({ ...n, position: placed[n.id] }));
       moved.forEach((n) => positions.current.set(n.id, n.position));
       setNodes(moved);
-      setDirty(true);
+      markPending(moved.map((n) => n.id));
       setMessage(t('자동 배치했습니다. [배치 저장] 을 눌러야 저장됩니다.'));
       requestAnimationFrame(() => void flow.fitView({ padding: 0.15, maxZoom: 1 }));
     } catch (e) {
@@ -290,7 +355,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       nodes.map((n) => ({ ...n.position, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) })));
     positions.current.set(id, position);
     focusRequest.current = id;
-    setDirty(true);
+    markPending([id]);
     setMessage(t('엔터티를 추가했습니다. 새 엔터티의 위치는 [배치 저장] 을 눌러야 저장됩니다.'));
     await refresh();
   };
@@ -307,6 +372,9 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       // 삭제할 수 없으면(관계·매핑·승인) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다
       await api(`/api/logical/entity/${entity.id}`, { method: 'DELETE' });
       positions.current.delete(String(entity.id));
+      pending.current.delete(String(entity.id));
+      setPendingCount(pending.current.size);
+      setDirty(pending.current.size > 0);
       setSelectedId(null);
       setMessage(t('엔터티를 삭제했습니다.'));
       await refresh();
@@ -351,9 +419,10 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       content: () => <RelationshipPairsEditor relationshipId={relationship.id} readOnly={!editing || !!relationship.isApproval} onSaved={() => void refresh()} />,
     });
   };
-  const openRelationshipForm = (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
-    const entities = graph.data?.entities ?? [];
-    if (!entities.length) return;
+  const openRelationshipForm = async (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
+    if (!graph.data?.entities.length) return;
+    // 관계의 상대 엔터티는 지금 범위 밖일 수 있다 : 모델의 엔터티 이름 목록(속성 없이)을 받아 고르게 한다
+    const entities = (await api<LogicalEntity[]>(`/api/logical/model/${modelId}/entity`)).map((e) => ({ id: e.id, name: e.entityName }));
     dialog.open({
       title: relationship ? t('관계 수정') : t('관계 등록'),
       className: 'dialog-wide',
@@ -404,19 +473,25 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
 
   const selected = graph.data?.entities.find((e) => String(e.id) === selectedId);
   const relationship = graph.data?.relationships.find((r) => r.id === selectedRelationship);
+  const outside = graph.data?.outsideRelationships ?? {};
+  const outsideTotal = Object.values(outside).reduce((sum, n) => sum + n, 0);
+  const scopeName = scope.kind === 'neighbors' ? graph.data?.entities.find((e) => e.id === scope.entityId)?.name ?? scope.entityName : '';
   const loading = layout.isFetching || graph.isFetching || arranging;
   const error = layout.error ?? graph.error;
 
   return (
     <>
       <div className="grid-header">
-        <div className="search-container">
+        <form className="search-container" onSubmit={search}>
           {modelSelect}
+          <input type="text" className="search-input search-input-text" aria-label={t('엔터티 검색')} maxLength={100} placeholder={t('엔터티명 / 설명')}
+            value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+          <button type="submit" className="grd-select">{t('조회')}</button>
           {onMode && <ErdModeToggle mode={mode} onChange={onMode} />}
-        </div>
+        </form>
         <div className="button-container">
           {editing && <button type="button" className="grd-add btn btn-primary" disabled={!graph.data} onClick={addEntity}><PlusIcon />{t('엔터티 추가')}</button>}
-          <span className="erd-muted">{dirty ? t('저장하지 않은 배치가 있습니다') : t('저장된 배치와 같습니다')}</span>
+          <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
           <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('논리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
           <button type="button" className="btn" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.15, duration: 300 })}><ScreenFullIcon />{t('전체 보기')}</button>
@@ -429,8 +504,27 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       </div>
 
       <div className="erd-status" role="status">
-        <span>{t('엔터티 {0}개', graph.data?.entities.length ?? 0)}</span>
+        {scope.kind === 'neighbors' ? (
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => setScope(scope.back)}><ArrowLeftIcon />{t('범위 조회로')}</button>
+            <span>{tx('{0} 기준 {1}단계 이웃 · 엔터티 {2}개', <strong>{scopeName}</strong>, scope.depth, graph.data?.entities.length ?? 0)}</span>
+          </>
+        ) : (
+          <span>
+            {scope.keyword ? `"${scope.keyword}"` : t('모델 전체')}
+            {graph.data && t(' · 전체 {0}개 중 {1}', graph.data.totalCount, graph.data.entities.length ? `${scope.page * PAGE_SIZE + 1}–${scope.page * PAGE_SIZE + graph.data.entities.length}` : 0)}
+          </span>
+        )}
         <span>{t('· 관계 {0}개', graph.data?.relationships.length ?? 0)}</span>
+        {outsideTotal > 0 && <span className="erd-muted">{t('· 범위 밖 관계 {0}개', outsideTotal)}</span>}
+        {graph.data && <span className="erd-muted">{t('(모델 엔터티 {0}개)', graph.data.modelEntityCount)}</span>}
+        {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? t('한도(300개)까지만 표시') : t('일부만 표시 - 검색으로 범위를 줄이거나 다음 페이지로')}</Label>}
+        {scope.kind === 'search' && (graph.data?.truncated || scope.page > 0) && (
+          <span className="erd-pager">
+            <button type="button" className="btn btn-sm" disabled={loading || scope.page === 0} onClick={() => setScope({ ...scope, page: scope.page - 1 })}>{t('이전')}</button>
+            <button type="button" className="btn btn-sm" disabled={loading || !graph.data?.truncated} onClick={() => setScope({ ...scope, page: scope.page + 1 })}>{t('다음 {0}개', PAGE_SIZE)}</button>
+          </span>
+        )}
         {editing && <span className="erd-mode-note">{t('편집 모드 · 엔터티·속성 변경은 바로 저장됩니다. 배치는 [배치 저장] 을 눌러야 저장됩니다.')}</span>}
         {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
@@ -440,7 +534,12 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
         <div className={`erd-canvas${editing ? ' erd-editing' : ''}`} ref={canvas} aria-label={t('논리 ERD')}>
           <EndMarkers />
           {error && <div className="erd-empty" role="alert">{t('ERD 를 불러오지 못했습니다.')} {error.message}</div>}
-          {!error && !loading && graph.data && !graph.data.entities.length && <div className="erd-empty">{t('이 논리 모델에 등록된 엔터티가 없습니다.')}</div>}
+          {!error && !loading && graph.data && !graph.data.entities.length && (
+            <div className="erd-empty">{graph.data.modelEntityCount === 0 ? t('이 논리 모델에 등록된 엔터티가 없습니다.') : t('검색 결과가 없습니다.')}</div>
+          )}
+          {!error && !loading && scope.kind === 'neighbors' && graph.data?.entities.length === 1 && !graph.data.relationships.length && !outsideTotal && (
+            <div className="erd-empty erd-empty-note">{t('선택한 엔터티에 연결된 관계가 없습니다.')}</div>
+          )}
           <ReactFlow
             nodes={displayNodes}
             edges={edges}
@@ -453,7 +552,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
                 return !before || before.x !== n.position.x || before.y !== n.position.y;
               });
               moved.forEach((n) => positions.current.set(n.id, n.position));
-              if (moved.length) setDirty(true);
+              if (moved.length) markPending(moved.map((n) => n.id));
             }}
             onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedRelationship(null); }}
             onNodeDoubleClick={(_, node) => openDetail(node.data.entity.id)}
@@ -479,10 +578,18 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
             <option value="">{t('엔터티로 이동')}</option>
             {graph.data?.entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
+          <EntityFinder modelId={modelId} onPick={(hit) => {
+            if (graph.data?.entities.some((e) => e.id === hit.id)) focus(String(hit.id));
+            else neighborsOf(hit.id, hit.name);
+          }} />
           {selected ? (
             <EntityPanel
               graph={graph.data!}
               entity={selected}
+              outsideCount={outside[String(selected.id)] ?? 0}
+              depth={depth}
+              onDepth={setDepth}
+              onNeighbors={() => neighborsOf(selected.id, selected.name)}
               onFocus={() => focus(String(selected.id))}
               onDetail={() => openDetail(selected.id)}
               version={graph.dataUpdatedAt}
@@ -516,14 +623,61 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
           <div className="erd-legend">
             <span><i className="erd-line" style={{ borderTopColor: 'var(--gh-fg-muted)' }} />{t('식별 관계')}</span>
             <span><i className="erd-line dashed" style={{ borderTopColor: 'var(--gh-fg-muted)' }} />{t('비식별 관계')}</span>
+            {/* Crow's Foot (M-6 후속 2차) : 관계선 끝과 같은 기호. 그 엔터티 쪽의 참여 수 = 최소(○ 선택 / | 필수)와 최대(| 하나 / 까치발 여러 건) */}
+            {CROWS_FOOT.map(([kind, label]) => (
+              <span key={kind} className="logical-legend-end">
+                <svg width="40" height="16" aria-hidden><line x1="2" y1="8" x2="38" y2="8" stroke="var(--gh-fg-muted)" strokeWidth="1.25" markerEnd={`url(#logical-end-${kind})`} /></svg>
+                {label}
+              </span>
+            ))}
             <span><b>PI</b> {t('주 식별자')}</span>
             <span><b>AI</b> {t('보조 식별자')}</span>
             <span><b>*</b> {t('필수 속성')}</span>
             <p className="erd-muted">{t('관계선 양 끝의 숫자는 그 엔터티 쪽의 참여 수입니다 (0 = 선택, 1 = 필수, N = 여러 건).')}</p>
+            <p className="erd-muted">{t('최대가 2 이상인 참여 수(예 0..5)는 까치발로 그리고 정확한 수는 옆 숫자로 봅니다.')}</p>
           </div>
         </aside>
       </div>
     </>
+  );
+}
+
+/**
+ * 엔터티 찾기 (M-6 후속 1차) : 지금 ERD 범위와 무관하게 서버에서 이름·설명으로 찾는다 (최대 20개 + 전체 수).
+ * 입력을 잠깐 멈췄을 때만 묻고, 검색어마다 따로 캐시해 늦게 온 이전 응답이 지금 결과를 덮지 않는다
+ */
+function EntityFinder({ modelId, onPick }: { modelId: number; onPick: (hit: EntityHits['items'][number]) => void }) {
+  const [input, setInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setKeyword(input.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [input]);
+  const hits = useQuery({
+    queryKey: ['logical-erd-finder', modelId, keyword],
+    queryFn: ({ signal }) => api<EntityHits>(`/api/logical/model/${modelId}/erd/entities?size=20&keyword=${enc(keyword)}`, { signal, silent: true }),
+    enabled: keyword.length > 0,
+    staleTime: 30_000,
+  });
+  return (
+    <div className="erd-finder">
+      <input type="search" className="form-control" aria-label={t('엔터티 찾기')} maxLength={100} placeholder={t('엔터티 찾기 (ERD 밖의 엔터티도)')}
+        value={input} onChange={(e) => setInput(e.target.value)} />
+      {keyword && (
+        hits.isError ? <p className="erd-muted" role="alert">{t('엔터티를 찾지 못했습니다.')}</p>
+          : !hits.data ? <p className="erd-muted">{t('불러오는 중…')}</p>
+            : hits.data.items.length === 0 ? <p className="erd-muted">{t('찾는 엔터티가 없습니다.')}</p> : (
+              <>
+                <p className="erd-muted">{t('찾은 엔터티 {0}개 중 {1}개', hits.data.totalCount, hits.data.items.length)}</p>
+                <ul className="erd-list erd-finder-list">
+                  {hits.data.items.map((hit) => (
+                    <li key={hit.id}><button type="button" className="erd-list-button" onClick={() => onPick(hit)}>{hit.name}</button></li>
+                  ))}
+                </ul>
+              </>
+            )
+      )}
+    </div>
   );
 }
 
@@ -547,9 +701,14 @@ interface EntityEdit {
   onDeleteIdentifier: (identifier: LogicalIdentifier) => void;
 }
 
-function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
+function EntityPanel({ graph, entity, outsideCount, depth, onDepth, onNeighbors, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
   graph: LogicalGraph;
   entity: GraphEntity;
+  /** 상대 엔터티가 조회 범위 밖이라 그리지 않은 관계 수 */
+  outsideCount: number;
+  depth: number;
+  onDepth: (depth: number) => void;
+  onNeighbors: () => void;
   onFocus: () => void;
   onDetail: () => void;
   onManage?: () => void;
@@ -570,12 +729,18 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
   const identifiers = detail.data?.identifiers ?? [];
   const approvedNote = t('승인된 엔터티는 승인취소 후에 변경할 수 있습니다.');
   const deleteBlocked = !edit ? '' : !edit.entityEditable ? approvedNote
-    : relationships.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : '';
+    : relationships.length || outsideCount ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : '';
   return (
     <>
       <h3>{entity.name}</h3>
       <p><ApprovalLabel value={entity.isApproval} /></p>
       <p className="erd-muted">{entity.description || t('설명 없음')}</p>
+      <div className="erd-toolbar">
+        <select className="form-control" aria-label={t('이웃 단계')} value={depth} onChange={(e) => onDepth(Number(e.target.value))}>
+          {[1, 2, 3].map((n) => <option key={n} value={n}>{t('{0}단계', n)}</option>)}
+        </select>
+        <button type="button" className="btn btn-sm" onClick={onNeighbors}><GitMergeIcon />{t('이웃 탐색')}</button>
+      </div>
       <div className="erd-toolbar erd-links">
         <button type="button" className="btn btn-sm" onClick={onFocus}>{t('이동')}</button>
         <button type="button" className="btn btn-sm" onClick={onDetail}>{t('엔터티 상세')}</button>
@@ -632,7 +797,8 @@ function EntityPanel({ graph, entity, onFocus, onDetail, onManage, onMapping, on
         <p className="erd-muted">{t('등록된 식별자가 없습니다.')}</p>
       )}
 
-      <h4>{t('관계 {0}개', relationships.length)}</h4>
+      <h4>{t('관계 {0}개', relationships.length + outsideCount)}</h4>
+      {outsideCount > 0 && <p className="erd-muted">{t('이 중 {0}개는 상대 엔터티가 조회 범위 밖이라 그리지 않았습니다. [이웃 탐색] 으로 볼 수 있습니다.', outsideCount)}</p>}
       {edit && <div className="erd-toolbar erd-links"><button type="button" className="btn btn-sm" onClick={edit.onAddRelationship}>{t('관계 추가')}</button></div>}
       {relationships.length ? (
         <ul className="erd-list">

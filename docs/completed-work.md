@@ -347,16 +347,19 @@
 - 구현 내용 : 스키마 관리 화면(`/schemaManage`), 테이블·컬럼 화면의 스키마 연동, ERD ↔ 테이블·컬럼 관리·데이터 사전 이동, 기본 스키마 이름 고정, `SCHEMA_PERMISSION_DENIED` — [physical-erd-m3.md](completed/physical-erd-m3.md).
 - 검증 결과 : H2/PostgreSQL 테스트, 이후 M-5 와 함께 헤드리스 Chrome 검증 (로드맵 M-5 기록). 스키마 이동 UI·AI 결과 표시는 하지 않음 (pending-work.md).
 
-### [M-6] 논리 데이터 모델 — 1차 · 2차
+### [M-6] 논리 데이터 모델 — 1차 · 2차 · 후속 1차 (조회 범위) · 후속 2차 (관계선 표현)
 
 - 상태: 완료 (완료 조건 충족)
 - 구현 내용 : 논리 모델·엔터티·속성·식별자(복합)·관계(양쪽 최소·최대 참여 수), `/api/logical/**`, 표준 용어 연결, 승인. 2차 : 관리 화면(`/logicalModel`), 논리 ERD(`/logicalErd`, 모델별·사용자별 레이아웃 `TB_LGCL_ERD_LYT`), 사이드바 개편(시스템 관리 / 데이터 사전 / 논리 모델 관리 / 물리 모델 관리 / 데이터 품질 관리 / 운영 관리) — [logical-model-m6.md](completed/logical-model-m6.md).
 - 설계 결정 : D-07 프로젝트에 논리 모델 여러 개, 주제 영역·서브타입은 후속.
 - 검증 결과 : H2/PostgreSQL 테스트 + Chrome 브라우저 검증(ADMIN).
+- **후속 1차 (2026-11-18) — 대규모 논리 ERD 조회 범위** : 논리 ERD 가 서버가 고른 범위만 받는다 — `GET /api/logical/model/{id}/erd/part`(이름·설명 검색, 비우면 모델 전체, 이름순 100개씩·최대 300), `/erd/neighbors/{entityId}?depth=1~3`(출발·도착 모두, 300 한도), `/erd/entities`(엔터티 찾기, 속성 없음). 관계는 양 끝이 범위 안인 것만, 범위 밖 관계는 엔터티별 수. 화면 : 검색·페이지·[범위 조회로]·단계 선택 [이웃 탐색]·엔터티 찾기(범위 밖이면 이웃을 불러와 포커스)·범위 밖 관계 안내, URL 의 엔터티가 범위 밖이면 이웃으로 불러온다, 옮긴 좌표는 범위를 바꿔도 기억해 함께 저장(서버 합치기 — 범위 밖 저장 좌표 보존). 기존 전체 조회 API·관리 화면·저장 구조·권한 그대로, DB·마이그레이션 변경 없음 — [기록 13장](completed/logical-model-m6.md). 검증 : `LogicalErdScopeIntegrationTest` 7건, 성능 측정 `LogicalErdPerformanceTest`(LEXORMA_PERF, 엔터티 3,000개 : 전체 6.5MB·H2 73ms·PostgreSQL 213ms → 첫 화면 216KB·13ms·25ms), H2 1,050건 실패 0 · 건너뜀 46, PostgreSQL 1,050건 실패 0 · 건너뜀 31, 헤드리스 Chrome ADMIN 8조합 + VIEWER·USER·DBA. 미검증 : Linux CI (MANAGER 화면·브라우저 렌더링·배치 시간은 후속 2차에서 확인).
+- **후속 2차 (2026-11-19) — 논리 ERD 관계선 표현** : 같은 두 엔터티 사이 관계(방향 무관 한 묶음, 자기 참조는 따로)를 관계 ID 순 차선으로 나눠 끝점(±20px 안)·꺾이는 세로 구간·돌아 나가는 폭을 모두 달리한다(`features/erd/relationLanes.ts` 순수 함수 + `features/logical/erdNodes.tsx`), 자기 참조 고리는 ID 순으로 바깥으로 넓어진다, 선 고르는 영역 16 → 12px. Crow's Foot 끝 기호·실선(식별)/점선(비식별)은 기존 그대로 저장된 최소·최대·`IDNTF_YN` 에서만 정한다(추정 없음 — 최대 2 이상 유한값은 까치발 + 숫자 글자). 범례에 기호 4종 추가. 범위 조회·한도·배치 저장·권한·물리 ERD 그대로, 서버·DB·마이그레이션 변경 없음 — [기록 14장](completed/logical-model-m6.md). 검증 : 차선 함수 Node 단독 실행(프런트 테스트 도구 없음), 헤드리스 Chrome ADMIN 8조합 + VIEWER·USER·DBA·MANAGER 각 2조합(평행·자기 참조 7개 실제 클릭 선택, 끝 기호·선 모양 = 저장값, 드래그·저장 복원·축소·자동 배치·범위·물리 ERD 회귀), 브라우저 성능(엔터티 300·관계 924 : 첫 화면 683ms, 자동 배치 100개 341ms·300개 2,093ms, 이웃 300 전환 197ms, 관계선 선택 28ms, 드래그 51ms), H2 1,050건 실패 0 · 건너뜀 46, PostgreSQL 18.6 1,050건 실패 0 · 건너뜀 31. 미검증 : Linux CI, 관계 10개 이상 같은 쌍의 가독성(겹치지는 않음).
 
-### [M-7] 논리 · 물리 모델 매핑 — 1차 · 2차 · 3차 · DEC-10 선택 생성 · 보강 1~5차
+### [M-7] 논리 · 물리 모델 매핑 — 1차 · 2차 · 3차 · DEC-10 선택 생성 · 보강 1~5차 · 생성 컬럼명 기준 통일
 
 - 상태: 매핑 1~3차와 **논리 → 물리 선택 생성(DEC-10 2차 + 보강 1~5차, 2026-11-17)은 완료**. M-7 전체는 부분 완료 — 추천·정합성 진단 확장·ERD 연계와 별도 정책 검토는 pending-work.md [M-7].
+- **생성 컬럼명 기준 통일 (2026-11-18, M-7 후속)** : 논리 → 물리 생성 컬럼명 = 표준 용어 저장 영문약어(`StandardNames.expectedColumnName` + 대문자) — 단어 약어 조합을 먼저 쓰던 것을 고쳐 생성·물리명 추천·매핑 정합성·품질 진단이 같은 값을 쓴다. 약어 없음은 지금처럼 오류(단어 조합으로 대신하지 않음), planToken 형식 그대로(용어 수정 시각·컬럼명 포함 — 약어가 바뀌면 409), 이미 만든 물리 모델·매핑은 그대로. DB·API 계약 변경 없음 — [기록 17장](completed/logical-physical-mapping-m7.md). 검증 : `PhysicalGenerationStoredAbbreviationIntegrationTest` 6건, H2 1,042건 실패 0 · 건너뜀 45, PostgreSQL 18.6 1,042건 실패 0 · 건너뜀 30, 헤드리스 Chrome 8조합. 미검증 : Linux CI. 같은 작업으로 M-5 표준 용어 충돌 안내를 행위별(수정·승인·승인 취소) 문구로 나눴다([M-5 기록 15장](completed/standardization-quality-rules-m5.md)).
 - **선택 생성 최종 상태 (2026-11-18 정리 — 아래 단계별 기록의 요약, 새 구현 없음)**
   - 흐름 : 미리보기 `POST /api/modelMapping/generate/preview` → `planToken` v5(엔터티·속성·용어 버전, 제외 속성, 컬럼 순서, 관계 계획·짝·FK 이름·상태, 식별자 진단) → 반영 `POST /api/modelMapping/generate`. 반영은 프로젝트 행 배타 → 논리 모델·대상 스키마 NOWAIT(바쁘면 409) → 다시 계획해 다르면 409 → 생성 직전 `GENERATE-<uuid>` 모델 버전(성공한 반영에만 1개) → 미승인 테이블·컬럼·매핑·FK. 어느 단계에서 실패해도 한 트랜잭션 전체 롤백(버전·이력 포함).
   - 범위 : 선택 엔터티만, 이미 매핑된 엔터티는 건너뜀, 같은 이름 TABLE·VIEW 덮어쓰지 않음, 복합 PK = 논리 주 식별자 순서, 일반 속성 제외 가능(주 식별자·READY FK 자식 속성은 필수), 오류 엔터티 제외 후 다시 미리보기, DBMS 식별자 진단은 경고만.

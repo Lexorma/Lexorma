@@ -111,7 +111,9 @@ public class StandardTermService {
                 standardTermRepository.findForUpdate(id, projectId).ifPresent(term -> {
                     if (Boolean.TRUE.equals(term.getIsApproval()) == isApprovalAvailable) return; // 이미 그 상태 : 바꾸는 것이 없다
                     // 승인자가 본 내용 그대로일 때만 바꾼다 (M-5 8차) : 화면을 연 뒤 고쳐졌으면 409 — 하나라도 다르면 전체를 되돌린다 (한 트랜잭션)
-                    verifyBase(term, bases.get(id), "표준 용어 {0} 이(가) 화면을 연 뒤 변경되어 승인 여부를 바꾸지 않았습니다. 목록을 다시 불러와 최신 내용을 검토한 뒤 다시 처리하세요.");
+                    verifyBase(term, bases.get(id), isApprovalAvailable
+                            ? "화면을 연 뒤 표준 용어 {0} 이(가) 변경되어 승인하지 않았습니다. 최신 정보를 확인한 후 다시 승인해 주세요."
+                            : "화면을 연 뒤 표준 용어 {0} 이(가) 변경되어 승인을 취소하지 않았습니다. 최신 정보를 확인한 후 다시 승인 취소해 주세요.");
                     // 승인/미승인 상태로 변경한다.
                     term.setIsApproval(isApprovalAvailable);
                 }));
@@ -426,12 +428,12 @@ public class StandardTermService {
 
     private static final int DESCRIPTION_MAX_LENGTH = 1000; // standard_term.common_standard_term_description
 
-    /** {@link ModelBase#verify} 와 같은 비교(1µs 미만 차이는 같음)·같은 409 MODEL_CONFLICT, 사유만 표준 용어 화면에 맞춘다 (M-5 8차) */
-    private static void verifyBase(StandardTerm locked, java.time.LocalDateTime base, String reason) {
+    /** {@link ModelBase#verify} 와 같은 비교(1µs 미만 차이는 같음)·같은 409 MODEL_CONFLICT. 문구는 공통 문구 대신 행위별(수정·승인·승인 취소) 표준 용어 안내만 (M-7 후속) */
+    private static void verifyBase(StandardTerm locked, java.time.LocalDateTime base, String message) {
         try {
             ModelBase.verify(locked, base, locked.getCommonStandardTermName());
         } catch (CustomException conflict) {
-            throw new CustomException(ErrorCode.MODEL_CONFLICT, reason, locked.getCommonStandardTermName());
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, message, locked.getCommonStandardTermName());
         }
     }
 
@@ -524,7 +526,7 @@ public class StandardTermService {
             throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         }
         // 화면을 연 뒤 다른 사용자가 고쳤으면 409 (M-5 8차, DEC-08 과 같은 계약 — 잠근 행의 MDFCN_DT 와 비교). HTTP 요청은 기준값이 필수다(컨트롤러)
-        verifyBase(existingTerm, dto.getModifiedAt(), "표준 용어 {0} 을(를) 화면을 연 뒤 다른 사용자가 먼저 변경해 저장하지 않았습니다. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.");
+        verifyBase(existingTerm, dto.getModifiedAt(), "화면을 연 뒤 다른 사용자가 표준 용어 {0} 을(를) 먼저 변경해 저장하지 않았습니다. 입력한 내용은 그대로 두었습니다. 최신 정보를 확인한 후 다시 수정해 주세요. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.");
         // 영문약어를 보내지 않으면(null) 저장된 값을 그대로 둔다 (단어 약어 조합으로 바꾸지 않는다)
         if (dto.getCommonStandardTermAbbreviation() == null) {
             dto.setCommonStandardTermAbbreviation(existingTerm.getCommonStandardTermAbbreviation());

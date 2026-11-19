@@ -478,6 +478,113 @@ public class LogicalModelService {
                 withPairs(relationshipRepository.findAllByModelId(modelId), e -> primaryKeys.getOrDefault(e.getId(), List.of())));
     }
 
+    // ------------------------------------------------------------------ 논리 ERD 부분 조회 (M-6 후속 1차)
+    // 물리 ERD(ErdService)와 같은 한도 : 한 번에 엔터티 300개, 이웃 1~3단계, 검색어 100자. 전체 조회(selectGraph)는 관리 화면이 쓰므로 그대로 둔다
+
+    public static final int ERD_MAX_ENTITIES = 300;
+    public static final int ERD_MAX_DEPTH = 3;
+    public static final int ERD_MAX_KEYWORD = 100;
+    public static final int ERD_MAX_HITS = 50;
+
+    /** 범위 조회 : 이름·설명에 검색어가 든 엔터티(없으면 모델 전체)를 이름순 page 번째 size 개 */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.GraphPart selectGraphPart(AccountDto accountDto, Long modelId, String keyword, int page, int size) {
+        LogicalModel model = model(accountDto.getProjectId(), modelId);
+        if (page < 0 || size < 1 || size > ERD_MAX_ENTITIES) throw invalid("한 번에 1~{0}개 엔터티까지 조회할 수 있습니다.", ERD_MAX_ENTITIES);
+        String pattern = likePattern(keyword);
+        long total = entityRepository.countSearch(modelId, pattern);
+        long offset = (long) page * size;
+        List<Long> ids = offset < total ? entityRepository.searchIds(modelId, pattern, org.springframework.data.domain.PageRequest.of(page, size)) : List.of();
+        return graphPart(model, ids, total, offset + ids.size() < total);
+    }
+
+    /** 이웃 탐색 : 관계(출발·도착 모두)로 depth 단계 안에 이어진 엔터티. 단계마다 관계 쿼리 1번, 한도를 넘으면 그 단계에서 멈춘다 */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.GraphPart selectNeighbors(AccountDto accountDto, Long modelId, Long entityId, int depth) {
+        Long projectId = accountDto.getProjectId();
+        LogicalModel model = model(projectId, modelId);
+        if (depth < 1 || depth > ERD_MAX_DEPTH) throw invalid("이웃 탐색은 1~{0}단계까지 가능합니다.", ERD_MAX_DEPTH);
+        // 다른 모델·프로젝트의 엔터티는 없는 것과 같다
+        if (entityId == null || !modelId.equals(entityRepository.findModelId(entityId, projectId).orElse(null))) throw notFound("엔터티");
+
+        Set<Long> found = new java.util.LinkedHashSet<>(List.of(entityId));
+        Set<Long> frontier = Set.of(entityId);
+        boolean truncated = false;
+        for (int level = 0; level < depth && !frontier.isEmpty() && !truncated; level++) {
+            Set<Long> next = new java.util.LinkedHashSet<>();
+            for (Object[] link : relationshipRepository.findLinks(modelId, frontier)) {
+                for (Long end : new Long[]{(Long) link[1], (Long) link[2]}) {
+                    if (found.contains(end)) continue; // 자기 참조·순환·여러 경로 : 한 번만
+                    if (found.size() >= ERD_MAX_ENTITIES) {
+                        truncated = true;
+                        break;
+                    }
+                    found.add(end);
+                    next.add(end);
+                }
+                if (truncated) break;
+            }
+            frontier = next;
+        }
+        return graphPart(model, List.copyOf(found), found.size(), truncated);
+    }
+
+    /** 엔터티 찾기 (ERD 에 없는 엔터티도) : 이름·설명 검색, 이름순 최대 size 개(1~50) */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.EntityHits searchEntities(AccountDto accountDto, Long modelId, String keyword, int size) {
+        model(accountDto.getProjectId(), modelId);
+        if (size < 1 || size > ERD_MAX_HITS) throw invalid("한 번에 1~{0}개 엔터티까지 찾을 수 있습니다.", ERD_MAX_HITS);
+        String pattern = likePattern(keyword);
+        List<LogicalModelDto.EntityHit> items = entityRepository.searchHits(modelId, pattern, org.springframework.data.domain.PageRequest.of(0, size)).stream()
+                .map(row -> new LogicalModelDto.EntityHit((Long) row[0], (String) row[1], (Boolean) row[2])).toList();
+        return new LogicalModelDto.EntityHits(items, entityRepository.countSearch(modelId, pattern));
+    }
+
+    /** 고른 엔터티만 읽는다 (조회 수는 엔터티 수와 관계없이 일정 : 엔터티+속성, 식별자, 관계, 관계 속성 짝, 범위 밖 관계, 모델 엔터티 수) */
+    private LogicalModelDto.GraphPart graphPart(LogicalModel model, List<Long> ids, long total, boolean truncated) {
+        Long modelId = model.getId();
+        long modelEntityCount = entityRepository.countByModel_Id(modelId);
+        if (ids.isEmpty()) return new LogicalModelDto.GraphPart(modelId, model.getModelName(), List.of(), List.of(), total, truncated, modelEntityCount, Map.of());
+        Set<Long> identifierAttributes = new HashSet<>();
+        Set<Long> primaryAttributes = new HashSet<>();
+        Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>();
+        for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(ids)) {
+            for (LogicalIdentifierAttribute attribute : identifier.getAttributes()) {
+                identifierAttributes.add(attribute.getAttribute().getId());
+                if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
+            }
+            if (Boolean.TRUE.equals(identifier.getIsPrimary())) {
+                primaryKeys.put(identifier.getEntity().getId(), identifier.getAttributes().stream()
+                        .sorted(java.util.Comparator.comparing(LogicalIdentifierAttribute::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                                .thenComparing(LogicalIdentifierAttribute::getId))
+                        .map(a -> a.getAttribute().getId()).distinct().toList());
+            }
+        }
+        // 걸린 관계를 한 번 읽어 범위 안(양 끝 모두)·범위 밖(한 끝만)으로 나눈다. 범위 안 관계는 ID 로 읽는다
+        // (양 끝을 각각 IN 으로 거르는 쿼리는 H2 에서 엔터티 300개일 때 0.1~0.7초 걸렸다 — 측정, 기록 m6 17장)
+        Set<Long> scope = new HashSet<>(ids);
+        Map<Long, Integer> outside = new java.util.TreeMap<>();
+        Set<Long> within = new java.util.TreeSet<>();
+        for (Object[] link : relationshipRepository.findLinks(modelId, scope)) {
+            Long source = (Long) link[1];
+            Long target = (Long) link[2];
+            if (scope.contains(source) && scope.contains(target)) within.add((Long) link[0]);
+            else if (scope.contains(source)) outside.merge(source, 1, Integer::sum);
+            else outside.merge(target, 1, Integer::sum);
+        }
+        return new LogicalModelDto.GraphPart(modelId, model.getModelName(),
+                entityRepository.findGraphByIds(modelId, scope).stream().map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList(),
+                withPairs(within.isEmpty() ? List.of() : relationshipRepository.findWithEntities(within), e -> primaryKeys.getOrDefault(e.getId(), List.of())),
+                total, truncated, modelEntityCount, outside);
+    }
+
+    /** 검색어 → like 패턴 (소문자, '!' 로 %·_·! 이스케이프). 비었으면 모두 */
+    private static String likePattern(String keyword) {
+        String text = keyword == null ? "" : keyword.trim();
+        if (text.length() > ERD_MAX_KEYWORD) throw invalid("검색어는 {0}자까지 입력할 수 있습니다.", ERD_MAX_KEYWORD);
+        return "%" + text.toLowerCase(java.util.Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+    }
+
     // ------------------------------------------------------------------ 논리 ERD 레이아웃 (내 배치, 모델별)
 
     /** 저장한 적 없으면 version·viewport 가 null. 지워진 엔터티의 좌표는 빼고 준다 */

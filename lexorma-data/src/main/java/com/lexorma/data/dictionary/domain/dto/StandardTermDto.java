@@ -1,13 +1,11 @@
 package com.lexorma.data.dictionary.domain.dto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
-import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
 import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -43,20 +41,10 @@ public class StandardTermDto {
      */
     private LocalDateTime modifiedAt;
 
-    /**
-     * 용어를 이루는 단어들의 단어 약어를 '_' 로 이은 값 (단어 연결이 없으면 ""). 저장된 영문약어를 대신하지 않는다 —
-     * 조회·수정 화면은 저장값을 쓴다 (M-5 7차). 논리 → 물리 생성의 컬럼명만 이 값을 먼저 쓴다 (PhysicalGenerationService.columnSpec)
-     */
-    public static String wordAbbreviation(StandardTerm entity) {
-        return entity.getTermWordMappings() == null ? "" : entity.getTermWordMappings().stream()
-                .sorted(Comparator.comparingInt(StandardTermWordMapping::getOrderIndex))
-                .map(mapping -> mapping.getStandardWord().getCommonStandardWordAbbreviation())
-                .collect(Collectors.joining("_"));
-    }
-
     public static StandardTermDto fromEntity(StandardTerm entity) {
 
-        // 영문약어는 저장된 값 그대로 (예전에는 단어 약어 조합을 보여 줘, 저장값이 다른 용어를 화면에서 고치면 약어가 바뀌었다 — M-5 7차)
+        // 영문약어는 저장된 값 그대로 (예전에는 단어 약어 조합을 보여 줘, 저장값이 다른 용어를 화면에서 고치면 약어가 바뀌었다 — M-5 7차).
+        // 단어 조합은 새 용어 등록 화면의 기본값으로만 쓴다 (논리 → 물리 생성도 저장값 — M-7 후속)
         String abbreviation = entity.getCommonStandardTermAbbreviation();
 
         StandardDomain domain = entity.getStandardDomain();

@@ -164,7 +164,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
   const [keyword, setKeyword] = useState('');
   const [depth, setDepth] = useState(1);
   const graphUrl = partUrl(modelId, scope);
-  // 관리 화면과 같은 키 아래에 둔다 : 모델이 바뀌어 graphQueryKey 를 무효화하면 이 조회도 다시 받는다
+  // 모델의 ERD 키(graphQueryKey) 아래에 둔다 : 그 키를 무효화하면 이 조회도 다시 받는다
   const graph = useQuery({
     queryKey: [...graphQueryKey(user?.projectId, modelId), 'part', graphUrl],
     queryFn: ({ signal }) => api<LogicalGraphPart>(graphUrl, { signal, silent: true }),
@@ -419,15 +419,18 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       content: () => <RelationshipPairsEditor relationshipId={relationship.id} readOnly={!editing || !!relationship.isApproval} onSaved={() => void refresh()} />,
     });
   };
-  const openRelationshipForm = async (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
+  const openRelationshipForm = (relationship?: LogicalRelationship, initial?: { sourceId?: number; targetId?: number }) => {
     if (!graph.data?.entities.length) return;
-    // 관계의 상대 엔터티는 지금 범위 밖일 수 있다 : 모델의 엔터티 이름 목록(속성 없이)을 받아 고르게 한다
-    const entities = (await api<LogicalEntity[]>(`/api/logical/model/${modelId}/entity`)).map((e) => ({ id: e.id, name: e.entityName }));
+    // 연결점·선택한 엔터티는 지금 범위 안이다. 상대 엔터티는 범위 밖일 수 있어 대화상자에서 모델 안을 검색해 고른다 (모델 전체 목록을 받지 않는다)
+    const option = (id?: number) => {
+      const entity = id == null ? undefined : graph.data?.entities.find((e) => e.id === id);
+      return entity ? { id: entity.id, name: entity.name } : undefined;
+    };
     dialog.open({
       title: relationship ? t('관계 수정') : t('관계 등록'),
       className: 'dialog-wide',
       content: ({ close }: DialogControls) => (
-        <RelationshipForm modelId={modelId} entities={entities} relationship={relationship} initial={initial}
+        <RelationshipForm modelId={modelId} relationship={relationship} initial={{ source: option(initial?.sourceId), target: option(initial?.targetId) }}
           onSaved={(saved) => {
             close();
             setSelectedRelationship(saved.id);

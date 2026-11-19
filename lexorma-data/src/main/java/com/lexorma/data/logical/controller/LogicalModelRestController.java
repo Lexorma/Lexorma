@@ -119,6 +119,25 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.selectEntities(accountDto, modelId));
     }
 
+    @Operation(summary = "논리 모델 요약 (M-6 후속 3차)", description = "모델 전체 엔터티 수·관계 수 (검색과 무관). 논리 모델 관리 화면 상단")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/summary")
+    public ResponseEntity<LogicalModelDto.Summary> selectSummary(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId) {
+        return ResponseEntity.ok(logicalModelService.selectSummary(accountDto, modelId));
+    }
+
+    @Operation(summary = "엔터티 목록 페이지 (M-6 후속 3차)", description = "공용 그리드 형식 { data, recordsTotal }. searchQuery : 이름·설명(대소문자 무시, %·_ 는 글자 그대로), "
+            + "sort : entityName·entityDescription·isApproval + ,asc|desc (기본 이름순, 같은 값은 ID 순), size 1~100. 행마다 속성 수·관계 수(자기 참조 1번)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/entity/data")
+    public ResponseEntity<Map<String, Object>> selectEntityRows(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                                @RequestParam(value = "page", defaultValue = "0") int page,
+                                                                @RequestParam(value = "size", defaultValue = "10") int size,
+                                                                @RequestParam(value = "sort", required = false) String sort,
+                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery) {
+        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(logicalModelService.selectEntityRows(accountDto, modelId, searchQuery, page, size, sort));
+    }
+
     @Operation(summary = "엔터티 상세", description = "속성·식별자 포함")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/entity/{entityId}")
@@ -218,6 +237,28 @@ public class LogicalModelRestController {
     @GetMapping("/model/{modelId}/relationship")
     public ResponseEntity<List<LogicalModelDto.Relationship>> selectRelationships(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId) {
         return ResponseEntity.ok(logicalModelService.selectRelationships(accountDto, modelId));
+    }
+
+    @Operation(summary = "관계 목록 페이지 (M-6 후속 3차)", description = "공용 그리드 형식 { data, recordsTotal(검색·필터 조건에 맞는 수) }. size 1~100, 행마다 속성 짝과 판정. "
+            + "searchQuery : 관계명·출발·도착 엔터티명(대소문자 무시, %·_ 는 글자 그대로), isIdentifying : true 식별 / false 비식별 / 없으면 전체, "
+            + "sort : relationshipName·sourceEntityName·targetEntityName + ,asc|desc (없으면 관계 ID 순, 같은 값은 ID 순)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/relationship/data")
+    public ResponseEntity<Map<String, Object>> selectRelationshipRows(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                                      @RequestParam(value = "page", defaultValue = "0") int page,
+                                                                      @RequestParam(value = "size", defaultValue = "10") int size,
+                                                                      @RequestParam(value = "sort", required = false) String sort,
+                                                                      @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                      @RequestParam(value = "isIdentifying", required = false) Boolean isIdentifying) {
+        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(
+                logicalModelService.selectRelationshipRows(accountDto, modelId, searchQuery, isIdentifying, page, size, sort));
+    }
+
+    @Operation(summary = "엔터티의 관계 (M-6 후속 3차)", description = "출발·도착 어느 쪽이든 이 엔터티인 관계와 속성 짝. 엔터티 상세의 관계 탭")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{entityId}/relationship")
+    public ResponseEntity<List<LogicalModelDto.Relationship>> selectEntityRelationships(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "entityId") Long entityId) {
+        return ResponseEntity.ok(logicalModelService.selectEntityRelationships(accountDto, entityId));
     }
 
     @Operation(summary = "관계 등록·수정", description = "양쪽 엔터티는 같은 모델에 있어야 한다 (자기 참조 가능). 카디널리티는 양쪽 최소·최대 참여 수 (최대 null = 다)")

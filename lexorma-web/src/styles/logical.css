@@ -39,3 +39,11 @@
 .logical-pair-list { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .logical-pairs-error { color: var(--gh-danger); }
 .erd-subtitle { margin: 12px 0 4px; font-size: 13px; }
+
+/* 논리 모델 관리 서버 페이징 (M-6 후속 3차) : 페이지 크기 옆 건수, 관계 대화상자의 엔터티 검색 */
+.logical-list-count { margin-left: 12px; }
+.logical-picker-search { margin-bottom: 6px; }
+
+/* 논리 모델 관리 표 머리글 (후속 3차 보완) : 공용 layout.css 는 머리글을 줄바꿈하지 않아 고정 폭 열에서 긴 영어 머리글(Identifying relationship 등)이 옆 칸과 겹쳤다 → 이 두 표만 칸 안에서 줄바꿈 */
+#logicalEntityGrid thead th,
+#logicalRelationshipGrid thead th { white-space: normal; }

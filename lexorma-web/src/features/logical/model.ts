@@ -187,15 +187,32 @@ export function useLogicalModels() {
 
 export const graphQueryKey = (projectId: number | undefined, modelId: number | undefined) => ['logical-erd', projectId, modelId];
 
-/** 모델의 엔터티(속성·식별자 표시)와 관계. 관리 화면의 목록·건수와 논리 ERD 가 같은 조회를 쓴다 */
-export function useLogicalGraph(modelId: number | undefined, enabled = true) {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const queryKey = graphQueryKey(user?.projectId, modelId);
-  const query = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => api<LogicalGraph>(`/api/logical/model/${modelId}/erd`, { signal, silent: true }),
-    enabled: modelId != null && enabled,
-  });
-  return { ...query, refresh: () => queryClient.invalidateQueries({ queryKey }) };
+/**
+ * 논리 모델 관리 화면의 조회 키 (M-6 후속 3차) : 요약·엔터티 페이지·관계 페이지가 이 아래에 있다.
+ * 변경 뒤에는 이 키를 무효화해 지금 모델의 요약·목록만 다시 받는다 (전체 그래프를 다시 받지 않는다)
+ */
+export const manageQueryKey = (projectId: number | undefined, modelId: number | undefined) => ['logical-manage', projectId, modelId];
+
+/** GET /api/logical/model/{id}/summary : 모델 전체 수 (검색과 무관) */
+export interface LogicalModelSummary {
+  modelId: number;
+  entityCount: number;
+  relationshipCount: number;
+}
+
+/** GET /api/logical/model/{id}/entity/data 의 행 : 속성 수·관계 수(출발·도착 어느 쪽이든, 자기 참조 1번)는 서버가 센다 */
+export interface LogicalEntityRow {
+  id: number;
+  entityName: string;
+  entityDescription: string | null;
+  isApproval: boolean | null;
+  attributeCount: number;
+  relationshipCount: number;
+  modifiedAt?: string | null;
+}
+
+/** 공용 그리드 페이지 응답 { data, recordsTotal } */
+export interface GridPage<T> {
+  data: T[];
+  recordsTotal: number;
 }

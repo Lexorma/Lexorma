@@ -54,7 +54,7 @@ const ACTION_BUTTONS: { action: GridAction; label: string; className: string }[]
   { action: 'print', label: t('출력'), className: 'btn btn-secondary' },
 ];
 
-const PAGE_SIZES = [10, 25, 50, 100];
+export const PAGE_SIZES = [10, 25, 50, 100];
 
 export interface GridHandle {
   /** 현재 조건으로 다시 조회 (체크 해제) */
@@ -489,7 +489,8 @@ function columnId(col: GridColumn, index: number) {
   return `${index}:${col.column}`;
 }
 
-function Paging({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
+/** 페이지 이동 (공용 그리드와 같은 모양이 필요한 직접 그린 목록도 쓴다 — 예 논리 모델 관리) */
+export function Paging({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
   const button = (label: ReactNode, target: number, disabled: boolean, current = false, key?: string) => (
     <button
       key={key ?? String(label)}

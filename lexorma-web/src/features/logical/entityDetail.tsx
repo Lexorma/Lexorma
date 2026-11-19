@@ -52,11 +52,10 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     queryFn: () => api<LogicalEntity>(`/api/logical/entity/${entityId}`, { silent: true }),
     gcTime: 0,
   });
-  const modelId = entity.data?.modelId;
+  // 이 엔터티의 관계만 (M-6 후속 3차 — 모델 전체 관계를 받아 거르지 않는다)
   const relationships = useQuery({
-    queryKey: ['logical-relationships', modelId],
-    queryFn: () => api<LogicalRelationship[]>(`/api/logical/model/${modelId}/relationship`, { silent: true }),
-    enabled: modelId != null,
+    queryKey: ['logical-entity-relationships', entityId],
+    queryFn: () => api<LogicalRelationship[]>(`/api/logical/entity/${entityId}/relationship`, { silent: true }),
     gcTime: 0,
   });
 
@@ -71,7 +70,7 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
   const canEdit = canView('logical-model-edit') && !options.readOnly;
   const editable = canEdit && !approved;
   const detailEditable = canEdit && (!approved || approvalAvailable);
-  const related = (relationships.data ?? []).filter((r) => r.sourceEntityId === entityId || r.targetEntityId === entityId);
+  const related = relationships.data ?? [];
   const changed = () => {
     void entity.refetch();
     void relationships.refetch();
@@ -123,7 +122,7 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
         {tab === 'basic' && <BasicTab entity={data} editable={editable} onSaved={changed} />}
         {tab === 'attributes' && <AttributeTab entity={data} editable={detailEditable} onChanged={changed} />}
         {tab === 'identifiers' && <IdentifierTab entity={data} editable={detailEditable} onChanged={changed} />}
-        {tab === 'relationships' && <RelationshipTab relationships={related} loading={relationships.isPending} />}
+        {tab === 'relationships' && <RelationshipTab relationships={related} loading={relationships.isPending} failed={relationships.isError} />}
       </div>
 
       <div className="gh-dialog-actions">
@@ -140,7 +139,7 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
           </button>
         )}
         {editable && (
-          <button type="button" className="btn btn-danger" disabled={related.length > 0} onClick={remove}
+          <button type="button" className="btn btn-danger" disabled={!relationships.data || related.length > 0} onClick={remove}
             title={related.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : undefined}>
             {t('엔터티 삭제')}
           </button>
@@ -477,7 +476,8 @@ export function IdentifierForm({ entity, identifier, onSaved }: { entity: Logica
 }
 
 /** 이 엔터티가 걸린 관계 (조회 전용). 관계 등록·수정은 논리 모델 관리의 관계 탭에서 한다 */
-function RelationshipTab({ relationships, loading }: { relationships: LogicalRelationship[]; loading: boolean }) {
+function RelationshipTab({ relationships, loading, failed }: { relationships: LogicalRelationship[]; loading: boolean; failed: boolean }) {
+  if (failed) return <p role="alert">{t('관계를 불러오지 못했습니다.')}</p>;
   if (loading) return <p className="gh-muted">{t('불러오는 중입니다.')}</p>;
   if (!relationships.length) return <p className="gh-muted">{t('관계가 없습니다.')}</p>;
   return (

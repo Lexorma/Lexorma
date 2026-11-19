@@ -369,6 +369,10 @@ final class EnglishMessages {
         add("충돌한 객체 : {0}", "Conflicting object: {0}");
         add("한 번에 1~{0}개 엔터티까지 찾을 수 있습니다.", "Up to 1–{0} entities can be searched at once.");
         add("한 번에 1~{0}개 엔터티까지 조회할 수 있습니다.", "Up to 1–{0} entities can be retrieved at once.");
+        add("한 번에 1~{0}개 관계까지 조회할 수 있습니다.", "Up to 1–{0} relationships can be retrieved at once.");
+        add("페이지 번호는 0 이상이어야 합니다.", "The page number must be 0 or greater.");
+        add("페이지 크기는 1 이상이어야 합니다.", "The page size must be 1 or greater.");
+        add("정렬 방향은 asc 또는 desc 만 쓸 수 있습니다.", "The sort direction must be asc or desc.");
         add("화면을 연 뒤 다른 사용자가 표준 용어 {0} 을(를) 먼저 변경해 저장하지 않았습니다. 입력한 내용은 그대로 두었습니다. 최신 정보를 확인한 후 다시 수정해 주세요. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.", "Another user changed the standard term {0} after you opened this screen, so it was not saved. Your input was kept. Review the latest information and edit again. Closing this window and reloading discards your input, so copy it first if you need it.");
         add("화면을 연 뒤 표준 용어 {0} 이(가) 변경되어 승인하지 않았습니다. 최신 정보를 확인한 후 다시 승인해 주세요.", "The standard term {0} changed after you opened this screen, so it was not approved. Review the latest information and approve again.");
         add("화면을 연 뒤 표준 용어 {0} 이(가) 변경되어 승인을 취소하지 않았습니다. 최신 정보를 확인한 후 다시 승인 취소해 주세요.", "The standard term {0} changed after you opened this screen, so its approval was not revoked. Review the latest information and revoke the approval again.");

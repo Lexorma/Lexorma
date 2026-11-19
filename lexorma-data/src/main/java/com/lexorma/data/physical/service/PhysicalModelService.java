@@ -15,6 +15,9 @@ import java.util.Collection;
  * 물리 모델의 관계·인덱스·제약조건 (M-1). 테이블·컬럼 자체는 기존 테이블/컬럼 관리 서비스가 그대로 관리한다.
  */
 public interface PhysicalModelService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> INDEX_SORT_FIELDS = java.util.Set.of("schemaName", "tableName", "indexName", "isUnique", "indexType", "indexSource", "isApproval", "updated");
+
 
     enum Kind { RELATION, INDEX, CONSTRAINT }
 

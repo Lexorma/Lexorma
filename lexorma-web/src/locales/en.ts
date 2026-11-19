@@ -97,6 +97,7 @@ export const en = {
   '페이지당': 'Show',
   '행 표시': 'rows per page',
   '검색된 데이터가 없습니다.': 'No matching data found.',
+  '목록을 불러오지 못했습니다.': 'Failed to load the list.',
   '조회된 데이터가 없습니다.': 'No data found.',
 
   // ---------------------------------------------------------------- 레이아웃 / 메뉴
@@ -151,6 +152,14 @@ export const en = {
   '로그인 정보를 확인하는 중 문제가 발생했습니다.': 'A problem occurred while checking your sign-in information.',
   '회원가입 중 문제가 발생했습니다.': 'A problem occurred while signing up.',
   '회원가입이 완료되었습니다. 로그인해주세요.': 'Your account has been created. Please sign in.',
+  'Lexorma 시작하기': 'Get started with Lexorma',
+  '아직 계정이 없습니다. 시스템 관리자 계정을 만들어 주세요.': 'There are no accounts yet. Create the system administrator account.',
+  '5~20자의 소문자, 숫자, 밑줄(_)': '5 to 20 lowercase letters, numbers and underscores (_)',
+  '비밀번호 확인': 'Confirm password',
+  '관리자 계정 만들기': 'Create administrator account',
+  '이 계정은 시스템 관리자(ADMIN)이며 모든 프로젝트의 멤버가 됩니다.': 'This account is the system administrator (ADMIN) and becomes a member of every project.',
+  '관리자 계정을 만드는 중 문제가 발생했습니다.': 'A problem occurred while creating the administrator account.',
+  '관리자 계정을 만들었습니다. 로그인해주세요.': 'The administrator account has been created. Please sign in.',
   '비밀번호 변경': 'Change password',
   '현재 비밀번호': 'Current password',
   '새 비밀번호': 'New password',
@@ -2949,4 +2958,9 @@ export const en = {
   '폐기': 'Revoke',
   '최근 호출': 'Recent calls',
   '호출 기록이 없습니다.': 'No calls recorded.',
+  // 공통 토스트 (UI-1 후속)
+  '성공': 'Success',
+  '안내': 'Info',
+  '알림 메시지': 'Notifications',
+  '알림 닫기': 'Dismiss notification',
 };

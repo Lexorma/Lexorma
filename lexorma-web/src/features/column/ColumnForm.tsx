@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { api, enc } from '../../lib/api';
 import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
 import { RefTableLookup, refName } from './RefTableLookup';
@@ -32,6 +33,7 @@ type Message = { cls: string; text: string } | null;
  */
 export function ColumnForm({ onSaved }: { onSaved: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
 
   // 테이블 조회
   const [tableKeyword, setTableKeyword] = useState('');
@@ -276,7 +278,9 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
 
     dialog.confirm(t('추가하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveColumn', { method: 'POST', body: data });
-      if (response.result) dialog.alert(t('정상적으로 추가되었습니다.'), onSaved);
+      if (!response.result) return;
+      onSaved();
+      toast.success(t('정상적으로 추가되었습니다.'));
     });
   };
 

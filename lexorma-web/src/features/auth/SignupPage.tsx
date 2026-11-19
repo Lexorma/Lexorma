@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { api, ApiError } from '../../lib/api';
 import { t } from '../../lib/i18n';
 
@@ -13,6 +14,7 @@ interface SignupProject {
 /** 회원가입 : 가입한 계정은 NOT_APPROVE 권한, 프로젝트 설정에 따라 승인 후 사용 */
 export function SignupPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const navigate = useNavigate();
   const { data: projects = [] } = useQuery({
     queryKey: ['signup-projects'],
@@ -40,7 +42,8 @@ export function SignupPage() {
       dialog.alert(err instanceof ApiError ? err.message : t('회원가입 중 문제가 발생했습니다.'));
       return;
     }
-    dialog.alert(t('회원가입이 완료되었습니다. 로그인해주세요.'), () => navigate('/login', { replace: true }));
+    navigate('/login', { replace: true });
+    toast.success(t('회원가입이 완료되었습니다. 로그인해주세요.'));
   };
 
   return (

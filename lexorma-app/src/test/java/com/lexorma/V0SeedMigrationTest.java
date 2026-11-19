@@ -140,10 +140,14 @@ class V0SeedMigrationTest {
             assertThat(jdbc.queryForObject("select count(*) from " + posts
                     + " where PRJ_SN = 0 and CTGRY_CD = 'NOTICE' and DEL_YN = 'N' and cardinality(PRJ_SN_LIST) = 1"
                     + " and PST_MDFCN_DT is not null and REG_DT is not null and MDFCN_DT is not null", Integer.class)).isEqualTo(1);
-            assertThat(jdbc.queryForObject("select a.USER_ID from " + posts + " p join " + accounts
-                    + " a on a.USER_ID = p.WRTR_ID where p.PST_SN = 1", String.class)).isEqualTo("admin");
-            assertThat(jdbc.queryForObject("select a.USER_ID from " + readers + " r join " + accounts
-                    + " a on a.ACNT_SN = r.ACNT_SN where r.PST_SN = 1", String.class)).isEqualTo("admin");
+            // 새 설치에는 계정이 없다 (2026-11-19, 기본 계정 admin/admin 제거) : 최초 관리자 계정은 첫 화면에서 만든다.
+            // 안내 공지의 작성자는 SYSTEM, 조회자·프로젝트 관리자·멤버는 없다
+            assertThat(jdbc.queryForObject("select WRTR_ID from " + posts + " where PST_SN = 1", String.class)).isEqualTo("SYSTEM");
+            assertThat(jdbc.queryForObject("select count(*) from " + accounts, Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from " + readers, Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from \"" + schema + "\".TB_ACNT_ROLE", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from \"" + schema + "\".TB_PRJ_MBR", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from \"" + schema + "\".TB_PRJ where MNGR_ACNT_SN is not null", Integer.class)).isZero();
             String nextPostId = vendor.equals("h2") ? "next value for \"" + schema + "\".SQ_PST"
                     : "nextval('" + schema + ".SQ_PST')";
             assertThat(jdbc.queryForObject("select " + nextPostId, Long.class)).isEqualTo(51L);

@@ -70,6 +70,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class PhysicalViewService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> VIEW_SORT_FIELDS = java.util.Set.of("schemaName", "viewName", "viewKorName", "isApproval", "updated");
+
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final int TEXT_MAX = 255;

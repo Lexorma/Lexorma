@@ -36,7 +36,7 @@ public class ViewRestController {
                                                       @RequestParam(required = false, value = "searchQuery") String searchQuery,
                                                       @RequestParam(required = false, value = "schemaId") Long schemaId,
                                                       @RequestParam(required = false, value = "isApproval") String isApproval) {
-        return PageableUtil.getGridPageableMap(viewService.search(accountDto, PageableUtil.getGridPageable(page, size, sort), searchColumn, searchQuery, schemaId, isApproval));
+        return PageableUtil.getGridPageableMap(viewService.search(accountDto, PageableUtil.getGridPageable(page, size, sort, PhysicalViewService.VIEW_SORT_FIELDS), searchColumn, searchQuery, schemaId, isApproval));
     }
 
     @Operation(summary = "참조 객체 후보", description = "프로젝트의 테이블·VIEW (이름·논리명 검색, 종류별 최대 50). type TABLE / VIEW / 비우면 둘 다")

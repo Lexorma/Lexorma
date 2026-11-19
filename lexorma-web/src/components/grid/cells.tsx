@@ -62,3 +62,24 @@ export function YN({ value, text = 'Y' }: { value: unknown; text?: string }) {
   if (value === 'N') return <Muted>N</Muted>;
   return null;
 }
+
+/**
+ * 표 처음 조회 중 스켈레톤 줄 (UI-1, 공용 그리드와 같은 모양) : 실제 행 높이의 회색 덩어리 rows 줄. 상태 문구는 보조 기술에만(role=status),
+ * 덩어리는 감춘다. 다시 조회할 때는 쓰지 말고 앞 결과를 둔다 (motion.css .is-refreshing)
+ */
+export function SkeletonRows({ columns, rows = 5, label }: { columns: number; rows?: number; label: string }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row} className="skeleton-row" aria-hidden={row > 0 || undefined}>
+          {Array.from({ length: columns }, (_, index) => (
+            <td key={index}>
+              {row === 0 && index === 0 && <span className="visually-hidden" role="status">{label}</span>}
+              <span className="skeleton" style={{ width: `${55 + ((row * 17 + index * 23) % 40)}%` }} aria-hidden="true" />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}

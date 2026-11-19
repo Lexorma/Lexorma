@@ -56,7 +56,7 @@ public class DataDictionaryRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn
     ) {
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, DataDictionaryService.TERM_SORT_FIELDS);
         Page<StandardTermDto> standardTermDataPage = dataDictionaryService.getStandardTermsData(pageable, accountDto, searchColumn, searchQuery);
         dictionaryUsageService.fillTermUsage(accountDto, standardTermDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardTermDataPage);
@@ -79,7 +79,7 @@ public class DataDictionaryRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn
     ) {
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, DataDictionaryService.WORD_SORT_FIELDS);
         Page<StandardWordDto> standardWordsDataPage = dataDictionaryService.getStandardWordsData(pageable, accountDto, searchColumn, searchQuery);
         dictionaryUsageService.fillWordUsage(accountDto, standardWordsDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardWordsDataPage);
@@ -104,7 +104,7 @@ public class DataDictionaryRestController {
             @Parameter(description = "조회컬럼 명", example = "id")
             @RequestParam(required = false, value = "searchColumn") String searchColumn
     ) {
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, DataDictionaryService.DOMAIN_SORT_FIELDS);
         Page<StandardDomainDto> standardDomainsDataPage = dataDictionaryService.getStandardDomainsData(pageable, accountDto, searchColumn, searchQuery);
         dictionaryUsageService.fillDomainUsage(accountDto, standardDomainsDataPage.getContent());
         return PageableUtil.getGridPageableMap(standardDomainsDataPage);

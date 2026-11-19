@@ -59,7 +59,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
   };
 
   return (
-    <aside className={`sidebar ${mobileOpen ? 'd-block' : 'd-none'} d-md-block`}>
+    // 모바일 서랍 : 닫혀 있어도 그려 두고 밀어 넣는다(motion.css .sidebar-drawer) — 열고 닫는 모션, 닫힌 서랍은 visibility 로 탭 이동에서 빠진다
+    <aside className={`sidebar sidebar-drawer${mobileOpen ? ' is-open' : ''}`}>
       <div className="sidebar-header">
         <span className="sidebar-title">MENU</span>
         <button
@@ -112,13 +113,18 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
                 <span className="sidebar-label">{group.label}</span>
                 <ChevronDown className="sidebar-chevron" aria-hidden />
               </a>
-              <div id={group.id} className={`collapse sidebar-submenu${open ? ' show' : ''}`}>
-                {items
-                  .map((item) => (
-                    <NavLink key={item.id} to={item.path} className={({ isActive }) => `sidebar-sublink${isActive ? ' active' : ''}`}>
-                      {item.label}
-                    </NavLink>
-                  ))}
+              {/* 펼침·접힘 모션 (UI-1) : grid 행 0fr ↔ 1fr. 안쪽 목록의 여백까지 접히도록 두 겹으로 감싼다 */}
+              <div id={group.id} className={`sidebar-submenu sidebar-submenu-motion${open ? ' show' : ''}`}>
+                <div className="sidebar-submenu-inner">
+                  <div className="sidebar-submenu-list">
+                    {items
+                      .map((item) => (
+                        <NavLink key={item.id} to={item.path} className={({ isActive }) => `sidebar-sublink${isActive ? ' active' : ''}`}>
+                          {item.label}
+                        </NavLink>
+                      ))}
+                  </div>
+                </div>
               </div>
             </Fragment>
           );

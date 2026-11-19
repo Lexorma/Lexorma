@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { t, tc } from '../../lib/i18n';
+import { prefersReducedMotion } from '../../lib/motion';
 
 /**
  * 공통 다이얼로그 (예전 layout.html 의 #myAlert / #myConfirm / #mainConfirm / #popupDialog)
@@ -18,6 +19,9 @@ import { t, tc } from '../../lib/i18n';
  * - open            : 등록/수정/상세 다이얼로그 (예전 openDialog("div", ...))
  * - popup           : 다이얼로그 위에 겹쳐 띄우는 팝업 (예전 openPopupDialog)
  * 네이티브 <dialog>.showModal() 을 쓰므로 나중에 연 다이얼로그가 위에 뜬다.
+ * 모션 (UI-1) : 열 때 CSS(motion.css) 로 배경 흐림·작은 등장, 닫을 때는 data-closing 으로 짧게 사라진 뒤 목록에서 뺀다.
+ * 닫기 콜백은 누른 그 순간 한 번만 부른다 (모션을 기다리지 않는다). 닫히는 중인 다이얼로그는 누를 수 없고(pointer-events), 새 다이얼로그를 열면
+ * 닫히는 중인 것은 바로 뺀다 (포커스·겹침이 꼬이지 않게). 줄인 모션이면 바로 뺀다.
  */
 
 export interface DialogControls {
@@ -63,6 +67,8 @@ let nextId = 0;
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [titles, setTitles] = useState<Record<number, ReactNode>>({});
+  // 닫히는 중인 다이얼로그 → 바로 빼는 함수 (새 다이얼로그를 열 때 먼저 정리)
+  const closing = useRef(new Map<number, () => void>());
 
   const remove = useCallback((id: number) => {
     setEntries((list) => list.filter((e) => e.id !== id));
@@ -75,7 +81,10 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const api = useMemo<DialogApi>(() => {
-    const push = (entry: Entry) => setEntries((list) => [...list, entry]);
+    const push = (entry: Entry) => {
+      closing.current.forEach((finalize) => finalize());
+      setEntries((list) => [...list, entry]);
+    };
     return {
       alert: (message, onClose) => push({ id: ++nextId, kind: 'alert', message, onClose }),
       confirm: (message, onOk, onCancel) => push({ id: ++nextId, kind: 'confirm', message, onOk, onCancel }),
@@ -102,6 +111,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             entry={entry}
             title={titles[entry.id]}
             onRemove={remove}
+            closing={closing.current}
             onTitle={(title) => setTitles((t) => ({ ...t, [entry.id]: title }))}
           />
         )),
@@ -111,15 +121,20 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** 닫는 모션 최대 시간 (motion.css 의 --motion-duration-fast 보다 넉넉히) — animationend 가 오지 않아도 이 뒤에는 뺀다 */
+const CLOSE_FALLBACK_MS = 260;
+
 function DialogView({
   entry,
   title,
   onRemove,
+  closing,
   onTitle,
 }: {
   entry: Entry;
   title: ReactNode | undefined;
   onRemove: (id: number) => void;
+  closing: Map<number, () => void>;
   onTitle: (title: ReactNode) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -135,15 +150,36 @@ function DialogView({
 
   useDraggable(ref, entry.kind !== 'popup');
 
-  // 닫기 : 목록에서 빼고 콜백 호출 (한 번만)
+  // 컴포넌트가 사라지면 남은 닫기 대기를 정리한다
+  useEffect(() => () => {
+    closing.delete(entry.id);
+  }, [closing, entry.id]);
+
+  // 닫기 : 콜백은 바로 (한 번만), 목록에서 빼는 것은 닫는 모션 뒤
   const finish = useCallback(
     (callback?: () => void) => {
       if (closedRef.current) return;
       closedRef.current = true;
-      onRemove(entry.id);
+      const dialog = ref.current;
+      if (!dialog || prefersReducedMotion()) {
+        onRemove(entry.id);
+      } else {
+        let done = false;
+        const finalize = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          closing.delete(entry.id);
+          onRemove(entry.id);
+        };
+        const timer = window.setTimeout(finalize, CLOSE_FALLBACK_MS);
+        dialog.addEventListener('animationend', (e) => { if (e.target === dialog) finalize(); });
+        closing.set(entry.id, finalize);
+        dialog.setAttribute('data-closing', '');
+      }
       if (callback) callback();
     },
-    [entry.id, onRemove],
+    [entry.id, onRemove, closing],
   );
 
   const controls = useMemo<DialogControls>(

@@ -121,9 +121,7 @@ public class LogicalModelService {
 
     // ------------------------------------------------------------------ 논리 모델 관리 목록 (M-6 후속 3차)
     // 관리 화면은 전체 그래프(selectGraph)를 받지 않는다 : 요약(수 2개) + 엔터티 페이지(수는 DB 가 센다) + 관계 페이지 + 연 엔터티의 상세·관계.
-    // 페이지 크기는 공용 그리드와 같은 최대 100
-
-    public static final int MANAGE_MAX_PAGE_SIZE = 100;
+    // 페이지 번호·크기(1~100)·정렬 필드 검사는 공용 PageableUtil 이 한다 (공통 페이징 안정성 개선 — 예전에는 여기서 따로 1~100 을 검사했다). 모델 확인이 먼저다 (순서 그대로)
 
     /** 모델 전체 엔터티 수·관계 수 (검색과 무관) */
     @Transactional(readOnly = true)
@@ -136,8 +134,7 @@ public class LogicalModelService {
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<LogicalModelDto.EntityRow> selectEntityRows(AccountDto accountDto, Long modelId, String keyword, int page, int size, String sort) {
         model(accountDto.getProjectId(), modelId);
-        if (page < 0 || size < 1 || size > MANAGE_MAX_PAGE_SIZE) throw invalid("한 번에 1~{0}개 엔터티까지 조회할 수 있습니다.", MANAGE_MAX_PAGE_SIZE);
-        return queryRepository.findEntityRows(modelId, likePattern(keyword), com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort));
+        return queryRepository.findEntityRows(modelId, likePattern(keyword), com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.ENTITY_SORT_FIELDS));
     }
 
     /**
@@ -149,8 +146,8 @@ public class LogicalModelService {
     public org.springframework.data.domain.Page<LogicalModelDto.Relationship> selectRelationshipRows(AccountDto accountDto, Long modelId, String keyword, Boolean identifying,
                                                                                                     int page, int size, String sort) {
         model(accountDto.getProjectId(), modelId);
-        if (page < 0 || size < 1 || size > MANAGE_MAX_PAGE_SIZE) throw invalid("한 번에 1~{0}개 관계까지 조회할 수 있습니다.", MANAGE_MAX_PAGE_SIZE);
-        var ids = queryRepository.findRelationshipIds(modelId, likePattern(keyword), identifying, com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort));
+        var ids = queryRepository.findRelationshipIds(modelId, likePattern(keyword), identifying,
+                com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.RELATIONSHIP_SORT_FIELDS));
         Map<Long, LogicalRelationship> found = new java.util.HashMap<>();
         if (!ids.isEmpty()) relationshipRepository.findWithEntities(ids.getContent()).forEach(r -> found.put(r.getId(), r));
         List<LogicalRelationship> rows = ids.getContent().stream().map(found::get).filter(Objects::nonNull).toList(); // 페이지 순서 그대로

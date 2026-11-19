@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ObjectBizInfo } from '../dictionary/ai/BizDescriptionInfo';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Approval, Mono, YN } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
@@ -48,6 +49,7 @@ const DETAIL_FLAGS: [string, string][] = [
 /** 컬럼 관리 : 테이블별 컬럼 정보를 표준 용어 기준으로 등록·승인 */
 export function ColumnManagePage() {
   const dialog = useDialog();
+  const toast = useToast();
   const grid = useRef<GridHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -77,7 +79,9 @@ export function ColumnManagePage() {
         return;
       }
       const response = await api<{ result: boolean }>(`/api/saveColumn/approval/${isApproval}`, { method: 'PATCH', body: checked });
-      if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
     });
   };
 
@@ -90,7 +94,9 @@ export function ColumnManagePage() {
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteColumn', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), reload);
+      if (!response.result) return;
+      reload();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -125,7 +131,7 @@ export function ColumnManagePage() {
       title: t('컬럼 순서 · {0}', columnInfos[0].tableName ?? ''),
       size: 'large',
       content: (controls: DialogControls) => (
-        <ColumnOrder columnInfos={columnInfos} controls={controls} onSuccess={() => dialog.alert(t('정상적으로 순서가 저장되었습니다.'), reload)} />
+        <ColumnOrder columnInfos={columnInfos} controls={controls} onSuccess={() => { reload(); toast.success(t('정상적으로 순서가 저장되었습니다.')); }} />
       ),
     });
   };
@@ -136,7 +142,7 @@ export function ColumnManagePage() {
       title: row.standardTerms ? t('표준 용어 변경 · {0}.{1}', row.tableName ?? '', row.columnName ?? '') : t('표준 용어 연결 · {0}.{1}', row.tableName ?? '', row.columnName ?? ''),
       content: ({ close }: DialogControls) => (
         <TermRelink column={row as unknown as TermRelinkColumn} onCancel={close}
-                    onChanged={(changed) => { close(); reload(); dialog.alert(changed ? t('표준 용어 연결을 바꿨습니다.') : t('같은 표준 용어라 바꾸지 않았습니다.')); }} />
+                    onChanged={(changed) => { close(); reload(); if (changed) toast.success(t('표준 용어 연결을 바꿨습니다.')); else toast.info(t('같은 표준 용어라 바꾸지 않았습니다.')); }} />
       ),
     });
   };
@@ -149,7 +155,7 @@ export function ColumnManagePage() {
       title: t('표준 용어 일괄 연결 ({0}개)', checked.length),
       content: ({ close }: DialogControls) => (
         <BulkTermLink columns={checked as unknown as BulkTermColumn[]} onCancel={close}
-                      onDone={(changed) => { close(); reload(); dialog.alert(t('{0}개 컬럼의 표준 용어 연결을 바꿨습니다.', changed)); }} />
+                      onDone={(changed) => { close(); reload(); toast.success(t('{0}개 컬럼의 표준 용어 연결을 바꿨습니다.', changed)); }} />
       ),
     });
   };

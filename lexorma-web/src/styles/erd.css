@@ -136,3 +136,12 @@ dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
 
 /* 무효 FK 표시 (DEC-09) : 모델 구조 진단의 오류. 변경 표시와 같은 자리, 위험 색 */
 .erd-invalid-fk { --erd-diff: var(--gh-danger); text-decoration: none; }
+
+/* 모션 (UI-1, styles/motion.css 토큰) : 선택한 관계선의 색·굵기만 짧게 전환 (경로 d 는 움직이지 않는다 — 끌기·자동 배치는 즉시),
+   엔터티 찾기 결과 짧은 등장. 화면 이동(포커스·전체 보기)은 React Flow duration(lib/motion.motionMs) */
+.react-flow__edge-path { transition: stroke var(--motion-duration-fast) var(--motion-ease-standard), stroke-width var(--motion-duration-fast) var(--motion-ease-standard); }
+.erd-finder-list { animation: motion-fade-in var(--motion-duration-fast) var(--motion-ease-enter); }
+@media (prefers-reduced-motion: reduce) {
+    .react-flow__edge-path { transition: none; }
+    .erd-finder-list { animation: none; }
+}

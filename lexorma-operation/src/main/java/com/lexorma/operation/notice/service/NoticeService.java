@@ -10,6 +10,9 @@ import com.lexorma.operation.board.domain.dto.BoardDto;
 import com.lexorma.core.security.domain.dto.AccountDto;
 
 public interface NoticeService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> NOTICE_SORT_FIELDS = java.util.Set.of("id", "title");
+
 
     /**
      * 공지사항 리스트 조회

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { ChevronDownIcon, ChevronUpIcon } from '@primer/octicons-react';
 import type { Row } from '../../components/grid/Grid';
 import { api, ApiError, enc } from '../../lib/api';
@@ -268,6 +269,7 @@ export function useColumnBulkEditor() {
 
 function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: TableRef; columnInfos: ColumnInfo[]; controls: DialogControls; onSaved?: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const seq = useRef(0);
   const nextKey = () => `new-${++seq.current}`;
 
@@ -676,7 +678,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
         return;
       }
       controls.close();
-      dialog.alert(t('저장되었습니다. (신규 {0} · 수정 {1} · 삭제 {2})', response.created, response.updated, response.deleted), () => onSaved?.());
+      onSaved?.();
+      toast.success(t('저장되었습니다. (신규 {0} · 수정 {1} · 삭제 {2})', response.created, response.updated, response.deleted));
     } finally {
       setSaving(false);
     }

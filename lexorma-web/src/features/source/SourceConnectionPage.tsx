@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, enc } from '../../lib/api';
@@ -20,6 +21,7 @@ import '../../styles/source.css';
  */
 export function SourceConnectionPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const canManage = useCanManageSource();
   const connections = useSourceConnections();
@@ -44,7 +46,7 @@ export function SourceConnectionPage() {
     dialog.confirm(t('{0} 연결을 삭제하시겠습니까? 이 연결로 수집한 원본 카탈로그·수집 이력·변경 이력도 함께 삭제됩니다. Lexorma 물리·논리 모델은 삭제하지 않습니다.', connection.name), async () => {
       const result = await api<{ deletedCatalogRows: number }>(`/api/source/connections/${enc(connection.id)}`, { method: 'DELETE' });
       await reload();
-      dialog.alert(t('연결을 삭제했습니다. (원본 카탈로그 {0}건 삭제)', result.deletedCatalogRows));
+      toast.success(t('연결을 삭제했습니다. (원본 카탈로그 {0}건 삭제)', result.deletedCatalogRows));
     });
   };
 

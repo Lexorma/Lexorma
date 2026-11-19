@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import type { Row } from '../../components/grid/Grid';
 import { api, enc } from '../../lib/api';
 import { blockNonNumericKeys } from '../../lib/format';
@@ -38,6 +39,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
   onSaved: (saved: { tableName: string; schemaId?: number | null }) => void;
 }) {
   const dialog = useDialog();
+  const toast = useToast();
   const originalKorName = normalizeKorName(row.tableKorName);
   const originalTableName = row.tableName ?? '';
 
@@ -128,7 +130,9 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
     const targetSchemaName = schemas.find((s) => String(s.id) === selectedSchemaId)?.schemaName ?? '';
     dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : schemaMoved ? t('스키마를 {0}(으)로 옮겨 수정하시겠습니까?', targetSchemaName) : t('수정하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
-      if (response.result) dialog.alert(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'), () => onSaved({ tableName, schemaId: (type === 'C' && selectedSchemaId) || schemaMoved ? Number(selectedSchemaId) : null }));
+      if (!response.result) return;
+      onSaved({ tableName, schemaId: (type === 'C' && selectedSchemaId) || schemaMoved ? Number(selectedSchemaId) : null });
+      toast.success(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'));
     });
   };
 

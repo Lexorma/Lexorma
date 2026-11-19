@@ -64,10 +64,16 @@ public class ModelMappingQueryRepository {
             "schemaName", schema.schemaName,
             "tableName", table.tableName);
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> ENTITY_SORT_FIELDS = ENTITY_SORTS.keySet();
+
     private static final Map<String, ComparableExpressionBase<?>> TABLE_SORTS = Map.of(
             "schemaName", schema.schemaName,
             "tableName", table.tableName,
             "tableKorName", table.tableKorName);
+
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> TABLE_SORT_FIELDS = TABLE_SORTS.keySet();
 
     private final JPAQueryFactory query;
 

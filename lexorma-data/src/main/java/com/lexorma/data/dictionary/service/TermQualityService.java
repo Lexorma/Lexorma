@@ -44,6 +44,9 @@ public class TermQualityService {
             "groupKey", Comparator.comparing(Group::groupKey, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
             "memberCount", Comparator.comparingInt(Group::memberCount));
 
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
+    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
+
     /** 기본 순서 : 규칙 순 → 묶은 값 → 첫 용어 ID */
     private static final Comparator<Group> DEFAULT_ORDER = Comparator.comparing(Group::type)
             .thenComparing(Group::groupKey, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))

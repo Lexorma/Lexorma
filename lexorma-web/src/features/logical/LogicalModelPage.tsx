@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
-import { Label } from '../../components/grid/cells';
+import { useToast } from '../../components/toast/ToastProvider';
+import { Label, SkeletonRows } from '../../components/grid/cells';
 import { PAGE_SIZES, Paging } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
@@ -24,6 +25,7 @@ import '../../styles/logical.css';
  */
 export function LogicalModelPage() {
   const dialog = useDialog();
+  const toast = useToast();
   const navigate = useNavigate();
   const { canView } = useAuth();
   const canEdit = canView('logical-model-edit');
@@ -49,7 +51,8 @@ export function LogicalModelPage() {
     dialog.confirm(t('{0} 논리 모델을 삭제하시겠습니까?', model.modelName), async () => {
       await api(`/api/logical/model/${model.id}`, { method: 'DELETE' });
       setParams({}, { replace: true });
-      dialog.alert(t('정상적으로 삭제되었습니다.'), () => void refreshModels());
+      void refreshModels();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -301,7 +304,8 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={entities.isPlaceholderData ? 'is-refreshing' : 'is-refresh-ready'} aria-busy={entities.isFetching || undefined}>
+                    {entities.isPending && <SkeletonRows columns={entityHeaders.length} label={t('불러오는 중입니다.')} />}
                     {entityRows.map((entity) => (
                       <tr key={entity.id}>
                         <td><button type="button" className="logical-link" onClick={() => openEntity(entity.id)}>{entity.entityName}</button></td>
@@ -317,9 +321,9 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
                         </td>
                       </tr>
                     ))}
-                    {entityRows.length === 0 && (
+                    {entityRows.length === 0 && !entities.isPending && (
                       <tr><td colSpan={entityHeaders.length} className="dt-empty" role={entities.isError ? 'alert' : undefined}>
-                        {entities.isError ? t('엔터티 목록을 불러오지 못했습니다.') : entities.isPending ? t('불러오는 중입니다.') : search ? t('검색된 데이터가 없습니다.') : t('등록된 엔터티가 없습니다.')}
+                        {entities.isError ? t('엔터티 목록을 불러오지 못했습니다.') : search ? t('검색된 데이터가 없습니다.') : t('등록된 엔터티가 없습니다.')}
                       </td></tr>
                     )}
                   </tbody>
@@ -346,7 +350,8 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={relationships.isPlaceholderData ? 'is-refreshing' : 'is-refresh-ready'} aria-busy={relationships.isFetching || undefined}>
+                    {relationships.isPending && <SkeletonRows columns={relationshipHeaders.length} label={t('불러오는 중입니다.')} />}
                     {relationshipRows.map((r) => (
                       <tr key={r.id}>
                         <td>{r.relationshipName || '-'}</td>
@@ -375,9 +380,9 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
                         )}
                       </tr>
                     ))}
-                    {relationshipRows.length === 0 && (
+                    {relationshipRows.length === 0 && !relationships.isPending && (
                       <tr><td colSpan={relationshipHeaders.length} className="dt-empty" role={relationships.isError ? 'alert' : undefined}>
-                        {relationships.isError ? t('관계 목록을 불러오지 못했습니다.') : relationships.isPending ? t('불러오는 중입니다.') : relationshipFiltered ? t('검색된 데이터가 없습니다.') : t('등록된 관계가 없습니다.')}
+                        {relationships.isError ? t('관계 목록을 불러오지 못했습니다.') : relationshipFiltered ? t('검색된 데이터가 없습니다.') : t('등록된 관계가 없습니다.')}
                       </td></tr>
                     )}
                   </tbody>
@@ -470,6 +475,7 @@ function ApprovalLabel({ value }: { value: boolean | null }) {
 
 function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: LogicalModel) => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const [name, setName] = useState(model?.modelName ?? '');
   const [description, setDescription] = useState(model?.modelDescription ?? '');
 
@@ -479,7 +485,8 @@ function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: 
     dialog.confirm(model ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
       // 이름 중복(프로젝트 안, 대소문자 무시)은 서버에서 검증한다
       const saved = await api<LogicalModel>('/api/logical/model', { method: 'POST', body: { id: model?.id ?? null, modelName: name.trim(), modelDescription: description.trim() || null, modifiedAt: model?.modifiedAt ?? null } });
-      dialog.alert(model ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'), () => onSaved(saved));
+      onSaved(saved);
+      toast.success(model ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'));
     });
   };
 

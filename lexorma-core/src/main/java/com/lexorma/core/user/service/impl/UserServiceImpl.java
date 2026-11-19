@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -56,7 +55,7 @@ public class UserServiceImpl implements UserService {
             throw new CustomFormException(ErrorCode.PASSWORD_IS_NON_VALIDATOR);
         }
 
-        if (!Pattern.matches("^[a-z0-9](?!.*__)[a-z0-9_]{3,18}[a-z0-9]$", accountDto.getUsername())) {
+        if (!AuthUtil.isValidUsername(accountDto.getUsername())) {
             throw new CustomFormException(ErrorCode.USERNAME_IS_NON_VALIDATOR);
         }
 

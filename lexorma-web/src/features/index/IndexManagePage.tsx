@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Approval, DateTime, Label, Mono, User } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -126,6 +127,7 @@ function IndexDetailView({ indexId, onChanged, onNavigate, onClose, setTitle }: 
   setTitle: DialogControls['setTitle'];
 }) {
   const dialog = useDialog();
+  const toast = useToast();
   const { approvalAvailable, canView } = useAuth();
   const { openTableDetailById } = useTableDetail();
   const canEdit = canView('physical-model-edit');
@@ -160,7 +162,7 @@ function IndexDetailView({ indexId, onChanged, onNavigate, onClose, setTitle }: 
         <IndexForm detail={detail.data} onCancel={close} onSaved={(result: IndexSaveResult | null) => {
           close();
           changed();
-          if (result && !result.applied) dialog.alert(t('변경 요청을 만들었습니다. 승인되면 반영됩니다.'));
+          if (result && !result.applied) toast.info(t('변경 요청을 만들었습니다. 승인되면 반영됩니다.'));
         }} />
       ),
     });

@@ -1,0 +1,143 @@
+/* =========================================================
+   토스트 (components/toast/ToastProvider, UI-1 후속)
+   - 바탕은 기존 표면색(--gh-canvas)·테두리, 유형은 왼쪽 띠·아이콘 색과 아이콘 모양(✓ i ! ×)으로 구분한다 (색만으로 구분하지 않는다).
+   - 자리 : 데스크톱은 오른쪽 아래, AI 도우미 버튼(오른쪽 24px·40px) 왼쪽에 둔다 — 버튼이 푸터 때문에 올라가도 겹치지 않는다.
+     AI 도우미 창이 열려 있으면 그 창을 가리지 않게 오른쪽 위(헤더 아래)로 옮긴다. 모바일은 좌우 16px 여백으로 아래쪽, AI 버튼 위
+     (버튼이 푸터 때문에 올라가면 그만큼 같이 올린다 — --ai-assistant-lift 는 AiAssistant 가 :root 에 둔다).
+   - 목록은 popover(최상위 레이어)라 열린 대화상자 위에도 보인다. 대화상자가 열린 동안은 inert(포커스·클릭이 대화상자로 감)이고, 단추를 가리지 않게 위로 옮긴다.
+     popover 를 지원하지 않는 브라우저에서는 z-index 45 (AI 도우미 40 위, 사용자 메뉴 1000·모바일 메뉴 1040/1050 아래)의 fixed 요소다.
+   - 모션은 motion.css (토큰·줄인 모션)
+   ========================================================= */
+.toast-viewport {
+    position: fixed;
+    inset: auto 76px 24px auto; /* popover 기본값(inset 0·margin auto·테두리·배경)을 지운다 */
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    overflow: visible;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(400px, calc(100vw - 92px));
+    pointer-events: none; /* 토스트 사이·바깥은 아래 화면을 그대로 누를 수 있다 */
+}
+
+/* 위의 display: flex 가 브라우저 기본 숨김(닫힌 popover, popover 미지원 때의 hidden)을 이기므로 다시 숨긴다.
+   미지원 브라우저는 :popover-open 이 있는 규칙을 통째로 버리므로 두 규칙으로 나눈다 */
+.toast-viewport[hidden] {
+    display: none;
+}
+
+.toast-viewport[popover]:not(:popover-open) {
+    display: none;
+}
+
+body:has(.ai-assistant-panel) .toast-viewport {
+    top: 76px;
+    bottom: auto;
+}
+
+/* 대화상자가 열려 있으면 (토스트는 그 위 최상위 레이어지만 inert) 아래쪽 단추를 가리지 않게 위로 */
+body:has(dialog:modal:not([data-closing])) .toast-viewport {
+    top: 16px;
+    bottom: auto;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 8px 10px 12px;
+    border: 1px solid var(--gh-border);
+    border-left: 4px solid var(--toast-accent);
+    border-radius: 8px;
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+    box-shadow: 0 1px 3px #1f23281f, 0 8px 24px #4247501f;
+    font-family: var(--app-font);
+    font-size: 14px;
+    line-height: 1.45;
+    pointer-events: auto;
+}
+
+.toast-success { --toast-accent: var(--gh-success); }
+.toast-info { --toast-accent: var(--gh-accent); }
+.toast-warning { --toast-accent: var(--gh-attention); }
+.toast-error { --toast-accent: var(--gh-danger); }
+
+.toast-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    padding-top: 2px;
+    color: var(--toast-accent);
+}
+
+.toast-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.toast-title {
+    display: block;
+    font-weight: 600;
+}
+
+.toast-message {
+    margin: 0;
+    overflow-wrap: anywhere; /* 긴 영문·식별자도 줄을 바꾼다 (말줄임으로 숨기지 않는다) */
+    white-space: pre-line;
+}
+
+.toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    margin: -4px 0 -4px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gh-fg-muted);
+    cursor: pointer;
+}
+
+.toast-close:hover {
+    background-color: var(--gh-canvas-subtle);
+    color: var(--gh-fg);
+}
+
+.toast-close:focus-visible {
+    outline: 2px solid var(--gh-accent);
+    outline-offset: 0;
+}
+
+@media (max-width: 767.98px) {
+    .toast-viewport {
+        left: 16px;
+        right: 16px;
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        width: auto;
+    }
+
+    /* AI 도우미 버튼(아래 16~24px·높이 40px)은 푸터가 보이면 그만큼 올라간다 : 토스트도 같이 올려 버튼을 가리지 않는다 (세로 탭은 오른쪽 여백 안이라 겹치지 않는다) */
+    /* :where 로 낮춘 우선순위 — AI 도우미 창·대화상자가 열렸을 때의 위쪽 자리(아래 규칙)가 이긴다 */
+    body:has(:where(.ai-assistant-launcher:not(.is-docked))) .toast-viewport {
+        bottom: calc(76px + var(--ai-assistant-lift, 0px) + env(safe-area-inset-bottom, 0px));
+    }
+
+    body:has(.ai-assistant-panel) .toast-viewport {
+        top: 76px;
+        bottom: auto;
+    }
+
+    body:has(dialog:modal:not([data-closing])) .toast-viewport {
+        top: calc(16px + env(safe-area-inset-top, 0px));
+        bottom: auto;
+    }
+}

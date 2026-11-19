@@ -85,7 +85,7 @@ public class NoticeRestController {
                                                           , @RequestParam(required = false, value = "searchColumn") String searchColumn
                                                           , @AuthenticationPrincipal AccountDto accountDto) {
 
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, NoticeService.NOTICE_SORT_FIELDS);
 
         String accountId = accountDto.getId();
 

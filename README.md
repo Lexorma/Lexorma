@@ -146,7 +146,7 @@ cd lexorma
 ./gradlew bootRun --args='--spring.profiles.active=h2-local'
 ```
 
-Open http://localhost:9940 and sign in with `admin` / `admin`. The password must be changed on first login. Data is kept in an H2 file database at `~/.lexorma/data/lexorma.mv.db` and survives restarts; set `LEXORMA_DATA_DIR` to store it elsewhere (optional).
+Open http://localhost:9940. On first start there are no accounts, so Lexorma asks you to create the system administrator account (username, password, display name) instead of showing the login form; that account becomes a member of every project. Data is kept in an H2 file database at `~/.lexorma/data/lexorma.mv.db` and survives restarts; set `LEXORMA_DATA_DIR` to store it elsewhere (optional).
 
 The same profile runs the single JAR without PostgreSQL: `java -jar lexorma.jar --spring.profiles.active=h2-local`. The database file stays outside the JAR, so rebuilding or replacing the JAR keeps your data. Stop Lexorma normally (Ctrl+C) before copying the file for a backup; see [docs/reference/h2-file-storage.md](docs/reference/h2-file-storage.md) for backup, restore and troubleshooting.
 
@@ -162,12 +162,12 @@ cd ..
 ### Signing in
 
 1. Enter a username and password.
-2. Change the password if it is still the initial one (the seeded `admin` account, or after an administrator reset).
+2. Change the password if it is still the initial one (after an administrator reset).
 3. Choose one of the projects you are a member of.
 
 A user can be signed in from one place at a time; a later login ends the earlier session. If every project is inactive, an `ADMIN` account can sign in with a recovery login that only allows reactivating a project.
 
-> The default administrator credentials are for initial setup only. Change the password before exposing the application to other users or networks.
+> There is no default account. Until the first administrator account is created, anyone who can reach the server can create it, so create it before exposing the application to other users or networks.
 
 ---
 

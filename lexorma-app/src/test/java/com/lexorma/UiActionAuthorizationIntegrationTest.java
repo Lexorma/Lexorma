@@ -90,7 +90,7 @@ class UiActionAuthorizationIntegrationTest {
      * 복구 세션 전용 API (RECOVERY 는 역할 계층 밖 : 시스템 ADMIN 의 복구 로그인만 받는다 — ProjectRecoveryLoginTest)
      */
     private static final Set<String> BELOW_USER_MUTATIONS = Set.of(
-            "POST /api/auth/signup", "POST /api/login/projects", "POST /api/login/password",
+            "POST /api/auth/signup", "POST /api/auth/setup", "POST /api/login/projects", "POST /api/login/password",
             "POST /api/updatePwd", "POST /api/updateName",
             "PUT /api/erd/layout", "PUT /api/logical/model/{modelId}/erd/layout",
             "POST /api/recovery/projects/{projectId}/activate",

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
@@ -11,6 +12,7 @@ import { useSchemas, type Schema } from './schemas';
 /** 스키마 관리 : 프로젝트의 스키마 목록 조회, 승인 권한자(관리자·매니저·프로젝트 관리자)의 등록·수정·삭제 */
 export function SchemaManagePage() {
   const dialog = useDialog();
+  const toast = useToast();
   const { approvalAvailable } = useAuth();
   const { schemas, isPending, isError, refresh } = useSchemas();
 
@@ -24,7 +26,9 @@ export function SchemaManagePage() {
   const remove = (schema: Schema) => {
     dialog.confirm(t('{0} 스키마를 삭제하시겠습니까?', schema.schemaName), async () => {
       const response = await api<{ result: boolean }>(`/api/schema/${enc(schema.id)}`, { method: 'DELETE' });
-      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), () => void refresh());
+      if (!response.result) return;
+      void refresh();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -101,6 +105,7 @@ export function SchemaManagePage() {
 /** 스키마 등록 / 수정 : 수정은 이름·설명만 바꾼다 (내부 ID 는 그대로라 소속 테이블·관계·ERD 배치가 유지된다) */
 function SchemaForm({ schema, onSaved }: { schema?: Schema; onSaved: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const [name, setName] = useState(schema?.schemaName ?? '');
   const [description, setDescription] = useState(schema?.schemaDescription ?? '');
 
@@ -111,7 +116,8 @@ function SchemaForm({ schema, onSaved }: { schema?: Schema; onSaved: () => void 
     dialog.confirm(schema ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
       // 이름 형식·중복·권한은 서버에서 검증한다
       await api('/api/schema', { method: 'POST', body: { id: schema?.id ?? null, schemaName, schemaDescription: description.trim() || null, updated: schema?.updated ?? null } });
-      dialog.alert(schema ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'), onSaved);
+      onSaved();
+      toast.success(schema ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'));
     });
   };
 

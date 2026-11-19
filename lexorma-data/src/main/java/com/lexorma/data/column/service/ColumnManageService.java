@@ -14,6 +14,9 @@ import java.io.IOException;
 import java.util.List;
 
 public interface ColumnManageService {
+    /** 정렬할 수 있는 화면 필드 = 화면(columns.ts)에 정렬 가능으로 정의한 열(숨긴 열 포함 — SmokeTest.gridSortAndSearch 계약) + 기본 정렬 열 (PageableUtil 허용 목록 — 공통 페이징 안정성 개선) */
+    java.util.Set<String> COLUMN_SORT_FIELDS = java.util.Set.of("sortOrder", "tableName", "columnName");
+
 
     Page<ColumnInfoDto> selectTableData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery, Long tableId);
 

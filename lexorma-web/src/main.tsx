@@ -20,6 +20,9 @@ import './styles/dashboard.css';
 import './styles/notice_list.css';
 import './styles/help.css';
 import './styles/project_manage.css';
+import './styles/toast.css';
+// 공통 모션 (UI-1) : 위 스타일의 컴포넌트에 모션을 덧입히므로 마지막에 (화면별 지연 로딩 CSS 의 모션은 그 파일에서 토큰으로)
+import './styles/motion.css';
 
 // 공통 알림을 이미 띄운 API 오류는 콘솔의 처리되지 않은 Promise 오류로 남기지 않는다
 window.addEventListener('unhandledrejection', (event) => {

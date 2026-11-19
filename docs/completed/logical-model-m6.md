@@ -475,7 +475,7 @@ PostgreSQL 18.6 (로컬 Docker, 빈 임시 DB) 같은 측정 : 엔터티 3,000�
 | `GET /api/logical/model/{modelId}/relationship/data?page=0&size=10` | 공용 그리드 형식. 관계 ID 순(예전 전체 목록과 같은 순서), 행마다 속성 짝과 판정(관계 표의 '속성 짝' 열) |
 | `GET /api/logical/entity/{entityId}/relationship` | 출발·도착 어느 쪽이든 그 엔터티인 관계와 속성 짝 (엔터티 상세의 관계 탭) |
 
-- 페이지 크기 1~100 (공용 그리드 선택지 10·25·50·100과 같다; ERD 의 300 한도는 관리 목록에 쓰지 않는다), page 0 이상 — 벗어나면 400 `INVALID_LOGICAL_MODEL`("한 번에 1~100개 엔터티/관계까지 조회할 수 있습니다"). 범위 밖 페이지는 빈 `data` + 전체 수(화면이 마지막 페이지로 옮긴다). `sort` 는 기존 `PageableUtil.getGridPageable` 로 읽는다 (다른 그리드와 같은 계약 — 잘못된 방향은 보완에서 400 `INVALID_PAGE_REQUEST`, 15.10).
+- 페이지 크기 1~100 (공용 그리드 선택지 10·25·50·100과 같다; ERD 의 300 한도는 관리 목록에 쓰지 않는다), page 0 이상 — 벗어나면 400 `INVALID_LOGICAL_MODEL`("한 번에 1~100개 엔터티/관계까지 조회할 수 있습니다"). 범위 밖 페이지는 빈 `data` + 전체 수(화면이 마지막 페이지로 옮긴다). `sort` 는 기존 `PageableUtil.getGridPageable` 로 읽는다 (다른 그리드와 같은 계약 — 잘못된 방향은 보완에서 400 `INVALID_PAGE_REQUEST`, 15.10). (2026-11-19 [COMMON-LIST] 부터 크기·페이지·정렬 검사는 공용 `PageableUtil` 이 하고 오류 코드는 `INVALID_PAGE_REQUEST`, 모르는 정렬 필드도 무시가 아니라 400 — reference/list-query-policy.md)
 - 검색 : 이름·설명, 대소문자 무시, `%`·`_` 는 글자 그대로(`!` 이스케이프), 앞뒤 공백 무시, 100자 — 논리 ERD 부분 조회(13장)와 같은 `likePattern`. 예전 관리 화면에는 검색이 없었으므로 새 기능이다 (속성명·관계명 검색은 하지 않는다).
 - 정렬 허용 목록 : `entityName`(기본)·`entityDescription`·`isApproval` + `asc|desc`. 모르는 필드는 무시(이름순), 항상 엔터티 ID 오름차순을 마지막 기준으로 붙여 같은 값끼리 순서가 고정된다 (페이지 사이 겹침·빠짐 없음 — 테스트). 클라이언트 값을 SQL 에 잇지 않는다 (QueryDSL 경로 매핑). 예전 목록 순서 = 이름 → ID 와 같다.
 - 격리 : 모델은 로그인 프로젝트에서만 찾고(`model(projectId, modelId)`), 엔터티의 관계는 로그인 프로젝트 엔터티만 — 다른 프로젝트·없는 ID 는 예전처럼 '찾을 수 없음'(400 `LOGICAL_MODEL_IS_NOT_DEFINED`).
@@ -591,7 +591,7 @@ PostgreSQL 18.6 (로컬 Docker, 빈 임시 DB) 같은 측정 : 엔터티 3,000�
 - 검증 데이터 준비 중 메모 : 승인 권한자가 만든 관계는 바로 승인돼 [수정]·[삭제] 가 꺼진다(정책 그대로) — 변경 흐름용 관계는 API 로 승인취소해 두었다.
 
 **한계 · 후속**
-- 허용하지 않는 정렬 필드에서 Spring Data 저장소를 쓰는 공용 그리드 화면은 여전히 500 (위 표) — 무시(기본 정렬)할지 400 으로 할지 화면 공통 정책 결정 필요. 크기 상한도 화면마다 다르다 (대부분 없음).
+- (2026-11-19 [COMMON-LIST] 에서 해결) 허용하지 않는 정렬 필드는 모든 공용 그리드 목록에서 400, 페이지 크기 상한 100 — completed-work.md [COMMON-LIST], reference/list-query-policy.md.
 - 이름 정렬은 DB 콜레이션에 따라 H2·PostgreSQL 순서가 다를 수 있다 (기존 정렬 전반과 같음).
 - 관계 검색은 엔터티 이름만 본다 (설명·속성명·영문 약어 제외). Linux CI 미확인.
 

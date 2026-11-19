@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { DateTime, Label, Muted } from '../../components/grid/cells';
 import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -47,6 +48,7 @@ export function useVersionDialogs() {
 
 function CreateForm({ onCreated }: { onCreated: () => void }) {
   const dialog = useDialog();
+  const toast = useToast();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
@@ -57,7 +59,8 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     dialog.confirm(t('현재 모델을 {0} 버전으로 저장하시겠습니까? 저장한 버전은 수정하거나 삭제할 수 없습니다.', versionName), async () => {
       // 이름 중복·길이·권한은 서버에서 검증한다
       await api('/api/modelVersion', { method: 'POST', body: { versionName, description: description.trim() || null } });
-      dialog.alert(t('정상적으로 저장되었습니다.'), onCreated);
+      onCreated();
+      toast.success(t('정상적으로 저장되었습니다.'));
     });
   };
 

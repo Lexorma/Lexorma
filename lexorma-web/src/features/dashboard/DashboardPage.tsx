@@ -7,7 +7,7 @@ import { api } from '../../lib/api';
 import { formatDateTime, formatRelative, initial } from '../../lib/format';
 import { useNoticeDialogs } from '../notice/noticeDialogs';
 import { t, tv, tx } from '../../lib/i18n';
-import { Bar, Donut, Legend, StackedBar, percentText } from './charts';
+import { Bar, CountUp, Donut, Legend, StackedBar, percentText } from './charts';
 
 interface Dashboard {
   notices: { id: number; title: string; createdBy: string; created: string; isHit: string }[];
@@ -72,7 +72,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {showStats && (stats.isPending ? <p className="dash-loading" role="status">{t('현황을 불러오는 중…')}</p>
+      {showStats && (stats.isPending ? <StatsSkeleton />
         : stats.isError ? (
           <div className="dash-error" role="alert">
             {t('현황을 불러오지 못했습니다.')} <button type="button" className="dash-btn" onClick={() => void stats.refetch()}>{t('다시 시도')}</button>
@@ -81,6 +81,44 @@ export function DashboardPage() {
 
       <NoticeBox data={base.data} loading={base.isPending} failed={base.isError} onOpen={(id) => openNoticeDetail(id, { onClose: () => void base.refetch() })} />
     </section>
+  );
+}
+
+/**
+ * 현황 첫 조회 중 (UI-1) : 실제 카드·상자와 같은 자리·높이의 스켈레톤 (조회가 끝나도 레이아웃이 크게 움직이지 않게). 빠른 응답에서는
+ * 늦게 나타나 깜빡이지 않는다(motion.css). 상태 문구는 보조 기술에만 알리고 덩어리는 감춘다. 다시 조회할 때는 쓰지 않는다(앞 값을 둔다)
+ */
+function StatsSkeleton() {
+  return (
+    <div role="status">
+      <span className="visually-hidden">{t('현황을 불러오는 중…')}</span>
+      <div aria-hidden="true">
+        <div className="dash-kpis">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="dash-stat is-static is-skeleton"><span className="skeleton skeleton-line is-mid" /><span className="skeleton skeleton-value" /></div>
+          ))}
+        </div>
+        <div className="dash-grid">
+          <SkeletonBox />
+          <SkeletonBox />
+        </div>
+        <SkeletonBox />
+        <div className="dash-grid dash-grid-even">
+          <SkeletonBox tall />
+          <SkeletonBox tall />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 스켈레톤 상자 : 실제 상자(머리글 + 본문)와 같은 테두리·여백, 본문 높이는 실제 상자와 비슷하게 (tall = 모델·품질 상자) */
+function SkeletonBox({ tall = false }: { tall?: boolean }) {
+  return (
+    <div className="dash-box is-skeleton">
+      <div className="dash-box-header"><span className="skeleton skeleton-line is-short" /></div>
+      <div className="dash-box-body"><span className={`skeleton dash-skeleton-body${tall ? ' is-tall' : ''}`} /></div>
+    </div>
   );
 }
 
@@ -122,7 +160,7 @@ function Kpi({ menu, to, icon, color, label, value }: { menu: MenuId; to: string
         <span className={`dash-stat-icon ${color}`}>{icon}</span>
         <span className="dash-stat-label">{label}</span>
       </div>
-      <div className="dash-stat-value">{fmt(value)}</div>
+      <div className="dash-stat-value"><CountUp value={value} /></div>
     </>
   );
   return canView(menu) ? <Link to={to} className="dash-stat">{body}</Link> : <div className="dash-stat is-static">{body}</div>;
@@ -170,7 +208,7 @@ function PendingBox({ s }: { s: Stats }) {
   const { canView } = useAuth();
   const total = s.approvals.reduce((sum, a) => sum + a.pending, 0);
   return (
-    <Box title={t('승인 대기')} action={<span className="dash-counter" aria-label={t('승인 대기 {0}건', total)}>{fmt(total)}</span>}>
+    <Box title={t('승인 대기')} action={<span className="dash-counter" aria-label={t('승인 대기 {0}건', total)}><CountUp value={total} /></span>}>
       <ul className="dash-pending">
         {s.approvals.map((a) => {
           const type = TYPES[a.type];

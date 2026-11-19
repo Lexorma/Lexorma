@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted, User } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PencilIcon, PlusIcon, RepoIcon, TrashIcon } from '@primer/octicons-react';
@@ -45,6 +46,7 @@ const MANAGED_KEY = ['managed-projects'];
 /** 프로젝트 관리 : 프로젝트 등록·수정·삭제, 프로젝트 멤버 승인 */
 export function ProjectManagePage() {
   const dialog = useDialog();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const { refresh } = useAuth();
   const grid = useRef<GridHandle>(null);
@@ -70,10 +72,9 @@ export function ProjectManagePage() {
           type={type}
           projectData={projectData}
           onSaved={() => {
-            dialog.alert(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'), () => {
-              close();
-              reloadProjects();
-            });
+            close();
+            reloadProjects();
+            toast.success(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'));
           }}
         />
       ),
@@ -108,7 +109,7 @@ export function ProjectManagePage() {
     dialog.open({
       title: t('프로젝트 영구 삭제'),
       content: ({ close }: DialogControls) => (
-        <DeleteProjectForm project={selected} onDeleted={() => { close(); dialog.alert(t('정상적으로 삭제 되었습니다.'), () => void reloadProjects()); }} />
+        <DeleteProjectForm project={selected} onDeleted={() => { close(); void reloadProjects(); toast.success(t('정상적으로 삭제 되었습니다.')); }} />
       ),
     });
   };
@@ -125,10 +126,9 @@ export function ProjectManagePage() {
           onSave={async (accountId) => {
             const saved = await api<{ result: boolean }>(`/api/saveProject/projectMember/${enc(selected.id)}`, { method: 'POST', body: { accountId } });
             if (saved.result) {
-              dialog.alert(t('프로젝트 멤버가 정상적으로 등록되었습니다.'), () => {
-                close();
-                grid.current?.reload();
-              });
+              close();
+              grid.current?.reload();
+              toast.success(t('프로젝트 멤버가 정상적으로 등록되었습니다.'));
             }
           }}
         />
@@ -142,7 +142,8 @@ export function ProjectManagePage() {
     dialog.confirm(isActive ? t('선택한 정보를 승인 하시겠습니까?') : t('선택한 정보를 승인취소 하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>(`/api/saveProject/active/${isActive}`, { method: 'POST', body: checked });
       if (response.result) {
-        dialog.alert(isActive ? t('정상적으로 승인되어 활성화되었습니다.') : t('정상적으로 승인취소되어 비활성화되었습니다.'), () => grid.current?.reload());
+        grid.current?.reload();
+        toast.success(isActive ? t('정상적으로 승인되어 활성화되었습니다.') : t('정상적으로 승인취소되어 비활성화되었습니다.'));
       }
     });
   };
@@ -152,7 +153,9 @@ export function ProjectManagePage() {
     if (!checked) return;
     dialog.confirm(t('선택한 정보를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteProject/projectMember', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('정상적으로 삭제처리 되었습니다.'), () => grid.current?.reload());
+      if (!response.result) return;
+      grid.current?.reload();
+      toast.success(t('정상적으로 삭제처리 되었습니다.'));
     });
   };
 

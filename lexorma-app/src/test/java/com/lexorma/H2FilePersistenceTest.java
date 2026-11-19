@@ -71,7 +71,9 @@ class H2FilePersistenceTest {
         int history;
         try (Connection connection = DriverManager.getConnection(url, "lexorma", "lexorma"); Statement statement = connection.createStatement()) {
             history = count(statement, "select count(*) from \"flyway_schema_history\"");
-            statement.executeUpdate("update TB_ACNT set USER_NM = 'persisted-admin' where USER_ID = 'admin'");
+            // 새 설치에는 계정이 없다 (기본 관리자 계정 없음) — 최초 관리자 계정 만들기처럼 한 행을 넣는다
+            statement.executeUpdate("insert into TB_ACNT(ACNT_SN, USER_ID, USER_NM, PSWD, PSWD_CHG_YN, ACTVTN_YN, RGTR_ID, MDFR_ID) "
+                    + "values(next value for SQ_ACNT, 'owner', 'persisted-owner', '{bcrypt}x', true, true, 't', 't')");
             statement.executeUpdate("insert into TB_AI_PRVDR(AI_PRVDR_SN, PRVDR_NM, PRVDR_TYPE_CD, BSC_URL_ADDR, BSC_MDL_NM, ACTVTN_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID) "
                     + "values(next value for SQ_AI_PRVDR, 'persisted provider', 'OLLAMA', 'http://127.0.0.1:11434', 'llama3.2', true, current_timestamp, current_timestamp, 't', 't')");
             statement.executeUpdate("update TB_AI_STNG set BSC_AI_PRVDR_SN = (select AI_PRVDR_SN from TB_AI_PRVDR where PRVDR_NM = 'persisted provider')");
@@ -84,7 +86,7 @@ class H2FilePersistenceTest {
         try (Connection connection = DriverManager.getConnection(url, "lexorma", "lexorma"); Statement statement = connection.createStatement()) {
             assertThat(count(statement, "select count(*) from \"flyway_schema_history\"")).isEqualTo(history);
             assertThat(count(statement, "select count(*) from \"flyway_schema_history\" where \"success\" = false")).isZero();
-            assertThat(count(statement, "select count(*) from TB_ACNT where USER_ID = 'admin' and USER_NM = 'persisted-admin'")).isEqualTo(1);
+            assertThat(count(statement, "select count(*) from TB_ACNT where USER_ID = 'owner' and USER_NM = 'persisted-owner'")).isEqualTo(1);
             assertThat(count(statement, "select count(*) from TB_AI_STNG s join TB_AI_PRVDR p on p.AI_PRVDR_SN = s.BSC_AI_PRVDR_SN where p.PRVDR_NM = 'persisted provider'"))
                     .as("AI Provider 와 시스템 기본 지정").isEqualTo(1);
             assertThat(count(statement, "select count(*) from TB_TBL where PRJ_SN = 0")).as("예제 메타데이터").isPositive();

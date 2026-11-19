@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { userColumns } from './columns';
 import { useMemo, useRef } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
+import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, User } from '../../components/grid/cells';
 import { Grid, type GridHandle } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -12,6 +13,7 @@ import { roleLabel } from '../../lib/roles';
 /** 사용자 관리 : 권한 변경 / 비밀번호 초기화 / 삭제 */
 export function UserManagePage() {
   const dialog = useDialog();
+  const toast = useToast();
   const grid = useRef<GridHandle>(null);
   const roles = useQuery({
     queryKey: ['user-roles'],
@@ -26,7 +28,9 @@ export function UserManagePage() {
     dialog.confirm(t('변경 데이터를 저장하시겠습니까?'), async () => {
       const data = grid.current?.getEditedRows() ?? [];
       const response = await api<{ result: boolean }>('/api/saveUser/update', { method: 'PUT', body: data });
-      if (response.result) dialog.alert(t('정상적으로 저장되었습니다.'), () => grid.current?.reload());
+      if (!response.result) return;
+      grid.current?.reload();
+      toast.success(t('정상적으로 저장되었습니다.'));
     });
   };
 
@@ -35,7 +39,9 @@ export function UserManagePage() {
     if (!checked) return;
     dialog.confirm(t('선택한 정보를 삭제하시겠습니까?'), async () => {
       const response = await api<{ result: boolean }>('/api/deleteUser/user', { method: 'DELETE', body: checked });
-      if (response.result) dialog.alert(t('정상적으로 삭제되었습니다.'), () => grid.current?.reload());
+      if (!response.result) return;
+      grid.current?.reload();
+      toast.success(t('정상적으로 삭제되었습니다.'));
     });
   };
 
@@ -44,7 +50,9 @@ export function UserManagePage() {
     if (field !== 'resetButton') return;
     dialog.confirm(t('해당 {0}의 비밀번호를 초기화 하시겠습니까? 아이디와 동일한 값으로 비밀번호가 초기화됩니다.', row.username), async () => {
       const response = await api<{ result: boolean }>('/api/saveUser/password', { method: 'PUT', body: row });
-      if (response.result) dialog.alert(t('정상적으로 초기화되었습니다.'), () => grid.current?.reload());
+      if (!response.result) return;
+      grid.current?.reload();
+      toast.success(t('정상적으로 초기화되었습니다.'));
     });
   };
 

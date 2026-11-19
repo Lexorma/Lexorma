@@ -59,7 +59,7 @@ public class ColumnManageRestController {
             @Parameter(description = "테이블 ID", example = "0")
             @RequestParam(required = false, value = "tableId") Long tableId
     ) {
-        Pageable pageable = PageableUtil.getGridPageable(page, size, sort);
+        Pageable pageable = PageableUtil.getGridPageable(page, size, sort, ColumnManageService.COLUMN_SORT_FIELDS);
         Page<ColumnInfoDto> tableDesigns = columnManageService.selectTableData(pageable, accountDto, searchColumn, searchQuery, tableId);
         return PageableUtil.getGridPageableMap(tableDesigns);
     }

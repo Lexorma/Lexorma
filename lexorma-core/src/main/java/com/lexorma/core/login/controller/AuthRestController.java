@@ -1,5 +1,6 @@
 package com.lexorma.core.login.controller;
 
+import com.lexorma.core.login.service.InitialSetupService;
 import com.lexorma.core.project.repository.ProjectRepository;
 import com.lexorma.core.project.service.ProjectAuthority;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -37,7 +38,7 @@ import java.util.stream.Stream;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/auth")
-@Tag(name = "Auth Rest API", description = "로그인 상태 / CSRF 토큰 / 회원가입 API")
+@Tag(name = "Auth Rest API", description = "로그인 상태 / CSRF 토큰 / 회원가입 / 최초 관리자 계정 API")
 public class AuthRestController {
 
     private final MenuAuthorization menuAuthorization;
@@ -45,6 +46,7 @@ public class AuthRestController {
     private final UserRepository userRepository;
     private final UserService userService;
     private final ProjectAuthority projectAuthority;
+    private final InitialSetupService initialSetupService;
 
     @Operation(summary = "현재 로그인 정보", description = "로그인하지 않았으면 authenticated=false 를 반환합니다. 메뉴 노출 여부와 승인 권한을 함께 반환합니다.")
     @GetMapping("/me")
@@ -124,7 +126,22 @@ public class AuthRestController {
                 .name(accountDto.getName())
                 .projectId(accountDto.getProjectId())
                 .build();
-        userService.createUser(request);
+        initialSetupService.signup(request);
+        return ResponseEntity.ok(Map.of("result", true));
+    }
+
+    @Operation(summary = "최초 관리자 계정 필요 여부", description = "계정이 하나도 없으면 required=true 입니다. 화면은 로그인 대신 최초 관리자 계정 만들기를 보여 줍니다.")
+    @PreAuthorize("hasRole('ANONYMOUS')")
+    @GetMapping("/setup")
+    public ResponseEntity<Map<String, Boolean>> setupStatus() {
+        return ResponseEntity.ok(Map.of("required", initialSetupService.isRequired()));
+    }
+
+    @Operation(summary = "최초 관리자 계정 만들기", description = "username, password, name. 계정이 하나도 없을 때만 만들 수 있고(그 외 409 SETUP_ALREADY_COMPLETED), 만든 계정은 시스템 ADMIN 이며 모든 프로젝트의 멤버가 됩니다.")
+    @PreAuthorize("hasRole('ANONYMOUS')")
+    @PostMapping("/setup")
+    public ResponseEntity<Map<String, Boolean>> setup(@RequestBody AccountDto accountDto) {
+        initialSetupService.createAdmin(accountDto.getUsername(), accountDto.getPassword(), accountDto.getName());
         return ResponseEntity.ok(Map.of("result", true));
     }
 }

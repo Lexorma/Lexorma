@@ -235,8 +235,13 @@ class SessionReloginHttpTest {
                 "{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\",\"name\":\"재로그인\",\"projectId\":" + projectId + "}");
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
         String accountId = null;
-        for (JsonNode account : JSON.readTree(admin.get("/api/selectUser/data?page=0&size=1000").body()).path("data")) {
-            if (username.equals(account.path("username").asString())) accountId = account.path("id").asString();
+        // 사용자 목록은 한 번에 100명까지 (공통 페이징 안정성 개선) : 페이지를 넘기며 찾는다
+        for (int page = 0; accountId == null; page++) {
+            JsonNode data = JSON.readTree(admin.get("/api/selectUser/data?page=" + page + "&size=100").body()).path("data");
+            if (data.isEmpty()) break;
+            for (JsonNode account : data) {
+                if (username.equals(account.path("username").asString())) accountId = account.path("id").asString();
+            }
         }
         assertThat(admin.put("/api/saveUser/update", "[{\"id\":\"" + accountId + "\",\"role\":\"ROLE_USER\"}]").statusCode()).isEqualTo(200);
         // 다른 프로젝트에도 구성원으로 (프로젝트를 바꿔 다시 로그인)

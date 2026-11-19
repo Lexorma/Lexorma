@@ -94,6 +94,14 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
   const dock = useDock();
   const liftStyle = { '--ai-assistant-lift': `${dock.lift}px` } as CSSProperties;
   const tabStyle = { '--ai-assistant-tab-right': `${dock.tabRight}px`, '--ai-assistant-tab-width': `${dock.tabWidth}px` } as CSSProperties;
+  // 토스트(toast.css 모바일)가 올라간 버튼을 가리지 않게 같은 값을 :root 에도 둔다
+  useEffect(() => {
+    const root = document.documentElement.style;
+    root.setProperty('--ai-assistant-lift', `${dock.lift}px`);
+    return () => {
+      root.removeProperty('--ai-assistant-lift');
+    };
+  }, [dock.lift]);
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);

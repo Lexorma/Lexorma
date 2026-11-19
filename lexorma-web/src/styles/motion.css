@@ -1,0 +1,217 @@
+/* =========================================================
+   공통 모션 (UI-1) : 시간·이징 토큰, 공용 keyframes, 스켈레톤, 줄인 모션
+   규칙은 docs/reference/ui-motion-guide.md. 새 화면은 여기 토큰·클래스를 쓰고 keyframes 를 따로 만들지 않는다.
+   transform·opacity 만 움직이고(레이아웃 다시 계산 없음), 장식 모션은 prefers-reduced-motion 에서 끈다.
+   ========================================================= */
+:root {
+    --motion-duration-instant: 80ms;   /* 누름·선택 표시 */
+    --motion-duration-fast: 120ms;     /* 버튼·탭·메뉴 색 */
+    --motion-duration-normal: 180ms;   /* 컴포넌트·페이지 등장 */
+    --motion-duration-slow: 240ms;     /* 대화상자·서랍·하위 메뉴 */
+    --motion-duration-chart: 500ms;    /* 차트 처음 그림 */
+    --motion-stagger: 40ms;            /* 카드 순차 등장 간격 (최대 6단계) */
+    --motion-loading-delay: 150ms;     /* 스켈레톤·불러오는 중 표시를 늦춤 — 빠른 응답에서 깜빡이지 않게 (데이터는 늦추지 않는다) */
+
+    --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+    --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+    --skeleton-base: var(--gh-neutral-muted);
+    --skeleton-shine: var(--gh-hover);
+}
+
+/* ---------- 공용 keyframes (이름 앞에 motion- : 화면마다 따로 만들지 않는다) ---------- */
+@keyframes motion-fade-in { from { opacity: 0; } }
+@keyframes motion-fade-out { to { opacity: 0; } }
+/* 작은 위로 등장 : 독립 속성 translate 를 써서 요소의 transform(가운데 정렬 등)과 겹치지 않는다 */
+@keyframes motion-rise-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes motion-sink-out { to { opacity: 0; translate: 0 4px; } }
+@keyframes motion-slide-in-start { from { opacity: 0; translate: -8px 0; } }
+/* 바뀐 값 잠깐 강조 (배경만 — 글자·상태 표시는 그대로) */
+@keyframes motion-highlight { from { background-color: var(--gh-accent-subtle); } }
+@keyframes motion-skeleton-pulse { 50% { opacity: 0.45; } }
+@keyframes motion-spin { to { rotate: 360deg; } }
+
+/* ---------- 재사용 클래스 ---------- */
+.motion-fade-in { animation: motion-fade-in var(--motion-duration-normal) var(--motion-ease-enter) both; }
+.motion-rise-in { animation: motion-rise-in var(--motion-duration-normal) var(--motion-ease-enter) both; }
+.motion-highlight { animation: motion-highlight 1200ms var(--motion-ease-standard); border-radius: 4px; }
+
+/* 스켈레톤 : 실제 내용과 같은 자리·크기의 회색 덩어리. 처음 조회에서만, 늦게 나타나서(--motion-loading-delay) 빠른 응답은 깜빡이지 않는다.
+   보조 기술에는 감추고(aria-hidden) 상태 문구는 role=status 로 따로 알린다 */
+.skeleton {
+    display: block;
+    border-radius: 6px;
+    background: var(--skeleton-base);
+    animation: motion-fade-in var(--motion-duration-fast) var(--motion-ease-enter) var(--motion-loading-delay) both,
+               motion-skeleton-pulse 1.4s ease-in-out calc(var(--motion-loading-delay) + 200ms) infinite;
+}
+.skeleton-line { height: 12px; margin: 6px 0; }
+.skeleton-line.is-short { width: 40%; }
+.skeleton-line.is-mid { width: 70%; }
+.skeleton-value { height: 28px; width: 60%; margin-top: 8px; }
+.skeleton-block { height: 120px; }
+/* 표 첫 조회 자리 : 행 높이를 실제 행과 비슷하게 */
+.skeleton-row td { padding-top: 12px !important; padding-bottom: 12px !important; }
+.skeleton-row .skeleton { height: 12px; }
+
+/* 처리 중 아이콘 (버튼 안) : 버튼 폭이 바뀌지 않게 글자 자리를 그대로 두고 위에 겹친다 */
+.motion-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: motion-spin 700ms linear infinite;
+    vertical-align: -2px;
+}
+.is-busy { position: relative; }
+.is-busy > .motion-busy-label { visibility: hidden; }
+.is-busy > .motion-spinner { position: absolute; top: calc(50% - 7px); left: calc(50% - 7px); }
+
+/* 다시 조회하는 동안 앞 결과를 흐리게 : 다른 조건의 결과로 보이지 않게 (곧바로가 아니라 잠깐 뒤에) */
+.is-refreshing { opacity: 0.55; transition: opacity var(--motion-duration-fast) var(--motion-ease-standard) var(--motion-loading-delay); }
+.is-refresh-ready { transition: opacity var(--motion-duration-fast) var(--motion-ease-standard); }
+
+/* =========================================================
+   컴포넌트 적용 (메인 번들 CSS 위에 덧입힘 — 이 파일은 main.tsx 에서 마지막에 불러온다)
+   ========================================================= */
+
+/* 대화상자 (components/dialog/DialogProvider) : 열 때 배경 흐림 + 작은 등장, 닫을 때(data-closing) 짧게 사라짐. 끌기는 left/top·transform 을 쓰고
+   여기서는 translate·opacity 만 움직여 서로 겹치지 않는다. 닫히는 중에는 누를 수 없다 (중복 확인·저장 방지) */
+dialog[open] { animation: motion-rise-in var(--motion-duration-slow) var(--motion-ease-enter); }
+dialog[open]::backdrop { animation: motion-fade-in var(--motion-duration-slow) var(--motion-ease-enter); }
+dialog[data-closing] { animation: motion-sink-out var(--motion-duration-fast) var(--motion-ease-exit) forwards; pointer-events: none; }
+dialog[data-closing]::backdrop { animation: motion-fade-out var(--motion-duration-fast) var(--motion-ease-exit) forwards; }
+
+/* 사이드바 하위 메뉴 (components/layout/Sidebar) : 높이를 grid 행(0fr ↔ 1fr)으로 펼치고 접는다. 닫힌 메뉴는 visibility 로 탭 이동·보조 기술에서 뺀다
+   (권한 없는 메뉴는 원래 그리지 않는다 — 여기 남는 것은 볼 수 있는 메뉴뿐) */
+.sidebar-submenu-motion {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-standard),
+                visibility 0s linear var(--motion-duration-normal);
+}
+.sidebar-submenu-motion.show {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-standard), visibility 0s;
+}
+.sidebar-submenu-motion > .sidebar-submenu-inner { min-height: 0; overflow: hidden; }
+.sidebar-submenu.sidebar-submenu-motion { margin: 0; }
+.sidebar-submenu-list { padding: 1px 0 4px; } /* 예전 .sidebar-submenu 의 여백 — 접힐 때 함께 접힌다 */
+.sidebar-chevron { transition: transform var(--motion-duration-normal) var(--motion-ease-standard); }
+.sidebar-link, .sidebar-sublink, .sidebar-collapse-btn {
+    transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.sidebar { transition: flex-basis var(--motion-duration-slow) var(--motion-ease-standard); }
+
+/* 모바일 서랍 : 왼쪽에서 밀려 나오고(transform), 배경은 흐려진다. 닫힌 서랍은 visibility 로 탭 이동에서 뺀다 */
+@media (max-width: 767.98px) {
+    .sidebar.sidebar-drawer {
+        display: block;
+        translate: -100% 0;
+        visibility: hidden;
+        transition: translate var(--motion-duration-slow) var(--motion-ease-exit), visibility 0s linear var(--motion-duration-slow);
+    }
+    .sidebar.sidebar-drawer.is-open {
+        translate: 0 0;
+        visibility: visible;
+        transition: translate var(--motion-duration-slow) var(--motion-ease-enter), visibility 0s;
+    }
+    .sidebar-backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+    }
+    .sidebar-backdrop.is-open { opacity: 1; pointer-events: auto; }
+}
+
+/* 버튼 (primer .btn·gh-btn) : 색 전환 + 누를 때 1px 내려감. 비활성 버튼은 움직이지 않는다 */
+.content .btn, dialog .btn, .gh-btn, .popup-container .btn {
+    transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-standard),
+                color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
+                translate var(--motion-duration-instant) var(--motion-ease-standard);
+}
+:is(.content .btn, dialog .btn, .gh-btn, .popup-container .btn):active:not(:disabled) { translate: 0 1px; }
+
+/* 탭 (Primer UnderlineNav) : 글자색·밑줄 색 전환 */
+:is(.content, dialog) .nav-tabs .nav-link { transition: color var(--motion-duration-fast) var(--motion-ease-standard); }
+:is(.content, dialog) .nav-tabs .nav-link::after { transition: background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+
+/* 상태 라벨 (승인·승인 대기 등) : 바뀔 때 색만 짧게 전환 — 글자·점 표시는 그대로라 색으로만 판단하지 않는다 */
+.gh-label { transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard),
+                        border-color var(--motion-duration-fast) var(--motion-ease-standard); }
+
+/* 화면 들어올 때 (components/layout/AppLayout 이 경로가 바뀔 때만 Web Animations 로 실행 — 검색·정렬·쿼리 변경에는 안 한다) : 정의는 JS */
+
+/* 로그인 (features/auth/LoginPage) : 로그인 상자 짧은 등장, 프로젝트 목록 항목은 앞 8개만 순차 */
+.auth > * { animation: motion-rise-in var(--motion-duration-normal) var(--motion-ease-enter) both; }
+.auth-project-list > li { animation: motion-slide-in-start var(--motion-duration-normal) var(--motion-ease-enter) both; }
+.auth-project-list > li:nth-child(2) { animation-delay: calc(var(--motion-stagger) * 1); }
+.auth-project-list > li:nth-child(3) { animation-delay: calc(var(--motion-stagger) * 2); }
+.auth-project-list > li:nth-child(4) { animation-delay: calc(var(--motion-stagger) * 3); }
+.auth-project-list > li:nth-child(n+5) { animation-delay: calc(var(--motion-stagger) * 4); }
+.auth-project-list button { transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.auth-project-list button .auth-project-go { transition: translate var(--motion-duration-fast) var(--motion-ease-standard); }
+.auth-project-list button:is(:hover, :focus-visible) .auth-project-go { translate: 3px 0; }
+
+/* 대시보드 (features/dashboard) : 처음 들어올 때 블록·카드가 짧게 순차 등장(최대 6단계, 마지막 시작 200ms), 차트는 처음 한 번 그려진다.
+   다시 조회·다시 그리기에는 DOM 이 그대로라 반복하지 않고, 값이 바뀌면 길이만 전환한다. 숫자 세기는 JS(useCountUp) */
+@keyframes motion-dash-arc { from { stroke-dasharray: 0 100; } }
+@keyframes motion-grow-x { from { scale: 0 1; } }
+@keyframes motion-reveal-x { from { clip-path: inset(0 100% 0 0); } }
+.dash > *, .dash-kpis > .dash-stat { animation: motion-rise-in var(--motion-duration-normal) var(--motion-ease-enter) both; }
+.dash > :nth-child(2), .dash-kpis > .dash-stat:nth-child(2) { animation-delay: calc(var(--motion-stagger) * 1); }
+.dash > :nth-child(3), .dash-kpis > .dash-stat:nth-child(3) { animation-delay: calc(var(--motion-stagger) * 2); }
+.dash > :nth-child(4), .dash-kpis > .dash-stat:nth-child(4) { animation-delay: calc(var(--motion-stagger) * 3); }
+.dash > :nth-child(5), .dash-kpis > .dash-stat:nth-child(5) { animation-delay: calc(var(--motion-stagger) * 4); }
+.dash > :nth-child(n+6) { animation-delay: calc(var(--motion-stagger) * 5); }
+/* 스켈레톤은 등장 모션 없이 자리만 (스켈레톤 자체가 늦게 나타난다) */
+.dash-stat.is-skeleton, .dash-box.is-skeleton { animation: none; }
+.dash-stat.is-skeleton { min-height: 100px; }
+.dash-skeleton-body { height: 222px; } /* 실제 상자 약 286~302px − 머리글 48 − 본문 여백 32 (1440 기준 측정) */
+.dash-skeleton-body.is-tall { height: 430px; } /* 모델·품질 상자 약 518px */
+.dash-donut-arc {
+    animation: motion-dash-arc var(--motion-duration-chart) var(--motion-ease-standard) var(--motion-duration-normal) both;
+    transition: stroke-dasharray var(--motion-duration-chart) var(--motion-ease-standard);
+}
+.dash-bar-fill {
+    transform-origin: left center;
+    animation: motion-grow-x var(--motion-duration-chart) var(--motion-ease-standard) var(--motion-duration-normal) both;
+    transition: width var(--motion-duration-chart) var(--motion-ease-standard);
+}
+.dash-stack { animation: motion-reveal-x var(--motion-duration-chart) var(--motion-ease-standard) var(--motion-duration-normal) both; }
+.dash-stack-seg { transition: width var(--motion-duration-chart) var(--motion-ease-standard); }
+.dash-stat { transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard); }
+
+/* 사용자 메뉴 (Header) : 열 때 짧은 등장 */
+.app-header-menu.show { animation: motion-rise-in var(--motion-duration-fast) var(--motion-ease-enter); }
+
+/* 토스트 (components/toast, UI-1 후속) : 아래에서 6px 짧게 등장(180ms), 닫을 때 120ms 사라짐. 중간 토스트가 빠질 때의 재배치는 ToastProvider(Web Animations) */
+.toast { animation: motion-rise-in var(--motion-duration-normal) var(--motion-ease-enter); }
+.toast[data-leaving] { animation: motion-sink-out var(--motion-duration-fast) var(--motion-ease-exit) forwards; }
+.toast-close { transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard); }
+
+/* ---------- 줄인 모션 : 장식 모션만 끈다 (기능에 필요한 상태 표시는 그대로, 전역 * 선택자로 지우지 않는다) ---------- */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --motion-duration-instant: 0ms;
+        --motion-duration-fast: 0ms;
+        --motion-duration-normal: 0ms;
+        --motion-duration-slow: 0ms;
+        --motion-duration-chart: 0ms;
+        --motion-stagger: 0ms;
+    }
+    .motion-fade-in, .motion-rise-in, .motion-highlight { animation: none; }
+    .skeleton { animation: motion-fade-in 1ms linear var(--motion-loading-delay) both; } /* 정적인 회색 (깜빡임 없음) */
+    .motion-spinner { animation-duration: 1.6s; } /* 처리 중임은 알려야 하므로 남기되 느리게 */
+    dialog[open], dialog[open]::backdrop, dialog[data-closing], dialog[data-closing]::backdrop,
+    .auth > *, .auth-project-list > li { animation: none; }
+    .dash > *, .dash-kpis > .dash-stat, .dash-donut-arc, .dash-bar-fill, .dash-stack, .app-header-menu.show { animation: none; }
+    .toast, .toast[data-leaving] { animation: none; } /* 바로 보이고 바로 빠진다 (toastStore 도 줄인 모션이면 기다리지 않는다) */
+    :is(.content .btn, dialog .btn, .gh-btn, .popup-container .btn):active:not(:disabled) { translate: none; }
+    .auth-project-list button:is(:hover, :focus-visible) .auth-project-go { translate: none; }
+}

@@ -10,7 +10,7 @@ import com.lexorma.core.project.repository.ProjectRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
-import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
+import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.logical.domain.entity.LogicalAttribute;
@@ -548,7 +548,9 @@ public class PhysicalGenerationService {
     }
 
     /**
-     * 컬럼명 : 화면의 용어 약어와 같은 값 (단어 약어를 _ 로 이은 것), 단어 연결이 없으면 용어에 적은 영문 약어.
+     * 컬럼명 : 표준 용어에 저장된 영문 약어(앞뒤 공백 제거, 대문자) — 화면·품질 진단의 기대 컬럼명({@link StandardNames#expectedColumnName})과 같은 값.
+     * 단어 약어를 다시 이어 만들지 않는다 (M-7 후속, 2026-11-18 — 예전에는 단어 조합을 먼저 써 저장값이 다른 용어의 컬럼이 진단의 컬럼명 불일치가 됐다).
+     * 약어가 없거나 비었으면 지금처럼 오류 (단어 조합으로 대신하지 않는다).
      * 도메인 : 타입명에 길이를 적었으면 그것, 아니면 길이·소수점 칸 (0 은 없음)
      */
     private static ColumnSpec columnSpec(LogicalAttribute attribute) {
@@ -556,9 +558,8 @@ public class PhysicalGenerationService {
         if (term == null) {
             return new ColumnSpec(null, null, null, null, null, Messages.get("속성 {0} 에 표준 용어가 없습니다. 논리 모델에서 표준 용어를 먼저 연결해주세요.", attribute.getAttributeName()));
         }
-        String fromWords = StandardTermDto.wordAbbreviation(term);
-        String abbreviation = fromWords != null && !fromWords.isBlank() ? fromWords : term.getCommonStandardTermAbbreviation();
-        String columnName = abbreviation == null || abbreviation.isBlank() ? null : abbreviation.strip().toUpperCase(Locale.ROOT);
+        String expected = StandardNames.expectedColumnName(term.getCommonStandardTermAbbreviation());
+        String columnName = expected == null ? null : expected.toUpperCase(Locale.ROOT);
         var domain = term.getStandardDomain();
         Matcher type = TYPE.matcher(domain == null || domain.getDataType() == null ? "" : domain.getDataType());
         if (columnName == null) return new ColumnSpec(null, null, null, null, null, Messages.get("속성 {0} 의 표준 용어에 영문 약어가 없습니다.", attribute.getAttributeName()));

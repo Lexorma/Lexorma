@@ -37,6 +37,11 @@
 
 .erd-detail { min-width: 0; overflow: auto; padding: 12px; background: var(--gh-canvas); border-left: 1px solid var(--gh-border); font-size: 13px; }
 .erd-detail > select.form-control { width: 100%; }
+/* 논리 ERD 엔터티 찾기 (M-6 후속 1차) : ERD 범위 밖 엔터티도 서버에서 찾는다 */
+.erd-finder { margin-top: 8px; }
+.erd-finder > input.form-control { width: 100%; }
+.erd-finder-list { max-height: 200px; overflow: auto; }
+.erd-finder-list li { padding: 4px 0; }
 .erd-detail h3 { margin: 16px 0 4px; font-size: 16px; overflow-wrap: anywhere; }
 .erd-detail h4 { margin: 16px 0 4px; font-size: 13px; }
 .erd-detail p { margin: 4px 0; }
@@ -50,6 +55,8 @@
 .erd-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--gh-border); font-size: 12px; }
 .erd-line { display: inline-block; width: 20px; margin-right: 4px; vertical-align: middle; border-top: 2px solid var(--gh-accent); }
 .erd-line.dashed { border-top-style: dashed; }
+.logical-legend-end { display: inline-flex; align-items: center; gap: 4px; }
+.logical-legend-end svg { overflow: visible; }
 .erd-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: middle; }
 
 /* 테이블 노드 : 크기 고정 (model.ts 의 NODE_WIDTH / HEADER_HEIGHT / ROW_HEIGHT 와 맞춘다) */

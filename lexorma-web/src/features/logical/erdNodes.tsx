@@ -3,6 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Handle, Position, type 
 import { t } from '../../lib/i18n';
 import { diffClass, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, type NodeDiff } from '../erd/model';
 import { DiffBadge, DiffMark, useSimpleNodes } from '../erd/TableNode';
+import { centered, endShift, relationLanes, type Lane } from '../erd/relationLanes';
 import { participation, type GraphEntity, type LogicalRelationship } from './model';
 
 /** 논리 ERD 의 노드·관계선 (논리 ERD 화면과 버전 비교 ERD 가 같이 쓴다) */
@@ -10,13 +11,21 @@ import { participation, type GraphEntity, type LogicalRelationship } from './mod
 /** connectable : 편집 모드에서만 연결점을 끌어 관계 등록을 시작할 수 있다. diff : 버전 비교 ERD 의 변경 표시 */
 export type EntityNodeType = Node<{ entity: GraphEntity; connectable?: boolean; diff?: NodeDiff }, 'entity'>;
 /** sourceSlot·targetSlot : 같은 연결점을 쓰는 관계 중 몇 번째인지 (참여 수 글자가 겹치지 않게 옆으로 민다) */
-/** parallel : 같은 두 엔터티 사이의 관계 중 몇 번째인지 (선이 겹쳐 고를 수 없게 되지 않도록 조금씩 띄운다) */
+/** lane : 같은 두 엔터티(자기 참조는 한 엔터티) 사이의 관계 중 몇 번째인지·모두 몇 개인지 — 관계 ID 순 (M-6 후속 2차, erd/relationLanes) */
 /** tag : 관계명 자리에 함께 적는 말 (버전 비교 ERD 의 추가·삭제·수정) */
-export type RelationshipEdgeType = Edge<{ relationship: LogicalRelationship; selected: boolean; sourceSlot: number; targetSlot: number; parallel: number; tag?: string }, 'relationship'>;
+export type RelationshipEdgeType = Edge<{ relationship: LogicalRelationship; selected: boolean; sourceSlot: number; targetSlot: number; lane: Lane; tag?: string }, 'relationship'>;
 
 /** 연결점 : 왼쪽(들어옴) / 오른쪽(나감) / 자기 참조는 오른쪽 위에서 나가 오른쪽 아래로 들어온다 */
 const HANDLE = { in: 'in', out: 'out', selfOut: 'self-out', self: 'self' } as const;
 const SLOT_WIDTH = 34;
+/** 평행 관계선 : 끝점은 헤더 안에서 대칭으로 벌리고(간격 8, 연결점 기준 ±20 — 헤더 높이 52 안), 꺾이는 세로 구간과 돌아 나가는 폭도 차선마다 달리한다 */
+const LANE_END_SPACING = 8;
+const LANE_END_LIMIT = 20;
+const LANE_CENTER_SPACING = 18;
+const LANE_OFFSET = 20;
+const LANE_OFFSET_STEP = 10;
+/** 자기 참조 고리 : 관계마다 바깥으로 14씩 더 크게 (안쪽 고리부터 ID 순) */
+const SELF_LOOP_STEP = 14;
 /** 엔터티 사이 간격 : 양 끝 참여 수와 관계명이 들어갈 자리 */
 export const LAYER_GAP = 260;
 
@@ -74,18 +83,27 @@ export function EndMarkers() {
 
 /**
  * 관계선 : 각 엔터티 옆에 **그 엔터티 쪽의 참여 수**를 적고(출발 쪽 = sourceMin..sourceMax, 도착 쪽 = targetMin..targetMax) 선 끝에 같은 뜻의 표기를 그린다.
- * 실선 = 식별 관계, 점선 = 비식별 관계. 같은 두 엔터티 사이의 관계는 parallel 만큼 띄워 그린다.
+ * 실선 = 식별 관계, 점선 = 비식별 관계. 같은 두 엔터티 사이의 관계는 차선마다 끝점·꺾이는 세로 구간·돌아 나가는 폭을 달리해 기호와 경로가 겹치지 않게 한다.
+ * 자기 참조는 엔터티 오른쪽 바깥으로 도는 고리이며, 여러 개면 관계마다 고리를 더 크게 그린다 (경로는 노드 좌표에서 매번 계산 — 노드를 옮기면 따라온다)
  */
 function RelationshipEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerStart, markerEnd }: EdgeProps<RelationshipEdgeType>) {
-  const shift = (data?.parallel ?? 0) * 16;
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY: sourceY + shift, targetX, targetY: targetY + shift, sourcePosition, targetPosition });
+  const lane = data?.lane ?? { index: 0, count: 1 };
+  const self = !!data && data.relationship.sourceEntityId === data.relationship.targetEntityId;
+  const shift = self ? 0 : endShift(lane, LANE_END_SPACING, LANE_END_LIMIT);
+  sourceY += shift;
+  targetY += shift;
+  const [path, labelX, labelY] = getSmoothStepPath(self
+    ? { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, offset: LANE_OFFSET + lane.index * SELF_LOOP_STEP }
+    : { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, offset: LANE_OFFSET + lane.index * LANE_OFFSET_STEP,
+      centerX: (sourceX + targetX) / 2 + centered(lane) * LANE_CENTER_SPACING });
   if (!data) return <BaseEdge id={id} path={path} style={style} />;
   const r = data.relationship;
   // 도착 연결점이 오른쪽이면(자기 참조) 글자를 오른쪽에, 보통은 엔터티 왼쪽 바깥에 둔다
   const targetRight = targetPosition === Position.Right;
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={16} />
+      {/* 고르는 영역 : 선 양쪽 6px (평행 차선 간격보다 좁게 — 옆 관계를 대신 고르지 않는다) */}
+      <BaseEdge id={id} path={path} style={style} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={12} />
       <EdgeLabelRenderer>
         <span className={`logical-edge-label${data.selected ? ' selected' : ''}`} data-end="source" style={{ transform: `translate(0, -100%) translate(${sourceX + 6 + data.sourceSlot * SLOT_WIDTH}px, ${sourceY - 2}px)` }}>
           {participation(r.sourceMin, r.sourceMax)}
@@ -120,8 +138,10 @@ export function relationshipEdges(relationships: LogicalRelationship[], look: (r
     used.set(key, index + 1);
     return index;
   };
-  const pair = (r: LogicalRelationship) => `pair:${Math.min(r.sourceEntityId, r.targetEntityId)}:${Math.max(r.sourceEntityId, r.targetEntityId)}`;
-  return relationships.map((relationship) => {
+  // 관계 ID 순으로 차선을 한 번에 정한다 : 다시 조회·범위를 바꿔도 같은 묶음이면 같은 자리 (응답 순서에 기대지 않는다)
+  const sorted = [...relationships].sort((a, b) => a.id - b.id);
+  const lanes = relationLanes(sorted, (r) => r.id, (r) => [r.sourceEntityId, r.targetEntityId]);
+  return sorted.map((relationship) => {
     const self = relationship.sourceEntityId === relationship.targetEntityId;
     const sourceHandle = self ? HANDLE.selfOut : HANDLE.out;
     const targetHandle = self ? HANDLE.self : HANDLE.in;
@@ -138,7 +158,7 @@ export function relationshipEdges(relationships: LogicalRelationship[], look: (r
       markerStart: endMarker(relationship.sourceMin, relationship.sourceMax),
       markerEnd: endMarker(relationship.targetMin, relationship.targetMax),
       data: {
-        relationship, selected: highlighted, tag, parallel: slot(pair(relationship)),
+        relationship, selected: highlighted, tag, lane: lanes.get(relationship.id) ?? { index: 0, count: 1 },
         sourceSlot: slot(`${relationship.sourceEntityId}:${sourceHandle}`), targetSlot: slot(`${relationship.targetEntityId}:${targetHandle}`),
       },
     };

@@ -123,6 +123,23 @@ export interface LogicalGraph {
   relationships: LogicalRelationship[];
 }
 
+/**
+ * 논리 ERD 부분 조회 (M-6 후속 1차) : 범위 조회·이웃 탐색. relationships 는 양 끝이 모두 entities 에 있는 관계만.
+ * totalCount : 범위 조회는 조건에 맞는 전체 엔터티 수, 이웃 탐색은 담은 수. outsideRelationships : 엔터티 ID → 상대가 범위 밖이라 빠진 관계 수
+ */
+export interface LogicalGraphPart extends LogicalGraph {
+  totalCount: number;
+  truncated: boolean;
+  modelEntityCount: number;
+  outsideRelationships: Record<string, number>;
+}
+
+/** 논리 ERD 엔터티 찾기 (ERD 범위와 무관, 속성 없이) */
+export interface EntityHits {
+  items: { id: number; name: string; isApproval: boolean | null }[];
+  totalCount: number;
+}
+
 /** 한쪽 참여 수 표기 : 1, 0..1, 0..N, 1..N (최대 null = N) */
 export function participation(min: number, max: number | null) {
   if (max == null) return `${min}..N`;

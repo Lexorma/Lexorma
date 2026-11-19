@@ -16,4 +16,8 @@ public interface LogicalIdentifierRepository extends JpaRepository<LogicalIdenti
     /** 논리 ERD : 모델의 식별자와 구성 속성을 한 번에 */
     @Query("select distinct i from LogicalIdentifier i join fetch i.attributes ia join fetch ia.attribute where i.entity.model.id = :modelId")
     List<LogicalIdentifier> findAllByModelId(@Param("modelId") Long modelId);
+
+    /** 논리 ERD 부분 조회 : 고른 엔터티의 식별자만 */
+    @Query("select distinct i from LogicalIdentifier i join fetch i.attributes ia join fetch ia.attribute where i.entity.id in :entityIds")
+    List<LogicalIdentifier> findAllByEntityIds(@Param("entityIds") java.util.Collection<Long> entityIds);
 }

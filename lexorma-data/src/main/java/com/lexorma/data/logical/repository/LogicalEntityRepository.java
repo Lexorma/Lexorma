@@ -20,6 +20,27 @@ public interface LogicalEntityRepository extends JpaRepository<LogicalEntity, Lo
 
     boolean existsByModel_Id(Long modelId);
 
+    long countByModel_Id(Long modelId);
+
+    // ---- 논리 ERD 부분 조회 (M-6 후속 1차) : 검색 조건은 이름·설명(소문자 포함, '!' 이스케이프). 정렬은 전체 조회(findGraph)와 같은 이름 → ID
+    String ERD_SEARCH = " from LogicalEntity e where e.model.id = :modelId"
+            + " and (lower(e.entityName) like :pattern escape '!' or lower(coalesce(e.entityDescription, '')) like :pattern escape '!')";
+
+    @Query("select e.id" + ERD_SEARCH + " order by e.entityName, e.id")
+    List<Long> searchIds(@Param("modelId") Long modelId, @Param("pattern") String pattern, org.springframework.data.domain.Pageable pageable);
+
+    @Query("select count(e)" + ERD_SEARCH)
+    long countSearch(@Param("modelId") Long modelId, @Param("pattern") String pattern);
+
+    /** 엔터티 찾기 목록 : ID·이름·승인 여부만 (속성을 읽지 않는다) */
+    @Query("select e.id, e.entityName, e.isApproval" + ERD_SEARCH + " order by e.entityName, e.id")
+    List<Object[]> searchHits(@Param("modelId") Long modelId, @Param("pattern") String pattern, org.springframework.data.domain.Pageable pageable);
+
+    /** 고른 엔터티만 속성·표준 용어·도메인과 한 번에 (findGraph 와 같은 모양) */
+    @Query("select distinct e from LogicalEntity e left join fetch e.attributes a left join fetch a.standardTerm t left join fetch t.standardDomain "
+            + "where e.model.id = :modelId and e.id in :ids order by e.entityName, e.id")
+    List<LogicalEntity> findGraphByIds(@Param("modelId") Long modelId, @Param("ids") java.util.Collection<Long> ids);
+
     @Query("select e.id from LogicalEntity e where e.model.id = :modelId")
     Set<Long> findIdsByModelId(@Param("modelId") Long modelId);
 

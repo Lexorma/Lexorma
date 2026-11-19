@@ -184,4 +184,22 @@ public final class LogicalModelDto {
     /** 논리 모델 1개의 엔터티(속성 포함)와 관계. 물리 ERD(ErdDto.Graph)와 따로 조회한다 */
     public record Graph(Long modelId, String modelName, List<GraphEntity> entities, List<Relationship> relationships) {
     }
+
+    /**
+     * 논리 ERD 부분 조회 (M-6 후속 1차 — 범위 조회·이웃 탐색). entities·relationships 는 {@link Graph} 와 같은 모양이다.
+     * relationships : 양 끝이 모두 entities 에 있는 관계만 (그릴 수 없는 선은 주지 않는다).
+     * totalCount : 범위 조회는 조건에 맞는 전체 엔터티 수, 이웃 탐색은 담은 엔터티 수. truncated : 한도·페이지 때문에 일부만 담았는지.
+     * modelEntityCount : 모델 전체 엔터티 수. outsideRelationships : 엔터티 ID → 상대가 범위 밖이라 빠진 관계 수 (0 은 없음)
+     */
+    public record GraphPart(Long modelId, String modelName, List<GraphEntity> entities, List<Relationship> relationships,
+                            long totalCount, boolean truncated, long modelEntityCount, Map<Long, Integer> outsideRelationships) {
+    }
+
+    /** 논리 ERD 엔터티 찾기 결과 1건 (속성 없이) */
+    public record EntityHit(Long id, String name, Boolean isApproval) {
+    }
+
+    /** 엔터티 찾기 : 이름순 앞부분 items 와 조건에 맞는 전체 수 */
+    public record EntityHits(List<EntityHit> items, long totalCount) {
+    }
 }

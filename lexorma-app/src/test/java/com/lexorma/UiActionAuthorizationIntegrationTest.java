@@ -371,7 +371,9 @@ class UiActionAuthorizationIntegrationTest {
         List<Runnable> calls = List.of(
                 () -> dictionary.approvalStandardDomains(domains, account, approval),
                 () -> dictionary.approvalStandardWords(words, account, approval),
-                () -> dictionary.approvalStandardTerms(terms, account, approval));
+                // 표준 용어는 화면처럼 불러온 기준값(modifiedAt)을 함께 보낸다 (M-5 8차)
+                () -> dictionary.approvalStandardTerms(terms.stream().map(term -> StandardTermDto.builder().id(term.getId())
+                        .modifiedAt(termRepository.findById(term.getId()).map(StandardTerm::modifiedAt).orElse(null)).build()).toList(), account, approval));
         for (Runnable call : calls) {
             if (expected == null) denied(call);
             else if (expected == ErrorCode.TABLE_IS_NOT_DEFINED) call.run();

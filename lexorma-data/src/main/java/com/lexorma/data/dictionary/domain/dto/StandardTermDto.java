@@ -5,6 +5,7 @@ import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -35,6 +36,12 @@ public class StandardTermDto {
     private Long usageCount;
 
     private String dataType;
+
+    /**
+     * 수정·승인 기준값 (M-5 8차, DEC-08 과 같은 계약 {@code ModelBase}) : 조회 응답은 행의 마지막 수정 일시(MDFCN_DT)를 주고,
+     * 수정·승인·승인 취소 요청은 화면이 불러온 값을 그대로 돌려준다. 다르면 409 MODEL_CONFLICT
+     */
+    private LocalDateTime modifiedAt;
 
     /**
      * 용어를 이루는 단어들의 단어 약어를 '_' 로 이은 값 (단어 연결이 없으면 ""). 저장된 영문약어를 대신하지 않는다 —
@@ -77,6 +84,7 @@ public class StandardTermDto {
                 .synonyms(convertListToString(entity.getSynonymList()))
                 .isApprovalYn(entity.getIsApproval() ? "Y" : "N")
                 .dataType(data)
+                .modifiedAt(entity.modifiedAt())
                 .build();
     }
 

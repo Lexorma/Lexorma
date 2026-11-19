@@ -1,5 +1,7 @@
 package com.lexorma.data.dictionary.service;
 
+import com.lexorma.common.jpa.ModelBase;
+
 import com.lexorma.data.dictionary.domain.dto.DictionaryLists;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -102,9 +105,16 @@ public class StandardTermService {
 
         // 행을 잠그고 바꾼다 : 같은 용어의 수정과 겹치면 수정이 끝난 뒤 그 내용을 읽어 승인 여부만 바꾼다 (잠그지 않으면 수정 전 내용으로 덮어쓴다).
         // 여러 건은 ID 순서로 잠가 서로 기다리다 막히지 않게 한다 (M-5 7차)
-        standardTerms.stream().map(StandardTermDto::getId).filter(Objects::nonNull).distinct().sorted().forEach(id ->
-                // 승인/미승인 상태로 변경한다.
-                standardTermRepository.findForUpdate(id, projectId).ifPresent(term -> term.setIsApproval(isApprovalAvailable)));
+        Map<Long, LocalDateTime> bases = new HashMap<>();
+        standardTerms.stream().filter(term -> term.getId() != null).forEach(term -> bases.putIfAbsent(term.getId(), term.getModifiedAt()));
+        bases.keySet().stream().sorted().forEach(id ->
+                standardTermRepository.findForUpdate(id, projectId).ifPresent(term -> {
+                    if (Boolean.TRUE.equals(term.getIsApproval()) == isApprovalAvailable) return; // 이미 그 상태 : 바꾸는 것이 없다
+                    // 승인자가 본 내용 그대로일 때만 바꾼다 (M-5 8차) : 화면을 연 뒤 고쳐졌으면 409 — 하나라도 다르면 전체를 되돌린다 (한 트랜잭션)
+                    verifyBase(term, bases.get(id), "표준 용어 {0} 이(가) 화면을 연 뒤 변경되어 승인 여부를 바꾸지 않았습니다. 목록을 다시 불러와 최신 내용을 검토한 뒤 다시 처리하세요.");
+                    // 승인/미승인 상태로 변경한다.
+                    term.setIsApproval(isApprovalAvailable);
+                }));
     }
 
     @Transactional
@@ -416,6 +426,15 @@ public class StandardTermService {
 
     private static final int DESCRIPTION_MAX_LENGTH = 1000; // standard_term.common_standard_term_description
 
+    /** {@link ModelBase#verify} 와 같은 비교(1µs 미만 차이는 같음)·같은 409 MODEL_CONFLICT, 사유만 표준 용어 화면에 맞춘다 (M-5 8차) */
+    private static void verifyBase(StandardTerm locked, java.time.LocalDateTime base, String reason) {
+        try {
+            ModelBase.verify(locked, base, locked.getCommonStandardTermName());
+        } catch (CustomException conflict) {
+            throw new CustomException(ErrorCode.MODEL_CONFLICT, reason, locked.getCommonStandardTermName());
+        }
+    }
+
     private void lockProject(Long projectId) {
         projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
     }
@@ -504,6 +523,8 @@ public class StandardTermService {
         if (Boolean.TRUE.equals(existingTerm.getIsApproval())) {
             throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         }
+        // 화면을 연 뒤 다른 사용자가 고쳤으면 409 (M-5 8차, DEC-08 과 같은 계약 — 잠근 행의 MDFCN_DT 와 비교). HTTP 요청은 기준값이 필수다(컨트롤러)
+        verifyBase(existingTerm, dto.getModifiedAt(), "표준 용어 {0} 을(를) 화면을 연 뒤 다른 사용자가 먼저 변경해 저장하지 않았습니다. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.");
         // 영문약어를 보내지 않으면(null) 저장된 값을 그대로 둔다 (단어 약어 조합으로 바꾸지 않는다)
         if (dto.getCommonStandardTermAbbreviation() == null) {
             dto.setCommonStandardTermAbbreviation(existingTerm.getCommonStandardTermAbbreviation());
@@ -544,6 +565,8 @@ public class StandardTermService {
         if (dto.getSynonyms() != null) existingTerm.setSynonymList(DictionaryLists.split(dto.getSynonyms()));
         // 승인 여부는 바꾸지 않는다 : 승인·승인 취소 API 만 바꾼다 (예전에는 승인 권한자가 고치면 승인, 그 밖에는 미승인으로 다시 정했다 — M-5 7차)
         existingTerm.setStandardDomain(standardDomain); // 연관관계 주입
+        // 이음동의어만 바뀌어도 기준값(MDFCN_DT)이 움직이게 한다 : 행 자신의 값이 그대로면 UPDATE 가 나가지 않는다 (M-5 8차)
+        existingTerm.markModified();
 
         // 단어 매핑도 갱신 필요 시 추가
     }

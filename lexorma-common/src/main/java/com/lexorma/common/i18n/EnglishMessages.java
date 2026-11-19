@@ -367,6 +367,8 @@ final class EnglishMessages {
         add("비활성화된 Provider 는 지정할 수 없습니다.", "A disabled provider cannot be set.");
         add("기본 모델이 없는 Provider 는 모델을 함께 지정해야 합니다.", "A provider without a default model needs a model.");
         add("충돌한 객체 : {0}", "Conflicting object: {0}");
+        add("표준 용어 {0} 을(를) 화면을 연 뒤 다른 사용자가 먼저 변경해 저장하지 않았습니다. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.", "Another user changed the standard term {0} after you opened this screen, so it was not saved. Closing this window and reloading discards your input, so copy it first if you need it.");
+        add("표준 용어 {0} 이(가) 화면을 연 뒤 변경되어 승인 여부를 바꾸지 않았습니다. 목록을 다시 불러와 최신 내용을 검토한 뒤 다시 처리하세요.", "The standard term {0} changed after you opened this screen, so its approval was not changed. Reload the list, review the latest content and try again.");
         add("한 번에 {0}개 컬럼까지 바꿀 수 있습니다.", "Up to {0} columns can be changed at once.");
         add("같은 컬럼이 두 번 들어 있습니다.", "The same column is included twice.");
         add("{0} : 엑셀 셀에 담을 수 있는 길이({1}자)를 넘는 값이 있어 내려받을 수 없습니다.", "{0} : A value is longer than an Excel cell can hold ({1} characters), so it cannot be downloaded.");

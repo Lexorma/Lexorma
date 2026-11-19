@@ -6,7 +6,7 @@ import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { Navigate } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api, download } from '../../lib/api';
+import { api, ApiError, download } from '../../lib/api';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
@@ -207,7 +207,15 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
         dialog.alert(isApproval ? t('승인이 필요한 {0}가 선택되지 않았습니다.', tab.name) : t('승인취소가 필요한 {0}가 선택되지 않았습니다.', tab.name));
         return;
       }
-      const response = await api<{ result: boolean }>(`${tab.approvalUrl}/${isApproval}`, { method: 'PATCH', body: checked });
+      // 체크한 행(그리드가 불러온 그대로 — 표준 용어는 modifiedAt 기준값 포함)을 보낸다. 화면을 연 뒤 바뀐 용어가 있으면 서버가 409 로 전체를 거절하고(공통 알림),
+      // 성공 안내 없이 목록을 다시 불러와 최신 내용을 보게 한다 (M-5 8차 — 자동 재시도 없음)
+      let response: { result: boolean };
+      try {
+        response = await api<{ result: boolean }>(`${tab.approvalUrl}/${isApproval}`, { method: 'PATCH', body: checked });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MODEL_CONFLICT') reload();
+        return;
+      }
       if (response.result) dialog.alert(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'), reload);
     });
   };
@@ -249,7 +257,8 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
     dialog.open({
       title: t('{0} 수정', tab.title),
       content: ({ close }: DialogControls) => (
-        <DictionaryForm tableId={tab.id} type="U" fields={fieldsFromRow(row, columns, ['isApprovalYn', 'usageCount'])} config={FORM_CONFIG[tab.id].edit} submitText={t('저장')}
+        <DictionaryForm tableId={tab.id} type="U" fields={fieldsFromRow(row, columns, ['isApprovalYn', 'usageCount', 'modifiedAt'])} config={FORM_CONFIG[tab.id].edit} submitText={t('저장')}
+          base={row.modifiedAt === undefined ? undefined : { modifiedAt: row.modifiedAt }}
           onSaved={() => { close(); reload(); }} />
       ),
     });

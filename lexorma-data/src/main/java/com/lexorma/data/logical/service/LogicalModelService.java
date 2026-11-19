@@ -67,6 +67,7 @@ public class LogicalModelService {
     private final EntityTableMappingRepository entityTableMappingRepository;
     private final AttributeColumnMappingRepository attributeColumnMappingRepository;
     private final LogicalRelationshipAttributeRepository pairRepository;
+    private final LogicalModelQueryRepository queryRepository;
     private final jakarta.persistence.EntityManager entityManager;
 
     // ------------------------------------------------------------------ 논리 모델
@@ -116,6 +117,81 @@ public class LogicalModelService {
     public List<LogicalModelDto.Entity> selectEntities(AccountDto accountDto, Long modelId) {
         model(accountDto.getProjectId(), modelId);
         return entityRepository.findAllByModel_IdOrderByEntityNameAscIdAsc(modelId).stream().map(LogicalModelDto.Entity::summary).toList();
+    }
+
+    // ------------------------------------------------------------------ 논리 모델 관리 목록 (M-6 후속 3차)
+    // 관리 화면은 전체 그래프(selectGraph)를 받지 않는다 : 요약(수 2개) + 엔터티 페이지(수는 DB 가 센다) + 관계 페이지 + 연 엔터티의 상세·관계.
+    // 페이지 크기는 공용 그리드와 같은 최대 100
+
+    public static final int MANAGE_MAX_PAGE_SIZE = 100;
+
+    /** 모델 전체 엔터티 수·관계 수 (검색과 무관) */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.Summary selectSummary(AccountDto accountDto, Long modelId) {
+        model(accountDto.getProjectId(), modelId);
+        return new LogicalModelDto.Summary(modelId, entityRepository.countByModel_Id(modelId), relationshipRepository.countByModel_Id(modelId));
+    }
+
+    /** 엔터티 목록 페이지 : 이름·설명 검색(논리 ERD 와 같은 규칙), 정렬 entityName·entityDescription·isApproval(기본 이름순), 같은 값은 ID 순 */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<LogicalModelDto.EntityRow> selectEntityRows(AccountDto accountDto, Long modelId, String keyword, int page, int size, String sort) {
+        model(accountDto.getProjectId(), modelId);
+        if (page < 0 || size < 1 || size > MANAGE_MAX_PAGE_SIZE) throw invalid("한 번에 1~{0}개 엔터티까지 조회할 수 있습니다.", MANAGE_MAX_PAGE_SIZE);
+        return queryRepository.findEntityRows(modelId, likePattern(keyword), com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort));
+    }
+
+    /**
+     * 관계 목록 페이지 : 검색어(관계명·출발·도착 엔터티명, 엔터티 검색과 같은 규칙), 식별 여부(null = 전체 — 저장된 값만 본다),
+     * 정렬 relationshipName·sourceEntityName·targetEntityName(없으면 예전처럼 ID 순, 같은 값은 ID 순 — 후속 3차 보완).
+     * 페이지의 관계를 먼저 고른 뒤 그 관계만 양 끝 엔터티·주 식별자(한 번)·속성 짝(한 번)과 함께 읽어 판정한다
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<LogicalModelDto.Relationship> selectRelationshipRows(AccountDto accountDto, Long modelId, String keyword, Boolean identifying,
+                                                                                                    int page, int size, String sort) {
+        model(accountDto.getProjectId(), modelId);
+        if (page < 0 || size < 1 || size > MANAGE_MAX_PAGE_SIZE) throw invalid("한 번에 1~{0}개 관계까지 조회할 수 있습니다.", MANAGE_MAX_PAGE_SIZE);
+        var ids = queryRepository.findRelationshipIds(modelId, likePattern(keyword), identifying, com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort));
+        Map<Long, LogicalRelationship> found = new java.util.HashMap<>();
+        if (!ids.isEmpty()) relationshipRepository.findWithEntities(ids.getContent()).forEach(r -> found.put(r.getId(), r));
+        List<LogicalRelationship> rows = ids.getContent().stream().map(found::get).filter(Objects::nonNull).toList(); // 페이지 순서 그대로
+        return new org.springframework.data.domain.PageImpl<>(withEndKeys(rows), ids.getPageable(), ids.getTotalElements());
+    }
+
+    /** 예전 호출 (검색·필터·정렬 없음 = ID 순) */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<LogicalModelDto.Relationship> selectRelationshipRows(AccountDto accountDto, Long modelId, int page, int size) {
+        return selectRelationshipRows(accountDto, modelId, null, null, page, size, null);
+    }
+
+    /** 엔터티 상세의 관계 탭 : 출발·도착 어느 쪽이든 이 엔터티인 관계와 속성 짝 (모델 전체 관계를 받아 거르지 않는다) */
+    @Transactional(readOnly = true)
+    public List<LogicalModelDto.Relationship> selectEntityRelationships(AccountDto accountDto, Long entityId) {
+        LogicalEntity entity = entity(accountDto.getProjectId(), entityId);
+        return withEndKeys(relationshipRepository.findAllByEntityId(entity.getId()));
+    }
+
+    /** 관계들 + 속성 짝 판정. 양 끝 엔터티의 주 식별자를 한 번에 읽는다 (엔터티마다 식별자를 따로 읽지 않는다) */
+    private List<LogicalModelDto.Relationship> withEndKeys(List<LogicalRelationship> relationships) {
+        Set<Long> ends = new HashSet<>();
+        relationships.forEach(r -> {
+            ends.add(r.getSourceEntity().getId());
+            ends.add(r.getTargetEntity().getId());
+        });
+        Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>();
+        if (!ends.isEmpty()) {
+            for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(ends)) {
+                if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
+            }
+        }
+        return withPairs(relationships, e -> primaryKeys.getOrDefault(e.getId(), List.of()));
+    }
+
+    /** 식별자 구성 속성 ID (식별자 순서) */
+    private static List<Long> keyAttributeIds(LogicalIdentifier identifier) {
+        return identifier.getAttributes().stream()
+                .sorted(java.util.Comparator.comparing(LogicalIdentifierAttribute::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                        .thenComparing(LogicalIdentifierAttribute::getId))
+                .map(a -> a.getAttribute().getId()).distinct().toList();
     }
 
     @Transactional(readOnly = true)
@@ -467,10 +543,7 @@ public class LogicalModelService {
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
             }
             if (Boolean.TRUE.equals(identifier.getIsPrimary())) {
-                primaryKeys.put(identifier.getEntity().getId(), identifier.getAttributes().stream()
-                        .sorted(java.util.Comparator.comparing(LogicalIdentifierAttribute::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                                .thenComparing(LogicalIdentifierAttribute::getId))
-                        .map(a -> a.getAttribute().getId()).distinct().toList());
+                primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
             }
         }
         return new LogicalModelDto.Graph(model.getId(), model.getModelName(),
@@ -479,7 +552,7 @@ public class LogicalModelService {
     }
 
     // ------------------------------------------------------------------ 논리 ERD 부분 조회 (M-6 후속 1차)
-    // 물리 ERD(ErdService)와 같은 한도 : 한 번에 엔터티 300개, 이웃 1~3단계, 검색어 100자. 전체 조회(selectGraph)는 관리 화면이 쓰므로 그대로 둔다
+    // 물리 ERD(ErdService)와 같은 한도 : 한 번에 엔터티 300개, 이웃 1~3단계, 검색어 100자. 전체 조회(selectGraph)는 API 호환을 위해 그대로 둔다 (화면은 더 쓰지 않는다 — 후속 3차)
 
     public static final int ERD_MAX_ENTITIES = 300;
     public static final int ERD_MAX_DEPTH = 3;
@@ -554,10 +627,7 @@ public class LogicalModelService {
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
             }
             if (Boolean.TRUE.equals(identifier.getIsPrimary())) {
-                primaryKeys.put(identifier.getEntity().getId(), identifier.getAttributes().stream()
-                        .sorted(java.util.Comparator.comparing(LogicalIdentifierAttribute::getSortOrder, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                                .thenComparing(LogicalIdentifierAttribute::getId))
-                        .map(a -> a.getAttribute().getId()).distinct().toList());
+                primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
             }
         }
         // 걸린 관계를 한 번 읽어 범위 안(양 끝 모두)·범위 밖(한 끝만)으로 나눈다. 범위 안 관계는 ID 로 읽는다

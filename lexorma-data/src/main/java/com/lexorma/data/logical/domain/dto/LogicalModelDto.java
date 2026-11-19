@@ -202,4 +202,16 @@ public final class LogicalModelDto {
     /** 엔터티 찾기 : 이름순 앞부분 items 와 조건에 맞는 전체 수 */
     public record EntityHits(List<EntityHit> items, long totalCount) {
     }
+
+    /**
+     * 논리 모델 관리 엔터티 목록 1행 (M-6 후속 3차). 수는 DB 가 센다 — attributeCount : 이 엔터티의 속성,
+     * relationshipCount : 출발·도착 어느 쪽이든 이 엔터티인 관계 (자기 참조는 1번 — 예전 화면이 전체 조회로 세던 것과 같다)
+     */
+    public record EntityRow(Long id, String entityName, String entityDescription, Boolean isApproval, Long attributeCount, Long relationshipCount,
+                            java.time.LocalDateTime modifiedAt) {
+    }
+
+    /** 논리 모델 관리 상단 요약 : 모델 전체 엔터티 수·관계 수 (검색과 무관) */
+    public record Summary(Long modelId, long entityCount, long relationshipCount) {
+    }
 }

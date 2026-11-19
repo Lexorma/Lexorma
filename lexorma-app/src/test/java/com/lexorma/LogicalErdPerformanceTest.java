@@ -69,28 +69,7 @@ class LogicalErdPerformanceTest {
 
     private List<String> run(int entityCount) {
         GenerationFixture f = GenerationFixture.create(context, "lerd-perf-" + entityCount + "-" + System.nanoTime(), DbType.POSTGRESQL);
-        long projectId = f.user.getProjectId();
-        long base = 890_000_000L + (System.nanoTime() % 100_000L) * 100_000L;
-        long term = f.term("PERF_ATTR", "VARCHAR", 20);
-        List<Object[]> entities = new ArrayList<>(), attributes = new ArrayList<>(), identifiers = new ArrayList<>(), identifierAttributes = new ArrayList<>(), relationships = new ArrayList<>();
-        for (int i = 0; i < entityCount; i++) {
-            long entity = base + i;
-            entities.add(new Object[]{entity, projectId, f.modelId, "엔터티 " + String.format("%05d", i), "성능 측정 엔터티 " + i});
-            for (int a = 0; a < ATTRIBUTES; a++) {
-                attributes.add(new Object[]{base + 10_000 + (long) i * ATTRIBUTES + a, entity, "속성 " + a, a + 1, term});
-            }
-            identifiers.add(new Object[]{base + 50_000 + i, entity, "식별자", true});
-            identifierAttributes.add(new Object[]{base + 60_000 + i, base + 50_000 + i, base + 10_000 + (long) i * ATTRIBUTES, 1});
-            if (i > 0) relationships.add(new Object[]{base + 70_000 + i, projectId, f.modelId, base + i - 1, entity, "사슬 " + i});
-            if (i > 0 && i % 20 == 0) relationships.add(new Object[]{base + 80_000 + i, projectId, f.modelId, base, entity, "허브 " + i});
-        }
-        jdbc.batchUpdate("insert into TB_LGCL_ENTT(LGCL_ENTT_SN, PRJ_SN, LGCL_MDL_SN, ENTT_NM, ENTT_EXPLN) values (?, ?, ?, ?, ?)", entities);
-        jdbc.batchUpdate("insert into TB_LGCL_ATRB(LGCL_ATRB_SN, LGCL_ENTT_SN, ATRB_NM, SORT_ORD, STD_TRM_SN) values (?, ?, ?, ?, ?)", attributes);
-        jdbc.batchUpdate("insert into TB_LGCL_IDNTFR(LGCL_IDNTFR_SN, LGCL_ENTT_SN, IDNTFR_NM, BSC_YN) values (?, ?, ?, ?)", identifiers);
-        jdbc.batchUpdate("insert into TB_LGCL_IDNTFR_ATRB(LGCL_IDNTFR_ATRB_SN, LGCL_IDNTFR_SN, LGCL_ATRB_SN, SORT_ORD) values (?, ?, ?, ?)", identifierAttributes);
-        jdbc.batchUpdate("insert into TB_LGCL_REL(LGCL_REL_SN, PRJ_SN, LGCL_MDL_SN, ORGNL_ENTT_SN, TRGT_ENTT_SN, REL_NM, IDNTF_YN, ORGNL_MIN_CNT, TRGT_MIN_CNT)"
-                + " values (?, ?, ?, ?, ?, ?, false, 1, 0)", relationships);
-
+        long base = seed(f, jdbc, entityCount);
         long middle = base + entityCount / 2;
         List<String> lines = new ArrayList<>();
         lines.add(measure(entityCount, "전체 selectGraph", () -> logical.selectGraph(f.user, f.modelId)));
@@ -128,5 +107,34 @@ class LogicalErdPerformanceTest {
         assertThat(shownEntities).isPositive();
         return entityCount + " | " + call + " | " + ms / 2 + " | " + statements / 2 + " | " + json.length / 1024 + " | " + allocated / 2 / (1024 * 1024)
                 + " | " + shownEntities + " | " + shownRelationships;
+    }
+
+    /**
+     * 측정용 모델을 JDBC 로 넣는다 (논리 모델 관리 측정 LogicalModelManagementPerformanceTest 도 쓴다) : 엔터티마다 속성 8개·주 식별자 1개,
+     * 관계 = 바로 앞 엔터티 → 다음 엔터티 사슬 + 허브(첫 엔터티)에서 20번째마다. 엔터티 ID = 반환값 + 순번
+     */
+    static long seed(GenerationFixture f, JdbcTemplate jdbc, int entityCount) {
+        long projectId = f.user.getProjectId();
+        long base = 890_000_000L + (System.nanoTime() % 100_000L) * 100_000L;
+        long term = f.term("PERF_ATTR", "VARCHAR", 20);
+        List<Object[]> entities = new ArrayList<>(), attributes = new ArrayList<>(), identifiers = new ArrayList<>(), identifierAttributes = new ArrayList<>(), relationships = new ArrayList<>();
+        for (int i = 0; i < entityCount; i++) {
+            long entity = base + i;
+            entities.add(new Object[]{entity, projectId, f.modelId, "엔터티 " + String.format("%05d", i), "성능 측정 엔터티 " + i});
+            for (int a = 0; a < ATTRIBUTES; a++) {
+                attributes.add(new Object[]{base + 10_000 + (long) i * ATTRIBUTES + a, entity, "속성 " + a, a + 1, term});
+            }
+            identifiers.add(new Object[]{base + 50_000 + i, entity, "식별자", true});
+            identifierAttributes.add(new Object[]{base + 60_000 + i, base + 50_000 + i, base + 10_000 + (long) i * ATTRIBUTES, 1});
+            if (i > 0) relationships.add(new Object[]{base + 70_000 + i, projectId, f.modelId, base + i - 1, entity, "사슬 " + i});
+            if (i > 0 && i % 20 == 0) relationships.add(new Object[]{base + 80_000 + i, projectId, f.modelId, base, entity, "허브 " + i});
+        }
+        jdbc.batchUpdate("insert into TB_LGCL_ENTT(LGCL_ENTT_SN, PRJ_SN, LGCL_MDL_SN, ENTT_NM, ENTT_EXPLN) values (?, ?, ?, ?, ?)", entities);
+        jdbc.batchUpdate("insert into TB_LGCL_ATRB(LGCL_ATRB_SN, LGCL_ENTT_SN, ATRB_NM, SORT_ORD, STD_TRM_SN) values (?, ?, ?, ?, ?)", attributes);
+        jdbc.batchUpdate("insert into TB_LGCL_IDNTFR(LGCL_IDNTFR_SN, LGCL_ENTT_SN, IDNTFR_NM, BSC_YN) values (?, ?, ?, ?)", identifiers);
+        jdbc.batchUpdate("insert into TB_LGCL_IDNTFR_ATRB(LGCL_IDNTFR_ATRB_SN, LGCL_IDNTFR_SN, LGCL_ATRB_SN, SORT_ORD) values (?, ?, ?, ?)", identifierAttributes);
+        jdbc.batchUpdate("insert into TB_LGCL_REL(LGCL_REL_SN, PRJ_SN, LGCL_MDL_SN, ORGNL_ENTT_SN, TRGT_ENTT_SN, REL_NM, IDNTF_YN, ORGNL_MIN_CNT, TRGT_MIN_CNT)"
+                + " values (?, ?, ?, ?, ?, ?, false, 1, 0)", relationships);
+        return base;
     }
 }

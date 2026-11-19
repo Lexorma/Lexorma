@@ -603,6 +603,20 @@ export const en = {
   '{0} 기준 {1}단계 이웃 · 테이블 {2}개': 'Depth-{1} neighbors of {0} · {2} tables',
   ' · 전체 {0}개 중 {1}': ' · {1} of {0}',
   '· 관계 {0}개': '· {0} relations',
+  // 논리 모델 관리 서버 페이징 (M-6 후속 3차)
+  '{0} 찾기': 'Find {0}',
+  '{0}개 중 이름순 {1}개만 보입니다. 검색어로 좁혀주세요.': 'Showing the first {1} of {0} by name. Narrow it down with a keyword.',
+  '검색 결과 {0}개 (모델 전체 {1}개)': '{0} results ({1} in the model)',
+  '관계 목록을 불러오지 못했습니다.': 'Failed to load the relationships.',
+  '관계를 불러오지 못했습니다.': 'Failed to load the relationships.',
+  '논리 모델 요약을 불러오지 못했습니다.': 'Failed to load the logical model summary.',
+  '엔터티 목록을 불러오지 못했습니다.': 'Failed to load the entities.',
+  '엔터티를 찾지 못했습니다. 다시 시도해주세요.': 'Could not search the entities. Please try again.',
+  '엔터티명·설명으로 찾기': 'Find by entity name or description',
+  // 논리 관계 목록 검색·필터·정렬 (M-6 후속 3차 보완)
+  '관계 검색': 'Search relationships',
+  '관계명 / 출발·도착 엔터티명': 'Relationship / source or target entity name',
+  '식별 여부': 'Identifying',
   // 논리 ERD 관계선 범례 (M-6 후속 2차)
   '정확히 하나 (1)': 'Exactly one (1)',
   '없거나 하나 (0..1)': 'Zero or one (0..1)',

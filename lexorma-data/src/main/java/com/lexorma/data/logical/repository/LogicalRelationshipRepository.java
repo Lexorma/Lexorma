@@ -28,4 +28,17 @@ public interface LogicalRelationshipRepository extends JpaRepository<LogicalRela
     Optional<Long> findModelId(@Param("id") Long id, @Param("projectId") Long projectId);
 
     Optional<LogicalRelationship> findFirstBySourceEntity_IdOrTargetEntity_Id(Long sourceEntityId, Long targetEntityId);
+
+    // ---- 논리 모델 관리 (M-6 후속 3차) : 관계 목록 페이지(ID 순, 예전 전체 목록과 같은 순서)·모델 관계 수·엔터티의 관계
+
+    @Query(value = "select r.id from LogicalRelationship r where r.model.id = :modelId order by r.id",
+            countQuery = "select count(r) from LogicalRelationship r where r.model.id = :modelId")
+    org.springframework.data.domain.Page<Long> findIdPage(@Param("modelId") Long modelId, org.springframework.data.domain.Pageable pageable);
+
+    long countByModel_Id(Long modelId);
+
+    /** 출발·도착 어느 쪽이든 이 엔터티인 관계 (자기 참조는 1번) */
+    @Query("select r from LogicalRelationship r join fetch r.sourceEntity join fetch r.targetEntity"
+            + " where r.sourceEntity.id = :entityId or r.targetEntity.id = :entityId order by r.id")
+    List<LogicalRelationship> findAllByEntityId(@Param("entityId") Long entityId);
 }

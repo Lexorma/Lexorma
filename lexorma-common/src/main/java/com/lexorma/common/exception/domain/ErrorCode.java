@@ -252,6 +252,11 @@ public enum ErrorCode {
     INVALID_ERD_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_ERD_REQUEST"),
 
     /**
+     * 목록 조회의 페이지·크기·정렬 방향 값 오류 (PageableUtil — 공용 그리드 data API, 사유는 customMessage)
+     */
+    INVALID_PAGE_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_PAGE_REQUEST"),
+
+    /**
      * ERD 레이아웃 저장 충돌 : 다른 탭·창에서 먼저 저장함
      */
     ERD_LAYOUT_CONFLICT(HttpStatus.CONFLICT, "ERD_LAYOUT_CONFLICT"),

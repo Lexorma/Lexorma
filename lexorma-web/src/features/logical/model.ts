@@ -118,6 +118,24 @@ export interface GraphEntity {
   description: string | null;
   isApproval: boolean | null;
   attributes: GraphAttribute[];
+  /** 서브타입이면 직접 슈퍼타입 (M-6 후속 5차, 부분 조회·이웃 탐색에만) */
+  supertypeEntityId?: number | null;
+  /** 서브타입의 상속 주 식별자 (루트의 주 식별자, 원본 속성 ID — 루트에 없으면 빈 목록) */
+  inheritedKey?: InheritedKey[];
+}
+
+export interface InheritedKey { attributeId: number; name: string; dataType: string | null; keyOrder: number; definedEntityId: number; definedEntityName: string | null }
+
+/** 논리 ERD 의 서브타입 그룹 (M-6 후속 5차) : 슈퍼타입이 범위 안이고 서브타입이 하나라도 범위 안인 그룹. subtypes 는 범위 안의 것만, subtypeCount 는 전체 수 */
+export interface GraphSubtypeGroup {
+  id: number;
+  groupName: string;
+  supertypeEntityId: number;
+  overlapping: boolean;
+  total: boolean;
+  classificationAttributeName: string | null;
+  subtypeCount: number;
+  subtypes: { entityId: number; classificationValue: string | null }[];
 }
 
 /** GET /api/logical/model/{id}/erd */
@@ -137,6 +155,9 @@ export interface LogicalGraphPart extends LogicalGraph {
   truncated: boolean;
   modelEntityCount: number;
   outsideRelationships: Record<string, number>;
+  /** 범위 안 서브타입 그룹·범위 밖 직접 상속 연결 수 (M-6 후속 5차 — 일반 관계 수와 따로) */
+  subtypeGroups?: GraphSubtypeGroup[];
+  outsideInheritances?: Record<string, number>;
 }
 
 /** 논리 ERD 엔터티 찾기 (ERD 범위와 무관, 속성 없이) */

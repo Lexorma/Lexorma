@@ -12,6 +12,8 @@ import { searchTerms, termLabel, type Term } from '../column/terms';
 import { historyPath } from '../history/model';
 import { mappingPath, useMappingLookup } from '../mapping/model';
 import { cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { useInheritance } from './SubtypePanel';
+import { completeness, disjointness, disjointSymbol, type Inheritance } from './subtype';
 import '../../styles/logical.css';
 
 interface EntityDetailOptions {
@@ -39,7 +41,7 @@ export function useEntityDetail() {
   };
 }
 
-export type EntityDetailTab = 'basic' | 'attributes' | 'identifiers' | 'relationships';
+export type EntityDetailTab = 'basic' | 'attributes' | 'identifiers' | 'relationships' | 'inheritance';
 type Tab = EntityDetailTab;
 
 function EntityDetail({ entityId, options, controls }: { entityId: number; options: EntityDetailOptions; controls: DialogControls }) {
@@ -61,6 +63,14 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     queryFn: () => api<LogicalRelationship[]>(`/api/logical/entity/${entityId}/relationship`, { silent: true }),
     gcTime: 0,
   });
+  // 슈퍼타입·서브타입 (M-6 후속 5차) : 단계·조상·그룹, 유효 속성·식별자(상속 포함), 조상의 관계 — 상속 속성은 복제하지 않고 정의 엔터티의 원본을 보여 준다
+  const inheritance = useInheritance(entityId);
+  const openEntityDetail = useEntityDetail();
+  /** 정의 엔터티로 이동 : 이 대화상자를 닫고 그 엔터티의 상세를 연다 (상속 속성은 정의한 엔터티에서만 고친다) */
+  const openDefinition = (definedEntityId: number, initialTab: Tab = 'attributes') => {
+    controls.close();
+    openEntityDetail(definedEntityId, { ...options, initialTab });
+  };
 
   if (entity.isError) return <p role="alert">{t('엔터티를 불러오지 못했습니다.')} {entity.error.message}</p>;
   if (!entity.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
@@ -74,9 +84,12 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
   const editable = canEdit && !approved;
   const detailEditable = canEdit && (!approved || approvalAvailable);
   const related = relationships.data ?? [];
+  const info = inheritance.data;
+  const participates = !!info && (info.parent != null || info.groups.length > 0);
   const changed = () => {
     void entity.refetch();
     void relationships.refetch();
+    void inheritance.refetch();
     options.onChanged?.();
   };
 
@@ -97,10 +110,12 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     });
   };
 
+  const inheritedAttributes = info?.attributes.filter((a) => a.inherited).length ?? 0;
   const tabs: [Tab, string][] = [
-    ['attributes', t('속성 ({0})', data.attributes.length)],
+    ['attributes', inheritedAttributes ? t('속성 ({0} + 상속 {1})', data.attributes.length, inheritedAttributes) : t('속성 ({0})', data.attributes.length)],
     ['identifiers', t('식별자 ({0})', data.identifiers.length)],
-    ['relationships', t('관계 ({0})', related.length)],
+    ['relationships', info?.inheritedRelationships.length ? t('관계 ({0} + 상속 {1})', related.length, info.inheritedRelationships.length) : t('관계 ({0})', related.length)],
+    ['inheritance', participates ? t('상속 ({0}단계)', info!.level) : t('상속 정보')],
     ['basic', t('기본 정보')],
   ];
 
@@ -112,6 +127,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
         {mapping.data && (mapping.data.mappingId != null
           ? <Label variant="accent" title={t('매핑된 물리 테이블')}>{t('물리 테이블 {0} · 속성 {1} / {2} 매핑', mapping.data.tableName ?? '', mapping.data.mappedAttributeCount, mapping.data.attributeCount)}</Label>
           : <Label title={t('물리 테이블에 매핑되지 않았습니다.')}>{t('미매핑')}</Label>)}
+        {info?.parent && <Label variant="accent" title={t('슈퍼타입 {0} 의 서브타입 (그룹 {1})', info.parent.supertypeEntityName, info.parent.groupName)}>{t('서브타입 · {0}단계', info.level)}</Label>}
+        {info && info.groups.length > 0 && <Label title={t('이 엔터티를 슈퍼타입으로 하는 서브타입 그룹')}>{t('슈퍼타입 · 그룹 {0}개', info.groups.length)}</Label>}
         {approved && <span className="gh-muted">{approvalAvailable ? t('승인된 엔터티입니다. 엔터티명·설명 변경과 삭제는 승인취소 후에 할 수 있습니다.') : t('승인된 엔터티는 승인취소 후에 변경할 수 있습니다.')}</span>}
       </div>
 
@@ -125,9 +142,25 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
 
       <div className="logical-detail-body">
         {tab === 'basic' && <BasicTab entity={data} editable={editable} onSaved={changed} />}
-        {tab === 'attributes' && <AttributeTab entity={data} editable={detailEditable} onChanged={changed} />}
-        {tab === 'identifiers' && <IdentifierTab entity={data} editable={detailEditable} onChanged={changed} />}
-        {tab === 'relationships' && <RelationshipTab relationships={related} loading={relationships.isPending} failed={relationships.isError} />}
+        {tab === 'attributes' && (
+          <>
+            {info && <InheritedAttributes inheritance={info} onOpen={(id) => openDefinition(id, 'attributes')} />}
+            <AttributeTab entity={data} editable={detailEditable} onChanged={changed} inherited={info?.attributes.filter((a) => a.inherited).length ?? 0} />
+          </>
+        )}
+        {tab === 'identifiers' && (
+          <>
+            {info && <InheritedIdentifiers inheritance={info} onOpen={(id) => openDefinition(id, 'identifiers')} />}
+            <IdentifierTab entity={data} editable={detailEditable} onChanged={changed} subtype={info?.parent != null} />
+          </>
+        )}
+        {tab === 'relationships' && (
+          <>
+            <RelationshipTab relationships={related} loading={relationships.isPending} failed={relationships.isError} />
+            {info && <InheritedRelationships inheritance={info} onOpen={(id) => openDefinition(id, 'relationships')} />}
+          </>
+        )}
+        {tab === 'inheritance' && <InheritanceTab inheritance={info} loading={inheritance.isPending} failed={inheritance.isError} onOpen={(id) => openDefinition(id, 'inheritance')} />}
       </div>
 
       <div className="gh-dialog-actions">
@@ -144,8 +177,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
           </button>
         )}
         {editable && (
-          <button type="button" className="btn btn-danger" disabled={!relationships.data || related.length > 0} onClick={remove}
-            title={related.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : undefined}>
+          <button type="button" className="btn btn-danger" disabled={!relationships.data || related.length > 0 || participates} onClick={remove}
+            title={related.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : participates ? t('슈퍼타입·서브타입 엔터티는 삭제할 수 없습니다. 상속을 먼저 해제해주세요.') : undefined}>
             {t('엔터티 삭제')}
           </button>
         )}
@@ -186,7 +219,7 @@ function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editab
   );
 }
 
-function AttributeTab({ entity, editable, onChanged }: { entity: LogicalEntity; editable: boolean; onChanged: () => void }) {
+function AttributeTab({ entity, editable, onChanged, inherited = 0 }: { entity: LogicalEntity; editable: boolean; onChanged: () => void; inherited?: number }) {
   const dialog = useDialog();
   const primary = new Set(entity.identifiers.filter((i) => i.isPrimary).flatMap((i) => i.attributeIds));
   const inIdentifier = new Set(entity.identifiers.flatMap((i) => i.attributeIds));
@@ -216,6 +249,7 @@ function AttributeTab({ entity, editable, onChanged }: { entity: LogicalEntity; 
 
   return (
     <>
+      {inherited > 0 && <h4 className="subtype-section-title">{t('직접 정의 속성')}</h4>}
       {editable && <div className="logical-tab-actions"><button type="button" className="btn btn-primary" onClick={() => openForm()}>{t('속성 추가')}</button></div>}
       {entity.attributes.length === 0 ? (
         <p className="gh-muted">{t('등록된 속성이 없습니다.')}</p>
@@ -362,7 +396,7 @@ export function AttributeForm({ entityId, attribute, onSaved }: { entityId: numb
   );
 }
 
-function IdentifierTab({ entity, editable, onChanged }: { entity: LogicalEntity; editable: boolean; onChanged: () => void }) {
+function IdentifierTab({ entity, editable, onChanged, subtype = false }: { entity: LogicalEntity; editable: boolean; onChanged: () => void; subtype?: boolean }) {
   const dialog = useDialog();
 
   const openForm = (identifier?: LogicalIdentifier) => {
@@ -370,7 +404,7 @@ function IdentifierTab({ entity, editable, onChanged }: { entity: LogicalEntity;
     dialog.popup({
       title: identifier ? t('식별자 수정') : t('식별자 추가'),
       size: 'wide',
-      content: ({ close }: DialogControls) => <IdentifierForm entity={entity} identifier={identifier} onSaved={() => { close(); onChanged(); }} />,
+      content: ({ close }: DialogControls) => <IdentifierForm entity={entity} identifier={identifier} subtype={subtype} onSaved={() => { close(); onChanged(); }} />,
     });
   };
 
@@ -383,7 +417,8 @@ function IdentifierTab({ entity, editable, onChanged }: { entity: LogicalEntity;
 
   return (
     <>
-      {editable && <div className="logical-tab-actions"><button type="button" className="btn btn-primary" onClick={() => openForm()}>{t('식별자 추가')}</button></div>}
+      {subtype && <h4 className="subtype-section-title">{t('직접 정의 보조 식별자')}</h4>}
+      {editable && <div className="logical-tab-actions"><button type="button" className="btn btn-primary" onClick={() => openForm()}>{subtype ? t('보조 식별자 추가') : t('식별자 추가')}</button></div>}
       {entity.identifiers.length === 0 ? (
         <p className="gh-muted">{t('등록된 식별자가 없습니다.')}</p>
       ) : (
@@ -419,10 +454,11 @@ function IdentifierTab({ entity, editable, onChanged }: { entity: LogicalEntity;
 }
 
 /** 식별자 등록·수정 (엔터티 상세·논리 ERD 편집 공용) : 주/보조 구분, 구성 속성을 고른 순서대로 (복합 가능) */
-export function IdentifierForm({ entity, identifier, onSaved }: { entity: LogicalEntity; identifier?: LogicalIdentifier; onSaved: () => void }) {
+export function IdentifierForm({ entity, identifier, onSaved, subtype = false }: { entity: LogicalEntity; identifier?: LogicalIdentifier; onSaved: () => void; subtype?: boolean }) {
   const dialog = useDialog();
   const [name, setName] = useState(identifier?.identifierName ?? '');
-  const [primary, setPrimary] = useState(!!identifier?.isPrimary);
+  // 서브타입은 자체 주 식별자를 둘 수 없다 (루트 슈퍼타입의 주 식별자를 상속 — 서버도 거절한다)
+  const [primary, setPrimary] = useState(!subtype && !!identifier?.isPrimary);
   // 구성 속성 : 고른 순서가 식별자 속성 순서다. 같은 엔터티의 속성만 고를 수 있고 한 번씩만 넣는다
   const [ids, setIds] = useState<number[]>(identifier?.attributeIds ?? []);
   const attributeName = new Map(entity.attributes.map((a) => [a.id, a.attributeName]));
@@ -452,9 +488,10 @@ export function IdentifierForm({ entity, identifier, onSaved }: { entity: Logica
         <input type="text" className="form-control" id="identifierName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="form-check">
-        <input type="checkbox" className="form-check-input" id="identifierPrimary" checked={primary} onChange={(e) => setPrimary(e.target.checked)} />
+        <input type="checkbox" className="form-check-input" id="identifierPrimary" checked={primary} disabled={subtype} onChange={(e) => setPrimary(e.target.checked)} />
         <label className="form-check-label" htmlFor="identifierPrimary">{t('주 식별자')}</label>
       </div>
+      {subtype && <p className="form-help">{t('서브타입은 자체 주 식별자를 둘 수 없습니다. 루트 슈퍼타입의 주 식별자를 상속합니다.')}</p>}
       {primary && otherPrimary && <p className="form-help">{t('주 식별자는 엔터티에 하나만 둘 수 있습니다. 현재 주 식별자 : {0}', otherPrimary.identifierName)}</p>}
 
       <div className="form-group" style={{ marginBottom: 10 }}>
@@ -561,5 +598,165 @@ export function EntityForm({ modelId, onSaved, areas, defaultAreaId }: {
       )}
       <button type="submit" className="btn btn-primary">{t('저장')}</button>
     </form>
+  );
+}
+
+// ------------------------------------------------------------------ 슈퍼타입·서브타입 (M-6 후속 5차) : 상속 정보는 읽기 전용 — 정의 엔터티로 이동해 고친다
+
+/** 상속 속성 (조상에 정의된 원본 속성, 루트부터) : 원본 속성 ID·정의 엔터티를 보여 주고 편집하지 않는다. 색만이 아니라 "상속" 글자로 구분한다 */
+function InheritedAttributes({ inheritance, onOpen }: { inheritance: Inheritance; onOpen: (entityId: number) => void }) {
+  const rows = inheritance.attributes.filter((a) => a.inherited);
+  if (!rows.length && !inheritance.rootPrimaryKeyMissing) return null;
+  return (
+    <section className="subtype-inherited" aria-label={t('상속 속성')}>
+      <h4 className="subtype-section-title">{t('상속 속성 (읽기 전용)')}</h4>
+      {inheritance.rootPrimaryKeyMissing && <p className="form-help" role="note">{t('루트 슈퍼타입 {0} 에 주 식별자가 아직 없습니다. 서브타입 승인·상속 주 식별자 속성 짝·물리 생성이 제한됩니다.', inheritance.rootEntityName)}</p>}
+      {rows.length > 0 && (
+        <div className="dict-detail-columns">
+          <div className="table-wrap">
+            <table>
+              <thead><tr>{[t('속성명'), t('식별자'), t('정의 출처'), t('상태'), t('필수'), t('표준 용어'), t('표준 도메인')].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((a) => (
+                  <tr key={a.attributeId}>
+                    <td>{a.attributeName}</td>
+                    <td className="text-center">{a.primary ? <Label variant="accent">{t('주 식별자 {0}', a.keyOrder ?? '')}</Label> : <span className="gh-muted">-</span>}</td>
+                    <td><button type="button" className="logical-link" title={t('정의 엔터티로 이동')} onClick={() => onOpen(a.definedEntityId)}>{a.definedEntityName}</button></td>
+                    <td className="text-center"><Label>{t('상속')}{a.depth > 1 ? ` · ${t('{0}단계 위', a.depth)}` : ''}</Label></td>
+                    <td className="text-center">{a.isRequired ? <Label variant="attention">{t('필수')}</Label> : <span className="gh-muted">-</span>}</td>
+                    <td>{a.termName ? termLabel({ commonStandardTermName: a.termName }) : <span className="gh-muted">-</span>}</td>
+                    <td>{a.domainName ?? <span className="gh-muted">-</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 상속 식별자 : 루트의 주 식별자(구성 순서 그대로)와 조상의 보조 식별자 */
+function InheritedIdentifiers({ inheritance, onOpen }: { inheritance: Inheritance; onOpen: (entityId: number) => void }) {
+  const rows = inheritance.identifiers.filter((i) => i.inherited);
+  if (!rows.length && !(inheritance.parent && inheritance.rootPrimaryKeyMissing)) return null;
+  return (
+    <section className="subtype-inherited" aria-label={t('상속 식별자')}>
+      <h4 className="subtype-section-title">{t('상속 식별자 (읽기 전용)')}</h4>
+      {inheritance.rootPrimaryKeyMissing && <p className="form-help" role="note">{t('상속할 주 식별자가 아직 정의되지 않았습니다 (루트 슈퍼타입 {0}).', inheritance.rootEntityName)}</p>}
+      {rows.length > 0 && (
+        <div className="dict-detail-columns">
+          <div className="table-wrap">
+            <table>
+              <thead><tr>{[t('식별자명'), t('구분'), t('구성 속성 (순서대로)'), t('정의 출처')].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((i) => (
+                  <tr key={i.identifierId}>
+                    <td>{i.identifierName}</td>
+                    <td className="text-center">{i.isPrimary ? <Label variant="accent">{t('상속 주 식별자')}</Label> : <Label>{t('상속 보조 식별자')}</Label>}</td>
+                    <td>{i.attributeNames.join(' + ')}</td>
+                    <td><button type="button" className="logical-link" title={t('정의 엔터티로 이동')} onClick={() => onOpen(i.definedEntityId)}>{i.definedEntityName}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 상속 관계 : 조상에 정의된 일반 관계 (이 엔터티에 복제하지 않는다 — 고치거나 지우려면 정의 엔터티에서) */
+function InheritedRelationships({ inheritance, onOpen }: { inheritance: Inheritance; onOpen: (entityId: number) => void }) {
+  if (!inheritance.inheritedRelationships.length) return null;
+  const role = (r: Inheritance['inheritedRelationships'][number]) => (r.role === 'SOURCE' ? t('출발') : r.role === 'TARGET' ? t('도착') : t('자기 참조'));
+  return (
+    <section className="subtype-inherited" aria-label={t('상속 관계')}>
+      <h4 className="subtype-section-title">{t('상속 관계 (읽기 전용)')}</h4>
+      <div className="dict-detail-columns">
+        <div className="table-wrap">
+          <table>
+            <thead><tr>{[t('관계명'), t('출발 엔터티'), t('도착 엔터티'), t('카디널리티'), t('정의 출처'), t('역할')].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <tbody>
+              {inheritance.inheritedRelationships.map((r) => (
+                <tr key={r.relationship.id}>
+                  <td>{r.relationship.relationshipName || '-'}</td>
+                  <td>{r.relationship.sourceEntityName}</td>
+                  <td>{r.relationship.targetEntityName}</td>
+                  <td className="text-center gh-mono">{cardinalityText(r.relationship)}</td>
+                  <td><button type="button" className="logical-link" title={t('정의 엔터티로 이동')} onClick={() => onOpen(r.definedEntityId)}>{r.definedEntityName}</button></td>
+                  <td className="text-center"><Label>{t('상속')} · {role(r)}</Label></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="gh-muted">{t('참여 수는 슈퍼타입에 정의한 값이며, 서브타입별로 따로 적용되는 제약이라고 단정하지 않습니다.')}</p>
+    </section>
+  );
+}
+
+/** 상속 탭 : 단계·루트·조상, 직접 슈퍼타입 그룹(배타성·완전성·분류 값), 이 엔터티를 슈퍼타입으로 하는 그룹 */
+function InheritanceTab({ inheritance, loading, failed, onOpen }: { inheritance?: Inheritance; loading: boolean; failed: boolean; onOpen: (entityId: number) => void }) {
+  if (failed) return <p role="alert">{t('상속 정보를 불러오지 못했습니다.')}</p>;
+  if (loading || !inheritance) return <p className="gh-muted">{t('불러오는 중입니다.')}</p>;
+  const parent = inheritance.parent;
+  if (!parent && !inheritance.groups.length) {
+    return <p className="gh-muted">{t('슈퍼타입·서브타입 구조에 속하지 않은 엔터티입니다. 서브타입 그룹은 논리 모델 관리의 [서브타입 그룹] 탭에서 등록합니다.')}</p>;
+  }
+  return (
+    <div className="subtype-inheritance">
+      <dl className="subtype-facts">
+        <dt>{t('상속 단계')}</dt><dd>{t('{0}단계 (루트 = 1단계, 최대 3단계)', inheritance.level)}</dd>
+        <dt>{t('루트 슈퍼타입')}</dt>
+        <dd>{inheritance.rootEntityId === inheritance.entityId ? t('이 엔터티') : <button type="button" className="logical-link" onClick={() => onOpen(inheritance.rootEntityId)}>{inheritance.rootEntityName}</button>}</dd>
+        {inheritance.ancestors.length > 0 && (
+          <>
+            <dt>{t('상속 경로')}</dt>
+            <dd>
+              {inheritance.ancestors.map((a) => <span key={a.entityId}><button type="button" className="logical-link" onClick={() => onOpen(a.entityId)}>{a.entityName}</button> → </span>)}
+              <strong>{inheritance.entityName}</strong>
+            </dd>
+          </>
+        )}
+        {parent && (
+          <>
+            <dt>{t('직접 슈퍼타입')}</dt>
+            <dd><button type="button" className="logical-link" onClick={() => onOpen(parent.supertypeEntityId)}>{parent.supertypeEntityName}</button> · {t('그룹 {0}', parent.groupName)}</dd>
+            <dt>{t('분류 정책')}</dt>
+            <dd><b className="subtype-symbol">{disjointSymbol(parent.overlapping)}</b> {disjointness(parent.overlapping)} · {completeness(parent.total)}</dd>
+            <dt>{t('분류 속성 · 분류 값')}</dt>
+            <dd>{parent.classificationAttributeName ?? '-'} · {parent.classificationValue ?? '-'}</dd>
+          </>
+        )}
+        <dt>{t('하위 엔터티')}</dt><dd>{t('{0}개 (모든 단계)', inheritance.descendantCount)}</dd>
+      </dl>
+      {inheritance.groups.length > 0 && (
+        <>
+          <h4 className="subtype-section-title">{t('이 엔터티를 슈퍼타입으로 하는 서브타입 그룹')}</h4>
+          {inheritance.groups.map((g) => (
+            <section key={g.id} className="subtype-group-card">
+              <p>
+                <strong>{g.groupName}</strong> <b className="subtype-symbol">{disjointSymbol(g.overlapping)}</b> {disjointness(g.overlapping)} · {completeness(g.total)}
+                {g.classificationAttributeName && <span className="gh-muted"> · {t('분류 속성 {0}', g.classificationAttributeName)}</span>}
+              </p>
+              <ul>
+                {g.subtypes.map((m) => (
+                  <li key={m.entityId}>
+                    <button type="button" className="logical-link" onClick={() => onOpen(m.entityId)}>{m.entityName}</button>
+                    {m.classificationValue && <span className="gh-muted gh-mono"> = {m.classificationValue}</span>}
+                    {m.isApproval && <> <Label variant="success" dot>{t('승인')}</Label></>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </>
+      )}
+      <p className="gh-muted">{t('그룹 등록·수정·삭제는 논리 모델 관리의 [서브타입 그룹] 탭에서 합니다. 배타성·완전성은 모델링 정보이며 실제 업무 데이터로 검사하지 않습니다.')}</p>
+    </div>
   );
 }

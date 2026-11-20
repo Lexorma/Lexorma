@@ -69,6 +69,7 @@ public class LogicalModelService {
     private final LogicalRelationshipAttributeRepository pairRepository;
     private final LogicalModelQueryRepository queryRepository;
     private final LogicalSubjectAreaService subjectAreaService;
+    private final LogicalSubtypeService subtypeService;
     private final jakarta.persistence.EntityManager entityManager;
 
     // ------------------------------------------------------------------ 논리 모델
@@ -200,20 +201,37 @@ public class LogicalModelService {
         return withEndKeys(relationshipRepository.findAllByEntityId(entity.getId()));
     }
 
-    /** 관계들 + 속성 짝 판정. 양 끝 엔터티의 주 식별자를 한 번에 읽는다 (엔터티마다 식별자를 따로 읽지 않는다) */
+    /** 관계들 + 속성 짝 판정. 양 끝 엔터티(서브타입이면 루트)의 주 식별자를 한 번에 읽는다 (엔터티마다 식별자를 따로 읽지 않는다) */
     private List<LogicalModelDto.Relationship> withEndKeys(List<LogicalRelationship> relationships) {
+        if (relationships.isEmpty()) return List.of();
         Set<Long> ends = new HashSet<>();
         relationships.forEach(r -> {
             ends.add(r.getSourceEntity().getId());
             ends.add(r.getTargetEntity().getId());
         });
+        return withPairs(relationships, effectiveKeys(subtypeService.hierarchy(relationships.getFirst().getModel().getId()), ends));
+    }
+
+    /**
+     * 엔터티 → 유효 주 식별자 속성 ID (M-6 후속 5차) : 서브타입이면 루트 슈퍼타입의 주 식별자 (원본 속성 ID 그대로, 식별자 순서), 아니면 자기 주 식별자.
+     * 고른 엔터티들의 루트 식별자를 한 번에 읽는다
+     */
+    private java.util.function.Function<LogicalEntity, List<Long>> effectiveKeys(LogicalHierarchy hierarchy, Set<Long> entityIds) {
+        Set<Long> owners = new HashSet<>();
+        entityIds.forEach(id -> owners.add(hierarchy.root(id)));
         Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>();
-        if (!ends.isEmpty()) {
-            for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(ends)) {
+        if (!owners.isEmpty()) {
+            for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(owners)) {
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
             }
         }
-        return withPairs(relationships, e -> primaryKeys.getOrDefault(e.getId(), List.of()));
+        return e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of());
+    }
+
+    /** 유효 주 식별자를 가진 엔터티 (서브타입이면 루트 슈퍼타입). 계층은 호출한 쪽이 이미 읽은 것을 쓴다 (한 요청에서 계층을 다시 읽지 않는다) */
+    private LogicalEntity keyOwner(LogicalEntity entity, LogicalHierarchy hierarchy) {
+        Long root = hierarchy.root(entity.getId());
+        return root.equals(entity.getId()) ? entity : entity(entity.getProjectId(), root);
     }
 
     /** 식별자 구성 속성 ID (식별자 순서) */
@@ -260,6 +278,8 @@ public class LogicalModelService {
     public void deleteEntity(AccountDto accountDto, Long entityId) {
         LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
         rejectApproved(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        // 슈퍼타입·서브타입은 상속을 먼저 해제한다 (그룹·하위 엔터티를 함께 지우지 않는다 — M-6 후속 5차)
+        subtypeService.requireNotParticipating(entity);
         // 관계는 함께 지우지 않는다 : 관계를 먼저 정리해야 한다
         relationshipRepository.findFirstBySourceEntity_IdOrTargetEntity_Id(entityId, entityId).ifPresent(r -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 {0} 에서 사용 중인 엔터티입니다.", relationLabel(r));
@@ -279,7 +299,10 @@ public class LogicalModelService {
     @Transactional
     public void updateEntityApproval(AccountDto accountDto, Long entityId, boolean isApproval) {
         requireApprover();
-        lockEntity(accountDto.getProjectId(), entityId).setIsApproval(isApproval);
+        LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
+        // 서브타입 승인은 조상이 모두 승인된 뒤, 승인 취소는 승인된 하위 엔터티가 없을 때 (자동으로 함께 바꾸지 않는다 — M-6 후속 5차)
+        subtypeService.checkApprovalChange(entity, isApproval);
+        entity.setIsApproval(isApproval);
     }
 
     // ------------------------------------------------------------------ 속성
@@ -294,7 +317,14 @@ public class LogicalModelService {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, request.id() == null ? request.entityId()
                 : attributeRepository.findEntityId(request.id(), projectId).orElseThrow(() -> notFound("속성")));
+        // 다른 엔터티(예 : 서브타입 화면에서 상속 속성)를 문맥으로 고치는 요청은 받지 않는다 — 상속 속성은 정의 엔터티에서만 고친다 (M-6 후속 5차)
+        if (request.id() != null && request.entityId() != null && !request.entityId().equals(entity.getId())) {
+            throw invalid("속성 {0} 은(는) 엔터티 {1} 에 정의된 속성입니다. 정의한 엔터티에서 수정해주세요.", request.attributeName(), entity.getEntityName());
+        }
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE); // 하위 엔터티가 상속하는 정의
+        // 상속 계층 : 조상의 속성·하위 엔터티의 속성과 이름이 겹치면 거절 (자동 병합·이름 변경 없음). 새 속성을 컬렉션에 넣기 전에 본다 (조회가 자동 플러시를 부른다)
+        subtypeService.requireAttributeNameFree(entity, name(request.attributeName(), "속성명"), request.id());
 
         LogicalAttribute attribute;
         if (request.id() == null) {
@@ -327,6 +357,8 @@ public class LogicalModelService {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, attributeRepository.findEntityId(attributeId, projectId).orElseThrow(() -> notFound("속성")));
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        entity.getAttributes().stream().filter(a -> a.getId().equals(attributeId)).findFirst().ifPresent(subtypeService::requireNotClassification);
         // 식별자에서 먼저 빼야 한다 (식별자 구성을 말없이 바꾸지 않는다)
         entity.getIdentifiers().stream().filter(i -> i.getAttributes().stream().anyMatch(a -> a.getAttribute().getId().equals(attributeId))).findFirst().ifPresent(i -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "식별자 {0} 에서 사용 중인 속성입니다.", i.getIdentifierName());
@@ -346,6 +378,7 @@ public class LogicalModelService {
     public List<LogicalModelDto.Attribute> reorderAttributes(AccountDto accountDto, Long entityId, List<Long> attributeIds) {
         LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         Map<Long, LogicalAttribute> byId = entity.getAttributes().stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
         if (attributeIds == null || attributeIds.size() != byId.size() || !new HashSet<>(attributeIds).equals(byId.keySet())) {
             throw invalid("엔터티의 속성 전체를 한 번씩 지정해주세요.");
@@ -368,7 +401,13 @@ public class LogicalModelService {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, request.id() == null ? request.entityId()
                 : identifierRepository.findEntityId(request.id(), projectId).orElseThrow(() -> notFound("식별자")));
+        if (request.id() != null && request.entityId() != null && !request.entityId().equals(entity.getId())) {
+            throw invalid("식별자 {0} 은(는) 엔터티 {1} 에 정의된 식별자입니다. 정의한 엔터티에서 수정해주세요.", request.identifierName(), entity.getEntityName());
+        }
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        // 서브타입은 루트의 주 식별자를 상속한다 (새 식별자를 컬렉션에 넣기 전에 본다)
+        if (Boolean.TRUE.equals(request.isPrimary())) subtypeService.requireMayHavePrimaryIdentifier(entity);
 
         LogicalIdentifier identifier;
         if (request.id() == null) {
@@ -417,6 +456,7 @@ public class LogicalModelService {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, identifierRepository.findEntityId(identifierId, projectId).orElseThrow(() -> notFound("식별자")));
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         entity.getIdentifiers().removeIf(i -> i.getId().equals(identifierId));
     }
 
@@ -461,13 +501,20 @@ public class LogicalModelService {
         entityManager.refresh(relationship);
         rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         com.lexorma.common.jpa.ModelBase.verify(relationship, request == null ? null : request.modifiedAt(), relationLabel(relationship)); // DEC-08 (모델 잠금 뒤)
+        rejectInheritedRelationshipChange(relationship.getSourceEntity(), relationship.getTargetEntity(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
 
         List<LogicalModelDto.PairInput> inputs = request == null || request.pairs() == null ? List.of() : request.pairs();
         if (inputs.size() > PAIR_MAX) throw invalid("속성 짝은 {0}개까지 지정할 수 있습니다.", PAIR_MAX);
         LogicalEntity parent = relationship.getSourceEntity();
         LogicalEntity child = relationship.getTargetEntity();
-        List<LogicalAttribute> parentKey = LogicalRelationshipPairs.primaryKey(parent);
-        if (!inputs.isEmpty() && parentKey.isEmpty()) throw invalid("부모 엔터티 {0} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName());
+        // 부모가 서브타입이면 루트 슈퍼타입의 주 식별자(상속 주 식별자 — 원본 속성 ID)를 짝의 부모 속성으로 쓴다 (M-6 후속 5차). 다른 엔터티의 속성 일반은 받지 않는다
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(relationship.getModel().getId()); // 모델 잠금 뒤 — 짝 저장은 계층을 바꾸지 않아 응답에도 그대로 쓴다
+        LogicalEntity keyOwner = keyOwner(parent, hierarchy);
+        List<LogicalAttribute> parentKey = LogicalRelationshipPairs.primaryKey(keyOwner);
+        if (!inputs.isEmpty() && parentKey.isEmpty()) {
+            if (keyOwner != parent) throw invalid("부모 엔터티 {0} 의 루트 슈퍼타입 {1} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName(), keyOwner.getEntityName());
+            throw invalid("부모 엔터티 {0} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName());
+        }
         Map<Long, LogicalAttribute> parentKeyById = parentKey.stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
         Map<Long, LogicalAttribute> childById = child.getAttributes().stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
         Set<Long> parentAttributes = new HashSet<>();
@@ -476,7 +523,7 @@ public class LogicalModelService {
         for (LogicalModelDto.PairInput input : inputs) {
             if (input == null || input.parentAttributeId() == null || input.childAttributeId() == null) throw invalid("속성 짝의 부모 속성과 자식 속성을 모두 골라주세요.");
             LogicalAttribute parentAttribute = parentKeyById.get(input.parentAttributeId());
-            if (parentAttribute == null) throw invalid("부모 속성은 부모 엔터티 {0} 의 주 식별자 속성이어야 합니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
+            if (parentAttribute == null) throw invalid("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 속성이어야 합니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
             LogicalAttribute childAttribute = childById.get(input.childAttributeId());
             if (childAttribute == null) throw invalid("자식 속성은 자식 엔터티 {0} 의 속성이어야 합니다. (ID {1})", child.getEntityName(), input.childAttributeId());
             if (!parentAttributes.add(parentAttribute.getId())) throw invalid("같은 부모 속성 {0} 을(를) 두 번 지정할 수 없습니다.", parentAttribute.getAttributeName());
@@ -502,20 +549,26 @@ public class LogicalModelService {
             // 메모리 값을 그대로 돌려주면 다음 요청이 다시 읽은 값과 달라진다 (같은 구성 재저장의 기준값 비교)
             entityManager.refresh(relationship);
         }
-        return pairsView(relationship);
+        return pairsView(relationship, hierarchy);
     }
 
     private LogicalModelDto.RelationshipPairs pairsView(LogicalRelationship relationship) {
+        return pairsView(relationship, subtypeService.hierarchy(relationship.getModel().getId()));
+    }
+
+    private LogicalModelDto.RelationshipPairs pairsView(LogicalRelationship relationship, LogicalHierarchy hierarchy) {
         LogicalEntity parent = relationship.getSourceEntity();
         LogicalEntity child = relationship.getTargetEntity();
-        List<Long> parentKey = LogicalRelationshipPairs.primaryKeyIds(parent);
-        List<Long> childKey = LogicalRelationshipPairs.primaryKeyIds(child);
-        List<LogicalModelDto.PairCandidate> parentCandidates = LogicalRelationshipPairs.primaryKey(parent).stream()
+        // 유효 주 식별자 : 서브타입이면 루트의 주 식별자 (부모 후보는 상속 주 식별자 속성 — M-6 후속 5차)
+        java.util.function.Function<LogicalEntity, List<Long>> keys = effectiveKeys(hierarchy, new HashSet<>(List.of(parent.getId(), child.getId()))); // 자기 참조면 같은 ID
+        List<Long> parentKey = keys.apply(parent);
+        List<Long> childKey = keys.apply(child);
+        List<LogicalModelDto.PairCandidate> parentCandidates = LogicalRelationshipPairs.primaryKey(keyOwner(parent, hierarchy)).stream()
                 .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), true, parentKey.indexOf(a.getId()) + 1, a.getIsRequired())).toList();
         List<LogicalModelDto.PairCandidate> childCandidates = child.getAttributes().stream()
                 .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), childKey.contains(a.getId()),
                         childKey.contains(a.getId()) ? childKey.indexOf(a.getId()) + 1 : null, a.getIsRequired())).toList();
-        LogicalModelDto.PairState state = LogicalRelationshipPairs.evaluate(relationship, pairRepository.findAllByRelationshipIds(List.of(relationship.getId())));
+        LogicalModelDto.PairState state = LogicalRelationshipPairs.evaluate(relationship, pairRepository.findAllByRelationshipIds(List.of(relationship.getId())), keys);
         return new LogicalModelDto.RelationshipPairs(relationship.getId(), relationship.modifiedAt(), parent.getId(), parent.getEntityName(), child.getId(),
                 child.getEntityName(), relationship.getIsIdentifying(), state, parentCandidates, childCandidates);
     }
@@ -535,8 +588,11 @@ public class LogicalModelService {
                     relationship.getRelationshipName() == null ? String.valueOf(relationship.getId()) : relationship.getRelationshipName()); // DEC-08 (모델 잠금 뒤)
         }
         Long modelId = relationship.getModel().getId();
+        // 상속되는 관계 (M-6 후속 5차) : 옛·새 양 끝 엔터티의 정의를 상속하는 승인된 하위 엔터티가 있으면 거절
+        if (relationship.getId() != null) rejectInheritedRelationshipChange(relationship.getSourceEntity(), relationship.getTargetEntity(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         relationship.setSourceEntity(relationEntity(projectId, modelId, request.sourceEntityId()));
         relationship.setTargetEntity(relationEntity(projectId, modelId, request.targetEntityId())); // 자기 참조 허용
+        rejectInheritedRelationshipChange(relationship.getSourceEntity(), relationship.getTargetEntity(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         relationship.setRelationshipName(request.relationshipName() == null || request.relationshipName().isBlank() ? null : name(request.relationshipName(), "관계명"));
         relationship.setRelationshipDescription(description(request.relationshipDescription()));
         relationship.setIsIdentifying(Boolean.TRUE.equals(request.isIdentifying()));
@@ -553,6 +609,7 @@ public class LogicalModelService {
         lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
         LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
         rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejectInheritedRelationshipChange(relationship.getSourceEntity(), relationship.getTargetEntity(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         // 관계의 속성 짝을 먼저 지운다 (엔티티 삭제라 변경 이력에 남는다 — DB 의 CASCADE 에 맡기지 않는다)
         pairRepository.deleteAll(pairRepository.findAllByRelationshipIds(List.of(relationshipId)));
         pairRepository.flush();
@@ -583,9 +640,10 @@ public class LogicalModelService {
                 primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
             }
         }
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId); // 서브타입이 부모인 관계는 루트의 주 식별자로 짝을 판정한다 (M-6 후속 5차)
         return new LogicalModelDto.Graph(model.getId(), model.getModelName(),
                 entityRepository.findGraph(modelId).stream().map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList(),
-                withPairs(relationshipRepository.findAllByModelId(modelId), e -> primaryKeys.getOrDefault(e.getId(), List.of())));
+                withPairs(relationshipRepository.findAllByModelId(modelId), e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of())));
     }
 
     // ------------------------------------------------------------------ 논리 ERD 부분 조회 (M-6 후속 1차)
@@ -632,23 +690,28 @@ public class LogicalModelService {
         Set<Long> found = new java.util.LinkedHashSet<>(List.of(entityId));
         Set<Long> frontier = Set.of(entityId);
         boolean truncated = false;
+        // 상속 연결(직접 슈퍼타입·서브타입)도 일반 관계와 같이 한 단계다 (M-6 후속 5차 — 그룹 기호는 단계를 쓰지 않는다). 같은 한도 300·1~3단계
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId);
         for (int level = 0; level < depth && !frontier.isEmpty() && !truncated; level++) {
             Set<Long> next = new java.util.LinkedHashSet<>();
+            List<Long> ends = new java.util.ArrayList<>();
             for (Object[] link : relationshipRepository.findLinks(modelId, frontier)) {
-                for (Long end : new Long[]{(Long) link[1], (Long) link[2]}) {
-                    if (found.contains(end)) continue; // 자기 참조·순환·여러 경로 : 한 번만
-                    if (found.size() >= ERD_MAX_ENTITIES) {
-                        truncated = true;
-                        break;
-                    }
-                    found.add(end);
-                    next.add(end);
+                ends.add((Long) link[1]);
+                ends.add((Long) link[2]);
+            }
+            for (Long from : frontier) ends.addAll(hierarchy.links(from));
+            for (Long end : ends) {
+                if (found.contains(end)) continue; // 자기 참조·순환·여러 경로·관계와 상속이 같은 상대 : 한 번만
+                if (found.size() >= ERD_MAX_ENTITIES) {
+                    truncated = true;
+                    break;
                 }
-                if (truncated) break;
+                found.add(end);
+                next.add(end);
             }
             frontier = next;
         }
-        return graphPart(model, List.copyOf(found), found.size(), truncated);
+        return graphPart(model, List.copyOf(found), found.size(), truncated, hierarchy);
     }
 
     /** 엔터티 찾기 (ERD 에 없는 엔터티도) : 이름·설명 검색, 이름순 최대 size 개(1~50) */
@@ -675,19 +738,31 @@ public class LogicalModelService {
 
     /** 고른 엔터티만 읽는다 (조회 수는 엔터티 수와 관계없이 일정 : 엔터티+속성, 식별자, 관계, 관계 속성 짝, 범위 밖 관계, 모델 엔터티 수) */
     private LogicalModelDto.GraphPart graphPart(LogicalModel model, List<Long> ids, long total, boolean truncated) {
+        return graphPart(model, ids, total, truncated, subtypeService.hierarchy(model.getId()));
+    }
+
+    /**
+     * 서브타입 (M-6 후속 5차) : 범위 안 서브타입의 상속 주 식별자(루트의 주 식별자)를 노드에 함께 준다 — 루트가 범위 밖이어도 그 식별자만 더 읽는다 (노드는 더하지 않는다).
+     * 범위 안 그룹(슈퍼타입 + 서브타입 하나 이상)과 범위 밖 상속 연결 수는 일반 관계와 따로 준다. 상속이 없는 모델은 그룹 조회 1번만 늘어난다
+     */
+    private LogicalModelDto.GraphPart graphPart(LogicalModel model, List<Long> ids, long total, boolean truncated, LogicalHierarchy hierarchy) {
         Long modelId = model.getId();
         long modelEntityCount = entityRepository.countByModel_Id(modelId);
         if (ids.isEmpty()) return new LogicalModelDto.GraphPart(modelId, model.getModelName(), List.of(), List.of(), total, truncated, modelEntityCount, Map.of());
         Set<Long> identifierAttributes = new HashSet<>();
         Set<Long> primaryAttributes = new HashSet<>();
         Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>();
-        for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(ids)) {
+        Map<Long, LogicalIdentifier> primaryIdentifiers = new java.util.HashMap<>();
+        Set<Long> keyed = new java.util.LinkedHashSet<>(ids);
+        ids.forEach(id -> keyed.add(hierarchy.root(id)));
+        for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(keyed)) {
             for (LogicalIdentifierAttribute attribute : identifier.getAttributes()) {
                 identifierAttributes.add(attribute.getAttribute().getId());
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
             }
             if (Boolean.TRUE.equals(identifier.getIsPrimary())) {
                 primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
+                primaryIdentifiers.put(identifier.getEntity().getId(), identifier);
             }
         }
         // 걸린 관계를 한 번 읽어 범위 안(양 끝 모두)·범위 밖(한 끝만)으로 나눈다. 범위 안 관계는 ID 로 읽는다
@@ -702,14 +777,38 @@ public class LogicalModelService {
             else if (scope.contains(source)) outside.merge(source, 1, Integer::sum);
             else outside.merge(target, 1, Integer::sum);
         }
-        return new LogicalModelDto.GraphPart(modelId, model.getModelName(),
-                entityRepository.findGraphByIds(modelId, scope).stream().map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList(),
-                withPairs(within.isEmpty() ? List.of() : relationshipRepository.findWithEntities(within), e -> primaryKeys.getOrDefault(e.getId(), List.of())),
-                total, truncated, modelEntityCount, outside);
+        List<LogicalModelDto.GraphEntity> entities = entityRepository.findGraphByIds(modelId, scope).stream()
+                .map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList();
+        if (!hierarchy.isEmpty()) {
+            Set<Long> roots = new HashSet<>();
+            ids.stream().filter(id -> hierarchy.parent(id) != null).forEach(id -> roots.add(hierarchy.root(id)));
+            Map<Long, String> rootNames = new java.util.HashMap<>();
+            if (!roots.isEmpty()) entityRepository.findAllByIds(roots, model.getProjectId()).forEach(e -> rootNames.put(e.getId(), e.getEntityName()));
+            entities = entities.stream().map(e -> {
+                Long parent = hierarchy.parent(e.id());
+                if (parent == null) return e;
+                Long root = hierarchy.root(e.id());
+                LogicalIdentifier key = primaryIdentifiers.get(root);
+                List<LogicalModelDto.InheritedKey> inheritedKey = new java.util.ArrayList<>();
+                if (key != null) {
+                    Map<Long, LogicalAttribute> parts = new java.util.HashMap<>();
+                    key.getAttributes().forEach(a -> parts.put(a.getAttribute().getId(), a.getAttribute()));
+                    List<Long> order = keyAttributeIds(key);
+                    for (int i = 0; i < order.size(); i++) {
+                        LogicalAttribute a = parts.get(order.get(i));
+                        inheritedKey.add(new LogicalModelDto.InheritedKey(a.getId(), a.getAttributeName(), a.getDataType(), i + 1, root, rootNames.get(root)));
+                    }
+                }
+                return e.withInheritance(parent, inheritedKey);
+            }).toList();
+        }
+        return new LogicalModelDto.GraphPart(modelId, model.getModelName(), entities,
+                withPairs(within.isEmpty() ? List.of() : relationshipRepository.findWithEntities(within), e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of())),
+                total, truncated, modelEntityCount, outside, subtypeService.graphGroups(hierarchy, scope), LogicalSubtypeService.outsideLinks(hierarchy, scope));
     }
 
     /** 검색어 → like 패턴 (소문자, '!' 로 %·_·! 이스케이프). 비었으면 모두 */
-    private static String likePattern(String keyword) {
+    static String likePattern(String keyword) {
         String text = keyword == null ? "" : keyword.trim();
         if (text.length() > ERD_MAX_KEYWORD) throw invalid("검색어는 {0}자까지 입력할 수 있습니다.", ERD_MAX_KEYWORD);
         return "%" + text.toLowerCase(java.util.Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
@@ -872,6 +971,12 @@ public class LogicalModelService {
 
     private static String relationLabel(LogicalRelationship r) {
         return r.getRelationshipName() != null ? r.getRelationshipName() : r.getSourceEntity().getEntityName() + " → " + r.getTargetEntity().getEntityName();
+    }
+
+    /** 관계는 양 끝 엔터티의 하위 엔터티에 상속된다 (M-6 후속 5차) : 어느 한 끝이라도 승인된 하위 엔터티가 있으면 관계를 바꿀 수 없다 */
+    private void rejectInheritedRelationshipChange(LogicalEntity source, LogicalEntity target, ErrorCode errorCode) {
+        subtypeService.requireNoApprovedDescendant(source, errorCode);
+        if (!target.getId().equals(source.getId())) subtypeService.requireNoApprovedDescendant(target, errorCode);
     }
 
     private static void rejectApproved(Boolean isApproval, ErrorCode errorCode) {

@@ -105,7 +105,7 @@ class ProjectDeletionIntegrationTest {
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
             "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
             "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY",
-            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT");
+            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -362,6 +362,15 @@ class ProjectDeletionIntegrationTest {
                 + " values(?, ?, ?, ?, ?, '{}', 0, 0, 1, 0)", base - 1, projectId, model.id(), orderArea.id(), accountId);
         EntityMapping entityMapping = mappings.saveEntityMapping(admin, new EntityMapping(null, orderEntity.id(), order.getId()));
         mappings.saveAttributeMapping(admin, new AttributeMapping(null, entityMapping.id(), orderNoAttribute.id(), orderNo.getId()));
+        // 서브타입 그룹 (M-6 후속 5차) : 그룹이 엔터티·분류 속성을 참조한다 (삭제 순서 : 구성원 → 그룹 → 속성·엔터티)
+        Entity onlineOrder = logical.saveEntity(admin, new Entity(null, model.id(), "온라인 주문", null, null, null, null));
+        Entity storeOrder = logical.saveEntity(admin, new Entity(null, model.id(), "매장 주문", null, null, null, null));
+        jdbc.update("insert into TB_LGCL_SBTYP_GROUP(LGCL_SBTYP_GROUP_SN, PRJ_SN, LGCL_MDL_SN, SPRTYP_ENTT_SN, SBTYP_GROUP_NM, DPCN_PSBLTY_YN, TOTL_YN, CLSF_ATRB_SN, SORT_ORD)"
+                + " values(?, ?, ?, ?, '주문 경로', false, true, ?, 1)", base - 1, projectId, model.id(), orderEntity.id(), orderNoAttribute.id());
+        jdbc.update("insert into TB_LGCL_SBTYP(LGCL_SBTYP_SN, PRJ_SN, LGCL_MDL_SN, LGCL_SBTYP_GROUP_SN, SBTYP_ENTT_SN, CLSF_VL, SORT_ORD) values(?, ?, ?, ?, ?, 'ONLINE', 1)",
+                base - 1, projectId, model.id(), base - 1, onlineOrder.id());
+        jdbc.update("insert into TB_LGCL_SBTYP(LGCL_SBTYP_SN, PRJ_SN, LGCL_MDL_SN, LGCL_SBTYP_GROUP_SN, SBTYP_ENTT_SN, CLSF_VL, SORT_ORD) values(?, ?, ?, ?, ?, 'STORE', 2)",
+                base - 2, projectId, model.id(), base - 1, storeOrder.id());
 
         // ERD 배치 (사용자별)
         jdbc.update("insert into TB_ERD_LYT(ERD_LYT_SN, PRJ_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO) values(?, ?, ?, '{}', 0, 0, 1, 0)", base - 1, projectId, accountId);

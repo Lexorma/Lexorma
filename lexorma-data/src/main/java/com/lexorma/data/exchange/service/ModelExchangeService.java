@@ -28,6 +28,8 @@ import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalSubjectArea;
 import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaEntity;
 import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaLayout;
+import com.lexorma.data.logical.domain.entity.LogicalSubtype;
+import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -91,23 +93,37 @@ import java.util.regex.Pattern;
  *       다른 사용자의 배치는 건드리지 않는다. 파일에 없는 객체의 좌표는 무시하고(경고), 숫자가 아닌·너무 큰 좌표는 파일 전체를 거절한다</li>
  *   <li>주제 영역 (형식 4, M-6 후속 4차) : 논리 모델과 함께 영역 계층·엔터티 소속·내보낸 사용자의 영역별 배치를 새 ID 로 옮긴다. 계층(순환·자기 상위·3단계 초과·같은 상위 아래 이름 중복)·
  *       소속(없는 영역·엔터티, 다른 모델, 중복 소속)이 잘못된 파일은 전체를 거절한다. 형식 1~3 파일은 주제 영역 없이 가져온다 (기본 영역을 만들지 않는다)</li>
+ *   <li>서브타입 (형식 5, M-6 후속 5차) : 서브타입 그룹·구성원을 새 ID 로 옮긴다 (슈퍼타입·서브타입·분류 속성). 자기 상속·순환·4단계 이상·단일 상속 위반·구성원 2개 미만·
+ *       다른 모델·서브타입 자체 주 식별자·상속 속성명 충돌·유효하지 않은 분류 속성·배타 그룹의 분류 값 중복·잘못된 배타성/완전성 값이면 파일 전체를 거절한다.
+ *       그룹은 파일 객체 수 한도(50,000)에 들고, 구성원은 자식 행이다 (그룹당 1,000행 한도 — 엔터티마다 한 번만 속하므로 전체 구성원 수는 엔터티 수를 넘지 못한다).
+ *       형식 1~4 파일은 서브타입 없이 가져오고, 가져오기는 새 모델만 만들므로 기존 모델의 상속 구조를 지우거나 바꾸지 않는다</li>
  * </ul>
  */
 @Service
 @RequiredArgsConstructor
 public class ModelExchangeService {
 
-    /** 한 파일의 최대 객체 수 (종류 합계, 자식 행 제외) */
+    /**
+     * 한 파일의 최대 객체 수 : 종류 합계 + 서브타입 그룹의 구성원 행 (D-53). 그 밖의 자식 행(컬럼 구성·속성 짝 등)은 넣지 않는다 —
+     * 그 목록은 객체 하나에 {@link #MAX_CHILD_ROWS} 행까지라 따로 막힌다
+     */
     static final int MAX_OBJECTS = 50_000;
+    /** 객체 하나의 자식 목록 최대 행 수 (공통). 서브타입 그룹의 구성원 목록만 예외 — 대신 구성원 행이 {@link #MAX_OBJECTS} 에 들어간다 (D-51·D-53) */
+    static final int MAX_CHILD_ROWS = 1_000;
+    /** 행 수 제한 대신 전체 객체 수로 세는 자식 목록 : 종류 → 필드 (D-53, 서브타입 구성원만) */
+    private static final Map<String, String> COUNTED_CHILDREN = Map.of("SUBTYPE_GROUP", "subtypes");
     static final int MAX_NAME = 128;
     static final int MAX_TEXT = 4_000;
     static final String VERSION_PREFIX = "MODEL-IMPORT-";
 
     static final List<String> TYPES = List.of(ModelChangeRecorder.SCHEMA, "PHYSICAL_TABLE", "PHYSICAL_COLUMN", "PHYSICAL_RELATION", "PHYSICAL_INDEX", "PHYSICAL_CONSTRAINT",
             "PHYSICAL_VIEW", "LOGICAL_MODEL", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "TABLE_MAPPING", "COLUMN_MAPPING",
-            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY");
+            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY", "SUBTYPE_GROUP");
     /** 주제 영역 계층 한도 (LogicalSubjectAreaService 와 같다 : 최상위 = 1단계) */
     static final int SUBJECT_AREA_MAX_DEPTH = 3;
+    /** 상속 단계 한도 (LogicalHierarchy 와 같다 : 루트 = 1단계), 그룹의 구성원 수 (LogicalSubtypeService 와 같다) */
+    static final int SUBTYPE_MAX_LEVEL = com.lexorma.data.logical.service.LogicalHierarchy.MAX_LEVEL;
+    static final int SUBTYPE_MEMBER_MIN = 2; // 최대 구성원 수는 없다 (D-51) — 파일 전체의 객체 수 제한만 적용
     /** 파일에서 빼는 필드 : 승인 상태 (가져온 객체는 모두 미승인) */
     private static final Set<String> DROPPED = Set.of("isApproval");
     /** SQL 식에 있으면 가져오지 않는다 : 문장 구분·주석 (DDL 로 나갈 때 다른 문장을 끼워 넣을 수 있다) */
@@ -263,18 +279,27 @@ public class ModelExchangeService {
             List<Item> items = entry.getValue() == null ? List.of() : entry.getValue();
             total += items.size();
             if (total > MAX_OBJECTS) throw invalid("객체가 너무 많습니다 (최대 {0}개).", MAX_OBJECTS);
+            String counted = COUNTED_CHILDREN.get(entry.getKey());
             Set<Long> ids = new HashSet<>();
             for (Item item : items) {
                 if (item == null || item.id() == null || item.state() == null || !ids.add(item.id())) throw invalid("객체 번호가 없거나 겹칩니다 : {0}", entry.getKey());
                 for (Map.Entry<String, Object> value : item.state().entrySet()) {
-                    if (!flat(value.getValue(), 0)) throw invalid("값의 모양이 올바르지 않습니다 : {0}.{1}", entry.getKey(), value.getKey());
+                    boolean countedRows = value.getKey().equals(counted);
+                    // 구성원 행은 모양을 보기 전에 전체 객체 수에 더한다 (여러 그룹에 나눠도 합계로 막힌다 — 비싼 검사·DB 쓰기 전에)
+                    if (countedRows && value.getValue() instanceof List<?> rows) {
+                        total += rows.size();
+                        if (total > MAX_OBJECTS) throw invalid("객체가 너무 많습니다 (최대 {0}개).", MAX_OBJECTS);
+                    }
+                    if (!flat(value.getValue(), 0, countedRows ? MAX_OBJECTS : MAX_CHILD_ROWS)) throw invalid("값의 모양이 올바르지 않습니다 : {0}.{1}", entry.getKey(), value.getKey());
                 }
             }
         }
         if (document.formatVersion() == 1 && (document.layouts() != null || document.model().containsKey("PHYSICAL_VIEW"))) {
             throw invalid("형식 버전 1 파일에는 VIEW·ERD 배치가 들어갈 수 없습니다.");
         }
-        validatePairs(document);
+        validateIdentifiers(document);
+        Map<Long, Long> supertypes = validateSubtypes(document);
+        validatePairs(document, supertypes);
         validateSubjectAreas(document);
         validateLayouts(document);
         return document;
@@ -328,10 +353,31 @@ public class ModelExchangeService {
     }
 
     /**
+     * 논리 식별자의 구성 속성은 그 식별자 엔터티의 속성이어야 한다 (D-17, M-6 최종 정책 — 화면·API 의 `saveIdentifier` 와 같은 규칙).
+     * 서브타입의 자체 보조 식별자도 직접 속성만 (상속 속성·다른 엔터티 속성 불가). 정상적으로 내보낸 파일은 늘 지킨다 — 어기면 파일 전체를 거절한다
+     * (예전에는 가져오기가 파일 전체의 속성 번호로 찾아 다른 엔터티 속성에 잇거나 조용히 빼 버렸다)
+     */
+    private static void validateIdentifiers(ModelExchangeDto.Document document) {
+        List<Item> identifiers = listOf(document, "LOGICAL_IDENTIFIER");
+        if (identifiers.isEmpty()) return;
+        Map<Long, Long> attributeEntity = new HashMap<>();
+        for (Item a : listOf(document, "LOGICAL_ATTRIBUTE")) attributeEntity.put(a.id(), ref(a, "entity"));
+        for (Item i : identifiers) {
+            Long entity = ref(i, "entity");
+            for (Map<String, Object> member : children(i, "attributes")) {
+                Long attribute = longValue(member.get("attributeId"));
+                if (attribute == null || entity == null || !entity.equals(attributeEntity.get(attribute))) {
+                    throw invalid("논리 식별자 {0} 의 구성 속성은 같은 엔터티의 속성이어야 합니다 (상속 속성·다른 엔터티 속성 불가).", String.valueOf(i.id()));
+                }
+            }
+        }
+    }
+
+    /**
      * 논리 관계 속성 짝 (형식 3, M-7 보강 3차) : 부모 속성은 관계 원본 엔터티의 주 식별자 속성, 자식 속성은 대상 엔터티의 속성, 부모·자식·순서 각각 중복 없음 (파일 안의 번호로 확인).
      * 어기면 파일 전체를 거절한다 (가져오지 않은 것을 조용히 빼지 않는다). 형식 1·2 파일에는 속성 짝이 있을 수 없다
      */
-    private static void validatePairs(ModelExchangeDto.Document document) {
+    private static void validatePairs(ModelExchangeDto.Document document, Map<Long, Long> supertypes) {
         List<Item> relationships = document.model().getOrDefault("LOGICAL_RELATIONSHIP", List.of());
         if (relationships == null || relationships.stream().allMatch(r -> children(r, "attributes").isEmpty())) return;
         if (document.formatVersion() < 3) throw invalid("형식 버전 {0} 파일에는 논리 관계 속성 짝이 들어갈 수 없습니다.", document.formatVersion());
@@ -346,6 +392,8 @@ public class ModelExchangeService {
         for (Item r : relationships) {
             List<Map<String, Object>> pairs = children(r, "attributes");
             if (pairs.isEmpty()) continue;
+            // 부모가 서브타입이면 루트 슈퍼타입의 주 식별자 속성 (형식 5 — 상속 주 식별자). 아니면 자기 주 식별자
+            Long keyOwner = root(supertypes, ref(r, "sourceEntity"));
             Long source = ref(r, "sourceEntity");
             Long target = ref(r, "targetEntity");
             Set<Long> parents = new HashSet<>();
@@ -356,12 +404,103 @@ public class ModelExchangeService {
                 Long child = longValue(pair.get("childAttributeId"));
                 Integer order = intValue(pair.get("sortOrder"));
                 boolean ok = parent != null && child != null && order != null
-                        && Objects.equals(attributeEntity.get(parent), source) && primaryKeys.getOrDefault(source, Set.of()).contains(parent)
+                        && Objects.equals(attributeEntity.get(parent), keyOwner) && primaryKeys.getOrDefault(keyOwner, Set.of()).contains(parent)
                         && Objects.equals(attributeEntity.get(child), target)
                         && parents.add(parent) && childs.add(child) && orders.add(order);
                 if (!ok) throw invalid("논리 관계 {0} 의 속성 짝이 올바르지 않습니다 (부모 주 식별자 속성 · 자식 엔터티 속성 · 중복 없는 순서).", String.valueOf(r.id()));
             }
         }
+    }
+
+    /**
+     * 서브타입 그룹 (형식 5, M-6 후속 5차) : 서비스의 저장 검사와 같은 규칙을 파일 안의 번호로 본다. 어기면 파일 전체를 거절한다 (조용히 빼지 않는다).
+     * 돌려주는 값 : 서브타입 엔터티 번호 → 직접 슈퍼타입 번호 (속성 짝 검사가 상속 주 식별자를 찾는 데 쓴다)
+     */
+    private static Map<Long, Long> validateSubtypes(ModelExchangeDto.Document document) {
+        List<Item> groups = listOf(document, "SUBTYPE_GROUP");
+        if (groups.isEmpty()) return Map.of();
+        if (document.formatVersion() < 5) throw invalid("형식 버전 {0} 파일에는 서브타입 그룹이 들어갈 수 없습니다.", document.formatVersion());
+        Set<Long> models = ids(listOf(document, "LOGICAL_MODEL"));
+        Map<Long, Long> entityModel = new HashMap<>();
+        for (Item e : listOf(document, "LOGICAL_ENTITY")) entityModel.put(e.id(), ref(e, "model"));
+        Map<Long, Long> attributeEntity = new HashMap<>();
+        Map<Long, List<String>> attributeNames = new HashMap<>();
+        for (Item a : listOf(document, "LOGICAL_ATTRIBUTE")) {
+            attributeEntity.put(a.id(), ref(a, "entity"));
+            String name = string(a, "attributeName");
+            if (name != null) attributeNames.computeIfAbsent(ref(a, "entity"), id -> new ArrayList<>()).add(lower(name));
+        }
+        Set<Long> withPrimary = new HashSet<>();
+        for (Item i : listOf(document, "LOGICAL_IDENTIFIER")) if (Boolean.TRUE.equals(bool(i, "isPrimary"))) withPrimary.add(ref(i, "entity"));
+
+        Map<Long, Long> supertypes = new HashMap<>();
+        Set<String> names = new HashSet<>();
+        for (Item g : groups) {
+            String label = String.valueOf(g.id());
+            Long model = ref(g, "model");
+            Long supertype = ref(g, "supertypeEntity");
+            String name = string(g, "groupName");
+            Object overlapping = g.state().get("overlapping");
+            Object total = g.state().get("total");
+            if (model == null || !models.contains(model) || supertype == null || !Objects.equals(entityModel.get(supertype), model) || !name(name)
+                    || !texts(g, "groupDescription") || !(overlapping instanceof Boolean) || !(total instanceof Boolean)
+                    || (g.state().get("sortOrder") != null && intValue(g.state().get("sortOrder")) == null)) {
+                throw invalid("서브타입 그룹 {0} 이(가) 올바르지 않습니다 (모델·슈퍼타입·이름·배타성·완전성).", label);
+            }
+            if (!names.add(supertype + ":" + lower(name))) throw invalid("같은 슈퍼타입의 서브타입 그룹 이름이 겹칩니다 : {0}", name);
+            List<Map<String, Object>> members = children(g, "subtypes");
+            if (members.size() < SUBTYPE_MEMBER_MIN) {
+                throw invalid("서브타입 그룹 {0} 의 서브타입은 {1}개 이상이어야 합니다.", label, SUBTYPE_MEMBER_MIN);
+            }
+            Set<String> values = new HashSet<>();
+            for (Map<String, Object> m : members) {
+                Long entity = longValue(m.get("subtypeEntityId"));
+                Object value = m.get("classificationValue");
+                if (entity == null || entity.equals(supertype) || !Objects.equals(entityModel.get(entity), model) || intValue(m.get("sortOrder")) == null
+                        || (value != null && (!(value instanceof String text) || text.isBlank() || text.length() > 255))) {
+                    throw invalid("서브타입 그룹 {0} 의 서브타입이 올바르지 않습니다 (같은 모델의 다른 엔터티·순서·분류 값).", label);
+                }
+                if (supertypes.putIfAbsent(entity, supertype) != null) throw invalid("엔터티 하나가 서브타입 그룹 여러 개에 속할 수 없습니다 (단일 상속) : {0}", String.valueOf(entity));
+                if (withPrimary.contains(entity)) throw invalid("서브타입 {0} 에 자체 주 식별자가 있습니다. 서브타입은 슈퍼타입의 주 식별자를 상속합니다.", String.valueOf(entity));
+                if (Boolean.FALSE.equals(overlapping) && value != null && !values.add(lower(((String) value).trim()))) {
+                    throw invalid("배타(Disjoint) 서브타입 그룹 {0} 의 분류 값이 겹칩니다.", label);
+                }
+            }
+        }
+        // 계층 : 순환·단계 (루트 = 1, 최대 3), 상속 속성명 충돌 (대소문자 무시), 분류 속성은 슈퍼타입의 유효 속성
+        for (Long entity : supertypes.keySet()) {
+            int level = 1;
+            Set<Long> seen = new HashSet<>(List.of(entity));
+            List<Long> chain = new ArrayList<>();
+            for (Long up = supertypes.get(entity); up != null; up = supertypes.get(up)) {
+                if (!seen.add(up)) throw invalid("서브타입 상속이 순환합니다 : {0}", String.valueOf(entity));
+                chain.add(up);
+                level++;
+            }
+            if (level > SUBTYPE_MAX_LEVEL) throw invalid("서브타입 상속은 최대 {0}단계까지 가능합니다 : {1}", SUBTYPE_MAX_LEVEL, String.valueOf(entity));
+            Set<String> own = new HashSet<>(attributeNames.getOrDefault(entity, List.of()));
+            for (Long up : chain) {
+                for (String name : attributeNames.getOrDefault(up, List.of())) {
+                    if (own.contains(name)) throw invalid("서브타입 {0} 의 속성 이름이 상위 엔터티 {1} 의 속성과 겹칩니다 : {2}", String.valueOf(entity), String.valueOf(up), name);
+                }
+            }
+        }
+        for (Item g : groups) {
+            Long attribute = ref(g, "classificationAttribute");
+            if (attribute == null) continue;
+            Long owner = attributeEntity.get(attribute);
+            boolean valid = false;
+            for (Long up = ref(g, "supertypeEntity"); up != null && !valid; up = supertypes.get(up)) valid = up.equals(owner);
+            if (!valid) throw invalid("서브타입 그룹 {0} 의 분류 속성은 슈퍼타입의 유효 속성이어야 합니다.", String.valueOf(g.id()));
+        }
+        return supertypes;
+    }
+
+    /** 파일 안 상속의 루트 (서브타입이 아니면 자기 자신 — 순환은 validateSubtypes 가 먼저 막는다) */
+    private static Long root(Map<Long, Long> supertypes, Long entity) {
+        Long root = entity;
+        for (int guard = 0; root != null && supertypes.containsKey(root) && guard <= SUBTYPE_MAX_LEVEL; guard++) root = supertypes.get(root);
+        return root;
     }
 
     private static List<Item> listOf(ModelExchangeDto.Document document, String type) {
@@ -411,14 +550,14 @@ public class ModelExchangeService {
 
     /** 글자·숫자·참/거짓·null, 또는 그런 값만 가진 객체의 목록(자식 행) 한 단계 */
     @SuppressWarnings("unchecked")
-    private static boolean flat(Object value, int depth) {
+    private static boolean flat(Object value, int depth, int maxRows) {
         if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) return true;
         if (depth > 0) return false;
-        if (!(value instanceof List<?> list) || list.size() > 1_000) return false;
+        if (!(value instanceof List<?> list) || list.size() > maxRows) return false;
         for (Object row : list) {
             if (!(row instanceof Map<?, ?> map)) return false;
             for (Object child : ((Map<String, Object>) map).values()) {
-                if (!flat(child, 1)) return false;
+                if (!flat(child, 1, maxRows)) return false;
             }
         }
         return true;
@@ -456,6 +595,7 @@ public class ModelExchangeService {
         private final Map<Long, List<Item>> subjectAreasByModel = new HashMap<>();
         private final Map<Long, Item> subjectAreas = new HashMap<>();
         private final Map<Long, List<Item>> membersByArea = new HashMap<>();
+        private final Map<Long, List<Item>> subtypeGroupsByModel = new HashMap<>();
         private final Map<Long, Map<Long, ModelExchangeDto.Point>> subjectAreaNodes = new LinkedHashMap<>();
         private final Map<Long, ModelExchangeDto.Viewport> subjectAreaViewports = new HashMap<>();
         private final List<Item> tableMappings = new ArrayList<>();
@@ -525,6 +665,7 @@ public class ModelExchangeService {
                 subjectAreasByModel.computeIfAbsent(ref(area, "model"), id -> new ArrayList<>()).add(area);
             }
             model.getOrDefault("SUBJECT_AREA_ENTITY", List.of()).forEach(item -> membersByArea.computeIfAbsent(ref(item, "subjectArea"), id -> new ArrayList<>()).add(item));
+            model.getOrDefault("SUBTYPE_GROUP", List.of()).forEach(item -> subtypeGroupsByModel.computeIfAbsent(ref(item, "model"), id -> new ArrayList<>()).add(item));
             tableMappings.addAll(model.getOrDefault("TABLE_MAPPING", List.of()));
             model.getOrDefault("COLUMN_MAPPING", List.of()).forEach(item -> columnMappingsByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("PHYSICAL_VIEW", List.of()).forEach(item -> views.put(item.id(), item));
@@ -636,6 +777,8 @@ public class ModelExchangeService {
                 Map<String, Integer> sizes = ordered("entities", modelEntities.size(), "relationships", relationshipsByModel.getOrDefault(model.id(), List.of()).size());
                 List<Item> modelAreas = subjectAreasByModel.getOrDefault(model.id(), List.of());
                 if (!modelAreas.isEmpty()) sizes.put("subjectAreas", modelAreas.size()); // 형식 4 : 주제 영역이 있는 모델만 (예전 파일의 계획은 그대로)
+                List<Item> modelGroups = subtypeGroupsByModel.getOrDefault(model.id(), List.of());
+                if (!modelGroups.isEmpty()) sizes.put("subtypeGroups", modelGroups.size()); // 형식 5 : 서브타입 그룹이 있는 모델만
                 items.add(new PlanItem("LOGICAL_MODEL", name, name, status, reason, sizes));
             }
             // 논리 ↔ 물리 매핑 : 엔터티의 모델과 TABLE 을 모두 새로 만들 때만
@@ -804,6 +947,8 @@ public class ModelExchangeService {
             counts.put("PHYSICAL_VIEW", newViews.size());
             int newAreas = newModels.stream().mapToInt(id -> subjectAreasByModel.getOrDefault(id, List.of()).size()).sum();
             if (newAreas > 0) counts.put("LOGICAL_SUBJECT_AREA", newAreas);
+            int newGroups = newModels.stream().mapToInt(id -> subtypeGroupsByModel.getOrDefault(id, List.of()).size()).sum();
+            if (newGroups > 0) counts.put("SUBTYPE_GROUP", newGroups);
             counts.put("ERD_LAYOUT_NODE", physicalNodes.size() + logicalNodes.values().stream().mapToInt(Map::size).sum() + subjectAreaNodes.values().stream().mapToInt(Map::size).sum());
             boolean applicable = !newTables.isEmpty() || !newModels.isEmpty() || !newViews.isEmpty();
             // 배치를 더할 사용자 배치의 버전 : 그 사이 사용자가 배치를 저장했으면 다시 계획한다 (오른쪽에 둘 위치가 달라진다)
@@ -954,6 +1099,8 @@ public class ModelExchangeService {
             int relationships = 0;
             int relationshipPairs = 0;
             int members = 0;
+            int subtypeGroups = 0;
+            int subtypes = 0;
             for (Item item : models.values()) {
                 if (!newModels.contains(item.id())) continue;
                 LogicalModel model = LogicalModel.builder().projectId(projectId).modelName(string(item, "modelName")).modelDescription(text(item, "modelDescription")).build();
@@ -984,6 +1131,22 @@ public class ModelExchangeService {
                         }
                         entityManager.persist(identifier);
                         entity.getIdentifiers().add(identifier);
+                    }
+                }
+                // 서브타입 그룹 (형식 5) : 엔터티·속성을 만든 뒤 새 ID 로 잇는다 (파일 검사에서 계층·구성원·분류 속성을 확인했다). 모두 미승인 엔터티라 승인 정합성이 맞다
+                for (Item g : subtypeGroupsByModel.getOrDefault(item.id(), List.of())) {
+                    Long classificationRef = ref(g, "classificationAttribute");
+                    LogicalSubtypeGroup group = LogicalSubtypeGroup.builder().projectId(projectId).model(model).supertypeEntity(entityMap.get(ref(g, "supertypeEntity")))
+                            .groupName(string(g, "groupName")).groupDescription(text(g, "groupDescription")).overlapping(bool(g, "overlapping")).total(bool(g, "total"))
+                            .classificationAttribute(classificationRef == null ? null : attributeMap.get(classificationRef))
+                            .sortOrder(integer(g, "sortOrder") == null ? 0 : integer(g, "sortOrder")).build();
+                    entityManager.persist(group);
+                    subtypeGroups++;
+                    for (Map<String, Object> m : children(g, "subtypes")) {
+                        entityManager.persist(LogicalSubtype.builder().projectId(projectId).modelId(model.getId()).group(group)
+                                .subtypeEntity(entityMap.get(longValue(m.get("subtypeEntityId")))).classificationValue(m.get("classificationValue") == null ? null
+                                        : ((String) m.get("classificationValue")).trim()).sortOrder(intValue(m.get("sortOrder"))).build());
+                        subtypes++;
                     }
                 }
                 for (Item r : relationshipsByModel.getOrDefault(item.id(), List.of())) {
@@ -1040,6 +1203,8 @@ public class ModelExchangeService {
             count(created, "LOGICAL_RELATIONSHIP_ATTRIBUTE", relationshipPairs);
             count(created, "LOGICAL_SUBJECT_AREA", areaMap.size());
             count(created, "SUBJECT_AREA_ENTITY", members);
+            count(created, "SUBTYPE_GROUP", subtypeGroups);
+            count(created, "LOGICAL_SUBTYPE", subtypes);
             int columnMappings = 0;
             for (Item item : tableMappings) {
                 if (!newMappings.contains(item.id())) continue;

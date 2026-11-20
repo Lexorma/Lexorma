@@ -48,6 +48,9 @@ public class ProjectDataCleanup {
             "delete from TB_LGCL_SBJ_AREA_ENTT where PRJ_SN = :projectId",
             "update TB_LGCL_SBJ_AREA set UP_SBJ_AREA_SN = null where PRJ_SN = :projectId",
             "delete from TB_LGCL_SBJ_AREA where PRJ_SN = :projectId",
+            // 서브타입 (M-6 후속 5차) : 구성원 → 그룹 (그룹이 엔터티·분류 속성을 참조하므로 속성·엔터티보다 먼저)
+            "delete from TB_LGCL_SBTYP where PRJ_SN = :projectId",
+            "delete from TB_LGCL_SBTYP_GROUP where PRJ_SN = :projectId",
             "delete from TB_LGCL_REL_ATRB where LGCL_REL_SN in (select LGCL_REL_SN from TB_LGCL_REL where PRJ_SN = :projectId)",
             "delete from TB_LGCL_REL where PRJ_SN = :projectId",
             "delete from TB_LGCL_IDNTFR_ATRB where LGCL_IDNTFR_SN in (select LGCL_IDNTFR_SN from TB_LGCL_IDNTFR where LGCL_ENTT_SN in " + ENTITIES + ")",

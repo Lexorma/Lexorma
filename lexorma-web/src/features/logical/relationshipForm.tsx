@@ -123,7 +123,7 @@ const PICK_SIZE = 50;
  * 관계 한쪽 엔터티 고르기 : 검색어(이름·설명, 논리 ERD 엔터티 찾기와 같은 API·규칙)에 맞는 엔터티 이름순 최대 50개.
  * 고른 엔터티는 검색어를 바꿔도 목록 맨 앞에 남는다. 다른 모델·프로젝트의 엔터티는 서버가 주지 않고, 저장할 때도 다시 검사한다.
  */
-function EntityPicker({ id, label, modelId, value, onChange }: {
+export function EntityPicker({ id, label, modelId, value, onChange }: {
   id: string;
   label: string;
   modelId: number;

@@ -48,7 +48,8 @@ class LogicalSubjectAreaMigrationTest {
             Map<String, Object> layoutBefore = jdbc.queryForMap("select NODE_PSTN_CN, VER_NO, MDFCN_DT from " + s + "TB_LGCL_ERD_LYT where LGCL_ERD_LYT_SN = 900000313");
             int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
 
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
+            // V2 까지만 올린다 (V3 서브타입은 LogicalSubtypeMigrationTest 가 본다 — 이 검사의 예제 엔터티 수 +3 은 V2 의 것)
+            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("2")).load();
             assertThat(latest.migrate().migrationsExecuted).isOne();
             assertThat(latest.validateWithResult().validationSuccessful).isTrue();
 

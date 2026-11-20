@@ -186,7 +186,16 @@ public final class LogicalModelDto {
                                  Long termId, String termName, String domainName, boolean identifier, boolean primaryIdentifier) {
     }
 
-    public record GraphEntity(Long id, String name, String description, Boolean isApproval, List<GraphAttribute> attributes) {
+    /**
+     * supertypeEntityId·inheritedKey (M-6 후속 5차) : 서브타입이면 직접 슈퍼타입과 상속 주 식별자(루트의 주 식별자 속성, 순서대로 — 원본 속성 ID).
+     * 서브타입이 아니면 null·빈 목록. 루트에 주 식별자가 없으면 빈 목록 (임의의 키를 만들지 않는다)
+     */
+    public record GraphEntity(Long id, String name, String description, Boolean isApproval, List<GraphAttribute> attributes,
+                              Long supertypeEntityId, List<InheritedKey> inheritedKey) {
+        public GraphEntity(Long id, String name, String description, Boolean isApproval, List<GraphAttribute> attributes) {
+            this(id, name, description, isApproval, attributes, null, List.of());
+        }
+
         public static GraphEntity of(LogicalEntity e, Set<Long> identifierAttributes, Set<Long> primaryAttributes) {
             return new GraphEntity(e.getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(),
                     e.getAttributes().stream().map(a -> {
@@ -195,6 +204,24 @@ public final class LogicalModelDto {
                                 dto.termId(), dto.termName(), dto.domainName(), identifierAttributes.contains(a.getId()), primaryAttributes.contains(a.getId()));
                     }).toList());
         }
+
+        public GraphEntity withInheritance(Long supertypeEntityId, List<InheritedKey> inheritedKey) {
+            return new GraphEntity(id, name, description, isApproval, attributes, supertypeEntityId, inheritedKey);
+        }
+    }
+
+    /** 상속 주 식별자 속성 1개 (원본 속성 ID, 정의한 루트 엔터티) */
+    public record InheritedKey(Long attributeId, String name, String dataType, int keyOrder, Long definedEntityId, String definedEntityName) {
+    }
+
+    /**
+     * 논리 ERD 의 서브타입 그룹 (M-6 후속 5차) : 슈퍼타입이 범위 안이고 서브타입이 하나라도 범위 안인 그룹만. subtypes 는 범위 안의 서브타입만, subtypeCount 는 그룹 전체 수
+     */
+    public record GraphSubtypeGroup(Long id, String groupName, Long supertypeEntityId, Boolean overlapping, Boolean total, String classificationAttributeName,
+                                    int subtypeCount, List<GraphSubtype> subtypes) {
+    }
+
+    public record GraphSubtype(Long entityId, String classificationValue) {
     }
 
     public record Point(double x, double y) {
@@ -220,8 +247,14 @@ public final class LogicalModelDto {
      * totalCount : 범위 조회는 조건에 맞는 전체 엔터티 수, 이웃 탐색은 담은 엔터티 수. truncated : 한도·페이지 때문에 일부만 담았는지.
      * modelEntityCount : 모델 전체 엔터티 수. outsideRelationships : 엔터티 ID → 상대가 범위 밖이라 빠진 관계 수 (0 은 없음)
      */
+    /** subtypeGroups·outsideInheritances (M-6 후속 5차) : 범위 안 서브타입 그룹, 엔터티 ID → 상대가 범위 밖인 직접 상속 연결 수 (일반 관계 수와 따로 — 0 은 없음) */
     public record GraphPart(Long modelId, String modelName, List<GraphEntity> entities, List<Relationship> relationships,
-                            long totalCount, boolean truncated, long modelEntityCount, Map<Long, Integer> outsideRelationships) {
+                            long totalCount, boolean truncated, long modelEntityCount, Map<Long, Integer> outsideRelationships,
+                            List<GraphSubtypeGroup> subtypeGroups, Map<Long, Integer> outsideInheritances) {
+        public GraphPart(Long modelId, String modelName, List<GraphEntity> entities, List<Relationship> relationships,
+                         long totalCount, boolean truncated, long modelEntityCount, Map<Long, Integer> outsideRelationships) {
+            this(modelId, modelName, entities, relationships, totalCount, truncated, modelEntityCount, outsideRelationships, List.of(), Map.of());
+        }
     }
 
     /** 논리 ERD 엔터티 찾기 결과 1건 (속성 없이) */

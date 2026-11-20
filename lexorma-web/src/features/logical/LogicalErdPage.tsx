@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow } from '@xyflow/react';
+import { Background, Controls, getViewportForBounds, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow, type NodeChange } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import '../../styles/logical.css';
@@ -19,14 +19,21 @@ import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/lay
 import { NODE_WIDTH, nodeHeight, type ErdLayout, type XY } from '../erd/model';
 import { ErdModeToggle, findFreePosition, type ErdMode } from '../erd/editing';
 import { AttributeForm, EntityForm, IdentifierForm, useEntityDetail, type EntityDetailTab } from './entityDetail';
-import { edgeTypes, EndMarkers, LAYER_GAP, nodeTypes, relationshipEdges, type EntityNodeType, type RelationshipEdgeType } from './erdNodes';
+import { edgeTypes, EndMarkers, entityRows, LAYER_GAP, nodeTypes, relationshipEdges, subtypeElements, type EntityNodeType, type InheritanceEdgeType, type RelationshipEdgeType, type SubtypeGroupNodeType } from './erdNodes';
 import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
 import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { ALL_AREAS, applyAreaFilter, areaMap, areaPath, useSubjectAreas, type AreaFilter } from './subjectArea';
 
-const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) });
+const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(entityRows(n.data.entity)) });
+
+/** 자동 배치에 넣는 선 : 관계 + 상속(슈퍼타입 → 범위 안 서브타입, M-6 후속 5차). 그룹 원은 배치하지 않는다 (엔터티 좌표에서 계산) */
+const layoutLinks = (graph: LogicalGraphPart | undefined) => [
+  ...(graph?.relationships ?? []).map((r) => ({ source: String(r.sourceEntityId), target: String(r.targetEntityId) })),
+  ...(graph?.subtypeGroups ?? []).flatMap((g) => g.subtypes.map((m) => ({ source: String(g.supertypeEntityId), target: String(m.entityId) }))),
+];
+const isEntityNode = (n: { type?: string }) => n.type === 'entity';
 
 /**
  * 조회 범위 (M-6 후속 1차, 물리 ERD 와 같은 방식) : 서버가 고른 엔터티만 준다 — 전체를 받아 화면에서 거르지 않는다.
@@ -153,7 +160,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
   const dialog = useDialog();
   const flow = useReactFlow<EntityNodeType, RelationshipEdgeType>();
   const erdExport = useErdExport(canvas, () => (flow.getNodes().length ? flow.getNodesBounds(flow.getNodes()) : null), () => erdFileName(t('논리 ERD'), String(modelId)),
-    () => flow.getNodes().map((n) => n.data.entity.attributes.length));
+    () => flow.getNodes().filter(isEntityNode).map((n) => entityRows(n.data.entity)));
   const openEntityDetail = useEntityDetail();
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNodeType>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -171,7 +178,11 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
   const positions = useRef(new Map<string, XY>());
   const appliedLayout = useRef<ErdLayout | null>(null);
   const focusRequest = useRef(focusEntity);
+  // 이웃 탐색으로 고른 엔터티 (D-52) : 선택만 하고 화면은 탐색 결과 전체에 맞춘다. 깊은 링크·새 엔터티는 지금처럼 그 엔터티를 가운데로
+  const fitWithFocus = useRef(false);
   const shown = useRef(false);
+  // 화면 위치를 맞춘 조회 범위 (D-52) : 검색·페이지·영역·하위 포함·이웃·범위 복귀로 범위가 바뀌면 새 결과에 맞추고, 같은 범위를 다시 받으면(새로고침·편집) 보던 화면을 유지한다
+  const fittedScope = useRef<string | null>(null);
 
   // 주제 영역 (M-6 후속 4차) : 범위 조회를 영역(기본 하위 포함)·미분류로 거른다. 영역을 보는 동안의 배치는 그 영역의 내 배치에 따로 저장한다 (D-07)
   const subjectAreas = useSubjectAreas(modelId);
@@ -227,6 +238,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     const next: Scope = { kind: 'neighbors', entityId, entityName, depth: nextDepth, back: scope.kind === 'neighbors' ? scope.back : scope };
     guarded(next, areaFilter, () => {
       focusRequest.current = String(entityId);
+      fitWithFocus.current = true;
       setScope(next);
     });
   };
@@ -253,9 +265,24 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
 
   useEffect(() => () => onDirty(false), []);
 
+  /**
+   * 고른 엔터티들이 보이게 화면을 맞춘다 (D-52). 엔터티 좌표·크기를 이미 알고 있으므로 React Flow 의 크기 측정을 기다리지 않고 경계를 직접 계산한다 —
+   * 그룹 원·상속선은 엔터티 사이에 있어 따로 넣지 않는다. 좌표·배치는 바꾸지 않고 화면 위치만 바꾼다 (저장 대상 아님). 동작 줄이기 설정이면 바로 옮긴다
+   */
+  const fitToNodes = (target: EntityNodeType[]) => {
+    const el = canvas.current;
+    if (!el || !target.length || !el.clientWidth || !el.clientHeight) return;
+    const xs = target.map((n) => n.position.x), ys = target.map((n) => n.position.y);
+    const x = Math.min(...xs), y = Math.min(...ys);
+    const width = Math.max(...xs) + NODE_WIDTH - x;
+    const height = Math.max(...target.map((n) => n.position.y + nodeHeight(entityRows(n.data.entity)))) - y;
+    void flow.setViewport(getViewportForBounds({ x, y, width, height }, el.clientWidth, el.clientHeight, 0.05, 1, 0.15), { duration: motionMs(200) });
+  };
+
   // 조회 결과 → 노드. 저장된 위치가 없는 엔터티만 기존 배치 오른쪽에 자동 배치한다 (기존 위치는 덮어쓰지 않음)
   useEffect(() => {
     const data = graph.data;
+    const scopeKey = graphUrl; // 이 결과의 조회 범위 (조회 키에 들어 있어 늦게 온 앞 범위의 응답은 이 결과가 되지 않는다)
     if (!data || !layout.data) return;
     if (appliedLayout.current !== layout.data) {
       appliedLayout.current = layout.data;
@@ -274,7 +301,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
       if (missing.length) {
         setArranging(true);
         const ids = new Set(missing.map((n) => n.id));
-        const edges = data.relationships.map((r) => ({ source: String(r.sourceEntityId), target: String(r.targetEntityId) })).filter((e) => ids.has(e.source) && ids.has(e.target));
+        const edges = layoutLinks(data).filter((e) => ids.has(e.source) && ids.has(e.target));
         let placed: Record<string, XY>;
         try {
           placed = await runLayout(missing.map(toLayoutNode), edges, LAYER_GAP);
@@ -305,17 +332,28 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
         return;
       }
       focusRequest.current = null;
+      const fitAll = fitWithFocus.current;
+      fitWithFocus.current = false;
       if (target) {
         shown.current = true;
+        fittedScope.current = scopeKey;
         setSelectedId(target.id);
-        requestAnimationFrame(() => void flow.setCenter(target.position.x + NODE_WIDTH / 2, target.position.y + nodeHeight(target.data.entity.attributes.length) / 2, { zoom: 1 }));
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          if (fitAll) fitToNodes(built);
+          else void flow.setCenter(target.position.x + NODE_WIDTH / 2, target.position.y + nodeHeight(entityRows(target.data.entity)) / 2, { zoom: 1 });
+        });
         return;
       }
-      if (shown.current) return; // 새로고침·편집 뒤에는 보던 화면을 유지한다
+      if (shown.current && fittedScope.current === scopeKey) return; // 같은 범위의 새로고침·편집 뒤에는 보던 화면을 유지한다
+      // 배치 대상(모델·영역 배치)을 처음 보이면 저장해 둔 화면 위치를, 그 밖에 범위가 바뀌면 새 결과에 맞춘다
+      const restore = !shown.current && appliedLayout.current?.viewport && savedVersion.current != null ? appliedLayout.current.viewport : null;
       shown.current = true;
+      fittedScope.current = scopeKey;
       requestAnimationFrame(() => {
-        if (appliedLayout.current?.viewport && savedVersion.current != null) void flow.setViewport(appliedLayout.current.viewport);
-        else void flow.fitView({ padding: 0.15, maxZoom: 1 });
+        if (cancelled) return;
+        if (restore) void flow.setViewport(restore);
+        else fitToNodes(built);
       });
     })();
     return () => {
@@ -337,13 +375,21 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     return { highlighted, stroke: highlighted ? 'var(--gh-accent)' : 'var(--gh-fg-muted)' };
   }), [graph.data, selectedId, selectedRelationship]);
 
-  const displayNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedId, data: { ...n.data, connectable: editing } })), [nodes, selectedId, editing]);
+  // 서브타입 그룹 원·상속선 (M-6 후속 5차) : 지금 엔터티 좌표에서 계산한다 — 저장하지 않고, 엔터티를 옮기면 따라온다
+  const subtype = useMemo(() => {
+    const centers = new Map(nodes.map((n) => [n.id, { x: n.position.x + NODE_WIDTH / 2, y: n.position.y + nodeHeight(entityRows(n.data.entity)) / 2 }]));
+    return subtypeElements(graph.data?.subtypeGroups ?? [], centers);
+  }, [nodes, graph.data]);
+  const displayNodes = useMemo<(EntityNodeType | SubtypeGroupNodeType)[]>(() => [
+    ...nodes.map((n) => ({ ...n, selected: n.id === selectedId, data: { ...n.data, connectable: editing } })), ...subtype.nodes,
+  ], [nodes, selectedId, editing, subtype]);
+  const displayEdges = useMemo<(RelationshipEdgeType | InheritanceEdgeType)[]>(() => [...subtype.edges, ...edges], [edges, subtype]);
 
   const focus = (id: string) => {
     setSelectedId(id);
     setSelectedRelationship(null);
     const node = flow.getNode(id);
-    if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(node.data.entity.attributes.length) / 2, { zoom: 1, duration: motionMs(300) });
+    if (node) void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + nodeHeight(entityRows(node.data.entity)) / 2, { zoom: 1, duration: motionMs(300) });
   };
 
   async function save() {
@@ -382,7 +428,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     if (!nodes.length) return;
     setArranging(true);
     try {
-      const placed = await runLayout(nodes.map(toLayoutNode), (graph.data?.relationships ?? []).map((r) => ({ source: String(r.sourceEntityId), target: String(r.targetEntityId) })), LAYER_GAP);
+      const placed = await runLayout(nodes.map(toLayoutNode), layoutLinks(graph.data), LAYER_GAP);
       const moved = nodes.map((n) => ({ ...n, position: placed[n.id] }));
       moved.forEach((n) => positions.current.set(n.id, n.position));
       setNodes(moved);
@@ -411,7 +457,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     const center = rect ? flow.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 0, y: 0 };
     const size = { width: NODE_WIDTH, height: nodeHeight(0) };
     const position = findFreePosition({ x: Math.round(center.x - size.width / 2), y: Math.round(center.y - size.height / 2) }, size,
-      nodes.map((n) => ({ ...n.position, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) })));
+      nodes.map((n) => ({ ...n.position, width: NODE_WIDTH, height: nodeHeight(entityRows(n.data.entity)) })));
     positions.current.set(id, position);
     focusRequest.current = id;
     markPending([id]);
@@ -522,7 +568,10 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     dialog.open({
       title: identifier ? t('식별자 수정') : t('식별자 추가'),
       className: 'dialog-wide',
-      content: ({ close }: DialogControls) => <IdentifierForm entity={detail} identifier={identifier} onSaved={() => { close(); void refresh(); }} />,
+      content: ({ close }: DialogControls) => (
+        <IdentifierForm entity={detail} identifier={identifier} subtype={graph.data?.entities.find((e) => e.id === detail.id)?.supertypeEntityId != null}
+          onSaved={() => { close(); void refresh(); }} />
+      ),
     });
   };
 
@@ -537,6 +586,9 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
   const relationship = graph.data?.relationships.find((r) => r.id === selectedRelationship);
   const outside = graph.data?.outsideRelationships ?? {};
   const outsideTotal = Object.values(outside).reduce((sum, n) => sum + n, 0);
+  // 범위 밖 상속 연결 (일반 관계 수와 따로 — 직접 슈퍼타입·서브타입 연결 기준, 그룹 원은 세지 않는다)
+  const outsideInheritance = graph.data?.outsideInheritances ?? {};
+  const outsideInheritanceTotal = Object.values(outsideInheritance).reduce((sum, n) => sum + n, 0);
   const scopeName = scope.kind === 'neighbors' ? graph.data?.entities.find((e) => e.id === scope.entityId)?.name ?? scope.entityName : '';
   const areaLabel = areaFilter.kind === 'unclassified' ? t('미분류') : areaFilter.kind === 'area' ? areaPath(areaById.get(areaFilter.areaId)) : t('전체 논리 모델');
   const layoutTarget = layoutArea == null ? t('전체 논리 모델 배치') : t('주제 영역 배치 : {0}', areaPath(areaById.get(layoutArea)));
@@ -595,6 +647,8 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
         )}
         <span>{t('· 관계 {0}개', graph.data?.relationships.length ?? 0)}</span>
         {outsideTotal > 0 && <span className="erd-muted">{t('· 범위 밖 관계 {0}개', outsideTotal)}</span>}
+        {graph.data?.subtypeGroups?.length ? <span>{t('· 서브타입 그룹 {0}개', graph.data.subtypeGroups.length)}</span> : null}
+        {outsideInheritanceTotal > 0 && <span className="erd-muted">{t('· 범위 밖 상속 연결 {0}개', outsideInheritanceTotal)}</span>}
         {graph.data && <span className="erd-muted">{t('(모델 엔터티 {0}개)', graph.data.modelEntityCount)}</span>}
         {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? t('한도(300개)까지만 표시') : t('일부만 표시 - 검색으로 범위를 줄이거나 다음 페이지로')}</Label>}
         {scope.kind === 'search' && (graph.data?.truncated || scope.page > 0) && (
@@ -622,10 +676,11 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
           )}
           <ReactFlow
             nodes={displayNodes}
-            edges={edges}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            onNodesChange={onNodesChange}
+            // 그룹 원은 화면에서 계산한 노드라 상태에 넣지 않는다 (엔터티 노드의 변경만 반영)
+            onNodesChange={(changes) => onNodesChange(changes.filter((c) => !('id' in c) || !c.id.startsWith('g')) as NodeChange<EntityNodeType>[])}
             onNodeDragStop={(_, __, dragged) => {
               const moved = dragged.filter((n) => {
                 const before = positions.current.get(n.id);
@@ -634,9 +689,17 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
               moved.forEach((n) => positions.current.set(n.id, n.position));
               if (moved.length) markPending(moved.map((n) => n.id));
             }}
-            onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedRelationship(null); }}
-            onNodeDoubleClick={(_, node) => openDetail(node.data.entity.id)}
-            onEdgeClick={(_, edge) => { setSelectedRelationship(edge.data?.relationship.id ?? null); setSelectedId(null); }}
+            onNodeClick={(_, node) => {
+              // 그룹 원을 누르면 슈퍼타입을 고른다 (그룹 원은 엔터티가 아니다)
+              setSelectedId(node.type === 'subtypeGroup' ? String((node as SubtypeGroupNodeType).data.group.supertypeEntityId) : node.id);
+              setSelectedRelationship(null);
+            }}
+            onNodeDoubleClick={(_, node) => { if (isEntityNode(node)) openDetail((node as EntityNodeType).data.entity.id); }}
+            onEdgeClick={(_, edge) => {
+              if (edge.type !== 'relationship') return; // 상속선은 관계가 아니다
+              setSelectedRelationship((edge as RelationshipEdgeType).data?.relationship.id ?? null);
+              setSelectedId(null);
+            }}
             onPaneClick={() => { setSelectedId(null); setSelectedRelationship(null); }}
             nodesDraggable={!arranging}
             // 편집 모드에서만 연결할 수 있다. 연결은 선을 만들지 않고 관계 등록 대화상자를 연다 (취소하거나 저장에 실패하면 아무것도 생기지 않는다)
@@ -667,6 +730,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
               graph={graph.data!}
               entity={selected}
               outsideCount={outside[String(selected.id)] ?? 0}
+              outsideInheritance={outsideInheritance[String(selected.id)] ?? 0}
               depth={depth}
               onDepth={setDepth}
               onNeighbors={() => neighborsOf(selected.id, selected.name)}
@@ -710,6 +774,12 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
                 {label}
               </span>
             ))}
+            {/* 슈퍼타입·서브타입 (M-6 후속 5차, EER) : 그룹 원의 글자와 선 모양으로 구분한다 (색만으로 구분하지 않는다) */}
+            <span><i className="logical-legend-group" aria-hidden>D</i>{t('배타 (Disjoint) 서브타입 그룹')}</span>
+            <span><i className="logical-legend-group" aria-hidden>O</i>{t('중복 가능 (Overlapping) 서브타입 그룹')}</span>
+            <span><i className="logical-legend-inherit double" aria-hidden />{t('완전 (Total) : 슈퍼타입 쪽 이중선')}</span>
+            <span><i className="logical-legend-inherit" aria-hidden />{t('부분 (Partial) : 단선')}</span>
+            <span><b>PI</b> <small>{t('상속')}</small> {t('상속 주 식별자')}</span>
             <span><b>PI</b> {t('주 식별자')}</span>
             <span><b>AI</b> {t('보조 식별자')}</span>
             <span><b>*</b> {t('필수 속성')}</span>
@@ -784,11 +854,13 @@ interface EntityEdit {
   onDeleteIdentifier: (identifier: LogicalIdentifier) => void;
 }
 
-function EntityPanel({ graph, entity, outsideCount, depth, onDepth, onNeighbors, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
+function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, depth, onDepth, onNeighbors, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
   graph: LogicalGraph;
   entity: GraphEntity;
   /** 상대 엔터티가 조회 범위 밖이라 그리지 않은 관계 수 */
   outsideCount: number;
+  /** 상대가 범위 밖이라 그리지 않은 직접 상속 연결 수 (M-6 후속 5차) */
+  outsideInheritance?: number;
   depth: number;
   onDepth: (depth: number) => void;
   onNeighbors: () => void;
@@ -880,6 +952,13 @@ function EntityPanel({ graph, entity, outsideCount, depth, onDepth, onNeighbors,
         <p className="erd-muted">{t('등록된 식별자가 없습니다.')}</p>
       )}
 
+      {(entity.supertypeEntityId != null || outsideInheritance > 0) && (
+        <p className="erd-muted">
+          {entity.supertypeEntityId != null && t('서브타입입니다. 상속 주 식별자 {0}개를 노드 맨 위에 표시합니다 (다른 상속 속성은 [상세] 에서).', entity.inheritedKey?.length ?? 0)}
+          {entity.supertypeEntityId != null && !entity.inheritedKey?.length && ` ${t('루트 슈퍼타입에 주 식별자가 아직 없습니다.')}`}
+          {outsideInheritance > 0 && ` ${t('범위 밖 상속 연결 {0}개는 그리지 않았습니다. [이웃 탐색] 으로 볼 수 있습니다.', outsideInheritance)}`}
+        </p>
+      )}
       <h4>{t('관계 {0}개', relationships.length + outsideCount)}</h4>
       {outsideCount > 0 && <p className="erd-muted">{t('이 중 {0}개는 상대 엔터티가 조회 범위 밖이라 그리지 않았습니다. [이웃 탐색] 으로 볼 수 있습니다.', outsideCount)}</p>}
       {edit && <div className="erd-toolbar erd-links"><button type="button" className="btn btn-sm" onClick={edit.onAddRelationship}>{t('관계 추가')}</button></div>}

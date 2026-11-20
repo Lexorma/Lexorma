@@ -38,6 +38,9 @@ export const TARGET_TYPES: [string, string][] = [
   ['LOGICAL_RELATIONSHIP', t('논리 관계')],
   ['TABLE_MAPPING', t('엔터티 ↔ 테이블 매핑')],
   ['COLUMN_MAPPING', t('속성 ↔ 컬럼 매핑')],
+  ['LOGICAL_SUBJECT_AREA', t('주제 영역')],
+  ['SUBJECT_AREA_ENTITY', t('주제 영역 소속')],
+  ['SUBTYPE_GROUP', t('서브타입 그룹')],
 ];
 
 export const ACTIONS: [string, string][] = [
@@ -52,7 +55,13 @@ const SOURCES: Record<string, string> = { USER: t('사용자'), AUTO_SYNC: t('�
 
 /** 모르는 코드는 그대로 보여 준다 (나중에 대상·작업이 늘어도 화면이 깨지지 않는다) */
 export const targetTypeLabel = (code: string) => TARGET_TYPES.find(([value]) => value === code)?.[1] ?? code;
-export const actionLabel = (code: string) => ACTIONS.find(([value]) => value === code)?.[1] ?? code;
+/**
+ * 주제 영역 소속(SUBJECT_AREA_ENTITY)은 소속 행 하나의 생성·수정·삭제가 곧 분류·소속 변경·분류 해제다 (일괄 분류는 같은 변경 묶음의 여러 행).
+ * 저장된 작업 코드는 그대로 두고 화면 이름만 업무 뜻으로 보여 준다 — 예전 이력도 같다
+ */
+const MEMBERSHIP_ACTIONS: Record<string, string> = { CREATE: t('분류'), UPDATE: t('소속 변경'), DELETE: t('분류 해제') };
+export const actionLabel = (code: string, targetType?: string) =>
+  (targetType === 'SUBJECT_AREA_ENTITY' ? MEMBERSHIP_ACTIONS[code] : undefined) ?? ACTIONS.find(([value]) => value === code)?.[1] ?? code;
 export const sourceLabel = (code: string) => SOURCES[code] ?? code;
 
 export const ACTION_VARIANT: Record<string, 'accent' | 'success' | 'attention' | 'danger' | 'done' | ''> = {
@@ -77,6 +86,9 @@ const FIELD_LABELS: Record<string, string> = {
   sourceEntity: t('출발 엔터티'), targetEntity: t('도착 엔터티'), relationshipName: t('관계명'), relationshipDescription: t('관계 설명'), isIdentifying: t('식별 관계'),
   sourceMin: t('출발 최소'), sourceMax: t('출발 최대'), targetMin: t('도착 최소'), targetMax: t('도착 최대'),
   schemaName: t('스키마명'), schemaDescription: t('설명'), isDefault: t('기본 스키마'),
+  parent: t('상위 주제 영역'), areaName: t('주제 영역명'), areaDescription: t('주제 영역 설명'), subjectArea: t('주제 영역'),
+  supertypeEntity: t('슈퍼타입'), groupName: t('그룹명'), groupDescription: t('설명 (분류 기준)'), overlapping: t('중복 가능 여부 (Overlapping)'), total: t('완전 여부 (Total)'),
+  classificationAttribute: t('분류 속성'), subtypes: t('서브타입'), subtypeEntity: t('서브타입 엔터티'), classificationValue: t('분류 값'),
   table: t('테이블'), mapping: t('엔터티 매핑'), attribute: t('속성'), column: t('컬럼'), sourceColumn: t('원본 컬럼'), targetColumn: t('대상 컬럼'), columnOrder: t('순서'),
 };
 

@@ -354,10 +354,11 @@ class LogicalModelManagementIntegrationTest {
         assertThat(large).as("엔터티 5개·30개 페이지의 SQL 수 (모델 확인·페이지·전체 수·속성 수·출발 관계 수·도착 관계 수·소속 주제 영역 — M-6 후속 4차)").isEqualTo(small).isLessThanOrEqualTo(7);
         long relationsSmall = statements(() -> logical.selectRelationshipRows(f.user, f.modelId, 0, 5));
         long relationsLarge = statements(() -> logical.selectRelationshipRows(f.user, f.modelId, 0, 29));
-        assertThat(relationsLarge).as("관계 페이지 : 양 끝 엔터티의 소속 주제 영역 1번 포함 (M-6 후속 4차)").isEqualTo(relationsSmall).isLessThanOrEqualTo(7);
+        // 관계 페이지 : 양 끝 엔터티의 소속 주제 영역 1번 (M-6 후속 4차) + 서브타입 그룹 1번 (M-6 후속 5차 — 짝 판정의 유효 주 식별자. 상속이 없는 모델은 그룹 조회 1번으로 끝난다)
+        assertThat(relationsLarge).as("관계 페이지 SQL 수").isEqualTo(relationsSmall).isLessThanOrEqualTo(8);
         long searchedSmall = statements(() -> logical.selectRelationshipRows(f.user, f.modelId, "엔터티", false, 0, 5, "targetEntityName,desc"));
         long searchedLarge = statements(() -> logical.selectRelationshipRows(f.user, f.modelId, "엔터티", false, 0, 29, "targetEntityName,desc"));
-        assertThat(searchedLarge).as("검색·필터·정렬 관계 페이지 5개·29개의 SQL 수").isEqualTo(searchedSmall).isLessThanOrEqualTo(7);
+        assertThat(searchedLarge).as("검색·필터·정렬 관계 페이지 5개·29개의 SQL 수 (서브타입 그룹 1번 포함)").isEqualTo(searchedSmall).isLessThanOrEqualTo(8);
         assertThat(statements(() -> logical.selectSummary(f.user, f.modelId))).isLessThanOrEqualTo(3);
     }
 

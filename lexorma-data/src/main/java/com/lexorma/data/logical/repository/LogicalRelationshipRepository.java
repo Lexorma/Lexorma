@@ -41,4 +41,9 @@ public interface LogicalRelationshipRepository extends JpaRepository<LogicalRela
     @Query("select r from LogicalRelationship r join fetch r.sourceEntity join fetch r.targetEntity"
             + " where r.sourceEntity.id = :entityId or r.targetEntity.id = :entityId order by r.id")
     List<LogicalRelationship> findAllByEntityId(@Param("entityId") Long entityId);
+
+    /** 출발·도착 어느 쪽이든 고른 엔터티들인 관계 (상속 관계 조회 — 조상 엔터티들의 관계를 한 번에) */
+    @Query("select r from LogicalRelationship r join fetch r.sourceEntity join fetch r.targetEntity"
+            + " where r.sourceEntity.id in :entityIds or r.targetEntity.id in :entityIds order by r.id")
+    List<LogicalRelationship> findAllByEntityIds(@Param("entityIds") java.util.Collection<Long> entityIds);
 }

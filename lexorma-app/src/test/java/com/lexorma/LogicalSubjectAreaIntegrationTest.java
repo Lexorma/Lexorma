@@ -541,7 +541,7 @@ class LogicalSubjectAreaIntegrationTest {
 
         // 버전 : 형식 7, 영역·소속 종류, 비교
         ModelVersionDto.Summary after = versions.create(member, new ModelVersionDto.Create("sa-after-" + System.nanoTime(), null));
-        assertThat(after.formatVersion()).isEqualTo(7);
+        assertThat(after.formatVersion()).isEqualTo(8); // 형식 8 (M-6 후속 5차 서브타입) 에도 영역·소속은 그대로
         assertThat(after.counts().get("LOGICAL_SUBJECT_AREA").asInt()).isOne();
         assertThat(after.counts().get("SUBJECT_AREA_ENTITY").asInt()).isOne();
         var comparison = versions.compare(member, before.id(), after.id());
@@ -573,7 +573,7 @@ class LogicalSubjectAreaIntegrationTest {
         String modelName = jdbc.queryForObject("select MDL_NM from TB_LGCL_MDL where LGCL_MDL_SN = ?", String.class, f.modelId);
 
         ModelExchangeDto.Document document = exchange.export(source);
-        assertThat(document.formatVersion()).isEqualTo(4);
+        assertThat(document.formatVersion()).isEqualTo(5); // 형식 5 (M-6 후속 5차) 에도 같다
         assertThat(document.model().get("LOGICAL_SUBJECT_AREA")).hasSize(5);
         assertThat(document.model().get("SUBJECT_AREA_ENTITY")).hasSize(2);
         assertThat(document.layouts().subjectAreas()).hasSize(1);

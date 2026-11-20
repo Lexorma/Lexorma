@@ -22,4 +22,9 @@ public interface LogicalRelationshipAttributeRepository extends JpaRepository<Lo
     default Optional<LogicalRelationshipAttribute> findFirstUsing(Long attributeId) {
         return findUsing(attributeId).stream().findFirst();
     }
+
+    /** 고른 엔터티가 부모(출발)인 관계의 속성 짝 (상속 변경으로 부모의 유효 주 식별자가 바뀌는지 판정 — M-6 후속 5차) */
+    @Query("select p from LogicalRelationshipAttribute p join fetch p.relationship r join fetch r.sourceEntity join fetch r.targetEntity join fetch p.parentAttribute"
+            + " where r.sourceEntity.id in :entityIds order by r.id, p.sortOrder, p.id")
+    List<LogicalRelationshipAttribute> findAllBySourceEntityIds(@Param("entityIds") Collection<Long> entityIds);
 }

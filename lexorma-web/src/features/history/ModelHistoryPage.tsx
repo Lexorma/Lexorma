@@ -96,7 +96,7 @@ export function ModelHistoryPage() {
               case 'targetName':
                 return row.targetName ? <span title={`#${row.targetId}`}>{row.targetName}</span> : <Muted>#{row.targetId}</Muted>;
               case 'action':
-                return <Label variant={ACTION_VARIANT[row.action] ?? ''}>{actionLabel(row.action)}</Label>;
+                return <Label variant={ACTION_VARIANT[row.action] ?? ''}>{actionLabel(row.action, row.targetType)}</Label>;
               case 'changedFields':
                 return row.changedFields?.length ? changedLabels(row.changedFields).join(', ') : <Muted>-</Muted>;
               case 'source':

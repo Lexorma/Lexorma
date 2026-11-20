@@ -89,10 +89,14 @@
 
 ### [M-6] 논리 모델 후속
 
-- 상태: 부분 완료 (후속 1차 — 큰 모델용 논리 ERD 조회 범위·검색·이웃 탐색 2026-11-18, 후속 2차 — 논리 ERD 관계선 표현(평행 관계선 분리·Crow's Foot 범례·자기 참조 고리) 2026-11-19, 후속 3차 — 논리 모델 관리 서버 페이징·서버 집계·엔터티 상세 지연 조회 2026-11-19, 후속 3차 보완 — 관계 목록 검색·식별 필터·정렬·좁은 화면 머리글·PageableUtil 입력 검증 2026-11-19 완료, completed-work.md [M-6]. **M-6 의 조회 구조 개선은 여기서 마무리** — 남은 것은 아래 모델링 기능) · 우선순위: P1 (로드맵 "후속") · 관련 기능: 데이터 모델링
-- 남은 작업 : 주제 영역(후속 4차 — 1단계 설계 작성, 사용자 결정 대기 : [ongoing/logical-subject-area.md](ongoing/logical-subject-area.md))·서브타입(D-07), DB UNIQUE 의 대소문자 구분(서비스 잠금을 우회한 입력은 `Sales`/`sales` 공존 가능), 속성명 검색 여부(제외 유지), 범위 밖 관계의 시각화(제외 유지 — 지금은 엔터티별 수만), 관계선끼리의 교차·겹침을 피하는 경로 탐색(edge routing — 별도 검토, 2차는 같은 쌍 분리만), Linux CI 확인.
+- 상태: 부분 완료 (후속 1차 — 큰 모델용 논리 ERD 조회 범위·검색·이웃 탐색 2026-11-18, 후속 2차 — 논리 ERD 관계선 표현(평행 관계선 분리·Crow's Foot 범례·자기 참조 고리) 2026-11-19, 후속 3차 — 논리 모델 관리 서버 페이징·서버 집계·엔터티 상세 지연 조회 2026-11-19, 후속 3차 보완 — 관계 목록 검색·식별 필터·정렬·좁은 화면 머리글·PageableUtil 입력 검증 2026-11-19, **후속 4차 — 주제 영역(계층·분류·범위 조회·영역별 ERD 배치·이력·버전·교환 형식 4, V2) 2026-11-20** 완료, completed-work.md [M-6]. **M-6 의 조회 구조 개선은 여기서 마무리** — 남은 것은 아래 모델링 기능) · 우선순위: P1 (로드맵 "후속") · 관련 기능: 데이터 모델링
+- 남은 작업 : DB UNIQUE 의 대소문자 구분(서비스 잠금을 우회한 입력은 `Sales`/`sales` 공존 가능), 속성명 검색 여부(제외 유지), 범위 밖 관계의 시각화(제외 유지 — 지금은 엔터티별 수만), 관계선끼리의 교차·겹침을 피하는 경로 탐색(edge routing — 별도 검토, 2차는 같은 쌍 분리만), Linux CI 확인.
 - 남은 작업 — 논리 전체 조회 API 3개의 정리와 공용 목록 정책의 남은 결정은 공통 항목 [COMMON-LIST] 로 옮겼다 (2026-11-19).
-- 참고 사항 : [logical-model-m6.md 7·8.7·13·14·15장 (15.10 보완)](completed/logical-model-m6.md).
+- 남은 작업 — 서브타입(후속 5차, D-07) : **미착수**.
+- 남은 작업 — 주제 영역 MCP·AI 도구 연계 (후속 개선, 미착수 — 기존 AI·MCP 정책 그대로) : 주제 영역 목록·계층, 엔터티 소속, 주제 영역별 엔터티·관계 조회, 업무 영역별 품질 진단·분석.
+- 남은 작업 — 주제 영역 미검증 : 대규모 형식 4 Import 성능, 브라우저 렌더링·메모리, Safari·Firefox, 기존 토스트 전용 회귀 스크립트, 전체 `./gradlew build`(npm ci 포함), Linux CI. (소속 A→B→A 되돌림은 검출하지 않는 것이 확정 정책 — 남은 작업 아님, [logical-subject-area.md §9](completed/logical-subject-area.md))
+- **커밋 전 확인 (사용자 처리)** : 인덱스에 스테이징만 남은 `V2__remove_default_admin.sql`(작업 트리에서는 삭제됨)은 사용자가 커밋 전에 직접 정리한다. 이번 마이그레이션은 `V2__logical_subject_area.sql`, 다음은 V3 ([logical-subject-area.md §3·§21](completed/logical-subject-area.md)). **커밋 전 확인 (사용자 처리)** : 인덱스에 스테이징된 `V2__remove_default_admin.sql`(작업 트리에서는 삭제됨)은 사용자가 커밋 전에 직접 정리한다 — 다음 마이그레이션은 V3 ([logical-subject-area.md §3·§21](completed/logical-subject-area.md)).
+- 참고 사항 : [logical-model-m6.md 7·8.7·13·14·15장 (15.10 보완)](completed/logical-model-m6.md), [logical-subject-area.md](completed/logical-subject-area.md) (후속 4차).
 
 ### [M-7] 매핑 · 물리명 추천 후속
 
@@ -554,3 +558,4 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 | 2026-11-16 | 5차 : DEC-22 ERD 이미지·모델 Export/Import/복사 구현 (마이그레이션 없음) |
 | 2026-11-16 | 5차 : DEC-16 원본 VIEW 정의 수집 구현(V5) — 7.3 갱신, completed-work.md [DEC-IMPL-5]. 다음 마이그레이션 V6 |
 | 2026-11-16 | 4차 : DEC-06(V4)·04·05·07 구현 — 7.3 갱신, completed-work.md [DEC-IMPL-4]. DEC-06·04 브라우저 E2E 완료(한국어·다크), DEC-16·22(나머지)·31·30(이미지) 미착수. 다음 마이그레이션 V5 |
+| 2026-11-20 | M-6 후속 4차 : 논리 모델 주제 영역 구현(V2 — 계층·분류·범위 조회·영역별 ERD 배치·이력·버전 형식 7·교환 형식 4, completed-work.md [M-6]) — [M-6] 부분 완료 유지(남은 것 : 서브타입·주제 영역 후속), 설계 문서를 `ongoing/` → `completed/logical-subject-area.md` 로 옮김. 상태별 집계 변화 없음. 다음 마이그레이션 V3 |

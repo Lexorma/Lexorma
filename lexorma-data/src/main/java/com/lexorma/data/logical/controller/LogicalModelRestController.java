@@ -67,14 +67,18 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.selectGraph(accountDto, modelId));
     }
 
-    @Operation(summary = "논리 ERD 범위 조회", description = "이름·설명 검색어(없으면 모델 전체)에 맞는 엔터티를 이름순 page 번째 size 개(1~300, 기본 100). 양 끝이 모두 범위 안인 관계만, 범위 밖 관계는 엔터티별 수")
+    @Operation(summary = "논리 ERD 범위 조회", description = "이름·설명 검색어(없으면 모델 전체)에 맞는 엔터티를 이름순 page 번째 size 개(1~300, 기본 100). 양 끝이 모두 범위 안인 관계만, 범위 밖 관계는 엔터티별 수."
+            + " 주제 영역(M-6 후속 4차) : subjectAreaId(기본 하위 영역 포함, includeChildren=false 면 직접 소속만) 또는 unclassified=true(미분류). 둘 다 주면 400, 이 모델의 영역이 아니면 찾을 수 없음, 없으면 모델 전체")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/model/{modelId}/erd/part")
     public ResponseEntity<LogicalModelDto.GraphPart> selectGraphPart(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
                                                                      @RequestParam(value = "keyword", required = false) String keyword,
                                                                      @RequestParam(value = "page", defaultValue = "0") int page,
-                                                                     @RequestParam(value = "size", defaultValue = "100") int size) {
-        return ResponseEntity.ok(logicalModelService.selectGraphPart(accountDto, modelId, keyword, page, size));
+                                                                     @RequestParam(value = "size", defaultValue = "100") int size,
+                                                                     @RequestParam(value = "subjectAreaId", required = false) Long subjectAreaId,
+                                                                     @RequestParam(value = "unclassified", required = false) Boolean unclassified,
+                                                                     @RequestParam(value = "includeChildren", required = false) Boolean includeChildren) {
+        return ResponseEntity.ok(logicalModelService.selectGraphPart(accountDto, modelId, keyword, page, size, subjectAreaId, unclassified, includeChildren));
     }
 
     @Operation(summary = "논리 ERD 이웃 탐색", description = "엔터티에서 관계(출발·도착 모두)로 1~3단계 이어진 엔터티 (최대 300)")
@@ -86,13 +90,17 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.selectNeighbors(accountDto, modelId, entityId, depth));
     }
 
-    @Operation(summary = "논리 ERD 엔터티 찾기", description = "이름·설명 검색, 이름순 최대 size 개(1~50, 기본 20)와 전체 수. 속성은 주지 않는다")
+    @Operation(summary = "논리 ERD 엔터티 찾기", description = "이름·설명 검색, 이름순 최대 size 개(1~50, 기본 20)와 전체 수. 속성은 주지 않는다."
+            + " 주제 영역(M-6 후속 4차) : subjectAreaId(기본 하위 영역 포함, includeChildren=false 면 직접 소속만) 또는 unclassified=true(미분류). 둘 다 주면 400, 이 모델의 영역이 아니면 찾을 수 없음, 없으면 모델 전체")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/model/{modelId}/erd/entities")
     public ResponseEntity<LogicalModelDto.EntityHits> searchEntities(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
                                                                      @RequestParam(value = "keyword", required = false) String keyword,
-                                                                     @RequestParam(value = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(logicalModelService.searchEntities(accountDto, modelId, keyword, size));
+                                                                     @RequestParam(value = "size", defaultValue = "20") int size,
+                                                                     @RequestParam(value = "subjectAreaId", required = false) Long subjectAreaId,
+                                                                     @RequestParam(value = "unclassified", required = false) Boolean unclassified,
+                                                                     @RequestParam(value = "includeChildren", required = false) Boolean includeChildren) {
+        return ResponseEntity.ok(logicalModelService.searchEntities(accountDto, modelId, keyword, size, subjectAreaId, unclassified, includeChildren));
     }
 
     @Operation(summary = "내 논리 ERD 레이아웃 조회", description = "모델별·사용자별. 저장한 적 없으면 version·viewport 가 null")
@@ -108,6 +116,28 @@ public class LogicalModelRestController {
     public ResponseEntity<LogicalModelDto.Layout> saveLayout(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
                                                              @RequestBody LogicalModelDto.Layout layout) {
         return ResponseEntity.ok(logicalModelService.saveLayout(accountDto, modelId, layout));
+    }
+
+    // 주제 영역 조건이 없는 예전 Java 호출 (요청 매핑 없음 — HTTP 는 위의 조건 있는 메서드가 받는다. 권한은 같다)
+
+    @PreAuthorize("hasRole('VIEWER')")
+    public ResponseEntity<LogicalModelDto.GraphPart> selectGraphPart(AccountDto accountDto, Long modelId, String keyword, int page, int size) {
+        return ResponseEntity.ok(logicalModelService.selectGraphPart(accountDto, modelId, keyword, page, size));
+    }
+
+    @PreAuthorize("hasRole('VIEWER')")
+    public ResponseEntity<LogicalModelDto.EntityHits> searchEntities(AccountDto accountDto, Long modelId, String keyword, int size) {
+        return ResponseEntity.ok(logicalModelService.searchEntities(accountDto, modelId, keyword, size));
+    }
+
+    @PreAuthorize("hasRole('VIEWER')")
+    public ResponseEntity<Map<String, Object>> selectEntityRows(AccountDto accountDto, Long modelId, int page, int size, String sort, String searchQuery) {
+        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(logicalModelService.selectEntityRows(accountDto, modelId, searchQuery, page, size, sort));
+    }
+
+    @PreAuthorize("hasRole('VIEWER')")
+    public ResponseEntity<Map<String, Object>> selectRelationshipRows(AccountDto accountDto, Long modelId, int page, int size, String sort, String searchQuery, Boolean isIdentifying) {
+        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(logicalModelService.selectRelationshipRows(accountDto, modelId, searchQuery, isIdentifying, page, size, sort));
     }
 
     // ------------------------------------------------------------------ 엔터티
@@ -127,15 +157,20 @@ public class LogicalModelRestController {
     }
 
     @Operation(summary = "엔터티 목록 페이지 (M-6 후속 3차)", description = "공용 그리드 형식 { data, recordsTotal }. searchQuery : 이름·설명(대소문자 무시, %·_ 는 글자 그대로), "
-            + "sort : entityName·entityDescription·isApproval + ,asc|desc (기본 이름순, 같은 값은 ID 순), size 1~100. 행마다 속성 수·관계 수(자기 참조 1번)")
+            + "sort : entityName·entityDescription·isApproval + ,asc|desc (기본 이름순, 같은 값은 ID 순), size 1~100. 행마다 속성 수·관계 수(자기 참조 1번)·소속 주제 영역(subjectAreaId)."
+            + " 주제 영역(M-6 후속 4차) : subjectAreaId(기본 하위 영역 포함, includeChildren=false 면 직접 소속만) 또는 unclassified=true(미분류). 둘 다 주면 400, 이 모델의 영역이 아니면 찾을 수 없음, 없으면 모델 전체")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/model/{modelId}/entity/data")
     public ResponseEntity<Map<String, Object>> selectEntityRows(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
                                                                 @RequestParam(value = "page", defaultValue = "0") int page,
                                                                 @RequestParam(value = "size", defaultValue = "10") int size,
                                                                 @RequestParam(value = "sort", required = false) String sort,
-                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery) {
-        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(logicalModelService.selectEntityRows(accountDto, modelId, searchQuery, page, size, sort));
+                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                @RequestParam(value = "subjectAreaId", required = false) Long subjectAreaId,
+                                                                @RequestParam(value = "unclassified", required = false) Boolean unclassified,
+                                                                @RequestParam(value = "includeChildren", required = false) Boolean includeChildren) {
+        return com.lexorma.common.utils.PageableUtil.getGridPageableMap(logicalModelService.selectEntityRows(accountDto, modelId, searchQuery, page, size, sort,
+                subjectAreaId, unclassified, includeChildren));
     }
 
     @Operation(summary = "엔터티 상세", description = "속성·식별자 포함")
@@ -145,7 +180,7 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.selectEntity(accountDto, entityId));
     }
 
-    @Operation(summary = "엔터티 등록·수정", description = "엔터티명은 모델 안에서 중복될 수 없다. 승인된 엔터티는 수정할 수 없다")
+    @Operation(summary = "엔터티 등록·수정", description = "엔터티명은 모델 안에서 중복될 수 없다. 승인된 엔터티는 수정할 수 없다. 등록은 subjectAreaId 로 처음 주제 영역을 지정할 수 있다 (같은 트랜잭션, 수정에서는 무시)")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/entity")
     public ResponseEntity<LogicalModelDto.Entity> saveEntity(@AuthenticationPrincipal AccountDto accountDto, @RequestBody LogicalModelDto.Entity entity) {
@@ -241,7 +276,8 @@ public class LogicalModelRestController {
 
     @Operation(summary = "관계 목록 페이지 (M-6 후속 3차)", description = "공용 그리드 형식 { data, recordsTotal(검색·필터 조건에 맞는 수) }. size 1~100, 행마다 속성 짝과 판정. "
             + "searchQuery : 관계명·출발·도착 엔터티명(대소문자 무시, %·_ 는 글자 그대로), isIdentifying : true 식별 / false 비식별 / 없으면 전체, "
-            + "sort : relationshipName·sourceEntityName·targetEntityName + ,asc|desc (없으면 관계 ID 순, 같은 값은 ID 순)")
+            + "sort : relationshipName·sourceEntityName·targetEntityName + ,asc|desc (없으면 관계 ID 순, 같은 값은 ID 순)."
+            + " 주제 영역(M-6 후속 4차) : subjectAreaId(기본 하위 영역 포함, includeChildren=false 면 직접 소속만) 또는 unclassified=true(미분류). 둘 다 주면 400, 이 모델의 영역이 아니면 찾을 수 없음, 없으면 모델 전체 — 양 끝 엔터티 중 하나라도 범위 안인 관계. 행마다 양 끝의 소속 주제 영역")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/model/{modelId}/relationship/data")
     public ResponseEntity<Map<String, Object>> selectRelationshipRows(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
@@ -249,9 +285,12 @@ public class LogicalModelRestController {
                                                                       @RequestParam(value = "size", defaultValue = "10") int size,
                                                                       @RequestParam(value = "sort", required = false) String sort,
                                                                       @RequestParam(value = "searchQuery", required = false) String searchQuery,
-                                                                      @RequestParam(value = "isIdentifying", required = false) Boolean isIdentifying) {
+                                                                      @RequestParam(value = "isIdentifying", required = false) Boolean isIdentifying,
+                                                                      @RequestParam(value = "subjectAreaId", required = false) Long subjectAreaId,
+                                                                      @RequestParam(value = "unclassified", required = false) Boolean unclassified,
+                                                                      @RequestParam(value = "includeChildren", required = false) Boolean includeChildren) {
         return com.lexorma.common.utils.PageableUtil.getGridPageableMap(
-                logicalModelService.selectRelationshipRows(accountDto, modelId, searchQuery, isIdentifying, page, size, sort));
+                logicalModelService.selectRelationshipRows(accountDto, modelId, searchQuery, isIdentifying, page, size, sort, subjectAreaId, unclassified, includeChildren));
     }
 
     @Operation(summary = "엔터티의 관계 (M-6 후속 3차)", description = "출발·도착 어느 쪽이든 이 엔터티인 관계와 속성 짝. 엔터티 상세의 관계 탭")

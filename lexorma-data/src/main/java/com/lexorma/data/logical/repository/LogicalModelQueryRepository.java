@@ -1,13 +1,17 @@
 package com.lexorma.data.logical.repository;
 
 import com.lexorma.data.logical.domain.dto.LogicalModelDto;
+import com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto;
 import com.lexorma.data.logical.domain.entity.QLogicalAttribute;
 import com.lexorma.data.logical.domain.entity.QLogicalEntity;
 import com.lexorma.data.logical.domain.entity.QLogicalRelationship;
+import com.lexorma.data.logical.domain.entity.QLogicalSubjectAreaEntity;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.ComparableExpressionBase;
+import com.querydsl.core.types.dsl.NumberPath;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -24,6 +28,7 @@ import java.util.Map;
 /**
  * 논리 모델 관리 목록 (M-6 후속 3차) : 검색·정렬·페이징과 속성/관계 수를 DB 에서 한다 (엔터티마다 따로 세지 않는다 — 페이지 엔터티를 묶어 센다).
  * 검색 조건은 논리 ERD 부분 조회(LogicalEntityRepository.ERD_SEARCH)와 같다 : 이름·설명, 소문자, '!' 이스케이프.
+ * 주제 영역 범위(M-6 후속 4차, {@link LogicalSubjectAreaDto.Scope}) : null 이면 모델 전체(예전 그대로), 미분류 = 소속 행이 없는 엔터티, 영역 = 소속 영역이 목록 안 (소속 테이블의 엔터티 UNIQUE 인덱스로 찾는다).
  */
 @Repository
 @RequiredArgsConstructor
@@ -32,6 +37,7 @@ public class LogicalModelQueryRepository {
     private static final QLogicalEntity entity = QLogicalEntity.logicalEntity;
     private static final QLogicalAttribute attribute = QLogicalAttribute.logicalAttribute;
     private static final QLogicalRelationship relationship = QLogicalRelationship.logicalRelationship;
+    private static final QLogicalSubjectAreaEntity member = QLogicalSubjectAreaEntity.logicalSubjectAreaEntity;
 
     /** 정렬할 수 있는 필드 (목록에 없는 필드는 무시한다). 같은 값이면 엔터티 ID 순 — 페이지 사이에 행이 겹치거나 빠지지 않는다 */
     private static final Map<String, ComparableExpressionBase<?>> ENTITY_SORTS = Map.of(
@@ -60,8 +66,12 @@ public class LogicalModelQueryRepository {
      * 목록 쿼리에 상관 서브쿼리로 세면 PostgreSQL 이 OFFSET 으로 건너뛰는 행까지 계산해 엔터티 3,000개 모델의 마지막 페이지가 830ms 걸렸다 (측정, 기록 m6 15장)
      */
     public Page<LogicalModelDto.EntityRow> findEntityRows(Long modelId, String pattern, Pageable pageable) {
-        BooleanExpression where = entity.model.id.eq(modelId)
-                .and(entity.entityName.lower().like(pattern, '!').or(entity.entityDescription.lower().like(pattern, '!')));
+        return findEntityRows(modelId, pattern, null, pageable);
+    }
+
+    /** 주제 영역 범위와 함께 (행마다 소속 영역 ID — 페이지 엔터티만 한 번 더 읽는다) */
+    public Page<LogicalModelDto.EntityRow> findEntityRows(Long modelId, String pattern, LogicalSubjectAreaDto.Scope scope, Pageable pageable) {
+        BooleanExpression where = entitySearch(modelId, pattern, scope);
         List<Tuple> page = query.select(entity.id, entity.entityName, entity.entityDescription, entity.isApproval, entity.updated)
                 .from(entity)
                 .where(where)
@@ -78,10 +88,11 @@ public class LogicalModelQueryRepository {
                 .where(relationship.sourceEntity.id.in(ids)).groupBy(relationship.sourceEntity.id).fetch());
         Map<Long, Long> incoming = counts(ids.isEmpty() ? List.of() : query.select(relationship.targetEntity.id, relationship.count()).from(relationship)
                 .where(relationship.targetEntity.id.in(ids), relationship.sourceEntity.id.ne(relationship.targetEntity.id)).groupBy(relationship.targetEntity.id).fetch());
+        Map<Long, Long> areas = counts(ids.isEmpty() ? List.of() : query.select(member.entity.id, member.subjectArea.id).from(member).where(member.entity.id.in(ids)).fetch());
         List<LogicalModelDto.EntityRow> rows = page.stream().map(row -> {
             Long id = row.get(entity.id);
             return new LogicalModelDto.EntityRow(id, row.get(entity.entityName), row.get(entity.entityDescription), row.get(entity.isApproval),
-                    attributes.getOrDefault(id, 0L), outgoing.getOrDefault(id, 0L) + incoming.getOrDefault(id, 0L), row.get(entity.updated));
+                    attributes.getOrDefault(id, 0L), outgoing.getOrDefault(id, 0L) + incoming.getOrDefault(id, 0L), row.get(entity.updated), areas.get(id));
         }).toList();
         return new PageImpl<>(rows, pageable, total == null ? 0 : total);
     }
@@ -91,11 +102,17 @@ public class LogicalModelQueryRepository {
      * 허용 목록 정렬(없으면 예전처럼 관계 ID 순) 뒤 페이지만. 양 끝 엔터티는 관계마다 하나씩이라 조인해도 행이 늘지 않는다 (한 관계는 한 번만 나온다)
      */
     public Page<Long> findRelationshipIds(Long modelId, String pattern, Boolean identifying, Pageable pageable) {
+        return findRelationshipIds(modelId, pattern, identifying, null, pageable);
+    }
+
+    /** 주제 영역 범위와 함께 : 양 끝 엔터티 중 하나라도 범위 안인 관계 (D-15 — 자기 참조도 한 번만, 관계 하나는 한 행) */
+    public Page<Long> findRelationshipIds(Long modelId, String pattern, Boolean identifying, LogicalSubjectAreaDto.Scope scope, Pageable pageable) {
         BooleanExpression where = relationship.model.id.eq(modelId)
                 .and(relationship.relationshipName.lower().like(pattern, '!')
                         .or(source.entityName.lower().like(pattern, '!'))
                         .or(target.entityName.lower().like(pattern, '!')));
         if (identifying != null) where = where.and(relationship.isIdentifying.eq(identifying));
+        if (scope != null) where = where.and(inScope(relationship.sourceEntity.id, scope).or(inScope(relationship.targetEntity.id, scope)));
         List<OrderSpecifier<?>> orders = new ArrayList<>();
         for (Sort.Order order : pageable.getSort()) {
             ComparableExpressionBase<?> path = RELATIONSHIP_SORTS.get(order.getProperty());
@@ -118,6 +135,39 @@ public class LogicalModelQueryRepository {
                 .where(where)
                 .fetchOne();
         return new PageImpl<>(ids, pageable, total == null ? 0 : total);
+    }
+
+    // ------------------------------------------------------------------ 논리 ERD 범위 조회·엔터티 찾기의 주제 영역 범위 (조건이 없으면 LogicalEntityRepository 의 예전 쿼리를 그대로 쓴다)
+
+    /** 범위 안의 엔터티 ID : 이름 → ID 순 (예전 searchIds 와 같은 순서) */
+    public List<Long> findScopedEntityIds(Long modelId, String pattern, LogicalSubjectAreaDto.Scope scope, long offset, int limit) {
+        return query.select(entity.id).from(entity).where(entitySearch(modelId, pattern, scope)).orderBy(entity.entityName.asc(), entity.id.asc())
+                .offset(offset).limit(limit).fetch();
+    }
+
+    public long countScopedEntities(Long modelId, String pattern, LogicalSubjectAreaDto.Scope scope) {
+        Long total = query.select(entity.count()).from(entity).where(entitySearch(modelId, pattern, scope)).fetchOne();
+        return total == null ? 0 : total;
+    }
+
+    /** 엔터티 찾기 : ID·이름·승인 여부 (예전 searchHits 와 같은 모양) */
+    public List<LogicalModelDto.EntityHit> findScopedHits(Long modelId, String pattern, LogicalSubjectAreaDto.Scope scope, int limit) {
+        return query.select(entity.id, entity.entityName, entity.isApproval).from(entity).where(entitySearch(modelId, pattern, scope))
+                .orderBy(entity.entityName.asc(), entity.id.asc()).limit(limit).fetch().stream()
+                .map(row -> new LogicalModelDto.EntityHit(row.get(entity.id), row.get(entity.entityName), row.get(entity.isApproval))).toList();
+    }
+
+    /** 모델 + 이름·설명 검색 + 주제 영역 범위 (null = 모델 전체) */
+    private static BooleanExpression entitySearch(Long modelId, String pattern, LogicalSubjectAreaDto.Scope scope) {
+        BooleanExpression where = entity.model.id.eq(modelId)
+                .and(entity.entityName.lower().like(pattern, '!').or(entity.entityDescription.lower().like(pattern, '!')));
+        return scope == null ? where : where.and(inScope(entity.id, scope));
+    }
+
+    /** 엔터티가 범위 안인가 : 미분류 = 소속 행 없음, 영역 = 소속 영역이 목록 안 */
+    private static BooleanExpression inScope(NumberPath<Long> entityId, LogicalSubjectAreaDto.Scope scope) {
+        if (scope.unclassified()) return JPAExpressions.selectOne().from(member).where(member.entity.id.eq(entityId)).notExists();
+        return JPAExpressions.selectOne().from(member).where(member.entity.id.eq(entityId), member.subjectArea.id.in(scope.areaIds())).exists();
     }
 
     /** (엔터티 ID, 수) 행 → 맵 */

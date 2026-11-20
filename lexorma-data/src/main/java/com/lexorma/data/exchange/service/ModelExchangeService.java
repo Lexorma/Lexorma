@@ -25,6 +25,9 @@ import com.lexorma.data.logical.domain.entity.LogicalIdentifierAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalModel;
 import com.lexorma.data.logical.domain.entity.LogicalRelationship;
 import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectArea;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaEntity;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaLayout;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -86,6 +89,8 @@ import java.util.regex.Pattern;
  *       대상 프로젝트에 같은 이름 객체가 있으면 그 객체, 둘 다 아니면 모델 밖 참조(이름만)로 남긴다. 원본 DB 에서 수집한 VIEW 정의(DEC-16)와는 관계없다</li>
  *   <li>ERD 배치 (형식 2) : 내보낸 사용자의 저장된 배치를 새 ID 로 옮겨 가져오는 사용자 본인의 배치에 더한다. 기존 좌표는 바꾸지 않고(이미 배치가 있으면 그 오른쪽에 둔다),
  *       다른 사용자의 배치는 건드리지 않는다. 파일에 없는 객체의 좌표는 무시하고(경고), 숫자가 아닌·너무 큰 좌표는 파일 전체를 거절한다</li>
+ *   <li>주제 영역 (형식 4, M-6 후속 4차) : 논리 모델과 함께 영역 계층·엔터티 소속·내보낸 사용자의 영역별 배치를 새 ID 로 옮긴다. 계층(순환·자기 상위·3단계 초과·같은 상위 아래 이름 중복)·
+ *       소속(없는 영역·엔터티, 다른 모델, 중복 소속)이 잘못된 파일은 전체를 거절한다. 형식 1~3 파일은 주제 영역 없이 가져온다 (기본 영역을 만들지 않는다)</li>
  * </ul>
  */
 @Service
@@ -99,7 +104,10 @@ public class ModelExchangeService {
     static final String VERSION_PREFIX = "MODEL-IMPORT-";
 
     static final List<String> TYPES = List.of(ModelChangeRecorder.SCHEMA, "PHYSICAL_TABLE", "PHYSICAL_COLUMN", "PHYSICAL_RELATION", "PHYSICAL_INDEX", "PHYSICAL_CONSTRAINT",
-            "PHYSICAL_VIEW", "LOGICAL_MODEL", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "TABLE_MAPPING", "COLUMN_MAPPING");
+            "PHYSICAL_VIEW", "LOGICAL_MODEL", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "TABLE_MAPPING", "COLUMN_MAPPING",
+            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY");
+    /** 주제 영역 계층 한도 (LogicalSubjectAreaService 와 같다 : 최상위 = 1단계) */
+    static final int SUBJECT_AREA_MAX_DEPTH = 3;
     /** 파일에서 빼는 필드 : 승인 상태 (가져온 객체는 모두 미승인) */
     private static final Set<String> DROPPED = Set.of("isApproval");
     /** SQL 식에 있으면 가져오지 않는다 : 문장 구분·주석 (DDL 로 나갈 때 다른 문장을 끼워 넣을 수 있다) */
@@ -163,7 +171,16 @@ public class ModelExchangeService {
             Map<Long, ModelExchangeDto.Point> nodes = nodes(l.getNodePositions(), entityIds);
             if (!nodes.isEmpty()) logical.add(new ModelExchangeDto.LogicalLayout(l.getModelId(), nodes, new ModelExchangeDto.Viewport(l.getViewportX(), l.getViewportY(), l.getViewportZoom())));
         }
-        return physical == null && logical.isEmpty() ? null : new ModelExchangeDto.Layouts(physical, logical);
+        // 주제 영역별 배치 (형식 4) : 파일에 들어간 영역·엔터티의 좌표만
+        Set<Long> areaIds = ids(model.get("LOGICAL_SUBJECT_AREA"));
+        List<ModelExchangeDto.SubjectAreaLayout> areas = new ArrayList<>();
+        for (LogicalSubjectAreaLayout l : entityManager.createQuery("select l from LogicalSubjectAreaLayout l where l.projectId = :p and l.accountId = :a order by l.subjectAreaId",
+                LogicalSubjectAreaLayout.class).setParameter("p", projectId).setParameter("a", accountId).getResultList()) {
+            if (!areaIds.contains(l.getSubjectAreaId())) continue;
+            Map<Long, ModelExchangeDto.Point> nodes = nodes(l.getNodePositions(), entityIds);
+            if (!nodes.isEmpty()) areas.add(new ModelExchangeDto.SubjectAreaLayout(l.getSubjectAreaId(), nodes, new ModelExchangeDto.Viewport(l.getViewportX(), l.getViewportY(), l.getViewportZoom())));
+        }
+        return physical == null && logical.isEmpty() && areas.isEmpty() ? null : new ModelExchangeDto.Layouts(physical, logical, areas.isEmpty() ? null : areas);
     }
 
     private static Set<Long> ids(List<Item> items) {
@@ -258,8 +275,56 @@ public class ModelExchangeService {
             throw invalid("형식 버전 1 파일에는 VIEW·ERD 배치가 들어갈 수 없습니다.");
         }
         validatePairs(document);
-        validateLayouts(document.layouts());
+        validateSubjectAreas(document);
+        validateLayouts(document);
         return document;
+    }
+
+    /**
+     * 주제 영역 (형식 4, M-6 후속 4차) : 영역은 파일의 논리 모델에 속하고, 상위는 같은 모델의 영역(또는 없음), 자기 자신·순환 없이 최상위부터 3단계까지,
+     * 같은 상위 아래 이름은 대소문자 무시로 하나. 소속은 파일의 영역·엔터티를 가리키고, 둘의 모델이 같고, 엔터티마다 하나. 어기면 파일 전체를 거절한다
+     */
+    private static void validateSubjectAreas(ModelExchangeDto.Document document) {
+        List<Item> areas = listOf(document, "LOGICAL_SUBJECT_AREA");
+        List<Item> members = listOf(document, "SUBJECT_AREA_ENTITY");
+        if (areas.isEmpty() && members.isEmpty()) return;
+        if (document.formatVersion() < 4) throw invalid("형식 버전 {0} 파일에는 주제 영역이 들어갈 수 없습니다.", document.formatVersion());
+        Set<Long> models = ids(listOf(document, "LOGICAL_MODEL"));
+        Map<Long, Item> byId = new HashMap<>();
+        areas.forEach(a -> byId.put(a.id(), a));
+        Set<String> siblings = new HashSet<>();
+        for (Item area : areas) {
+            String label = String.valueOf(area.id());
+            Long model = ref(area, "model");
+            String name = string(area, "areaName");
+            if (model == null || !models.contains(model) || !name(name) || !texts(area, "areaDescription")) throw invalid("주제 영역 {0} 이(가) 올바르지 않습니다.", label);
+            if (area.state().get("sortOrder") != null && intValue(area.state().get("sortOrder")) == null) throw invalid("주제 영역 {0} 이(가) 올바르지 않습니다.", label);
+            Long parentId = ref(area, "parent");
+            if (parentId != null) {
+                Item parent = byId.get(parentId);
+                if (parent == null || parentId.equals(area.id()) || !Objects.equals(ref(parent, "model"), model)) throw invalid("주제 영역 {0} 의 상위 영역이 올바르지 않습니다.", label);
+            }
+            // 깊이 : 상위를 따라 올라간다 (순환이면 영역 수를 넘는다)
+            int depth = 1;
+            Set<Long> seen = new HashSet<>(List.of(area.id()));
+            for (Long up = parentId; up != null; up = byId.containsKey(up) ? ref(byId.get(up), "parent") : null) { // 없는 상위는 그 영역 자신의 검사가 막는다
+                if (!seen.add(up)) throw invalid("주제 영역 {0} 의 상위 영역이 순환합니다.", label);
+                depth++;
+            }
+            if (depth > SUBJECT_AREA_MAX_DEPTH) throw invalid("주제 영역 {0} 이(가) {1}단계를 넘습니다.", label, SUBJECT_AREA_MAX_DEPTH);
+            if (!siblings.add(model + ":" + parentId + ":" + lower(name))) throw invalid("같은 상위 영역 아래 주제 영역 이름이 겹칩니다 : {0}", name);
+        }
+        Map<Long, Long> entityModel = new HashMap<>();
+        for (Item e : listOf(document, "LOGICAL_ENTITY")) entityModel.put(e.id(), ref(e, "model"));
+        Set<Long> classified = new HashSet<>();
+        for (Item member : members) {
+            Item area = byId.get(ref(member, "subjectArea"));
+            Long entity = ref(member, "entity");
+            if (area == null || entity == null || !entityModel.containsKey(entity) || !Objects.equals(entityModel.get(entity), ref(area, "model"))) {
+                throw invalid("엔터티의 주제 영역 소속 {0} 이(가) 올바르지 않습니다.", String.valueOf(member.id()));
+            }
+            if (!classified.add(entity)) throw invalid("엔터티 하나가 주제 영역 여러 개에 속할 수 없습니다 : {0}", String.valueOf(entity));
+        }
     }
 
     /**
@@ -305,8 +370,17 @@ public class ModelExchangeService {
     }
 
     /** 배치 : 좌표는 유한한 숫자이고 ±1,000만 안, 확대 0.02~4, 배치 하나에 5,000개까지 (ERD 배치 저장과 같은 한도). 어기면 파일 전체를 거절한다 */
-    private static void validateLayouts(ModelExchangeDto.Layouts layouts) {
+    private static void validateLayouts(ModelExchangeDto.Document document) {
+        ModelExchangeDto.Layouts layouts = document.layouts();
         if (layouts == null) return;
+        List<ModelExchangeDto.SubjectAreaLayout> areas = layouts.subjectAreas() == null ? List.of() : layouts.subjectAreas();
+        if (!areas.isEmpty() && document.formatVersion() < 4) throw invalid("형식 버전 {0} 파일에는 주제 영역 배치가 들어갈 수 없습니다.", document.formatVersion());
+        if (areas.size() > 1_000) throw invalid("주제 영역 배치가 너무 많습니다.");
+        Set<Long> seen = new HashSet<>();
+        for (ModelExchangeDto.SubjectAreaLayout layout : areas) {
+            if (layout == null || layout.subjectAreaId() == null || !seen.add(layout.subjectAreaId())) throw invalid("주제 영역 배치의 영역 번호가 없거나 겹칩니다.");
+            validateLayout(layout.nodes(), layout.viewport());
+        }
         List<ModelExchangeDto.LogicalLayout> logical = layouts.logical() == null ? List.of() : layouts.logical();
         if (logical.size() > 1_000) throw invalid("논리 ERD 배치가 너무 많습니다.");
         if (layouts.physical() != null) validateLayout(layouts.physical().nodes(), layouts.physical().viewport());
@@ -378,6 +452,12 @@ public class ModelExchangeService {
         private final Map<Long, List<Item>> attributesByEntity = new HashMap<>();
         private final Map<Long, List<Item>> identifiersByEntity = new HashMap<>();
         private final Map<Long, List<Item>> relationshipsByModel = new HashMap<>();
+        /** 주제 영역 (형식 4) : 모델별 영역 (파일 순서), 영역별 소속 엔터티 */
+        private final Map<Long, List<Item>> subjectAreasByModel = new HashMap<>();
+        private final Map<Long, Item> subjectAreas = new HashMap<>();
+        private final Map<Long, List<Item>> membersByArea = new HashMap<>();
+        private final Map<Long, Map<Long, ModelExchangeDto.Point>> subjectAreaNodes = new LinkedHashMap<>();
+        private final Map<Long, ModelExchangeDto.Viewport> subjectAreaViewports = new HashMap<>();
         private final List<Item> tableMappings = new ArrayList<>();
         private final Map<Long, List<Item>> columnMappingsByMapping = new HashMap<>();
         private final Map<Long, Item> views = new LinkedHashMap<>();
@@ -440,6 +520,11 @@ public class ModelExchangeService {
             model.getOrDefault("LOGICAL_ATTRIBUTE", List.of()).forEach(item -> attributesByEntity.computeIfAbsent(ref(item, "entity"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("LOGICAL_IDENTIFIER", List.of()).forEach(item -> identifiersByEntity.computeIfAbsent(ref(item, "entity"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("LOGICAL_RELATIONSHIP", List.of()).forEach(item -> relationshipsByModel.computeIfAbsent(ref(item, "model"), id -> new ArrayList<>()).add(item));
+            for (Item area : model.getOrDefault("LOGICAL_SUBJECT_AREA", List.of())) {
+                subjectAreas.put(area.id(), area);
+                subjectAreasByModel.computeIfAbsent(ref(area, "model"), id -> new ArrayList<>()).add(area);
+            }
+            model.getOrDefault("SUBJECT_AREA_ENTITY", List.of()).forEach(item -> membersByArea.computeIfAbsent(ref(item, "subjectArea"), id -> new ArrayList<>()).add(item));
             tableMappings.addAll(model.getOrDefault("TABLE_MAPPING", List.of()));
             model.getOrDefault("COLUMN_MAPPING", List.of()).forEach(item -> columnMappingsByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("PHYSICAL_VIEW", List.of()).forEach(item -> views.put(item.id(), item));
@@ -548,8 +633,10 @@ public class ModelExchangeService {
                         }
                     }
                 }
-                items.add(new PlanItem("LOGICAL_MODEL", name, name, status, reason, ordered("entities", modelEntities.size(),
-                        "relationships", relationshipsByModel.getOrDefault(model.id(), List.of()).size())));
+                Map<String, Integer> sizes = ordered("entities", modelEntities.size(), "relationships", relationshipsByModel.getOrDefault(model.id(), List.of()).size());
+                List<Item> modelAreas = subjectAreasByModel.getOrDefault(model.id(), List.of());
+                if (!modelAreas.isEmpty()) sizes.put("subjectAreas", modelAreas.size()); // 형식 4 : 주제 영역이 있는 모델만 (예전 파일의 계획은 그대로)
+                items.add(new PlanItem("LOGICAL_MODEL", name, name, status, reason, sizes));
             }
             // 논리 ↔ 물리 매핑 : 엔터티의 모델과 TABLE 을 모두 새로 만들 때만
             for (Item mapping : tableMappings) {
@@ -680,6 +767,29 @@ public class ModelExchangeService {
                 items.add(new PlanItem("ERD_LAYOUT", "LOGICAL:" + string(model, "modelName"), string(model, "modelName"), imported ? Status.NEW : Status.EXCLUDED,
                         imported ? null : Reason.RELATED_NOT_IMPORTED, ordered("nodes", imported ? nodes.size() : 0, "ignored", imported ? 0 : nodes.size())));
             }
+            // 주제 영역별 배치 (형식 4) : 새로 만드는 모델의 영역만, 그 모델의 엔터티 좌표만
+            for (ModelExchangeDto.SubjectAreaLayout layout : layouts.subjectAreas() == null ? List.<ModelExchangeDto.SubjectAreaLayout>of() : layouts.subjectAreas()) {
+                Item area = subjectAreas.get(layout.subjectAreaId());
+                if (area == null) {
+                    ignoredPositions += layout.nodes().size();
+                    continue;
+                }
+                Item model = models.get(ref(area, "model"));
+                Set<Long> modelEntities = ids(entitiesByModel.get(model.id()));
+                Map<Long, ModelExchangeDto.Point> nodes = new LinkedHashMap<>();
+                for (Map.Entry<Long, ModelExchangeDto.Point> node : layout.nodes().entrySet()) {
+                    if (!modelEntities.contains(node.getKey())) ignoredPositions++;
+                    else nodes.put(node.getKey(), node.getValue());
+                }
+                boolean imported = newModels.contains(model.id()) && !nodes.isEmpty();
+                if (imported) {
+                    subjectAreaNodes.put(area.id(), nodes);
+                    if (layout.viewport() != null) subjectAreaViewports.put(area.id(), layout.viewport());
+                }
+                String label = string(model, "modelName") + " / " + string(area, "areaName");
+                items.add(new PlanItem("ERD_LAYOUT", "SUBJECT_AREA:" + string(model, "modelName") + ":" + area.id(), label, imported ? Status.NEW : Status.EXCLUDED,
+                        imported ? null : Reason.RELATED_NOT_IMPORTED, ordered("nodes", imported ? nodes.size() : 0, "ignored", imported ? 0 : nodes.size())));
+            }
         }
 
         ModelExchangeDto.Plan result(String requestId) {
@@ -692,7 +802,9 @@ public class ModelExchangeService {
             counts.put("LOGICAL_ENTITY", newModels.stream().mapToInt(id -> entitiesByModel.getOrDefault(id, List.of()).size()).sum());
             counts.put("TABLE_MAPPING", newMappings.size());
             counts.put("PHYSICAL_VIEW", newViews.size());
-            counts.put("ERD_LAYOUT_NODE", physicalNodes.size() + logicalNodes.values().stream().mapToInt(Map::size).sum());
+            int newAreas = newModels.stream().mapToInt(id -> subjectAreasByModel.getOrDefault(id, List.of()).size()).sum();
+            if (newAreas > 0) counts.put("LOGICAL_SUBJECT_AREA", newAreas);
+            counts.put("ERD_LAYOUT_NODE", physicalNodes.size() + logicalNodes.values().stream().mapToInt(Map::size).sum() + subjectAreaNodes.values().stream().mapToInt(Map::size).sum());
             boolean applicable = !newTables.isEmpty() || !newModels.isEmpty() || !newViews.isEmpty();
             // 배치를 더할 사용자 배치의 버전 : 그 사이 사용자가 배치를 저장했으면 다시 계획한다 (오른쪽에 둘 위치가 달라진다)
             String layoutVersion = targetLayout == null || physicalNodes.isEmpty() ? "" : String.valueOf(targetLayout.getVersion());
@@ -838,8 +950,10 @@ public class ModelExchangeService {
 
             Map<Long, LogicalEntity> entityMap = new HashMap<>();
             Map<Long, LogicalAttribute> attributeMap = new HashMap<>();
+            Map<Long, LogicalSubjectArea> areaMap = new HashMap<>();
             int relationships = 0;
             int relationshipPairs = 0;
+            int members = 0;
             for (Item item : models.values()) {
                 if (!newModels.contains(item.id())) continue;
                 LogicalModel model = LogicalModel.builder().projectId(projectId).modelName(string(item, "modelName")).modelDescription(text(item, "modelDescription")).build();
@@ -891,12 +1005,41 @@ public class ModelExchangeService {
                         relationshipPairs++;
                     }
                 }
+                // 주제 영역 (형식 4) : 상위부터 만들어 새 ID 로 잇는다 (파일 검사에서 계층·이름·소속을 확인했다), 그다음 엔터티 소속
+                List<Item> modelAreas = subjectAreasByModel.getOrDefault(item.id(), List.of());
+                List<Item> pending = new ArrayList<>(modelAreas);
+                while (!pending.isEmpty()) {
+                    boolean progressed = false;
+                    for (java.util.Iterator<Item> it = pending.iterator(); it.hasNext(); ) {
+                        Item a = it.next();
+                        Long parentRef = ref(a, "parent");
+                        if (parentRef != null && !areaMap.containsKey(parentRef)) continue;
+                        LogicalSubjectArea area = LogicalSubjectArea.builder().projectId(projectId).model(model).parent(parentRef == null ? null : areaMap.get(parentRef))
+                                .areaName(string(a, "areaName")).areaDescription(text(a, "areaDescription"))
+                                .sortOrder(integer(a, "sortOrder") == null ? 0 : integer(a, "sortOrder")).build();
+                        entityManager.persist(area);
+                        areaMap.put(a.id(), area);
+                        it.remove();
+                        progressed = true;
+                    }
+                    if (!progressed) throw invalid("주제 영역의 상위 영역이 올바르지 않습니다."); // 파일 검사에서 막힌다 (방어)
+                }
+                for (Item a : modelAreas) {
+                    for (Item m : membersByArea.getOrDefault(a.id(), List.of())) {
+                        LogicalEntity entity = entityMap.get(ref(m, "entity"));
+                        if (entity == null) continue;
+                        entityManager.persist(LogicalSubjectAreaEntity.builder().projectId(projectId).modelId(model.getId()).subjectArea(areaMap.get(a.id())).entity(entity).build());
+                        members++;
+                    }
+                }
             }
             count(created, "LOGICAL_MODEL", newModels.size());
             count(created, "LOGICAL_ENTITY", entityMap.size());
             count(created, "LOGICAL_ATTRIBUTE", attributeMap.size());
             count(created, "LOGICAL_RELATIONSHIP", relationships);
             count(created, "LOGICAL_RELATIONSHIP_ATTRIBUTE", relationshipPairs);
+            count(created, "LOGICAL_SUBJECT_AREA", areaMap.size());
+            count(created, "SUBJECT_AREA_ENTITY", members);
             int columnMappings = 0;
             for (Item item : tableMappings) {
                 if (!newMappings.contains(item.id())) continue;
@@ -913,7 +1056,7 @@ public class ModelExchangeService {
             count(created, "TABLE_MAPPING", newMappings.size());
             count(created, "COLUMN_MAPPING", columnMappings);
             entityManager.flush();
-            count(created, "ERD_LAYOUT_NODE", createLayouts(tableMap, entityMap));
+            count(created, "ERD_LAYOUT_NODE", createLayouts(tableMap, entityMap, areaMap));
             try {
                 entityManager.flush();
             } catch (OptimisticLockException e) {
@@ -927,7 +1070,7 @@ public class ModelExchangeService {
          * 배치를 새 ID 로 옮긴다. 물리 : 가져오는 사용자의 배치에 더한다 — 기존 좌표는 그대로 두고, 이미 배치가 있으면 기존 노드 오른쪽으로 띄운다 (화면 위치는 그대로).
          * 논리 : 새 논리 모델마다 그 사용자의 배치를 새로 만든다. 다른 사용자의 배치는 건드리지 않는다
          */
-        private int createLayouts(Map<Long, TableInfo> tableMap, Map<Long, LogicalEntity> entityMap) {
+        private int createLayouts(Map<Long, TableInfo> tableMap, Map<Long, LogicalEntity> entityMap, Map<Long, LogicalSubjectArea> areaMap) {
             int placed = 0;
             if (!physicalNodes.isEmpty()) {
                 Map<Long, ModelExchangeDto.Point> moved = shift(physicalNodes, targetLayoutNodes);
@@ -962,6 +1105,22 @@ public class ModelExchangeService {
                 ModelExchangeDto.Viewport viewport = logicalViewports.get(entry.getKey());
                 entityManager.persist(LogicalErdLayout.builder().projectId(projectId).modelId(modelId).accountId(accountId).nodePositions(JSON.writeValueAsString(nodes))
                         .viewportX(viewport == null ? 0 : viewport.x()).viewportY(viewport == null ? 0 : viewport.y()).viewportZoom(viewport == null ? 1 : viewport.zoom()).build());
+                placed += nodes.size();
+            }
+            // 주제 영역별 배치 (형식 4) : 새 영역마다 가져오는 사용자의 배치를 새로 만든다
+            for (Map.Entry<Long, Map<Long, ModelExchangeDto.Point>> entry : subjectAreaNodes.entrySet()) {
+                LogicalSubjectArea area = areaMap.get(entry.getKey());
+                if (area == null) continue;
+                Map<Long, Map<String, Double>> nodes = new java.util.TreeMap<>();
+                for (Map.Entry<Long, ModelExchangeDto.Point> node : entry.getValue().entrySet()) {
+                    LogicalEntity entity = entityMap.get(node.getKey());
+                    if (entity != null) nodes.put(entity.getId(), Map.of("x", node.getValue().x(), "y", node.getValue().y()));
+                }
+                if (nodes.isEmpty()) continue;
+                ModelExchangeDto.Viewport viewport = subjectAreaViewports.get(entry.getKey());
+                entityManager.persist(LogicalSubjectAreaLayout.builder().projectId(projectId).modelId(area.getModel().getId()).subjectAreaId(area.getId()).accountId(accountId)
+                        .nodePositions(JSON.writeValueAsString(nodes)).viewportX(viewport == null ? 0 : viewport.x()).viewportY(viewport == null ? 0 : viewport.y())
+                        .viewportZoom(viewport == null ? 1 : viewport.zoom()).build());
                 placed += nodes.size();
             }
             return placed;

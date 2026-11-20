@@ -104,7 +104,8 @@ class ProjectDeletionIntegrationTest {
             "TB_MDL_CHG_HSTRY", "TB_MDL_VER", "TB_SRC_CNTN", "TB_SRC_SCHM", "TB_SRC_TBL", "TB_SRC_COL", "TB_SRC_CNSTRT", "TB_SRC_IDX", "TB_SRC_REL",
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
             "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
-            "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY");
+            "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY",
+            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -115,6 +116,7 @@ class ProjectDeletionIntegrationTest {
     @Autowired BoardCategoryRepository boardCategoryRepository;
     @Autowired SchemaService schemaService;
     @Autowired LogicalModelService logical;
+    @Autowired com.lexorma.data.logical.service.LogicalSubjectAreaService subjectAreas;
     @Autowired ModelMappingService mappings;
     @Autowired PhysicalModelRestController physical;
     @Autowired ModelVersionService versionService;
@@ -350,6 +352,14 @@ class ProjectDeletionIntegrationTest {
         logical.saveRelationshipPairs(admin, relationship.id(), new com.lexorma.data.logical.domain.dto.LogicalModelDto.PairSave(relationship.modifiedAt(),
                 List.of(new com.lexorma.data.logical.domain.dto.LogicalModelDto.PairInput(orderNoAttribute.id(), itemOrderNo.id()))));
         jdbc.update("update TB_LGCL_ATRB set STD_TRM_SN = ? where LGCL_ATRB_SN = ?", base - 1, orderNoAttribute.id());
+        // 주제 영역 (M-6 후속 4차) : 상위·하위 영역(자기 참조), 엔터티 소속, 영역별 배치
+        var salesArea = subjectAreas.save(admin, new com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto.Save(null, model.id(), null, "판매", null, null, null));
+        var orderArea = subjectAreas.save(admin, new com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto.Save(null, model.id(), salesArea.id(), "주문", null, null, null));
+        var nodes = tools.jackson.databind.node.JsonNodeFactory.instance;
+        subjectAreas.assign(admin, model.id(), new com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto.Assignment(nodes.numberNode(orderArea.id()),
+                List.of(new com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto.AssignmentItem(itemEntity.id(), nodes.nullNode()))));
+        jdbc.update("insert into TB_LGCL_SBJ_AREA_LYT(LGCL_SBJ_AREA_LYT_SN, PRJ_SN, LGCL_MDL_SN, LGCL_SBJ_AREA_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO)"
+                + " values(?, ?, ?, ?, ?, '{}', 0, 0, 1, 0)", base - 1, projectId, model.id(), orderArea.id(), accountId);
         EntityMapping entityMapping = mappings.saveEntityMapping(admin, new EntityMapping(null, orderEntity.id(), order.getId()));
         mappings.saveAttributeMapping(admin, new AttributeMapping(null, entityMapping.id(), orderNoAttribute.id(), orderNo.getId()));
 

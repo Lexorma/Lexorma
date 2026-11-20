@@ -887,5 +887,41 @@ final class EnglishMessages {
         add("한 번에 {0}개 TABLE 까지 가져올 수 있습니다.", "Up to {0} TABLEs can be imported at once.");
         add("기준 연결에 완료된 수집이 없어 가져올 수 없습니다. 먼저 메타데이터를 수집해주세요.", "The base connection has no completed collection, so nothing can be imported. Collect its metadata first.");
         add("기준 연결·수집 또는 모델이 미리보기 이후 바뀌었습니다. 비교 결과를 새로 고친 뒤 다시 미리보기 해주세요.", "The base connection, collection or model changed after the preview. Refresh the comparison and preview again.");
+        // 논리 모델 주제 영역 (M-6 후속 4차, 2026-11-20)
+        add("주제 영역", "subject area");
+        add("주제 영역명", "subject area name");
+        add("상위 주제 영역", "parent subject area");
+        add("옮길 주제 영역", "target subject area");
+        add("엔터티의 지금 주제 영역", "current subject area of the entity");
+        add("주제 영역과 미분류를 함께 지정할 수 없습니다.", "A subject area and Unclassified cannot be specified together.");
+        add("주제 영역 정보가 없습니다.", "The subject area information is missing.");
+        add("논리 모델 하나에 주제 영역은 {0}개까지 만들 수 있습니다.", "Up to {0} subject areas can be created in one logical model.");
+        add("주제 영역을 자기 자신의 하위로 옮길 수 없습니다.", "A subject area cannot be moved under itself.");
+        add("주제 영역을 자기 하위 영역 아래로 옮길 수 없습니다.", "A subject area cannot be moved under one of its own sub-areas.");
+        add("주제 영역은 {0}단계까지 만들 수 있습니다.", "Subject areas can be nested up to {0} levels.");
+        add("하위 영역까지 {0}단계를 넘게 되어 옮길 수 없습니다.", "The subject area cannot be moved because its sub-areas would exceed {0} levels.");
+        add("표시 순서는 0 이상 1,000,000 이하로 입력해주세요.", "Enter a display order between 0 and 1,000,000.");
+        add("하위 주제 영역 {0} 이(가) 있습니다. 하위 영역을 먼저 옮기거나 삭제해주세요.", "Child subject area {0} exists. Move or delete the sub-areas first.");
+        add("주제 영역에 엔터티 {0}개가 소속되어 있습니다. 엔터티의 분류를 먼저 바꾸거나 해제해주세요.", "{0} entities belong to the subject area. Change or remove their classification first.");
+        add("옮길 주제 영역을 지정해주세요. (미분류는 null)", "Specify the target subject area. (null for Unclassified)");
+        add("분류할 엔터티를 1개 이상 골라주세요.", "Choose at least one entity to classify.");
+        add("한 번에 엔터티 {0}개까지 분류할 수 있습니다.", "Up to {0} entities can be classified at once.");
+        add("엔터티를 지정해주세요.", "Specify the entity.");
+        add("엔터티의 지금 주제 영역을 함께 보내야 합니다. (미분류는 null)", "Send the current subject area of each entity as well. (null for Unclassified)");
+        add("같은 엔터티를 두 번 지정할 수 없습니다.", "The same entity cannot be specified twice.");
+        add("엔터티 {0} 의 주제 영역이 화면을 연 뒤 바뀌었습니다. 아무것도 바꾸지 않았습니다. 다시 불러와 확인한 뒤 지정해주세요.", "The subject area of entity {0} changed after you opened this screen. Nothing was changed. Reload, check and classify again.");
+        add("{0} 번호가 올바르지 않습니다.", "The {0} ID is invalid.");
+        add("주제 영역 {0} 이(가) 올바르지 않습니다.", "Subject area {0} is invalid.");
+        add("주제 영역 {0} 의 상위 영역이 올바르지 않습니다.", "The parent of subject area {0} is invalid.");
+        add("주제 영역 {0} 의 상위 영역이 순환합니다.", "The parents of subject area {0} form a cycle.");
+        add("주제 영역 {0} 이(가) {1}단계를 넘습니다.", "Subject area {0} exceeds {1} levels.");
+        add("같은 상위 영역 아래 주제 영역 이름이 겹칩니다 : {0}", "Subject area names overlap under the same parent: {0}");
+        add("엔터티의 주제 영역 소속 {0} 이(가) 올바르지 않습니다.", "Subject area membership {0} of an entity is invalid.");
+        add("엔터티 하나가 주제 영역 여러 개에 속할 수 없습니다 : {0}", "An entity cannot belong to more than one subject area: {0}");
+        add("형식 버전 {0} 파일에는 주제 영역이 들어갈 수 없습니다.", "A format version {0} file cannot contain subject areas.");
+        add("형식 버전 {0} 파일에는 주제 영역 배치가 들어갈 수 없습니다.", "A format version {0} file cannot contain subject area layouts.");
+        add("주제 영역 배치가 너무 많습니다.", "There are too many subject area layouts.");
+        add("주제 영역 배치의 영역 번호가 없거나 겹칩니다.", "A subject area layout has a missing or duplicate subject area ID.");
+        add("주제 영역의 상위 영역이 올바르지 않습니다.", "The parent of a subject area is invalid.");
     }
 }

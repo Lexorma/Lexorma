@@ -58,7 +58,10 @@ class ModelSnapshotFieldCoverageTest {
             Map.entry("LogicalRelationship", Map.of("id", ID, "projectId", PROJECT)),
             Map.entry("LogicalRelationshipAttribute", Map.of("id", ID, "relationship", PARENT)),
             Map.entry("EntityTableMapping", Map.of("id", ID, "projectId", PROJECT)),
-            Map.entry("AttributeColumnMapping", Map.of("id", ID)));
+            Map.entry("AttributeColumnMapping", Map.of("id", ID)),
+            // 주제 영역 (M-6 후속 4차)
+            Map.entry("LogicalSubjectArea", Map.of("id", ID, "projectId", PROJECT)),
+            Map.entry("LogicalSubjectAreaEntity", Map.of("id", ID, "projectId", PROJECT, "modelId", "모델 : 소속 영역·엔터티의 논리 모델과 같은 조회용 값이다 (subjectArea·entity 로 담는다)")));
 
     @Autowired EntityManagerFactory entityManagerFactory;
 
@@ -66,8 +69,8 @@ class ModelSnapshotFieldCoverageTest {
     @DisplayName("이력·버전 대상 엔티티의 모든 영속 속성은 담는 필드이거나, 사유를 적은 제외 속성이다")
     void everyPersistentAttributeIsRecordedOrExcludedWithReason() {
         Map<Class<?>, List<String>> recorded = ModelChangeRecorder.recordedFields();
-        // 스키마 1 + 이력 대상 13 (VIEW 포함) + 자식 행 7 (VIEW 의 출력 컬럼·참조 객체, 관계 속성 짝 포함)
-        assertThat(recorded).hasSize(21);
+        // 스키마 1 + 이력 대상 15 (VIEW, 주제 영역·엔터티 소속 포함) + 자식 행 7 (VIEW 의 출력 컬럼·참조 객체, 관계 속성 짝 포함)
+        assertThat(recorded).hasSize(23);
         assertThat(recorded.keySet()).extracting(Class::getSimpleName).containsExactlyInAnyOrderElementsOf(EXCLUDED.keySet());
 
         Map<String, Set<String>> missing = new TreeMap<>();   // 엔티티에는 있는데 어디에도 없는 속성

@@ -328,7 +328,7 @@ class PhysicalGenerationStabilizationIntegrationTest {
         for (JsonNode o : objects.get("LOGICAL_RELATIONSHIP")) if (o.get("id").asLong() == rel.id()) relationship = o;
         assertThat(relationship).isNotNull();
         assertThat(relationship.toString()).contains("\"sortOrder\":1").contains(String.valueOf(ordCust));
-        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, after.id())).isEqualTo(6);
+        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, after.id())).isEqualTo(7);
     }
 
     @Test
@@ -440,7 +440,7 @@ class PhysicalGenerationStabilizationIntegrationTest {
         PhysicalGenerationDto.Plan sourcePlan = generation.preview(f.user, f.request(List.of(dept, emp)));
 
         ModelExchangeDto.Document document = exchange.export(f.user);
-        assertThat(document.formatVersion()).isEqualTo(3);
+        assertThat(document.formatVersion()).isEqualTo(4);
         GenerationFixture t = fixture("stab-exchange-dst");
         AccountDto target = t.member();
         // 교환은 표준 용어를 이름으로만 잇는다 — 대상 프로젝트에 같은 이름의 도메인·용어를 먼저 둔다 (없으면 컬럼을 정할 수 없어 COLUMN_UNAVAILABLE)

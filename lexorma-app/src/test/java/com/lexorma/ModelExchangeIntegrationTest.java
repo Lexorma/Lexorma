@@ -66,7 +66,7 @@ class ModelExchangeIntegrationTest {
         ModelExchangeDto.Document document = exchange.export(admin);
         String json = JSON.writeValueAsString(document);
         assertThat(document.format()).isEqualTo("lexorma-model");
-        assertThat(document.formatVersion()).isEqualTo(3);
+        assertThat(document.formatVersion()).isEqualTo(4); // 형식 4 : 주제 영역 (M-6 후속 4차)
         assertThat(document.model().get("PHYSICAL_VIEW")).as("예제에는 모델 VIEW 가 없다").isEmpty();
         assertThat(json).doesNotContain("\"isApproval\"");
         int tables = count("select count(*) from TB_TBL where PRJ_SN = 0");
@@ -199,8 +199,8 @@ class ModelExchangeIntegrationTest {
         assertThat(count("select count(*) from TB_TBL_CNSTRT where PRJ_SN = ?", unsafe)).isEqualTo(count("select count(*) from TB_TBL_CNSTRT where PRJ_SN = 0") - 1);
 
         // 형식 : 다른 버전·모르는 종류·겹치는 번호
-        ModelExchangeDto.Document v4 = new ModelExchangeDto.Document(document.format(), 4, document.exportedAt(), document.dbType(), document.counts(), document.model(), null);
-        assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, v4, null))).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.MODEL_EXCHANGE_INVALID));
+        ModelExchangeDto.Document v5 = new ModelExchangeDto.Document(document.format(), 5, document.exportedAt(), document.dbType(), document.counts(), document.model(), null);
+        assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, v5, null))).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.MODEL_EXCHANGE_INVALID));
         Map<String, List<Item>> unknown = new LinkedHashMap<>(document.model());
         unknown.put("PHYSICAL_SEQUENCE", List.of());
         assertThatThrownBy(() -> exchange.plan(admin, new ModelExchangeDto.PlanRequest(unsafe, new ModelExchangeDto.Document(document.format(), 2, null, null, null, unknown, null), null)))
@@ -244,7 +244,7 @@ class ModelExchangeIntegrationTest {
 
         ModelExchangeDto.Document document = exchange.export(admin(source));
         String json = JSON.writeValueAsString(document);
-        assertThat(document.formatVersion()).isEqualTo(3);
+        assertThat(document.formatVersion()).isEqualTo(4); // 형식 4 : 주제 영역 (M-6 후속 4차)
         assertThat(document.model().get("PHYSICAL_VIEW")).hasSize(3);
         assertThat(json).contains("WITH a AS (SELECT * FROM VW_ACCOUNT)").doesNotContain("\"isApproval\"");
         assertThat(document.layouts().physical().nodes()).as("지워진 객체의 좌표는 내보내지 않는다").containsOnlyKeys(account, project);

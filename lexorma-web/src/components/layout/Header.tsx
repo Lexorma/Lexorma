@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { hasUnsavedChanges, navigateWithoutGuard } from '../../hooks/useUnsavedChanges';
+import { useDialog } from '../dialog/DialogProvider';
 import { initial } from '../../lib/format';
 import { PersonIcon, SignOutIcon, ThreeBarsIcon } from '@primer/octicons-react';
 import { t } from '../../lib/i18n';
@@ -9,6 +11,7 @@ import { t } from '../../lib/i18n';
 export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuToggle?: () => void }) {
   const { user, recovery, displayName, logout } = useAuth();
   const navigate = useNavigate();
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -26,11 +29,16 @@ export function Header({ menuOpen, onMenuToggle }: { menuOpen?: boolean; onMenuT
     };
   }, [open]);
 
-  const onLogout = async (e: React.MouseEvent) => {
+  const onLogout = (e: React.MouseEvent) => {
     e.preventDefault();
     setOpen(false);
-    await logout();
-    navigate('/login', { replace: true });
+    // 로그아웃은 라우터 밖에서 세션을 끝내므로 저장하지 않은 변경(ERD 배치 등)이 있으면 먼저 묻는다 (D-19). 확인한 뒤의 이동은 다시 묻지 않는다
+    const run = async () => {
+      await logout();
+      navigateWithoutGuard(() => navigate('/login', { replace: true }));
+    };
+    if (hasUnsavedChanges()) dialog.confirm(t('저장하지 않은 변경이 있습니다. 저장하지 않고 로그아웃하시겠습니까?'), () => void run());
+    else void run();
   };
 
   return (

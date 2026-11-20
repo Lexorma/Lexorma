@@ -4,6 +4,7 @@ import { t } from '../../lib/i18n';
 import { diffClass, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, type NodeDiff, type XY } from '../erd/model';
 import { DiffBadge, DiffMark, useSimpleNodes } from '../erd/TableNode';
 import { centered, endShift, relationLanes, type Lane } from '../erd/relationLanes';
+import { EndMarkerDefs } from '../erd/endMarkers';
 import { participation, type GraphEntity, type GraphSubtypeGroup, type LogicalRelationship } from './model';
 import { completeness, disjointness, disjointSymbol } from './subtype';
 
@@ -157,22 +158,9 @@ export function subtypeElements(groups: GraphSubtypeGroup[], centers: Map<string
 const END_MARKERS = ['one', 'zero-one', 'one-many', 'zero-many'] as const;
 const endMarker = (min: number, max: number | null) => `logical-end-${max === 1 ? (min === 0 ? 'zero-one' : 'one') : (min === 0 ? 'zero-many' : 'one-many')}`;
 
-/** 관계선 끝 표기 정의. 선과 같은 색(context-stroke)으로 그리고, 시작 쪽은 뒤집어 쓴다 (auto-start-reverse) */
+/** 관계선 끝 표기 정의 (erd/endMarkers 의 공용 정의, id = logical-end-…) */
 export function EndMarkers() {
-  return (
-    <svg className="logical-end-markers" aria-hidden>
-      <defs>
-        {END_MARKERS.map((kind) => (
-          <marker key={kind} id={`logical-end-${kind}`} viewBox="0 0 24 16" markerWidth="24" markerHeight="16" refX="24" refY="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-            <g fill="none" stroke="context-stroke" strokeWidth="1.5" strokeDasharray="none">
-              {kind.endsWith('many') ? <path d="M12 8 L24 2 M12 8 L24 14" /> : <path d="M19 2 V14" />}
-              {kind.startsWith('zero') ? <circle cx={kind.endsWith('many') ? 7 : 10} cy="8" r="3.5" fill="var(--gh-canvas)" /> : <path d={kind.endsWith('many') ? 'M9 2 V14' : 'M14 2 V14'} />}
-            </g>
-          </marker>
-        ))}
-      </defs>
-    </svg>
-  );
+  return <EndMarkerDefs prefix="logical-end" kinds={END_MARKERS} className="logical-end-markers" />;
 }
 
 /**

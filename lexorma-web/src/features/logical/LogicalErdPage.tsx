@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Background, Controls, getViewportForBounds, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow, type NodeChange } from '@xyflow/react';
+import { Background, Controls, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow, type NodeChange } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../../styles/erd.css';
 import '../../styles/logical.css';
@@ -10,6 +10,7 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChanges';
 import { api, enc } from '../../lib/api';
 import { useErdExport, erdFileName } from '../erd/exportImage';
 import { t, tc, tx } from '../../lib/i18n';
@@ -17,6 +18,7 @@ import { motionMs } from '../../lib/motion';
 // 물리 ERD 와 같이 쓰는 것 : 자동 배치(ELK 워커), 노드 크기 규칙, 축소 시 행 생략, 스타일(erd.css). 데이터·레이아웃 저장은 따로다
 import { cancelLayout, gridLayout, runLayout, type LayoutNode } from '../erd/layout';
 import { NODE_WIDTH, nodeHeight, type ErdLayout, type XY } from '../erd/model';
+import { fitToBoxes, nodeBox } from '../erd/viewport';
 import { ErdModeToggle, findFreePosition, type ErdMode } from '../erd/editing';
 import { AttributeForm, EntityForm, IdentifierForm, useEntityDetail, type EntityDetailTab } from './entityDetail';
 import { edgeTypes, EndMarkers, entityRows, LAYER_GAP, nodeTypes, relationshipEdges, subtypeElements, type EntityNodeType, type InheritanceEdgeType, type RelationshipEdgeType, type SubtypeGroupNodeType } from './erdNodes';
@@ -70,7 +72,6 @@ function linkedArea(params: URLSearchParams): AreaFilter {
 /** 논리 ERD : 논리 모델 1개의 엔터티·관계 조회 전용 (논리 모델은 바꾸지 않는다) + 내 배치 저장 (모델별·사용자별) */
 export default function LogicalErdPage() {
   const { user, canView } = useAuth();
-  const dialog = useDialog();
   const navigate = useNavigate();
   const { models, selected, select, isPending, isError } = useLogicalModels();
   // 관리 화면에서 넘어온 경우 (?modelId=&entityId=) : 그 엔터티를 한 번 선택·가운데로 옮긴다
@@ -85,14 +86,10 @@ export default function LogicalErdPage() {
   const canEdit = canView('logical-model-edit');
   const [mode, setMode] = useState<ErdMode>('view');
 
-  const changeModel = (modelId: number) => {
-    if (dirty) dialog.confirm(t('저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?'), () => select(modelId));
-    else select(modelId);
-  };
-  const leave = (path: string) => {
-    if (dirty) dialog.confirm(t('저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?'), () => navigate(path));
-    else navigate(path);
-  };
+  // 저장하지 않은 배치 (D-19) : 사이드바·링크·뒤로/앞으로·새로 고침은 공통 보호가 묻고, 모델 바꾸기·다른 화면 버튼은 여기서 한 번만 묻는다
+  const confirmLeave = useUnsavedChangesGuard(dirty, t('저장하지 않은 배치가 있습니다. 저장하지 않고 이동하시겠습니까?'));
+  const changeModel = (modelId: number) => confirmLeave(() => select(modelId));
+  const leave = (path: string) => confirmLeave(() => navigate(path));
 
   return (
     <>
@@ -266,18 +263,9 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
   useEffect(() => () => onDirty(false), []);
 
   /**
-   * 고른 엔터티들이 보이게 화면을 맞춘다 (D-52). 엔터티 좌표·크기를 이미 알고 있으므로 React Flow 의 크기 측정을 기다리지 않고 경계를 직접 계산한다 —
-   * 그룹 원·상속선은 엔터티 사이에 있어 따로 넣지 않는다. 좌표·배치는 바꾸지 않고 화면 위치만 바꾼다 (저장 대상 아님). 동작 줄이기 설정이면 바로 옮긴다
+   * 고른 엔터티들이 보이게 화면을 맞춘다 (D-52, 계산은 물리 ERD 와 같이 쓰는 erd/viewport) — 그룹 원·상속선은 엔터티 사이에 있어 따로 넣지 않는다
    */
-  const fitToNodes = (target: EntityNodeType[]) => {
-    const el = canvas.current;
-    if (!el || !target.length || !el.clientWidth || !el.clientHeight) return;
-    const xs = target.map((n) => n.position.x), ys = target.map((n) => n.position.y);
-    const x = Math.min(...xs), y = Math.min(...ys);
-    const width = Math.max(...xs) + NODE_WIDTH - x;
-    const height = Math.max(...target.map((n) => n.position.y + nodeHeight(entityRows(n.data.entity)))) - y;
-    void flow.setViewport(getViewportForBounds({ x, y, width, height }, el.clientWidth, el.clientHeight, 0.05, 1, 0.15), { duration: motionMs(200) });
-  };
+  const fitToNodes = (target: EntityNodeType[]) => fitToBoxes(flow, canvas.current, target.map((n) => nodeBox(n.position, entityRows(n.data.entity))));
 
   // 조회 결과 → 노드. 저장된 위치가 없는 엔터티만 기존 배치 오른쪽에 자동 배치한다 (기존 위치는 덮어쓰지 않음)
   useEffect(() => {
@@ -361,13 +349,6 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
       cancelLayout();
     };
   }, [graph.data, layout.data]);
-
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
 
   // 선택한 엔터티에 걸린 관계(또는 선택한 관계)는 굵기와 색으로 함께 강조한다
   const edges = useMemo<RelationshipEdgeType[]>(() => relationshipEdges(graph.data?.relationships ?? [], (relationship) => {

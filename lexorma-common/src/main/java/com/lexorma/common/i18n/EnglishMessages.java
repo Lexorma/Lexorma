@@ -175,6 +175,7 @@ final class EnglishMessages {
 
         // ---------------------------------------------------------------- ERD
         add("한 번에 1~{0}개 테이블까지 조회할 수 있습니다.", "You can view 1 to {0} tables at a time.");
+        add("테이블 찾기는 1~{0}개까지 조회할 수 있습니다.", "Table search returns 1 to {0} tables at a time.");
         add("검색어는 {0}자까지 입력할 수 있습니다.", "The keyword can be up to {0} characters long.");
         add("이웃 탐색은 1~{0}단계까지 가능합니다.", "Neighbors can be explored 1 to {0} steps deep.");
         add("배치는 테이블 {0}개까지 저장할 수 있습니다.", "A layout can store up to {0} tables.");

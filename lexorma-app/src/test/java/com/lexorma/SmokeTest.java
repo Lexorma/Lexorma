@@ -465,6 +465,20 @@ class SmokeTest {
         // 컬럼 목록에는 소속 스키마와 테이블 ID, ERD 컬럼에는 표준 도메인명이 함께 내려온다
         assertThat(get("/api/selectColumn/data?page=0&size=1", true).body()).contains("\"schemaName\":\"DEFAULT\"").contains("\"tableInfoId\":");
         assertThat(get("/api/erd?page=0&size=5", true).body()).contains("\"domainName\":");
+        // M-2 개선 2차 : relationScope 바인딩(INNER 만 범위 밖 수·FK 컬럼, 잘못된 값 400), 테이블 찾기·테이블 관계 목록의 HTTP 한도
+        var innerGraph = mapper.readTree(get("/api/erd?page=0&size=5&relationScope=INNER", true).body());
+        assertThat(innerGraph.path("outsideRelations").isObject()).isTrue();
+        assertThat(innerGraph.path("fkColumnIds").isArray()).isTrue();
+        assertThat(mapper.readTree(get("/api/erd?page=0&size=5", true).body()).path("outsideRelations").isNull()).isTrue();
+        assertThat(get("/api/erd?page=0&size=5&relationScope=SOME", true).statusCode()).isEqualTo(400);
+        var hits = mapper.readTree(get("/api/erd/tables?keyword=TB_TBL&size=5", true).body());
+        assertThat(hits.path("totalCount").asLong()).isPositive();
+        long hitId = hits.path("items").get(0).path("id").asLong();
+        assertThat(get("/api/erd/tables?size=51", true).statusCode()).isEqualTo(400);
+        assertThat(mapper.readTree(get("/api/erd/tables/" + hitId + "/relations?page=0&size=5", true).body()).path("totalCount").asLong()).isPositive();
+        assertThat(get("/api/erd/tables/" + hitId + "/relations?page=0&size=101", true).body()).contains("INVALID_PAGE_REQUEST");
+        assertThat(get("/api/erd/tables/999999999/relations", true).body()).contains("TABLE_IS_NOT_DEFINED");
+        assertThat(get("/api/erd/neighbors/" + hitId + "?depth=1&relationScope=INNER", true).statusCode()).isEqualTo(200);
 
         // 기본 스키마 : 이름 변경·삭제 불가
         assertThat(postJson("/api/schema", "{\"id\":" + defaultId + ",\"schemaName\":\"main\",\"updated\":\"" + schemaUpdated(defaultId) + "\"}").body()).contains("INVALID_SCHEMA_NAME");

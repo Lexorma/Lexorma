@@ -8,6 +8,8 @@ import com.lexorma.data.erd.domain.entity.ErdLayout;
 import com.lexorma.data.erd.repository.ErdGraphRepository;
 import com.lexorma.data.erd.repository.ErdLayoutRepository;
 import com.lexorma.data.erd.service.ErdService;
+import com.lexorma.data.erd.service.PhysicalCardinality;
+import com.lexorma.data.physical.domain.dto.PhysicalModelDto;
 import com.lexorma.data.schema.repository.SchemaInfoRepository;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,27 +41,22 @@ public class ErdServiceImpl implements ErdService {
 
     @Override
     @Transactional(readOnly = true)
-    public ErdDto.Graph selectGraph(AccountDto accountDto, ErdDto.Search search, int page, int size) {
+    public ErdDto.Graph selectGraph(AccountDto accountDto, ErdDto.Search search, int page, int size, ErdDto.RelationScope relationScope) {
         Long projectId = accountDto.getProjectId();
         if (page < 0 || size < 1 || size > MAX_TABLES) {
             throw invalid("한 번에 1~{0}개 테이블까지 조회할 수 있습니다.", MAX_TABLES);
         }
-        if (search.keyword() != null && search.keyword().length() > MAX_KEYWORD_LENGTH) {
-            throw invalid("검색어는 {0}자까지 입력할 수 있습니다.", MAX_KEYWORD_LENGTH);
-        }
-        if (search.schemaId() != null && schemaInfoRepository.findByIdAndProjectId(search.schemaId(), projectId).isEmpty()) {
-            throw new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED);
-        }
+        validateSearch(projectId, search);
 
         long total = erdGraphRepository.countTables(projectId, search);
         long offset = (long) page * size;
         List<ErdDto.Table> tables = offset < total ? erdGraphRepository.findTables(projectId, search, offset, size) : List.of();
-        return graph(projectId, tables, total, offset + tables.size() < total);
+        return graph(projectId, tables, total, offset + tables.size() < total, relationScope);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public ErdDto.Graph selectNeighbors(AccountDto accountDto, Long tableId, int depth) {
+    public ErdDto.Graph selectNeighbors(AccountDto accountDto, Long tableId, int depth, ErdDto.RelationScope relationScope) {
         Long projectId = accountDto.getProjectId();
         if (depth < 1 || depth > MAX_DEPTH) {
             throw invalid("이웃 탐색은 1~{0}단계까지 가능합니다.", MAX_DEPTH);
@@ -88,7 +85,46 @@ public class ErdServiceImpl implements ErdService {
             frontier = next;
         }
         List<ErdDto.Table> tables = erdGraphRepository.findTablesByIds(projectId, found);
-        return graph(projectId, tables, tables.size(), truncated);
+        return graph(projectId, tables, tables.size(), truncated, relationScope);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ErdDto.TableHits findTables(AccountDto accountDto, ErdDto.Search search, int size) {
+        Long projectId = accountDto.getProjectId();
+        if (size < 1 || size > MAX_FINDER) {
+            throw invalid("테이블 찾기는 1~{0}개까지 조회할 수 있습니다.", MAX_FINDER);
+        }
+        validateSearch(projectId, search);
+        ErdDto.Search condition = new ErdDto.Search(search.schemaId(), search.keyword(), null, null);
+        return new ErdDto.TableHits(erdGraphRepository.findTableHits(projectId, condition, size), erdGraphRepository.countTables(projectId, condition));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ErdDto.RelationPage selectTableRelations(AccountDto accountDto, Long tableId, int page, int size) {
+        Long projectId = accountDto.getProjectId();
+        // 목록 조회 정책 (list-query-policy) 과 같은 한도·오류 : 크기 1~100, 음수 페이지·int 를 넘는 offset 은 거절 (잘라 쓰지 않는다)
+        if (page < 0 || size < 1 || size > MAX_RELATION_PAGE || (long) page * size > Integer.MAX_VALUE) {
+            throw new CustomException(ErrorCode.INVALID_PAGE_REQUEST);
+        }
+        if (tableId == null || tableInfoRepository.findByIdAndProjectId(tableId, projectId) == null) {
+            throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        }
+        long total = erdGraphRepository.countTableRelations(projectId, tableId);
+        long offset = (long) page * size;
+        List<PhysicalModelDto.Relation> relations = offset < total ? erdGraphRepository.findTableRelations(projectId, tableId, offset, size) : List.of();
+        Set<Long> tableIds = new LinkedHashSet<>(List.of(tableId));
+        relations.forEach(r -> {
+            tableIds.add(r.sourceTableId());
+            tableIds.add(r.targetTableId());
+        });
+        Map<Long, ErdDto.Table> tables = new LinkedHashMap<>();
+        erdGraphRepository.findTablesByIds(projectId, tableIds).forEach(t -> tables.put(t.id(), t));
+        Map<Long, ErdDto.Cardinality> cardinalities = relations.isEmpty() ? Map.of()
+                : PhysicalCardinality.judgeAll(relations, PhysicalCardinality.Context.of(
+                        erdGraphRepository.findColumnFlags(projectId, tableIds), erdGraphRepository.findUniqueKeys(projectId, tableIds)));
+        return new ErdDto.RelationPage(relations, cardinalities, tables, total);
     }
 
     @Override
@@ -141,10 +177,52 @@ public class ErdServiceImpl implements ErdService {
         }
     }
 
-    private ErdDto.Graph graph(Long projectId, List<ErdDto.Table> tables, long total, boolean truncated) {
+    /**
+     * 테이블 → 컬럼·관계. ALL : 범위 테이블이 한쪽인 관계 전부 (예전 응답 그대로 — 범위 밖 수는 null).
+     * INNER : 양 끝이 범위 안인 관계 + 범위 밖 관계 수 + 그 관계들의 카디널리티 (컬럼은 이미 조회했다 — 쿼리는 UNIQUE 키 2번만 더한다).
+     * ALL 은 예전 쿼리 수·응답을 지키려고 카디널리티를 계산하지 않는다 (빈 맵)
+     */
+    private ErdDto.Graph graph(Long projectId, List<ErdDto.Table> tables, long total, boolean truncated, ErdDto.RelationScope relationScope) {
         List<Long> ids = tables.stream().map(ErdDto.Table::id).toList();
-        return new ErdDto.Graph(tables, erdGraphRepository.findColumns(projectId, ids),
-                erdGraphRepository.findRelations(projectId, ids), total, truncated);
+        List<ErdDto.Column> columns = erdGraphRepository.findColumns(projectId, ids);
+        boolean inner = relationScope == ErdDto.RelationScope.INNER;
+        List<PhysicalModelDto.Relation> relations = inner ? erdGraphRepository.findInnerRelations(projectId, ids) : erdGraphRepository.findRelations(projectId, ids);
+        Set<Long> scope = new HashSet<>(ids);
+        List<PhysicalModelDto.Relation> drawn = relations.stream().filter(r -> scope.contains(r.sourceTableId()) && scope.contains(r.targetTableId())).toList();
+        Map<Long, ErdDto.Cardinality> cardinalities = Map.of();
+        if (inner && !drawn.isEmpty()) {
+            Set<Long> related = new HashSet<>();
+            drawn.forEach(r -> {
+                related.add(r.sourceTableId());
+                related.add(r.targetTableId());
+            });
+            cardinalities = PhysicalCardinality.judgeAll(drawn, PhysicalCardinality.Context.of(
+                    columns.stream().map(c -> new PhysicalCardinality.ColumnFlags(c.id(), c.tableId(), c.isNullable(), c.isPk(), c.isUnique(), c.isRequired())).toList(),
+                    erdGraphRepository.findUniqueKeys(projectId, related)));
+        }
+        return new ErdDto.Graph(tables, columns, relations, total, truncated,
+                inner ? outsideRelations(erdGraphRepository.countRelationEnds(projectId, ids), drawn) : null,
+                inner ? erdGraphRepository.findFkColumnIds(projectId, ids) : null, cardinalities);
+    }
+
+    /** 범위 밖 관계 수 = 테이블의 관계 끝 수(DB 집계) − 양 끝이 범위 안인 관계의 끝 수. 0 인 테이블은 넣지 않는다 */
+    private static Map<Long, Long> outsideRelations(Map<Long, Long> ends, List<PhysicalModelDto.Relation> drawn) {
+        Map<Long, Long> outside = new HashMap<>(ends);
+        drawn.forEach(r -> {
+            outside.merge(r.sourceTableId(), -1L, Long::sum);
+            outside.merge(r.targetTableId(), -1L, Long::sum);
+        });
+        outside.values().removeIf(count -> count <= 0);
+        return outside;
+    }
+
+    private void validateSearch(Long projectId, ErdDto.Search search) {
+        if (search.keyword() != null && search.keyword().length() > MAX_KEYWORD_LENGTH) {
+            throw invalid("검색어는 {0}자까지 입력할 수 있습니다.", MAX_KEYWORD_LENGTH);
+        }
+        if (search.schemaId() != null && schemaInfoRepository.findByIdAndProjectId(search.schemaId(), projectId).isEmpty()) {
+            throw new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED);
+        }
     }
 
     private static void validate(ErdDto.Layout request) {

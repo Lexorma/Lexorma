@@ -2,6 +2,7 @@
 
 > [데이터 모델링 로드맵](../reference/data-modeling-roadmap.md) M-2 의 설계·구현 기록이다. 결정 요약은 로드맵 10장(D-01, D-02, D-05, D-10, D-15)에 반영했다.
 > 작성일 2026-11-10. 테이블 `TB_ERD_LYT` (Flyway `V0__init.sql`, 이름 규칙은 [DB 명명 규칙](../reference/db-naming-standard.md)).
+> **개선 (2026-11-20)** : 8장의 남은 작업(브라우저·대규모 실측, D-02 기준값, 이동 경고, 평행 관계선)과 테이블 찾기·범위 밖 관계 수·FK 단위 관계선·카디널리티·화면 맞춤은 [physical-erd-m2-improvement.md](physical-erd-m2-improvement.md) 에서 완료했다. 아래 API 설명의 관계 응답은 `relationScope` 기본값(ALL) 기준이다.
 
 ## 1. 범위
 

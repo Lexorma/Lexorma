@@ -9,6 +9,7 @@ import { Label, Muted } from '../../components/grid/cells';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { relationEdges } from '../erd/edges';
+import { physicalEdgeTypes } from '../erd/FkEdge';
 import { cancelLayout, gridLayout, runLayout } from '../erd/layout';
 import { DIFF_COLOR, DIFF_LABEL, DIFF_MARK, NODE_WIDTH, nodeHeight, type DiffKind, type XY } from '../erd/model';
 import { TableNode, useSimpleNodes } from '../erd/TableNode';
@@ -21,6 +22,9 @@ import {
 import { CHANGES, versionTypeLabel, type VersionChange, type VersionComparison } from './model';
 
 /** 목록에서 고른 객체 (같은 객체를 다시 골라도 그 자리로 옮기도록 seq 를 둔다) */
+/** 논리 관계선 + 물리 FK 관계선 (물리 비교는 FK 하나 = 선 하나, M-2 개선 2차) */
+const EDGE_TYPES = { ...edgeTypes, ...physicalEdgeTypes };
+
 export interface ErdFocus {
   targetType: string;
   targetId: number;
@@ -271,7 +275,7 @@ function Pane({ model, positions, selected, onSelect, onReady, onMoved }: {
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}
-      edgeTypes={edgeTypes}
+      edgeTypes={EDGE_TYPES}
       onNodeClick={(_, node) => onSelect({ type: 'node', id: Number(node.id) })}
       onEdgeClick={(_, edge) => {
         const item = edge.data as { relation?: { id: number }; relationship?: { id: number } } | undefined;

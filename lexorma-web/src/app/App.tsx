@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DialogProvider, useDialog } from '../components/dialog/DialogProvider';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -41,6 +41,7 @@ import { ModelExchangePage } from '../features/exchange/ModelExchangePage';
 import { McpAccessPage } from '../features/mcp/McpAccessPage';
 import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
 import { ModelDiagnosticsPage } from '../features/quality/ModelDiagnosticsPage';
+import { navigateWithoutGuard } from '../hooks/useUnsavedChanges';
 import { t } from '../lib/i18n';
 
 const PhysicalErdPage = lazy(() => import('../features/erd/PhysicalErdPage'));
@@ -82,7 +83,8 @@ function ApiErrorBridge() {
         dialog.alert(message, () => {
           sessionAlertOpen.current = false;
           clear();
-          navigate('/login', { replace: true });
+          // 세션 만료·권한 회수는 저장하지 않은 배치 확인으로 막지 않는다 (D-19)
+          navigateWithoutGuard(() => navigate('/login', { replace: true }));
         });
         return;
       }
@@ -94,72 +96,86 @@ function ApiErrorBridge() {
   return null;
 }
 
+/**
+ * 화면 공통 틀 : 대화상자 내용도 로그인 정보(useAuth)를 쓰므로 AuthProvider 가 DialogProvider 를 감싼다.
+ * 토스트는 로그인 범위(사용자·프로젝트)에 묶이고 대화상자 안에서도 부르므로 그 사이에 둔다. 라우터 안에 있어야 대화상자·오류 처리에서 이동할 수 있다
+ */
+function Root() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <DialogProvider>
+          <ApiErrorBridge />
+          <AppLayout>
+            <Outlet />
+          </AppLayout>
+        </DialogProvider>
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+
+/**
+ * 데이터 라우터 (D-19 : 저장하지 않은 배치가 있을 때 사이드바·링크·뒤로/앞으로 이동을 확인하려고 useBlocker 를 쓴다).
+ * 경로 정의·주소는 예전 BrowserRouter 의 Routes 그대로이고 loader·action 은 쓰지 않는다. 모듈에서 한 번만 만든다 (다시 그려도 새로 만들지 않는다)
+ */
+const router = createBrowserRouter(createRoutesFromElements(
+  <Route element={<Root />}>
+    {/* 계정이 하나도 없으면 로그인·회원가입 대신 최초 관리자 계정 만들기 */}
+    <Route path="/login" element={<GuestOnly><RequireSetupDone><LoginPage /></RequireSetupDone></GuestOnly>} />
+    <Route path="/signup" element={<GuestOnly><RequireSetupDone><SignupPage /></RequireSetupDone></GuestOnly>} />
+    <Route path={SETUP_PATH} element={<GuestOnly><SetupPage /></GuestOnly>} />
+    <Route path={RECOVERY_PATH} element={<RequireRecovery><RecoveryPage /></RequireRecovery>} />
+    <Route path="/help" element={<HelpPage />} />
+    <Route path="/denied" element={<RequireAuth><DeniedPage /></RequireAuth>} />
+    <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+
+    <Route path="/" element={<RequireMenu menuId="dashboard"><DashboardPage /></RequireMenu>} />
+    <Route path="/notice" element={<RequireMenu menuId="notice"><NoticeListPage /></RequireMenu>} />
+    <Route path="/userManage" element={<RequireMenu menuId="user-manage"><UserManagePage /></RequireMenu>} />
+    <Route path="/projectManage" element={<RequireMenu menuId="project-manage"><ProjectManagePage /></RequireMenu>} />
+    <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
+    <Route path="/connectionSecurity" element={<RequireMenu menuId="connection-security"><ConnectionSecurityPage /></RequireMenu>} />
+    <Route path="/aiProvider" element={<RequireMenu menuId="ai-provider"><AiProviderPage /></RequireMenu>} />
+    <Route path="/standardDomain" element={<RequireMenu menuId="standard-domain"><DictionaryPage key="standardDomains" table="standardDomains" /></RequireMenu>} />
+    <Route path="/standardWord" element={<RequireMenu menuId="standard-word"><DictionaryPage key="standardWords" table="standardWords" /></RequireMenu>} />
+    <Route path="/standardTerm" element={<RequireMenu menuId="standard-term"><DictionaryPage key="standardTerms" table="standardTerms" /></RequireMenu>} />
+    <Route path="/aiDictionary" element={<RequireMenu menuId="ai-dictionary"><AiDictionaryRoute /></RequireMenu>} />
+    <Route path="/aiEvaluation" element={<RequireMenu menuId="ai-evaluation"><Suspense fallback={<p>{t('불러오는 중…')}</p>}><AiEvaluationPage /></Suspense></RequireMenu>} />
+    {/* 예전 주소 (/dataDictionary?tab=…) : 탭에 해당하는 화면으로 옮긴다 */}
+    <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DictionaryRedirect /></RequireMenu>} />
+    <Route path="/logicalModel" element={<RequireMenu menuId="logical-model"><LogicalModelPage /></RequireMenu>} />
+    <Route path="/logicalErd" element={<RequireMenu menuId="logical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><LogicalErdPage /></Suspense></RequireMenu>} />
+    <Route path="/modelMapping" element={<RequireMenu menuId="model-mapping"><ModelMappingPage /></RequireMenu>} />
+    <Route path="/schemaManage" element={<RequireMenu menuId="schema-manage"><SchemaManagePage /></RequireMenu>} />
+    <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
+    <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
+    <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />
+    <Route path="/indexManage" element={<RequireMenu menuId="index-manage"><IndexManagePage /></RequireMenu>} />
+    <Route path="/viewManage" element={<RequireMenu menuId="view-manage"><ViewManagePage /></RequireMenu>} />
+    <Route path="/ddlExport" element={<RequireMenu menuId="ddl-export"><DdlExportPage /></RequireMenu>} />
+    <Route path="/sourceConnection" element={<RequireMenu menuId="source-connection"><SourceConnectionPage /></RequireMenu>} />
+    <Route path="/sourceCollection" element={<RequireMenu menuId="source-collection"><SourceCollectionPage /></RequireMenu>} />
+    <Route path="/sourceCatalog" element={<RequireMenu menuId="source-catalog"><SourceCatalogPage /></RequireMenu>} />
+    <Route path="/sourceMapping" element={<RequireMenu menuId="source-mapping"><SourceMappingPage /></RequireMenu>} />
+    <Route path="/sourceCompare" element={<RequireMenu menuId="source-compare"><SourceComparePage /></RequireMenu>} />
+    <Route path="/sourceErd" element={<RequireMenu menuId="source-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><SourceErdPage /></Suspense></RequireMenu>} />
+    <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
+    <Route path="/modelDiagnostics" element={<RequireMenu menuId="model-diagnostics"><ModelDiagnosticsPage /></RequireMenu>} />
+
+    <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />
+    <Route path="/modelVersion" element={<RequireMenu menuId="model-version"><ModelVersionPage /></RequireMenu>} />
+    <Route path="/modelExchange" element={<RequireMenu menuId="model-exchange"><ModelExchangePage /></RequireMenu>} />
+    <Route path="/mcpAccess" element={<RequireMenu menuId="mcp-access"><McpAccessPage /></RequireMenu>} />
+
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Route>,
+));
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        {/* 대화상자 내용도 로그인 정보(useAuth)를 쓰므로 AuthProvider 가 DialogProvider 를 감싼다.
-            토스트는 로그인 범위(사용자·프로젝트)에 묶이고 대화상자 안에서도 부르므로 그 사이에 둔다 */}
-        <AuthProvider>
-          <ToastProvider>
-            <DialogProvider>
-              <ApiErrorBridge />
-              <AppLayout>
-                <Routes>
-                  {/* 계정이 하나도 없으면 로그인·회원가입 대신 최초 관리자 계정 만들기 */}
-                  <Route path="/login" element={<GuestOnly><RequireSetupDone><LoginPage /></RequireSetupDone></GuestOnly>} />
-                  <Route path="/signup" element={<GuestOnly><RequireSetupDone><SignupPage /></RequireSetupDone></GuestOnly>} />
-                  <Route path={SETUP_PATH} element={<GuestOnly><SetupPage /></GuestOnly>} />
-                  <Route path={RECOVERY_PATH} element={<RequireRecovery><RecoveryPage /></RequireRecovery>} />
-                  <Route path="/help" element={<HelpPage />} />
-                  <Route path="/denied" element={<RequireAuth><DeniedPage /></RequireAuth>} />
-                  <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
-
-                  <Route path="/" element={<RequireMenu menuId="dashboard"><DashboardPage /></RequireMenu>} />
-                  <Route path="/notice" element={<RequireMenu menuId="notice"><NoticeListPage /></RequireMenu>} />
-                  <Route path="/userManage" element={<RequireMenu menuId="user-manage"><UserManagePage /></RequireMenu>} />
-                  <Route path="/projectManage" element={<RequireMenu menuId="project-manage"><ProjectManagePage /></RequireMenu>} />
-                  <Route path="/systemLog" element={<RequireMenu menuId="system-log"><SystemLogPage /></RequireMenu>} />
-                  <Route path="/connectionSecurity" element={<RequireMenu menuId="connection-security"><ConnectionSecurityPage /></RequireMenu>} />
-                  <Route path="/aiProvider" element={<RequireMenu menuId="ai-provider"><AiProviderPage /></RequireMenu>} />
-                  <Route path="/standardDomain" element={<RequireMenu menuId="standard-domain"><DictionaryPage key="standardDomains" table="standardDomains" /></RequireMenu>} />
-                  <Route path="/standardWord" element={<RequireMenu menuId="standard-word"><DictionaryPage key="standardWords" table="standardWords" /></RequireMenu>} />
-                  <Route path="/standardTerm" element={<RequireMenu menuId="standard-term"><DictionaryPage key="standardTerms" table="standardTerms" /></RequireMenu>} />
-                  <Route path="/aiDictionary" element={<RequireMenu menuId="ai-dictionary"><AiDictionaryRoute /></RequireMenu>} />
-                  <Route path="/aiEvaluation" element={<RequireMenu menuId="ai-evaluation"><Suspense fallback={<p>{t('불러오는 중…')}</p>}><AiEvaluationPage /></Suspense></RequireMenu>} />
-                  {/* 예전 주소 (/dataDictionary?tab=…) : 탭에 해당하는 화면으로 옮긴다 */}
-                  <Route path="/dataDictionary" element={<RequireMenu menuId="data-dictionary"><DictionaryRedirect /></RequireMenu>} />
-                  <Route path="/logicalModel" element={<RequireMenu menuId="logical-model"><LogicalModelPage /></RequireMenu>} />
-                  <Route path="/logicalErd" element={<RequireMenu menuId="logical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><LogicalErdPage /></Suspense></RequireMenu>} />
-                  <Route path="/modelMapping" element={<RequireMenu menuId="model-mapping"><ModelMappingPage /></RequireMenu>} />
-                  <Route path="/schemaManage" element={<RequireMenu menuId="schema-manage"><SchemaManagePage /></RequireMenu>} />
-                  <Route path="/tableManage" element={<RequireMenu menuId="table-manage"><TableManagePage /></RequireMenu>} />
-                  <Route path="/physicalErd" element={<RequireMenu menuId="physical-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><PhysicalErdPage /></Suspense></RequireMenu>} />
-                  <Route path="/columnManage" element={<RequireMenu menuId="column-manage"><ColumnManagePage /></RequireMenu>} />
-                  <Route path="/indexManage" element={<RequireMenu menuId="index-manage"><IndexManagePage /></RequireMenu>} />
-                  <Route path="/viewManage" element={<RequireMenu menuId="view-manage"><ViewManagePage /></RequireMenu>} />
-                  <Route path="/ddlExport" element={<RequireMenu menuId="ddl-export"><DdlExportPage /></RequireMenu>} />
-                  <Route path="/sourceConnection" element={<RequireMenu menuId="source-connection"><SourceConnectionPage /></RequireMenu>} />
-                  <Route path="/sourceCollection" element={<RequireMenu menuId="source-collection"><SourceCollectionPage /></RequireMenu>} />
-                  <Route path="/sourceCatalog" element={<RequireMenu menuId="source-catalog"><SourceCatalogPage /></RequireMenu>} />
-                  <Route path="/sourceMapping" element={<RequireMenu menuId="source-mapping"><SourceMappingPage /></RequireMenu>} />
-                  <Route path="/sourceCompare" element={<RequireMenu menuId="source-compare"><SourceComparePage /></RequireMenu>} />
-                  <Route path="/sourceErd" element={<RequireMenu menuId="source-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><SourceErdPage /></Suspense></RequireMenu>} />
-                  <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
-                  <Route path="/modelDiagnostics" element={<RequireMenu menuId="model-diagnostics"><ModelDiagnosticsPage /></RequireMenu>} />
-
-                  <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />
-                  <Route path="/modelVersion" element={<RequireMenu menuId="model-version"><ModelVersionPage /></RequireMenu>} />
-                  <Route path="/modelExchange" element={<RequireMenu menuId="model-exchange"><ModelExchangePage /></RequireMenu>} />
-                  <Route path="/mcpAccess" element={<RequireMenu menuId="mcp-access"><McpAccessPage /></RequireMenu>} />
-
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </AppLayout>
-            </DialogProvider>
-          </ToastProvider>
-        </AuthProvider>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
 }

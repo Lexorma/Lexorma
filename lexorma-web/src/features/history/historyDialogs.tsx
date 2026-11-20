@@ -57,7 +57,7 @@ function HistoryDetailView({ initialId, controls, options }: { initialId: number
         <dt>{t('변경 대상')}</dt>
         <dd>{targetTypeLabel(summary.targetType)} · {summary.targetName ?? <Muted>-</Muted>} <Muted>(#{summary.targetId})</Muted></dd>
         <dt>{t('작업')}</dt>
-        <dd><Label variant={ACTION_VARIANT[summary.action] ?? ''}>{actionLabel(summary.action)}</Label> <Muted>{sourceLabel(summary.source)}</Muted></dd>
+        <dd><Label variant={ACTION_VARIANT[summary.action] ?? ''}>{actionLabel(summary.action, summary.targetType)}</Label> <Muted>{sourceLabel(summary.source)}</Muted></dd>
         <dt>{t('변경 사용자')}</dt>
         <dd>{summary.userId ?? <Muted>-</Muted>}</dd>
         <dt>{t('변경 일시')}</dt>
@@ -84,7 +84,7 @@ function HistoryDetailView({ initialId, controls, options }: { initialId: number
               <li key={item.id}>
                 <button type="button" className="history-group-item" aria-current={item.id === summary.id} disabled={item.id === summary.id}
                   onClick={() => { setShowAll(false); setId(item.id); }}>
-                  <Label variant={ACTION_VARIANT[item.action] ?? ''}>{actionLabel(item.action)}</Label>
+                  <Label variant={ACTION_VARIANT[item.action] ?? ''}>{actionLabel(item.action, item.targetType)}</Label>
                   <span>{targetTypeLabel(item.targetType)}</span>
                   <span className="history-group-name">{item.targetName ?? `#${item.targetId}`}</span>
                   {item.source !== 'USER' && <Muted>{sourceLabel(item.source)}</Muted>}

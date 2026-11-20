@@ -82,6 +82,8 @@ export interface QualitySummary extends MappingStatus {
   mismatch: number;
   notComparable: number;
   unmapped: number;
+  /** 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 (M-6 후속 5차, D-48) — 그 엔터티들의 상속 구조 전체 물리 정합성은 검증하지 않는다 */
+  inheritanceEntities?: number;
 }
 
 /** GET /api/modelMapping/quality/data 의 1행. 엔터티 단위 행(매핑하지 않은 엔터티)은 attributeId 가 null */
@@ -105,6 +107,8 @@ export interface QualityRow {
   logicalValue: string | null;
   physicalValue: string | null;
   reason: string | null;
+  /** 엔터티가 슈퍼타입·서브타입 구조에 참여 : 판정은 직접 정의 속성만 본 것이다 (D-48) */
+  inheritance?: boolean;
 }
 
 export const CHECK_TYPES: { type: CheckType; label: string }[] = [

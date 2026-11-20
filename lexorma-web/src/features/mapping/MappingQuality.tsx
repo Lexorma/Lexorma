@@ -68,6 +68,11 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       <p className="page-desc">{t('매핑된 논리 속성과 물리 컬럼을 표준 용어·명칭·데이터 타입·길이·필수 여부·식별자 기준으로 비교합니다. 매핑률과 정합성은 다릅니다 — 매핑이 끝나도 불일치가 있을 수 있습니다. 조회만 하며 아무것도 고치지 않습니다.')}</p>
 
       {summary.isError && <p className="gh-muted" role="alert">{t('정합성 요약을 불러오지 못했습니다.')}</p>}
+      {!!summary.data?.inheritanceEntities && (
+        <p className="mapping-focus-note" role="note">
+          {t('슈퍼타입·서브타입 구조에 참여하는 엔터티 {0}개는 직접 정의 속성과 매핑 컬럼만 비교했습니다. 상속 구조 전체(상속 속성·상속 주 식별자 ↔ 물리 PK·FK)의 물리 정합성은 아직 지원하지 않습니다.', summary.data.inheritanceEntities)}
+        </p>
+      )}
       <div className="dash dash-stats quality-stats">
         <button type="button" className="dash-stat" aria-pressed={status === ''} onClick={() => setStatus('')}>
           <div className="dash-stat-label">{t('매핑된 속성')}</div>
@@ -137,6 +142,7 @@ function QualityDetail({ row, onMapping }: { row: QualityRow; onMapping: () => v
     [logicalLabel, row.logicalValue],
     [physicalLabel, row.physicalValue, true],
     [t('사유'), row.reason],
+    ...(row.inheritance ? [[t('상속 구조'), t('이 엔터티는 슈퍼타입·서브타입 구조에 참여합니다. 직접 정의 속성만 비교했으며 상속 구조 전체의 물리 정합성은 검증하지 않았습니다.')] as [string, string]] : []),
   ];
   return (
     <div>

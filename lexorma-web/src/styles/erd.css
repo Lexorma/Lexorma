@@ -42,6 +42,11 @@
 .erd-finder > input.form-control { width: 100%; }
 .erd-finder-list { max-height: 200px; overflow: auto; }
 .erd-finder-list li { padding: 4px 0; }
+/* 물리 ERD (M-2 개선 2차) : 찾기 범위 표시, 범위 밖 관계 목록 (관계 버튼 아래 상대 테이블 이웃 보기) */
+.erd-finder-scope { margin: 4px 0 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.erd-outside { margin-top: 8px; }
+.erd-outside li { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.erd-cardinality .dict-detail { margin-bottom: 4px; }
 .erd-detail h3 { margin: 16px 0 4px; font-size: 16px; overflow-wrap: anywhere; }
 .erd-detail h4 { margin: 16px 0 4px; font-size: 13px; }
 .erd-detail p { margin: 4px 0; }

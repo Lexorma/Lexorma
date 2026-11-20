@@ -6,6 +6,9 @@ import com.lexorma.data.logical.domain.entity.QLogicalAttribute;
 import com.lexorma.data.logical.domain.entity.QLogicalEntity;
 import com.lexorma.data.logical.domain.entity.QLogicalRelationship;
 import com.lexorma.data.logical.domain.entity.QLogicalSubjectAreaEntity;
+import com.lexorma.data.logical.domain.entity.QLogicalSubtype;
+import com.lexorma.data.logical.domain.entity.QLogicalSubtypeGroup;
+import com.lexorma.data.logical.domain.dto.LogicalSubtypeDto;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -58,6 +61,19 @@ public class LogicalModelQueryRepository {
 
     /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
     public static final java.util.Set<String> RELATIONSHIP_SORT_FIELDS = RELATIONSHIP_SORTS.keySet();
+
+    /** 서브타입 그룹 목록 정렬 필드 (M-6 후속 5차). 없으면 슈퍼타입명 → 그룹 순서, 같은 값은 그룹 ID 순 */
+    private static final QLogicalSubtypeGroup subtypeGroup = QLogicalSubtypeGroup.logicalSubtypeGroup;
+    private static final QLogicalSubtype subtype = QLogicalSubtype.logicalSubtype;
+    private static final QLogicalEntity supertype = new QLogicalEntity("supertype");
+    private static final QLogicalAttribute classification = new QLogicalAttribute("classification");
+    private static final Map<String, ComparableExpressionBase<?>> GROUP_SORTS = Map.of(
+            "groupName", subtypeGroup.groupName,
+            "supertypeEntityName", supertype.entityName,
+            "modifiedAt", subtypeGroup.updated);
+
+    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키) */
+    public static final java.util.Set<String> GROUP_SORT_FIELDS = GROUP_SORTS.keySet();
 
     private final JPAQueryFactory query;
 
@@ -186,5 +202,44 @@ public class LogicalModelQueryRepository {
         if (orders.isEmpty()) orders.add(entity.entityName.asc());
         orders.add(entity.id.asc());
         return orders.toArray(OrderSpecifier[]::new);
+    }
+
+    // ------------------------------------------------------------------ 서브타입 그룹 목록 (M-6 후속 5차)
+
+    /**
+     * 그룹 목록 페이지 : 그룹명·슈퍼타입명 검색(엔터티 검색과 같은 규칙), 허용 목록 정렬. 페이지의 그룹을 먼저 고른 뒤 그 그룹들의 구성원 수를 한 번에 센다
+     * (그룹마다 따로 세지 않는다). 분류 속성은 없어도 되므로 왼쪽 조인
+     */
+    public Page<LogicalSubtypeDto.GroupRow> findGroupRows(Long modelId, String pattern, Pageable pageable) {
+        BooleanExpression where = subtypeGroup.model.id.eq(modelId)
+                .and(subtypeGroup.groupName.lower().like(pattern, '!').or(supertype.entityName.lower().like(pattern, '!')));
+        List<OrderSpecifier<?>> orders = new ArrayList<>();
+        for (Sort.Order order : pageable.getSort()) {
+            ComparableExpressionBase<?> path = GROUP_SORTS.get(order.getProperty());
+            if (path != null) orders.add((order.isAscending() ? path.asc() : path.desc()).nullsLast());
+        }
+        if (orders.isEmpty()) {
+            orders.add(supertype.entityName.asc());
+            orders.add(subtypeGroup.sortOrder.asc());
+        }
+        orders.add(subtypeGroup.id.asc());
+        List<Tuple> page = query.select(subtypeGroup.id, subtypeGroup.groupName, supertype.id, supertype.entityName, subtypeGroup.overlapping, subtypeGroup.total,
+                        classification.id, classification.attributeName, subtypeGroup.updated)
+                .from(subtypeGroup)
+                .join(subtypeGroup.supertypeEntity, supertype)
+                .leftJoin(subtypeGroup.classificationAttribute, classification)
+                .where(where)
+                .orderBy(orders.toArray(OrderSpecifier[]::new))
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+        Long total = query.select(subtypeGroup.count()).from(subtypeGroup).join(subtypeGroup.supertypeEntity, supertype).where(where).fetchOne();
+        List<Long> ids = page.stream().map(row -> row.get(subtypeGroup.id)).toList();
+        Map<Long, Long> members = counts(ids.isEmpty() ? List.of() : query.select(subtype.group.id, subtype.count()).from(subtype)
+                .where(subtype.group.id.in(ids)).groupBy(subtype.group.id).fetch());
+        List<LogicalSubtypeDto.GroupRow> rows = page.stream().map(row -> new LogicalSubtypeDto.GroupRow(row.get(subtypeGroup.id), row.get(subtypeGroup.groupName),
+                row.get(supertype.id), row.get(supertype.entityName), members.getOrDefault(row.get(subtypeGroup.id), 0L), row.get(subtypeGroup.overlapping),
+                row.get(subtypeGroup.total), row.get(classification.id), row.get(classification.attributeName), row.get(subtypeGroup.updated))).toList();
+        return new PageImpl<>(rows, pageable, total == null ? 0 : total);
     }
 }

@@ -243,7 +243,7 @@ class LogicalRelationshipPairsIntegrationTest {
         Fixture f = fixture("pairs-export");
         save(f, f.orderToHistory, List.of(new PairInput(f.orderNo, f.srcOrderNo), new PairInput(f.detailNo, f.srcDetailNo)));
         ModelExchangeDto.Document document = exchange.export(f.user);
-        assertThat(document.formatVersion()).isEqualTo(4); // 형식 4 (주제 영역)에도 짝은 그대로
+        assertThat(document.formatVersion()).isEqualTo(5); // 형식 5 (서브타입)에도 짝은 그대로
 
         AccountDto target = member(fixture("pairs-import").user);
         long targetProject = target.getProjectId();

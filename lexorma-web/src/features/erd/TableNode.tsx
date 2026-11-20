@@ -1,5 +1,5 @@
-import { Fragment, memo } from 'react';
-import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
+import { Fragment, memo, useEffect, useRef } from 'react';
+import { Handle, Position, useStore, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { columnType, DIFF_LABEL, DIFF_MARK, diffClass, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, ROW_HEIGHT, SIMPLE_WIDTH_PX, type DiffKind, type NodeDiff, type TableNode as TableNodeType } from './model';
 import { t } from '../../lib/i18n';
 import { useErdExporting } from './exportImage';
@@ -25,11 +25,21 @@ export function DiffMark({ change }: { change?: DiffKind }) {
   return change ? <i title={DIFF_LABEL[change]}>{DIFF_MARK[change]}</i> : null;
 }
 
-export const TableNode = memo(function TableNode({ data, selected, isConnectable }: NodeProps<TableNodeType>) {
+export const TableNode = memo(function TableNode({ id, data, selected, isConnectable }: NodeProps<TableNodeType>) {
   const simple = useSimpleNodes();
   const { table, columns, diff, schemaPrefix } = data;
   const rows = columns.slice(0, MAX_ROWS);
   const rowTop = (i: number) => HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2;
+  // 컬럼 연결점은 확대해 컬럼이 보일 때만 생긴다. 노드 크기는 그대로라 React Flow 가 연결점을 다시 재지 않으므로, 연결점 구성이 바뀌면 알려 준다 —
+  // 축소 상태로 처음 그린 노드를 확대하면 컬럼 연결점에 붙는 관계선이 빠지던 문제 (M-2 개선 2차에 확인). 처음 그릴 때는 React Flow 가 잰다
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleKey = simple ? '' : rows.filter((c) => data.linkedColumns.has(c.id)).map((c) => c.id).join(',');
+  const measuredKey = useRef(handleKey);
+  useEffect(() => {
+    if (measuredKey.current === handleKey) return;
+    measuredKey.current = handleKey;
+    updateNodeInternals(id);
+  }, [handleKey, id, updateNodeInternals]);
 
   return (
     <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}`} style={{ width: NODE_WIDTH, height: nodeHeight(columns.length) }}>

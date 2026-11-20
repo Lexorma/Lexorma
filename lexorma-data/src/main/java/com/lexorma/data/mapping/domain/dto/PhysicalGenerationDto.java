@@ -20,7 +20,8 @@ public final class PhysicalGenerationDto {
     }
 
     /**
-     * status : CREATE(만든다) · SKIP(이미 매핑된 엔터티 — 덮어쓰지 않는다) · ERROR(막는 문제 — 하나라도 있으면 반영하지 않는다).
+     * status : CREATE(만든다) · SKIP(이미 매핑된 엔터티 — 덮어쓰지 않는다) · ERROR(막는 문제 — 하나라도 있으면 반영하지 않는다)
+     * · UNSUPPORTED(슈퍼타입·서브타입 구조에 참여 — 만들지 않지만 다른 엔터티의 반영은 막지 않는다, M-6 후속 5차).
      * columns 는 만들 순서 (P3 : 주 식별자 속성을 식별자 순서대로 먼저, 나머지는 속성 순서). attributes : 엔터티의 모든 속성과 제외 여부 (SKIP 이면 빈 목록)
      */
     public record TablePlan(Long entityId, String entityName, String status, String tableName, String schemaName, List<ColumnPlan> columns,

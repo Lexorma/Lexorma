@@ -67,6 +67,7 @@ public class ModelMappingQualityService {
     private final ModelMappingService mappingService;
     private final ModelMappingQueryRepository queryRepository;
     private final ProjectRepository projectRepository;
+    private final com.lexorma.data.logical.service.LogicalSubtypeService subtypeService;
 
     public Summary selectSummary(AccountDto accountDto, Long modelId) {
         // 엔터티·속성 수는 매핑 현황과 같은 집계를 쓴다 (없는 모델·다른 프로젝트의 모델은 여기서 거절된다)
@@ -74,7 +75,8 @@ public class ModelMappingQualityService {
         List<Row> rows = rows(accountDto.getProjectId(), new Search(modelId, null, null, null, null, null));
         return new Summary(status.modelId(), status.modelName(), status.totalEntities(), status.mappedEntities(), status.unmappedEntities(),
                 status.totalAttributes(), status.mappedAttributes(), status.unmappedAttributes(),
-                count(rows, CheckStatus.MATCH), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE), count(rows, CheckStatus.UNMAPPED));
+                count(rows, CheckStatus.MATCH), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE), count(rows, CheckStatus.UNMAPPED),
+                subtypeService.hierarchy(modelId).participants().size());
     }
 
     public Page<Row> selectRows(AccountDto accountDto, Search search, Pageable pageable) {
@@ -102,8 +104,11 @@ public class ModelMappingQualityService {
         // 속성명·컬럼명으로 찾을 때는 엔터티 단위 행(속성·컬럼이 없다)을 내지 않는다
         boolean entityRows = search.searchQuery() == null || search.searchQuery().isBlank()
                 || !("attributeName".equals(search.searchColumn()) || "columnName".equals(search.searchColumn()));
-        return diagnose(db, queryRepository.findQualitySources(projectId, search),
+        // 상속 구조 참여 엔터티 (D-48) : 판정은 그대로 두고 "상속 구조 전체는 검증하지 않음" 표시만 붙인다 (MISMATCH 로 바꾸지 않는다)
+        java.util.Set<Long> inheritance = subtypeService.hierarchy(search.modelId()).participants();
+        List<Row> rows = diagnose(db, queryRepository.findQualitySources(projectId, search),
                 queryRepository.findPrimaryIdentifierAttributes(projectId, search.modelId()), entityRows);
+        return inheritance.isEmpty() ? rows : rows.stream().map(row -> row.withInheritance(inheritance.contains(row.entityId()))).toList();
     }
 
     private static long count(List<Row> rows, CheckStatus status) {

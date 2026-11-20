@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react';
 import { t } from '../../lib/i18n';
+import type { Lane } from './relationLanes';
 
 /** GET /api/erd, /api/erd/neighbors/{tableId} (ErdDto.Graph) */
 export interface ErdTable {
@@ -27,6 +28,9 @@ export interface ErdColumn {
   isApproval: boolean | null;
   /** 표준 용어의 표준 도메인명 (용어가 없거나 삭제됐으면 null) */
   domainName: string | null;
+  /** 단일 컬럼 UNIQUE · 필수 입력 (M-2 개선 2차에 응답에 더해졌다) */
+  isUnique?: boolean | null;
+  isRequired?: boolean | null;
 }
 
 /** PhysicalModelDto.Relation : 컬럼 쌍은 복합 FK 순서대로. 상대 테이블은 조회 범위 밖일 수 있다 */
@@ -53,12 +57,46 @@ export const FK_RULES: FkRule[] = ['NO_ACTION', 'RESTRICT', 'CASCADE', 'SET_NULL
 /** 규칙 표시 : SQL 표기 그대로 (NO ACTION 등) */
 export const fkRuleText = (rule: FkRule | null | undefined) => (rule ?? 'NO_ACTION').replace('_', ' ');
 
+/**
+ * 물리 제약조건으로 판단한 관계 하나의 카디널리티 (ErdDto.Cardinality, M-2 개선 2차 D-08~D-10). 자식 = 참조하는 테이블, 부모 = 참조되는 테이블.
+ * 판단하지 못한 끝은 null 이고 reasons 에 사유 코드가 있다. 자식 쪽 최소는 FK 로 보장되지 않아 늘 판단하지 않는다
+ */
+export interface Cardinality {
+  parentMin: '0' | '1' | null;
+  parentMax: '1' | null;
+  childMax: '1' | 'N' | null;
+  identifying: 'IDENTIFYING' | 'PARTIAL' | 'NON_IDENTIFYING' | null;
+  reasons: CardinalityReason[];
+}
+export type CardinalityReason = 'LOGICAL_RELATION' | 'INVALID_REFERENCE' | 'COLUMNS_MISSING' | 'NULLABLE_UNKNOWN' | 'NULLABLE_MIXED';
+
+/**
+ * relationScope=INNER 로 받은 응답 : relations 는 양 끝이 범위 안인 관계만, outsideRelations 는 범위 안 테이블 ID → 범위 밖 상대와의 관계 수 (FK 1개 = 1),
+ * fkColumnIds 는 범위 안 테이블에서 FK 를 이루는 컬럼 (상대가 범위 밖이어도), cardinalities 는 relations 의 관계 ID → 카디널리티
+ */
 export interface ErdGraph {
   tables: ErdTable[];
   columns: ErdColumn[];
   relations: ErdRelation[];
   totalCount: number;
   truncated: boolean;
+  outsideRelations?: Record<string, number> | null;
+  fkColumnIds?: number[] | null;
+  cardinalities?: Record<string, Cardinality>;
+}
+
+/** GET /api/erd/tables : 테이블 찾기 */
+export interface TableHits {
+  items: { id: number; schemaId: number; schemaName: string; tableName: string; tableKorName: string | null }[];
+  totalCount: number;
+}
+
+/** GET /api/erd/tables/{id}/relations : 테이블 하나의 관계 목록 한 페이지 */
+export interface RelationPage {
+  items: ErdRelation[];
+  cardinalities: Record<string, Cardinality>;
+  tables: Record<string, ErdTable>;
+  totalCount: number;
 }
 
 export interface XY {
@@ -109,7 +147,8 @@ export type TableNodeData = {
   schemaPrefix?: string;
 };
 export type TableNode = Node<TableNodeData, 'table'>;
-export type RelationEdge = Edge<{ relation: ErdRelation }>;
+/** 관계선 하나 = FK 제약조건 하나 (M-2 개선 2차 D-07). lane : 같은 두 테이블(자기 참조는 한 테이블) 사이에서 관계 ID 순 몇 번째인지, tableEnds : 테이블 연결점에 붙었는지 */
+export type RelationEdge = Edge<{ relation: ErdRelation; lane: Lane; tableEnds: boolean; tooltip: string }, 'fk'>;
 
 export const NODE_WIDTH = 280;
 export const HEADER_HEIGHT = 52;

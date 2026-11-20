@@ -175,6 +175,7 @@ final class EnglishMessages {
 
         // ---------------------------------------------------------------- ERD
         add("한 번에 1~{0}개 테이블까지 조회할 수 있습니다.", "You can view 1 to {0} tables at a time.");
+        add("테이블 찾기는 1~{0}개까지 조회할 수 있습니다.", "Table search returns 1 to {0} tables at a time.");
         add("검색어는 {0}자까지 입력할 수 있습니다.", "The keyword can be up to {0} characters long.");
         add("이웃 탐색은 1~{0}단계까지 가능합니다.", "Neighbors can be explored 1 to {0} steps deep.");
         add("배치는 테이블 {0}개까지 저장할 수 있습니다.", "A layout can store up to {0} tables.");
@@ -923,5 +924,58 @@ final class EnglishMessages {
         add("주제 영역 배치가 너무 많습니다.", "There are too many subject area layouts.");
         add("주제 영역 배치의 영역 번호가 없거나 겹칩니다.", "A subject area layout has a missing or duplicate subject area ID.");
         add("주제 영역의 상위 영역이 올바르지 않습니다.", "The parent of a subject area is invalid.");
+
+        // ---------------------------------------------------------------- 논리 모델 슈퍼타입·서브타입 (M-6 후속 5차)
+        add("같은 슈퍼타입의 서브타입 그룹 이름이 겹칩니다 : {0}", "Subtype group names overlap under the same supertype: {0}");
+        add("같은 엔터티를 서브타입으로 두 번 지정할 수 없습니다.", "The same entity cannot be specified as a subtype twice.");
+        add("관계 {0} → {1} : 부모 엔터티가 슈퍼타입·서브타입 구조에 속해 FK 를 만들지 않습니다 (상속 구조의 물리 변환은 지원하지 않습니다).", "Relationship {0} → {1}: no FK is created because the parent entity belongs to a supertype/subtype structure (physical conversion of inheritance structures is not supported).");
+        add("관계 {0} 의 속성 짝이 엔터티 {1} 의 상속 주 식별자를 쓰고 있어 상속을 바꿀 수 없습니다. 속성 짝을 먼저 해제해주세요.", "The inheritance cannot be changed because the attribute pairs of relationship {0} use the inherited primary identifier of entity {1}. Remove the attribute pairs first.");
+        add("루트 슈퍼타입 {0} 에 주 식별자가 없어 서브타입 {1} 을(를) 승인할 수 없습니다.", "Subtype {1} cannot be approved because root supertype {0} has no primary identifier.");
+        add("배타(Disjoint) 그룹에서는 분류 값이 겹칠 수 없습니다 : {0}", "Classification values cannot overlap in a Disjoint group: {0}");
+        add("배타(Disjoint) 서브타입 그룹 {0} 의 분류 값이 겹칩니다.", "The classification values of Disjoint subtype group {0} overlap.");
+        add("배타성(Disjoint·Overlapping)을 선택해주세요.", "Select the disjointness (Disjoint or Overlapping).");
+        add("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 속성이어야 합니다. (ID {1})", "The parent attribute must be a primary identifier attribute (including inherited ones) of parent entity {0}. (ID {1})");
+        add("부모 엔터티 {0} 의 루트 슈퍼타입 {1} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", "Attribute pairs cannot be specified because root supertype {1} of parent entity {0} has no primary identifier.");
+        add("분류 값", "Classification value");
+        add("분류 속성은 슈퍼타입 {0} 의 유효 속성(직접 정의 또는 상속)이어야 합니다.", "The classification attribute must be an effective attribute (own or inherited) of supertype {0}.");
+        add("상속 계층의 엔터티 {0} 에 같은 이름의 속성 {1} 이(가) 있습니다.", "Entity {0} in the inheritance hierarchy already has an attribute with the same name: {1}.");
+        add("상속은 최대 {0}단계까지 가능합니다 : 엔터티 {1} 이(가) {2}단계가 됩니다.", "Inheritance is limited to {0} levels: entity {1} would be at level {2}.");
+        add("상속이 순환합니다 : {0} 은(는) 이미 {1} 의 상위 엔터티입니다.", "The inheritance forms a cycle: {0} is already an ancestor of {1}.");
+        add("상위 엔터티 {0} 이(가) 승인되지 않아 서브타입 {1} 을(를) 승인할 수 없습니다. 상위 엔터티를 먼저 승인해주세요.", "Subtype {1} cannot be approved because ancestor entity {0} is not approved. Approve the ancestor entity first.");
+        add("서브타입 {0} 에 자체 주 식별자가 있습니다. 서브타입은 슈퍼타입의 주 식별자를 상속합니다.", "Subtype {0} has its own primary identifier. A subtype inherits the primary identifier of its supertype.");
+        add("서브타입 {0} 은(는) 자체 주 식별자를 둘 수 없습니다. 루트 슈퍼타입 {1} 의 주 식별자를 상속합니다.", "Subtype {0} cannot have its own primary identifier. It inherits the primary identifier of root supertype {1}.");
+        add("서브타입 {0} 의 속성 이름이 상위 엔터티 {1} 의 속성과 겹칩니다 : {2}", "An attribute name of subtype {0} overlaps with an attribute of ancestor entity {1}: {2}");
+        add("서브타입 그룹 {0} 의 분류 속성은 슈퍼타입의 유효 속성이어야 합니다.", "The classification attribute of subtype group {0} must be an effective attribute of the supertype.");
+        add("서브타입 그룹 {0} 의 분류 속성이 상속 변경 뒤 슈퍼타입 {1} 의 유효 속성이 아니게 됩니다. 그룹의 분류 속성을 먼저 바꿔주세요.", "After the inheritance change, the classification attribute of subtype group {0} would no longer be an effective attribute of supertype {1}. Change the group's classification attribute first.");
+        add("서브타입 그룹 {0} 의 분류 속성입니다. 그룹의 분류 속성을 먼저 바꿔주세요.", "This is the classification attribute of subtype group {0}. Change the group's classification attribute first.");
+        add("논리 식별자 {0} 의 구성 속성은 같은 엔터티의 속성이어야 합니다 (상속 속성·다른 엔터티 속성 불가).", "The attributes of logical identifier {0} must belong to the same entity (inherited attributes and attributes of other entities are not allowed).");
+        add("서브타입 그룹 {0} 의 서브타입은 {1}개 이상이어야 합니다.", "Subtype group {0} must have at least {1} subtypes.");
+        add("서브타입 그룹 {0} 의 서브타입이 올바르지 않습니다 (같은 모델의 다른 엔터티·순서·분류 값).", "A subtype of subtype group {0} is invalid (another entity of the same model, order, classification value).");
+        add("서브타입 그룹 {0} 이(가) 올바르지 않습니다 (모델·슈퍼타입·이름·배타성·완전성).", "Subtype group {0} is invalid (model, supertype, name, disjointness, completeness).");
+        add("서브타입 상속은 최대 {0}단계까지 가능합니다 : {1}", "Subtype inheritance is limited to {0} levels: {1}");
+        add("서브타입 상속이 순환합니다 : {0}", "The subtype inheritance forms a cycle: {0}");
+        add("서브타입 엔터티를 골라주세요.", "Select a subtype entity.");
+        add("서브타입은 슈퍼타입과 같은 논리 모델의 엔터티여야 합니다.", "A subtype must be an entity of the same logical model as the supertype.");
+        add("서브타입을 {0}개 이상 지정해주세요.", "Specify at least {0} subtypes.");
+        add("슈퍼타입 엔터티를 골라주세요.", "Select a supertype entity.");
+        add("슈퍼타입·서브타입 구조의 물리 모델 변환은 현재 지원하지 않습니다.", "Physical model generation for supertype/subtype structures is not supported yet.");
+        add("슈퍼타입은 그룹과 같은 논리 모델의 엔터티여야 합니다.", "The supertype must be an entity of the same logical model as the group.");
+        add("승인된 엔터티 {0} 의 상속 정의는 바꿀 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "The inheritance definition of approved entity {0} cannot be changed. Revoke the approval and try again.");
+        add("승인된 하위 엔터티 {0} 이(가) 있어 {1} 의 승인을 취소할 수 없습니다. 하위 엔터티의 승인을 먼저 취소해주세요.", "The approval of {1} cannot be revoked because approved descendant entity {0} exists. Revoke the descendant's approval first.");
+        add("엔터티 {0} 에 자체 주 식별자 {1} 이(가) 있어 서브타입으로 연결할 수 없습니다. 서브타입은 슈퍼타입의 주 식별자를 상속합니다.", "Entity {0} cannot be linked as a subtype because it has its own primary identifier {1}. A subtype inherits the primary identifier of its supertype.");
+        add("엔터티 {0} 은(는) 서브타입 그룹 {1} 의 서브타입입니다. 상속을 먼저 해제해주세요.", "Entity {0} is a subtype of subtype group {1}. Remove the inheritance first.");
+        add("엔터티 {0} 은(는) 서브타입 그룹 {1} 의 슈퍼타입입니다. 서브타입 그룹을 먼저 삭제해주세요.", "Entity {0} is the supertype of subtype group {1}. Delete the subtype group first.");
+        add("엔터티 {0} 은(는) 이미 그룹 {1} 의 서브타입입니다. 엔터티 하나는 하나의 슈퍼타입만 가질 수 있습니다.", "Entity {0} is already a subtype of group {1}. An entity can have only one supertype.");
+        add("엔터티 {0} 은(는) 자기 자신의 서브타입이 될 수 없습니다.", "Entity {0} cannot be a subtype of itself.");
+        add("엔터티 {0} 의 상속 구조가 올바르지 않아 승인할 수 없습니다.", "Entity {0} cannot be approved because its inheritance structure is invalid.");
+        add("엔터티 {0} 의 속성 {1} 이(가) 상위 엔터티 {2} 의 속성 {3} 과(와) 이름이 같아 상속할 수 없습니다.", "Attribute {1} of entity {0} has the same name as attribute {3} of ancestor entity {2}, so it cannot inherit.");
+        add("엔터티 하나가 서브타입 그룹 여러 개에 속할 수 없습니다 (단일 상속) : {0}", "An entity cannot belong to more than one subtype group (single inheritance): {0}");
+        add("완전성(Total·Partial)을 선택해주세요.", "Select the completeness (Total or Partial).");
+        add("저장할 서브타입 그룹이 없습니다.", "There is no subtype group to save.");
+        add("형식 버전 {0} 파일에는 서브타입 그룹이 들어갈 수 없습니다.", "A format version {0} file cannot contain subtype groups.");
+        add("서브타입 그룹", "Subtype group");
+        add("속성 {0} 은(는) 엔터티 {1} 에 정의된 속성입니다. 정의한 엔터티에서 수정해주세요.", "Attribute {0} is defined in entity {1}. Edit it in the entity that defines it.");
+        add("식별자 {0} 은(는) 엔터티 {1} 에 정의된 식별자입니다. 정의한 엔터티에서 수정해주세요.", "Identifier {0} is defined in entity {1}. Edit it in the entity that defines it.");
+        add("승인된 하위 엔터티 {0} 이(가) 엔터티 {1} 의 정의를 상속하고 있습니다. 하위 엔터티의 승인을 먼저 취소해주세요.", "Approved descendant entity {0} inherits the definition of entity {1}. Revoke the descendant's approval first.");
     }
 }

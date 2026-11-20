@@ -5,7 +5,8 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { api } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
-import { columnType, FK_RULES, fkRuleText, type ErdColumn, type ErdRelation, type ErdTable, type FkRule } from './model';
+import { columnType, FK_RULES, fkRuleText, type Cardinality, type ErdColumn, type ErdRelation, type ErdTable, type FkRule } from './model';
+import { childText, IDENTIFYING_TEXT, parentText, REASON_TEXT } from './cardinality';
 
 /**
  * 물리 ERD 편집 (M-8 3차) 의 대화상자·패널. 저장은 모두 기존 물리 모델 API(/api/physical)다 — 테이블 관리·DDL 생성이 같은 데이터를 읽는다.
@@ -238,8 +239,10 @@ function FkRuleFields({ idPrefix, deleteRule, updateRule, onDelete, onUpdate, di
 // ------------------------------------------------------------------ 관계 패널
 
 /** 선택한 관계선의 상세. 편집 모드에서 삭제, 승인 권한자에게 승인·승인취소 */
-export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, onDelete, onRulesChanged }: {
+export function RelationPanel({ relation: r, cardinality, outOfScope, onTable, onApproval, onDelete, onRulesChanged }: {
   relation: ErdRelation;
+  /** 저장된 제약조건으로 판단한 카디널리티 (M-2 개선 2차). 없으면 표시하지 않는다 */
+  cardinality?: Cardinality;
   /** 상대 테이블이 조회 범위 밖인지 (선은 그리지 않는다) */
   outOfScope: boolean;
   onTable: (tableId: number) => void;
@@ -296,6 +299,7 @@ export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, on
       ) : (
         <p className="erd-muted">{t('ON DELETE {0} · ON UPDATE {1}', fkRuleText(r.deleteRule), fkRuleText(r.updateRule))}</p>
       ))}
+      {cardinality && <CardinalityInfo cardinality={cardinality} />}
       <h4>{t('컬럼 대응 {0}쌍', r.columns.length)}</h4>
       <ol className="erd-pairs">
         {r.columns.map((p, i) => <li key={i}><Mono>{r.sourceTableName}.{p.sourceColumnName}</Mono> → <Mono>{r.targetTableName}.{p.targetColumnName}</Mono></li>)}
@@ -303,6 +307,24 @@ export function RelationPanel({ relation: r, outOfScope, onTable, onApproval, on
       {outOfScope && <p className="erd-muted">{t('상대 테이블이 조회 범위 밖이라 선은 그리지 않습니다.')}</p>}
       <p className="erd-muted">{t('관계의 컬럼 구성은 수정할 수 없습니다. 바꾸려면 삭제한 뒤 다시 등록합니다. FK 규칙은 편집 모드에서 바꿀 수 있습니다 (승인된 관계는 승인 취소 후).')}</p>
     </>
+  );
+}
+
+/**
+ * 카디널리티 (M-2 개선 2차 D-08~D-10) : 저장된 PK·UNIQUE·NULL 허용으로 서버가 판단한 값과 판단하지 못한 사유.
+ * 업무상 최소 참여 수(부모에 자식이 꼭 있어야 하는지)는 FK 로 보장되지 않으므로 늘 "확인할 수 없음" 으로 적는다
+ */
+function CardinalityInfo({ cardinality: c }: { cardinality: Cardinality }) {
+  return (
+    <div className="erd-cardinality">
+      <h4>{t('카디널리티 (물리 제약조건 기준)')}</h4>
+      <dl className="dict-detail">
+        <dt>{t('부모 쪽')}</dt><dd>{parentText(c)}</dd>
+        <dt>{t('자식 쪽')}</dt><dd>{childText(c)} · {t('최소 참여 수는 물리 FK 로 확인할 수 없습니다')}</dd>
+        <dt>{t('식별 여부')}</dt><dd>{c.identifying ? IDENTIFYING_TEXT[c.identifying] : t('판단 불가')}</dd>
+      </dl>
+      {c.reasons.map((reason) => <p key={reason} className="erd-muted">{REASON_TEXT[reason]}</p>)}
+    </div>
   );
 }
 

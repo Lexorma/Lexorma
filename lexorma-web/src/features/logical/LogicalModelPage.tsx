@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, SkeletonRows } from '../../components/grid/cells';
-import { PAGE_SIZES, Paging } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
@@ -18,6 +17,8 @@ import {
   cardinalityText, manageQueryKey, participation, useLogicalModels,
   type GridPage, type LogicalEntity, type LogicalEntityRow, type LogicalModel, type LogicalModelSummary, type LogicalRelationship,
 } from './model';
+import { ApprovalLabel, ListStatus, PageNav, SortHeader, useLastPage } from './listParts';
+import { SubtypeGroupTab } from './SubtypePanel';
 import '../../styles/logical.css';
 
 /**
@@ -25,6 +26,7 @@ import '../../styles/logical.css';
  * 조회는 VIEWER, 변경 버튼은 USER 이상(logical-model-edit), 승인은 승인 권한자 — 서버 API 가 같은 기준으로 다시 검사한다.
  * M-6 후속 3차 : 전체 그래프(/erd)를 받지 않는다 — 상단 수는 요약 API, 엔터티·관계 목록은 서버 페이지(검색·정렬·수 집계는 서버), 엔터티는 열 때 상세를 받는다.
  * M-6 후속 4차 : 왼쪽 주제 영역 패널(전체·미분류·계층)로 목록 범위를 고르고, 엔터티를 골라 분류를 바꾼다 (별도 메뉴 없음). 영역은 ID 로 고른다.
+ * M-6 후속 5차 : 서브타입 그룹 탭 (슈퍼타입·서브타입 — 모델 전체 기준, 주제 영역 범위와 무관)
  */
 export function LogicalModelPage() {
   const dialog = useDialog();
@@ -125,7 +127,7 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
   const canEdit = canView('logical-model-edit');
   const openEntityDetail = useEntityDetail();
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<'entities' | 'relationships'>('entities');
+  const [tab, setTab] = useState<'entities' | 'relationships' | 'subtypes'>('entities');
   const summary = useModelSummary(model.id);
   const key = manageQueryKey(user?.projectId, model.id);
 
@@ -372,7 +374,19 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
         <li className="nav-item">
           <a href="#logical-relationships" className={`nav-link${tab === 'relationships' ? ' active' : ''}`} onClick={(e) => { e.preventDefault(); setTab('relationships'); }}>{t('관계 ({0})', count(summary.data?.relationshipCount))}</a>
         </li>
+        <li className="nav-item">
+          <a href="#logical-subtypes" className={`nav-link${tab === 'subtypes' ? ' active' : ''}`} onClick={(e) => { e.preventDefault(); setTab('subtypes'); }}>{t('서브타입 그룹')}</a>
+        </li>
       </ul>
+
+      {tab === 'subtypes' && (
+        <>
+          {filter.kind !== 'all' && <p className="gh-muted subtype-note">{t('서브타입 그룹은 주제 영역 범위와 관계없이 모델 전체를 보여 줍니다.')}</p>}
+          <SubtypeGroupTab model={model} onChanged={refresh} openEntity={openEntity} />
+        </>
+      )}
+      {tab !== 'subtypes' && (
+      <>
 
       <div className="grid-header mt-3">
         {tab === 'entities' && (
@@ -535,51 +549,8 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
           </>
         )}
       </div>
-      </div>
-    </div>
-  );
-}
-
-interface PageState {
-  page: number;
-  size: number;
-}
-
-/** 빈 페이지인데 앞에 데이터가 있으면 마지막 페이지로 (삭제·검색으로 줄어든 경우) */
-function useLastPage(data: GridPage<unknown> | undefined, state: PageState, set: (update: (p: PageState) => PageState) => void) {
-  useEffect(() => {
-    if (!data || data.data.length > 0 || state.page === 0) return;
-    const last = Math.max(0, Math.ceil(data.recordsTotal / state.size) - 1);
-    if (last !== state.page) set((p) => ({ ...p, page: last }));
-  }, [data, state.page, state.size]);
-}
-
-/** 목록 위 줄 : 페이지 크기(공용 그리드와 같은 선택지)와 건수 */
-function ListStatus({ size, onSize, text, loading }: { size: number; onSize: (size: number) => void; text: string; loading: boolean }) {
-  return (
-    <div className="dt-layout-row">
-      <div className="dt-layout-cell dt-layout-start">
-        <div className="dt-length">
-          <label>
-            {t('페이지당')}{' '}
-            <select className="dt-input" value={size} onChange={(e) => onSize(Number(e.target.value))}>
-              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>{' '}
-            {t('행 표시')}
-          </label>
-          <span className="gh-muted logical-list-count" role="status">{text}{loading ? ` · ${t('불러오는 중입니다.')}` : ''}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PageNav({ data, state, onPage }: { data: GridPage<unknown> | undefined; state: PageState; onPage: (page: number) => void }) {
-  const pageCount = Math.max(1, Math.ceil((data?.recordsTotal ?? 0) / state.size));
-  return (
-    <div className="dt-layout-row">
-      <div className="dt-layout-cell dt-layout-end">
-        <Paging page={Math.min(state.page, pageCount - 1)} pageCount={pageCount} onChange={onPage} />
+      </>
+      )}
       </div>
     </div>
   );
@@ -593,17 +564,6 @@ const ENTITY_GRID_MIN_WIDTH = 1040;
 const RELATIONSHIP_GRID_MIN_WIDTH = 960;
 const RELATIONSHIP_GRID_MIN_WIDTH_MANAGED = 1120;
 
-/** 정렬할 수 있는 머리글 (공용 그리드와 같은 표시·aria-sort). onSort 가 없으면 정렬하지 않는 열 */
-function SortHeader({ label, ordering, onSort }: { label: string; ordering: 'asc' | 'desc' | null; onSort?: () => void }) {
-  if (!onSort) return <th className="text-start no-sort">{label}</th>;
-  return (
-    <th className={`text-start dt-orderable-asc dt-orderable-desc${ordering ? ` dt-ordering-${ordering}` : ''}`} onClick={onSort}
-      aria-sort={ordering === 'asc' ? 'ascending' : ordering === 'desc' ? 'descending' : undefined}>
-      <div className="dt-column-header"><span className="dt-column-title">{label}</span><span className="dt-column-order" /></div>
-    </th>
-  );
-}
-
 /**
  * 목록 컬럼 폭 (고정) : 엔터티 6열, 관계 7열 + 관리. 머리글은 줄바꿈하므로(logical.css) 한 단어(영어 'Relationships' 등)가 최소 폭에서 들어가는 비율로 잡는다 (후속 3차 보완)
  */
@@ -611,10 +571,6 @@ const ENTITY_WIDTHS = ['19%', '22%', '17%', '9%', '9%', '11%', '13%'];
 const RELATIONSHIP_WIDTHS = ['16%', '17%', '17%', '12%', '10%', '14%', '14%'];
 const RELATIONSHIP_WIDTHS_MANAGED = ['13%', '14%', '14%', '11%', '9%', '11%', '11%', '17%'];
 
-
-function ApprovalLabel({ value }: { value: boolean | null }) {
-  return value ? <Label variant="success" dot>{t('승인')}</Label> : <Label variant="attention" dot>{t('승인 대기')}</Label>;
-}
 
 function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: LogicalModel) => void }) {
   const dialog = useDialog();

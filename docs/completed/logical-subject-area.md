@@ -157,7 +157,7 @@ FK (모두 단일 컬럼, 삭제 규칙 없음 — 지울 때는 서비스가 �
 
 ## 16. 변경 이력
 
-`ModelChangeRecorder` 에 두 종류 : `LOGICAL_SUBJECT_AREA`(model·parent(Id·Name)·areaName·areaDescription·sortOrder — 등록·이름·설명·이동·순서·삭제) 와 `SUBJECT_AREA_ENTITY`(subjectArea·entity — 지정 CREATE, 이동 UPDATE, 해제 DELETE, 목록 이름 "엔터티 ∈ 영역"). 분류는 `LOGICAL_ENTITY` 이력을 만들지 않는다. 일괄 분류는 한 변경 그룹에 엔터티마다 한 건, 롤백된 요청·변경 없는 재지정은 이력이 없다. 개인 배치는 이력 대상이 아니다.
+`ModelChangeRecorder` 에 두 종류 : `LOGICAL_SUBJECT_AREA`(model·parent(Id·Name)·areaName·areaDescription·sortOrder — 등록·이름·설명·이동·순서·삭제) 와 `SUBJECT_AREA_ENTITY`(subjectArea·entity — 지정 CREATE, 이동 UPDATE, 해제 DELETE, 목록 이름 "엔터티 ∈ 영역"). 분류는 `LOGICAL_ENTITY` 이력을 만들지 않는다. 일괄 분류는 한 변경 그룹에 엔터티마다 한 건, 롤백된 요청·변경 없는 재지정은 이력이 없다. 개인 배치는 이력 대상이 아니다. 변경 이력 화면의 표시 이름(대상 유형 '주제 영역'·'주제 영역 소속', 소속 행의 작업 '분류'·'소속 변경'·'분류 해제', 필드 이름 — 한·영)은 처음에 빠져 있어 M-6 최종 보완(2026-11-20, [logical-subtype.md 0.7](logical-subtype.md))에서 더했다. 저장된 이력 코드·데이터는 그대로라 예전 이력도 같은 이름으로 보인다.
 
 ## 17. 모델 버전
 
@@ -206,7 +206,7 @@ FK (모두 단일 컬럼, 삭제 규칙 없음 — 지울 때는 서비스가 �
 
 - **Flyway** : 이번 마이그레이션은 `V2__logical_subject_area.sql`, 다음 스키마 변경은 **V3**. 인덱스에 스테이징만 남은 `V2__remove_default_admin.sql`(작업 트리에서는 삭제됨)은 **사용자가 커밋 전에 직접 처리**한다 — Claude 는 스테이징을 바꾸지 않는다 (§3). V0·V1·V2 는 수정하지 않는다.
 - **MCP·AI 도구 연계 (후속 개선, 이번 범위 아님 — 기존 AI·MCP 정책 그대로)** : MCP `getLogicalModel`·AI 메타데이터 도구에서 ① 주제 영역 목록·계층 ② 엔터티 소속 ③ 주제 영역별 엔터티·관계 조회 ④ 업무 영역별 품질 진단·분석을 쓸 수 있게 하는 것.
-- **미검증 (완료로 보지 않는다)** : 대규모 형식 4 Import 성능(파일 객체 한도 50,000 을 넘는 크기는 측정하지 않음), 브라우저 렌더링 시간·메모리 사용량, Safari·Firefox 호환성(Chrome 헤드리스만), 기존 토스트 전용 회귀 스크립트(UI-1 후속의 bizCheck·memApp 등 — 다시 돌리지 않음), 전체 `./gradlew build`(npm ci 포함 — 실행 중인 개발 서버의 node_modules 보호를 위해 `npm run build` + `bootJar` 로 대신), Linux CI.
+- **미검증 (완료로 보지 않는다)** : M-6 최종 보완(2026-11-20, [logical-subtype.md 0.7](logical-subtype.md))에서 브라우저 렌더링·메모리(짧은 반복), 전체 `./gradlew build`(격리 복사본에서 npm ci 포함), 한·영 × 라이트·다크 × 1440·375 와 역할별 화면, 형식 5 Import(객체 35,287개까지)를 확인했다. 남은 미검증 : Safari·Firefox 호환성(Chromium 만), 기존 토스트 전용 회귀 스크립트(bizCheck·memApp — 최종 보완의 토스트·409 대화상자 확인으로 대신), 파일 객체 한도 50,000 을 넘는 크기(측정하지 않음 — 한도 그대로), Linux CI.
 - **실제 검증한 것** (§20) : H2 전체 1,090건 실패 0 · 건너뜀 48, PostgreSQL 18.6 전체 1,090건 실패 0 · 건너뜀 32, `npm run typecheck`·`npm run build`, `bootJar` 빌드와 그 JAR 로 띄운 임시 앱(신규 설치 V0~V2 적용, 브라우저·HTTP 검증).
 
 ## 22. 제외 범위

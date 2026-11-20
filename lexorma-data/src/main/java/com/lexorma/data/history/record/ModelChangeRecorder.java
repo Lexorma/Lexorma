@@ -16,6 +16,8 @@ import com.lexorma.data.logical.domain.entity.LogicalRelationship;
 import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalSubjectArea;
 import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaEntity;
+import com.lexorma.data.logical.domain.entity.LogicalSubtype;
+import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -139,7 +141,10 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             Map.entry(LogicalSubjectArea.class, new Tracked(TargetType.LOGICAL_SUBJECT_AREA, "areaName", null,
                     List.of("model", "parent", "areaName", "areaDescription", "sortOrder"))),
             Map.entry(LogicalSubjectAreaEntity.class, new Tracked(TargetType.SUBJECT_AREA_ENTITY, null, null,
-                    List.of("subjectArea", "entity"))));
+                    List.of("subjectArea", "entity"))),
+            // 서브타입 그룹 (M-6 후속 5차) : 구성원은 그룹 이력의 subtypes 배열 (추가·제거·분류 값·순서). 상속 속성·식별자는 행이 없어 하위 엔터티마다 이력을 만들지 않는다
+            Map.entry(LogicalSubtypeGroup.class, new Tracked(TargetType.SUBTYPE_GROUP, "groupName", null,
+                    List.of("model", "supertypeEntity", "groupName", "groupDescription", "overlapping", "total", "classificationAttribute", "sortOrder"))));
 
     private static final Map<Class<?>, Child> CHILDREN = Map.of(
             TableRelationColumn.class, new Child(TableRelation.class, "relation", "columns", "columnOrder", List.of("sourceColumn", "targetColumn", "columnOrder")),
@@ -152,7 +157,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             PhysicalViewColumn.class, new Child(PhysicalView.class, "view", "columns", "columnOrder",
                     List.of("columnName", "columnKorName", "dataType", "columnOrder", "columnDescription")),
             PhysicalViewReference.class, new Child(PhysicalView.class, "view", "references", "id",
-                    List.of("referenceType", "referencedTable", "referencedView", "schemaName", "objectName")));
+                    List.of("referenceType", "referencedTable", "referencedView", "schemaName", "objectName")),
+            LogicalSubtype.class, new Child(LogicalSubtypeGroup.class, "group", "subtypes", "sortOrder", List.of("subtypeEntity", "classificationValue", "sortOrder")));
 
     /** 이름 스냅샷을 남기는 연관 대상 → 이름 속성. 여기 없는 대상(매핑 등)은 ID 만 남는다 */
     private static final Map<Class<?>, String> NAME_FIELDS = Map.of(
@@ -662,6 +668,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                 case TABLE_MAPPING -> joined(" ↔ ", shown.get("entityName"), shown.get("tableName"));
                 case COLUMN_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
                 case SUBJECT_AREA_ENTITY -> joined(" ∈ ", shown.get("entityName"), shown.get("subjectAreaName"));
+                case SUBTYPE_GROUP -> joined(" / ", shown.get("supertypeEntityName"), shown.get("groupName"));
                 default -> (String) shown.get(tracked.nameField());
             };
         }

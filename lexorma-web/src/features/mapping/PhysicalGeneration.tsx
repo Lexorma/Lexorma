@@ -11,7 +11,7 @@ interface EntitySummary { id: number; entityName: string }
 interface ColumnPlan { attributeId: number; attributeName: string; columnName: string; dataType: string; maxLength: number | null; precision: number | null; scale: number | null; pk: boolean; nullable: boolean; refTableName: string | null }
 interface AttributeChoice { attributeId: number; attributeName: string; primary: boolean; excluded: boolean; excludeRequested: boolean; foreignKey: boolean }
 interface TablePlan {
-  entityId: number; entityName: string; status: 'CREATE' | 'SKIP' | 'ERROR'; tableName: string | null; schemaName: string; columns: ColumnPlan[]; errors: string[]; warnings: string[];
+  entityId: number; entityName: string; status: 'CREATE' | 'SKIP' | 'ERROR' | 'UNSUPPORTED'; tableName: string | null; schemaName: string; columns: ColumnPlan[]; errors: string[]; warnings: string[];
   attributes: AttributeChoice[];
 }
 export interface GenerationResult { tables: number; columns: number; tableIds: number[]; versionId: number | null; versionName: string | null; foreignKeys: number }
@@ -147,7 +147,10 @@ export function PhysicalGeneration({ modelId, schemas, onDone }: { modelId: numb
             return (
               <section key={tp.entityId} style={{ marginBottom: 8 }}>
                 <p><strong>{tp.entityName}</strong> → <span className={`gh-mono${flagged(null) ? ' gen-ident-flag' : ''}`}>{tp.tableName ?? '-'}</span>{' '}
-                  <Label variant={tp.status === 'CREATE' ? 'success' : tp.status === 'SKIP' ? 'attention' : 'danger'}>{tp.status === 'CREATE' ? t('생성') : tp.status === 'SKIP' ? t('건너뜀') : t('오류')}</Label></p>
+                  {/* UNSUPPORTED (M-6 후속 5차) : 슈퍼타입·서브타입 구조 — 만들지 않지만 다른 엔터티의 생성은 막지 않는다 */}
+                  <Label variant={tp.status === 'CREATE' ? 'success' : tp.status === 'SKIP' || tp.status === 'UNSUPPORTED' ? 'attention' : 'danger'}>
+                    {tp.status === 'CREATE' ? t('생성') : tp.status === 'SKIP' ? t('건너뜀') : tp.status === 'UNSUPPORTED' ? t('미지원 (상속 구조)') : t('오류')}
+                  </Label></p>
                 {[...tp.errors, ...tp.warnings].length > 0 && <ul className="gh-muted">{[...tp.errors, ...tp.warnings].map((m) => <li key={m}>{m}</li>)}</ul>}
                 {tp.attributes.length > 0 && (
                   <details className="gen-attributes">

@@ -54,19 +54,41 @@ public final class ModelMappingQualityDto {
      * 진단 결과 1건 = 매핑된 속성 1개의 진단 유형 1개, 또는 매핑하지 않은 엔터티·속성 1개 (MAPPING / UNMAPPED).
      * 엔터티 단위 행은 attributeId 가 null 이다. id 는 그리드 행 키. reason 은 일치일 때 null
      */
+    /**
+     * inheritance (M-6 후속 5차, D-48) : 엔터티가 슈퍼타입·서브타입 구조에 참여한다. 이 행의 판정은 직접 정의 속성 ↔ 매핑 컬럼만 본 것이고(판정은 그대로),
+     * 상속 구조 전체(상속 속성·상속 주 식별자 ↔ 물리 PK·FK)의 물리 정합성은 검증하지 않았다는 뜻이다
+     */
     public record Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
                       Long attributeId, String attributeName,
                       Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
-                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason) {
+                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance) {
+        public Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
+                   Long attributeId, String attributeName,
+                   Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
+                   CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason) {
+            this(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
+                    type, status, logicalValue, physicalValue, reason, false);
+        }
+
+        public Row withInheritance(boolean value) {
+            return new Row(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
+                    type, status, logicalValue, physicalValue, reason, value);
+        }
     }
 
     /**
      * 모델 1개의 요약. 엔터티·속성 수는 매핑 현황(ModelMappingDto.Status)과 같은 값이다.
      * match·mismatch·notComparable 은 매핑된 속성의 진단 건수(속성 × 진단 유형), unmapped = unmappedEntities + unmappedAttributes
      */
+    /** inheritanceEntities (M-6 후속 5차, D-48) : 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 — 그 엔터티들의 상속 구조 전체 물리 정합성은 검증하지 않는다 */
     public record Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
                           long totalAttributes, long mappedAttributes, long unmappedAttributes,
-                          long match, long mismatch, long notComparable, long unmapped) {
+                          long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities) {
+        public Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
+                       long totalAttributes, long mappedAttributes, long unmappedAttributes,
+                       long match, long mismatch, long notComparable, long unmapped) {
+            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped, 0);
+        }
     }
 
     /** 진단 목록 조건. modelId 는 필수. searchColumn : entityName / attributeName / columnName */

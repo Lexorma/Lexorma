@@ -21,6 +21,7 @@ import com.lexorma.data.logical.domain.dto.LogicalModelDto;
 import com.lexorma.data.logical.domain.entity.LogicalRelationship;
 import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
 import com.lexorma.data.logical.repository.LogicalRelationshipAttributeRepository;
+import com.lexorma.data.logical.service.LogicalHierarchy;
 import com.lexorma.data.logical.service.LogicalRelationshipPairs;
 import com.lexorma.data.logical.repository.LogicalEntityRepository;
 import com.lexorma.data.logical.repository.LogicalModelRepository;
@@ -82,6 +83,9 @@ import java.util.regex.Pattern;
  *   <li>식별자 진단 : 만들 테이블·컬럼 이름, DDL 이 만들 PK 제약조건명(대상 스키마의 기존 이름과의 충돌 포함), 대상 스키마 이름을 프로젝트 DBMS 기준으로 판정한다
  *       ({@link DbIdentifierCheck}). 경고만 하고 생성 가능 여부(creatable)는 바꾸지 않는다. 미승인 엔터티·관계도 만들되 경고한다 (P15)</li>
  *   <li>막는 문제 : 이름을 만들 수 없음, 옮길 스키마에 같은 이름의 테이블·VIEW, 계획 안의 테이블명·컬럼명 중복, 용어 없음, 도메인 타입 없음. 이미 매핑된 엔터티는 건너뛴다(덮어쓰지 않는다)</li>
+ *   <li>슈퍼타입·서브타입 (M-6 후속 5차, D-32·D-45) : 상속 구조에 참여하는 엔터티(슈퍼타입·서브타입·중간 엔터티)는 물리 변환 전략이 없어 UNSUPPORTED 로 만들지 않는다 —
+ *       나머지 엔터티의 생성은 막지 않는다(ERROR 가 아니다). 부모가 상속 구조에 참여하는 관계의 FK 도 UNSUPPORTED · INHERITANCE_UNSUPPORTED. 계획 근거(planToken v6)에
+ *       엔터티·부모의 상태가 들어가므로 미리보기 뒤 상속에 연결되면 반영이 409 로 거절된다 (반영은 모델 행을 잠근 뒤 다시 계획한다)</li>
  *   <li>컬럼 순서 (P3, M-7 보강 2차) : 주 식별자 속성을 식별자의 속성 순서(SORT_ORD, 같으면 식별자 속성 ID)대로 먼저, 나머지는 속성 순서(SORT_ORD, ID). 컬럼 정렬 순서가
  *       DDL 의 PK 순서라 복합 PK 가 논리 식별자 순서가 된다. 새로 만드는 테이블에만 적용 (기존 테이블·매핑은 그대로, 식별자 ↔ PK 강제 일치 없음)</li>
  *   <li>속성 고르기 (P7) : 요청의 excludedAttributeIds 는 만들지 않는다 (컬럼·매핑·용어/도메인 검사 모두에서 빠진다). 주 식별자 속성은 제외를 요청해도 만든다 (서버 정규화 + 경고).
@@ -115,6 +119,7 @@ public class PhysicalGenerationService {
     private final ModelVersionService versionService;
     private final LogicalRelationshipAttributeRepository pairRepository;
     private final com.lexorma.data.physical.service.PhysicalModelService physicalModelService;
+    private final com.lexorma.data.logical.service.LogicalSubtypeService subtypeService;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -255,7 +260,15 @@ public class PhysicalGenerationService {
         Map<Long, Optional<EntityTableMapping>> mappingByEntity = new HashMap<>();
         chosen.forEach(e -> mappingByEntity.put(e.getId(), Optional.empty()));
         entityMappings.findAllByEntityIds(mappingByEntity.keySet()).forEach(m -> mappingByEntity.put(m.getEntity().getId(), Optional.of(m)));
+        LogicalHierarchy inheritance = subtypeService.hierarchyOf(chosen.stream().map(e -> e.getModel().getId()).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new)));
         for (LogicalEntity entity : chosen) {
+            // 상속 구조 참여 엔터티 : 만들지 않는다 (일반 엔터티로 만들면 상속 의미가 사라진다). 이미 매핑돼 있어도 같은 사유 — 매핑은 그대로 둔다
+            if (inheritance.participates(entity.getId())) {
+                mappingByEntity.get(entity.getId()).ifPresent(m -> tableNameByEntity.put(entity.getId(), m.getTable().getTableName()));
+                skipped.put(entity.getId(), new PhysicalGenerationDto.TablePlan(entity.getId(), entity.getEntityName(), "UNSUPPORTED", null, schema.getSchemaName(), List.of(), List.of(),
+                        List.of(Messages.get("슈퍼타입·서브타입 구조의 물리 모델 변환은 현재 지원하지 않습니다.")), List.of()));
+                continue;
+            }
             var existing = mappingByEntity.get(entity.getId());
             if (existing.isPresent()) {
                 tableNameByEntity.put(entity.getId(), existing.get().getTable().getTableName());
@@ -274,9 +287,10 @@ public class PhysicalGenerationService {
         List<PhysicalGenerationDto.TablePlan> result = new ArrayList<>();
         // 스키마는 이름으로 (기본 스키마는 처음 조회 때 만들어질 수 있다). v2 : FK 추론 중단 + DBMS·식별자 진단·관계 계획 (M-7 보강 1차),
         // v3 : 정규화된 속성 선택·컬럼 순서 (2차), v4 : 관계는 속성 짝 상태로 (3차), v5 : FK 생성 계획 — 짝·컬럼·유형·이름·부모 테이블 (4차)
-        StringBuilder canonical = new StringBuilder("v5|").append(schema.getSchemaName()).append('|').append(db).append('|');
+        // v6 : 상속 구조 참여 엔터티(UNSUPPORTED)·부모가 참여하는 관계 (M-6 후속 5차)
+        StringBuilder canonical = new StringBuilder("v6|").append(schema.getSchemaName()).append('|').append(db).append('|');
         // 관계 → FK 계획을 테이블보다 먼저 정한다 : READY 관계의 자식 속성은 반드시 만든다 (P7), 일반 단일 FK 는 자식 컬럼의 참조 테이블명이 된다
-        List<PhysicalGenerationDto.RelationPlan> relationPlans = relationPlans(db, schema, chosen, skipped.keySet(), tableNameByEntity, mappingByEntity, canonical);
+        List<PhysicalGenerationDto.RelationPlan> relationPlans = relationPlans(db, schema, chosen, skipped.keySet(), tableNameByEntity, mappingByEntity, canonical, inheritance);
         Map<Long, Set<Long>> foreignKeyAttributes = new HashMap<>();
         Map<Long, String> refTableByAttribute = new HashMap<>();
         relationPlans.stream().filter(PhysicalGenerationDto.RelationPlan::fkCreated).forEach(r -> {
@@ -287,7 +301,7 @@ public class PhysicalGenerationService {
             canonical.append(entity.getId()).append('@').append(entity.modifiedAt()).append(';');
             if (skipped.containsKey(entity.getId())) {
                 result.add(skipped.get(entity.getId()));
-                canonical.append("SKIP;");
+                canonical.append(skipped.get(entity.getId()).status()).append(';');
                 continue;
             }
             List<String> errors = new ArrayList<>();
@@ -371,7 +385,7 @@ public class PhysicalGenerationService {
      */
     private List<PhysicalGenerationDto.RelationPlan> relationPlans(DbType db, SchemaInfo schema, List<LogicalEntity> chosen, Set<Long> skipped,
                                                                    Map<Long, String> tableNameByEntity, Map<Long, Optional<EntityTableMapping>> mappingByEntity,
-                                                                   StringBuilder canonical) {
+                                                                   StringBuilder canonical, LogicalHierarchy inheritance) {
         Map<Long, List<LogicalRelationship>> byModel = new HashMap<>();
         List<PhysicalGenerationDto.RelationPlan> plans = new ArrayList<>();
         Map<Long, List<LogicalRelationshipAttribute>> pairsByRelationship = new HashMap<>();
@@ -392,7 +406,9 @@ public class PhysicalGenerationService {
             for (LogicalRelationship relationship : incoming) {
                 LogicalEntity parent = relationship.getSourceEntity();
                 boolean self = parent.getId().equals(child.getId());
-                LogicalModelDto.PairState pairState = LogicalRelationshipPairs.evaluate(relationship, pairsByRelationship.getOrDefault(relationship.getId(), List.of()));
+                // 짝 판정은 유효 주 식별자로 (서브타입 부모는 루트의 주 식별자 — 상속 구조는 아래에서 UNSUPPORTED 가 된다)
+                LogicalModelDto.PairState pairState = LogicalRelationshipPairs.evaluate(relationship, pairsByRelationship.getOrDefault(relationship.getId(), List.of()),
+                        e -> LogicalRelationshipPairs.primaryKeyIds(inheritance.parent(e.getId()) == null ? e : entities.findById(inheritance.root(e.getId())).orElse(e)));
                 List<LogicalRelationshipAttribute> pairs = pairsByRelationship.getOrDefault(relationship.getId(), List.of()).stream()
                         .sorted(Comparator.comparing(LogicalRelationshipAttribute::getSortOrder)).toList();
                 String childTable = tableNameByEntity.get(child.getId());
@@ -415,6 +431,11 @@ public class PhysicalGenerationService {
                         .map(EntityTableMapping::getTable).orElse(null);
                 String parentTable = parentNew ? tableNameByEntity.get(parent.getId()) : parentExisting == null ? null : parentExisting.getTableName();
                 List<PhysicalGenerationDto.FkColumn> columns = new ArrayList<>();
+                if (inheritance.participates(parent.getId())) {
+                    // 부모가 슈퍼타입·서브타입 : 어느 테이블·키를 참조할지 정하는 변환 전략이 없다 (M-7 후속)
+                    status = "UNSUPPORTED";
+                    reason = "INHERITANCE_UNSUPPORTED";
+                }
                 if (reason == null && parentTable == null) {
                     status = "PARENT_TABLE_UNAVAILABLE";
                     reason = "PARENT_TABLE_MISSING";
@@ -522,6 +543,7 @@ public class PhysicalGenerationService {
             case "COLUMN_UNAVAILABLE" -> Messages.get("관계 {0} → {1} : 짝의 부모·자식 컬럼을 정할 수 없어(용어·도메인 없음, 부모 속성 매핑 없음) FK 를 만들지 않습니다.", p, c);
             case "CONFLICT" -> Messages.get("관계 {0} → {1} : 자식 속성이 다른 관계의 FK 에 이미 쓰여 FK 를 만들지 않습니다.", p, c);
             default -> switch (reason) {
+                case "INHERITANCE_UNSUPPORTED" -> Messages.get("관계 {0} → {1} : 부모 엔터티가 슈퍼타입·서브타입 구조에 속해 FK 를 만들지 않습니다 (상속 구조의 물리 변환은 지원하지 않습니다).", p, c);
                 case "SELF_KEY_ONLY" -> Messages.get("관계 {0} → {1} : 자기 참조인데 자식 속성이 부모 키 속성 자신이라 FK 를 만들지 않습니다.", p, c);
                 case "TYPE_INCOMPATIBLE" -> Messages.get("관계 {0} → {1} : 부모·자식 컬럼의 데이터 타입이 FK 로 연결할 수 없는 조합이라 FK 를 만들지 않습니다.", p, c);
                 default -> Messages.get("관계 {0} → {1} : 기존 부모 테이블의 PK 가 짝의 부모 컬럼과 달라 FK 를 만들지 않습니다 (기존 테이블은 고치지 않습니다).", p, c);

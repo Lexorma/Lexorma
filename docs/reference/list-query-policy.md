@@ -63,6 +63,7 @@
 | 조회 | 한도 · 정렬 |
 |---|---|
 | 논리 ERD 범위 `/erd/part` · 이웃 `/erd/neighbors` · 엔터티 찾기 `/erd/entities` | 300 · 300 · 50 (넘으면 400 `INVALID_LOGICAL_MODEL`), 서버 고정 정렬 |
+| 서브타입 그룹 구성원 (`POST /api/logical/subtypeGroup`, 그룹 상세) | 저장할 수 있는 수는 업무상 상한 없음 (D-51, M-6 최종 보완) — 요청 본문·Import 객체 수(50,000)·교환 파일 자식 목록(1,000행) 같은 공통 제한만. 한 번에 보여 주는 수(ERD 300·목록 100·찾기 50)와 별개이며 ERD 의 그룹 원은 엔터티 수·탐색 단계에 넣지 않는다 |
 | 물리 ERD `/api/erd` | 기존 `ErdService.MAX_TABLES` = 300 (넘으면 400 `INVALID_ERD_REQUEST`) |
 | 모델 버전 `/api/modelVersion/data` · 모델 변경 이력 `/api/modelHistory/data` | 500 으로 줄임(silent clamp), 서버 고정 정렬 — 버전 비교 대화상자가 500 을 쓴다 |
 | AI 설명 제안(100)·외부 연결 규칙 이력(100)·원본 가져오기 실행(100)·원본 이름 변경 이력(200)·원본 수집 실행·변경(200)·원본 카탈로그(200)·원본 매핑·비교 목록(500) | 각자 상한으로 줄임(silent clamp), 서버 고정 정렬 |

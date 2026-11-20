@@ -24,6 +24,7 @@ import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
 import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { ALL_AREAS, applyAreaFilter, areaMap, areaPath, useSubjectAreas, type AreaFilter } from './subjectArea';
 
 const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(n.data.entity.attributes.length) });
 
@@ -44,11 +45,19 @@ const CROWS_FOOT: [string, string][] = [
 ];
 const INITIAL_SCOPE: SearchScope = { kind: 'search', keyword: '', page: 0 };
 
-function partUrl(modelId: number, scope: Scope) {
+/** 이웃 탐색은 주제 영역과 관계없이 모델 전체에서 찾는다 (D-08 — 영역 사이 관계도 따라간다). 범위 조회만 주제 영역으로 거른다 */
+function partUrl(modelId: number, scope: Scope, area: AreaFilter) {
   if (scope.kind === 'neighbors') return `/api/logical/model/${modelId}/erd/neighbors/${scope.entityId}?depth=${scope.depth}`;
-  const params = new URLSearchParams({ page: String(scope.page), size: String(PAGE_SIZE) });
+  const params = applyAreaFilter(new URLSearchParams({ page: String(scope.page), size: String(PAGE_SIZE) }), area);
   if (scope.keyword) params.set('keyword', scope.keyword);
   return `/api/logical/model/${modelId}/erd/part?${params}`;
+}
+
+/** 깊은 링크의 주제 영역 (?subjectAreaId=&includeChildren=false 또는 ?unclassified=true). 서버가 이 모델의 영역인지 다시 확인한다 */
+function linkedArea(params: URLSearchParams): AreaFilter {
+  const id = params.get('subjectAreaId');
+  if (id && /^\d+$/.test(id)) return { kind: 'area', areaId: Number(id), includeChildren: params.get('includeChildren') !== 'false' };
+  return params.get('unclassified') === 'true' ? { kind: 'unclassified' } : ALL_AREAS;
 }
 
 /** 논리 ERD : 논리 모델 1개의 엔터티·관계 조회 전용 (논리 모델은 바꾸지 않는다) + 내 배치 저장 (모델별·사용자별) */
@@ -60,8 +69,9 @@ export default function LogicalErdPage() {
   // 관리 화면에서 넘어온 경우 (?modelId=&entityId=) : 그 엔터티를 한 번 선택·가운데로 옮긴다
   const [params, setParams] = useSearchParams();
   const [focusEntity] = useState(() => (/^\d+$/.test(params.get('entityId') ?? '') ? params.get('entityId') : null));
+  const [initialArea] = useState(() => linkedArea(params));
   useEffect(() => {
-    if (params.has('entityId')) setParams(params.get('modelId') ? { modelId: params.get('modelId')! } : {}, { replace: true });
+    if (['entityId', 'subjectAreaId', 'includeChildren', 'unclassified'].some((k) => params.has(k))) setParams(params.get('modelId') ? { modelId: params.get('modelId')! } : {}, { replace: true });
   }, []);
   const [dirty, setDirty] = useState(false);
   // 조회 / 편집 모드 (M-8) : 모델을 바꿔도 유지한다. 편집 모드는 논리 모델 변경 권한(USER 이상)이 있어야 들어간다
@@ -95,8 +105,17 @@ export default function LogicalErdPage() {
             <ErdWorkspace
               modelId={selected.id}
               focusEntity={focusEntity}
+              initialArea={initialArea}
               onDirty={setDirty}
-              onManage={canView('logical-model') ? (entityId) => leave(`/logicalModel?modelId=${selected.id}${entityId != null ? `&entityId=${entityId}` : ''}`) : undefined}
+              onManage={canView('logical-model') ? (entityId, area) => {
+                const query = new URLSearchParams({ modelId: String(selected.id) });
+                if (entityId != null) query.set('entityId', String(entityId));
+                if (area?.kind === 'area') {
+                  query.set('subjectAreaId', String(area.areaId));
+                  if (!area.includeChildren) query.set('includeChildren', 'false');
+                }
+                leave(`/logicalModel?${query}`);
+              } : undefined}
               onLeave={leave}
               mode={canEdit ? mode : 'view'}
               onMode={canEdit ? setMode : undefined}
@@ -113,12 +132,14 @@ export default function LogicalErdPage() {
   );
 }
 
-function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, onMode, modelSelect }: {
+function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, onLeave, mode, onMode, modelSelect }: {
   modelId: number;
   focusEntity: string | null;
+  /** 처음 볼 주제 영역 범위 (관리 화면에서 넘어온 경우) */
+  initialArea: AreaFilter;
   onDirty: (dirty: boolean) => void;
-  /** 논리 모델 관리로 이동 (entityId 를 주면 그 엔터티 상세를 연다). 메뉴 권한이 없으면 undefined */
-  onManage?: (entityId?: number) => void;
+  /** 논리 모델 관리로 이동 (entityId 를 주면 그 엔터티 상세를 연다, area 를 주면 그 주제 영역을 고른다). 메뉴 권한이 없으면 undefined */
+  onManage?: (entityId?: number, area?: AreaFilter) => void;
   /** 다른 화면으로 이동 (저장하지 않은 배치가 있으면 먼저 확인한다) */
   onLeave: (path: string) => void;
   mode: ErdMode;
@@ -152,19 +173,27 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
   const focusRequest = useRef(focusEntity);
   const shown = useRef(false);
 
-  const layoutUrl = `/api/logical/model/${modelId}/erd/layout`;
+  // 주제 영역 (M-6 후속 4차) : 범위 조회를 영역(기본 하위 포함)·미분류로 거른다. 영역을 보는 동안의 배치는 그 영역의 내 배치에 따로 저장한다 (D-07)
+  const subjectAreas = useSubjectAreas(modelId);
+  const areaById = areaMap(subjectAreas.data);
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>(initialArea);
+  const [scope, setScope] = useState<Scope>(INITIAL_SCOPE);
+  const [keyword, setKeyword] = useState('');
+  const [depth, setDepth] = useState(1);
+  // 배치 저장 대상 : 영역 범위 조회 = 그 영역의 배치, 그 밖(전체·미분류·이웃 탐색) = 모델 전체 배치. 대상마다 좌표·저장하지 않은 좌표·버전이 따로다
+  const layoutArea = scope.kind === 'search' && areaFilter.kind === 'area' ? areaFilter.areaId : null;
+  const layoutUrl = layoutArea == null ? `/api/logical/model/${modelId}/erd/layout` : `/api/logical/model/${modelId}/subjectArea/${layoutArea}/layout`;
   const layout = useQuery({
-    queryKey: ['logical-erd-layout', user?.projectId, modelId],
+    queryKey: ['logical-erd-layout', user?.projectId, modelId, layoutArea],
     queryFn: () => api<ErdLayout>(layoutUrl, { silent: true }),
     staleTime: Infinity,
     // [저장된 배치 불러오기] : 서버 값이 그대로여도 새 객체로 받아야 아래 effect 가 화면의 배치를 되돌린다
     structuralSharing: false,
     gcTime: 0,
+    // 고른 영역이 이 모델의 영역인지 확인한 뒤에 묻는다 (지워진·다른 모델 영역은 아래에서 전체로 돌린다)
+    enabled: layoutArea == null || areaById.has(layoutArea),
   });
-  const [scope, setScope] = useState<Scope>(INITIAL_SCOPE);
-  const [keyword, setKeyword] = useState('');
-  const [depth, setDepth] = useState(1);
-  const graphUrl = partUrl(modelId, scope);
+  const graphUrl = partUrl(modelId, scope, areaFilter);
   // 모델의 ERD 키(graphQueryKey) 아래에 둔다 : 그 키를 무효화하면 이 조회도 다시 받는다
   const graph = useQuery({
     queryKey: [...graphQueryKey(user?.projectId, modelId), 'part', graphUrl],
@@ -184,14 +213,43 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
     setPendingCount(0);
     setDirty(false);
   };
-  const neighborsOf = (entityId: number, entityName: string, nextDepth = depth) => {
-    focusRequest.current = String(entityId);
-    setScope({ kind: 'neighbors', entityId, entityName, depth: nextDepth, back: scope.kind === 'neighbors' ? scope.back : scope });
+  /** 배치 저장 대상이 바뀌는 이동 : 저장하지 않은 배치가 있으면 버릴지 먼저 묻는다 (다른 대상의 저장에 섞지 않는다 — D-07) */
+  const targetOf = (nextScope: Scope, nextArea: AreaFilter) => (nextScope.kind === 'search' && nextArea.kind === 'area' ? nextArea.areaId : null);
+  const guarded = (nextScope: Scope, nextArea: AreaFilter, apply: () => void) => {
+    const go = () => {
+      if (targetOf(nextScope, nextArea) !== layoutArea) setMessage(''); // 앞 대상의 저장 안내를 남기지 않는다
+      apply();
+    };
+    if (dirty && targetOf(nextScope, nextArea) !== layoutArea) dialog.confirm(t('저장하지 않은 배치가 있습니다. 배치 저장 대상이 바뀌므로 저장하지 않은 배치를 버리고 이동하시겠습니까?'), go);
+    else go();
   };
+  const neighborsOf = (entityId: number, entityName: string, nextDepth = depth) => {
+    const next: Scope = { kind: 'neighbors', entityId, entityName, depth: nextDepth, back: scope.kind === 'neighbors' ? scope.back : scope };
+    guarded(next, areaFilter, () => {
+      focusRequest.current = String(entityId);
+      setScope(next);
+    });
+  };
+  const backToSearch = (back: SearchScope) => guarded(back, areaFilter, () => setScope(back));
   const search = (event: FormEvent) => {
     event.preventDefault();
-    setScope({ kind: 'search', keyword: keyword.trim(), page: 0 });
+    const next: SearchScope = { kind: 'search', keyword: keyword.trim(), page: 0 };
+    guarded(next, areaFilter, () => setScope(next));
   };
+  const changeArea = (next: AreaFilter) => {
+    const nextScope: SearchScope = { kind: 'search', keyword: scope.kind === 'search' ? scope.keyword : '', page: 0 };
+    guarded(nextScope, next, () => {
+      setAreaFilter(next);
+      setScope(nextScope);
+    });
+  };
+  // 깊은 링크·다른 사용자가 지운 영역 : 이 모델의 영역이 아니면 알리고 전체 논리 모델을 보여 준다 (다른 모델·프로젝트 정보는 서버가 주지 않는다)
+  useEffect(() => {
+    if (areaFilter.kind === 'area' && subjectAreas.data && !areaById.has(areaFilter.areaId)) {
+      setAreaFilter(ALL_AREAS);
+      setMessage(t('요청한 주제 영역을 찾을 수 없어 전체 논리 모델을 표시합니다.'));
+    }
+  }, [subjectAreas.data, areaFilter]);
 
   useEffect(() => () => onDirty(false), []);
 
@@ -480,6 +538,8 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
   const outside = graph.data?.outsideRelationships ?? {};
   const outsideTotal = Object.values(outside).reduce((sum, n) => sum + n, 0);
   const scopeName = scope.kind === 'neighbors' ? graph.data?.entities.find((e) => e.id === scope.entityId)?.name ?? scope.entityName : '';
+  const areaLabel = areaFilter.kind === 'unclassified' ? t('미분류') : areaFilter.kind === 'area' ? areaPath(areaById.get(areaFilter.areaId)) : t('전체 논리 모델');
+  const layoutTarget = layoutArea == null ? t('전체 논리 모델 배치') : t('주제 영역 배치 : {0}', areaPath(areaById.get(layoutArea)));
   const loading = layout.isFetching || graph.isFetching || arranging;
   const error = layout.error ?? graph.error;
 
@@ -488,6 +548,18 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
       <div className="grid-header">
         <form className="search-container" onSubmit={search}>
           {modelSelect}
+          <select className="search-column-select subject-erd-select" aria-label={t('주제 영역')} disabled={!subjectAreas.data}
+            value={areaFilter.kind === 'area' ? String(areaFilter.areaId) : areaFilter.kind}
+            onChange={(e) => changeArea(e.target.value === 'all' ? ALL_AREAS : e.target.value === 'unclassified' ? { kind: 'unclassified' } : { kind: 'area', areaId: Number(e.target.value), includeChildren: true })}>
+            <option value="all">{t('전체 논리 모델')}</option>
+            <option value="unclassified">{t('미분류')}</option>
+            {subjectAreas.data?.areas.map((a) => <option key={a.id} value={a.id}>{`${'\u00a0\u00a0'.repeat(a.depth - 1)}${a.areaName}`}</option>)}
+          </select>
+          {areaFilter.kind === 'area' && (
+            <label className="subject-include">
+              <input type="checkbox" checked={areaFilter.includeChildren} onChange={(e) => changeArea({ ...areaFilter, includeChildren: e.target.checked })} /> {t('하위 영역 포함')}
+            </label>
+          )}
           <input type="text" className="search-input search-input-text" aria-label={t('엔터티 검색')} maxLength={100} placeholder={t('엔터티명 / 설명')}
             value={keyword} onChange={(e) => setKeyword(e.target.value)} />
           <button type="submit" className="grd-select">{t('조회')}</button>
@@ -503,19 +575,21 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
           <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('svg')} title={t('지금 배치 그대로 ERD 전체를 SVG 이미지로 내려받습니다')}><DownloadIcon />SVG</button>
           <button type="button" className="btn" disabled={loading || saving} onClick={reloadSaved}><UndoIcon />{t('저장된 배치 불러오기')}</button>
           <button type="button" className="grd-save btn btn-primary" disabled={loading || saving || !nodes.length} onClick={() => void save()}><CheckIcon />{saving ? t('저장 중…') : t('배치 저장')}</button>
-          {onManage && <button type="button" className="btn" onClick={() => onManage()}>{t('논리 모델 관리')}</button>}
+          {onManage && <button type="button" className="btn" onClick={() => onManage(undefined, areaFilter)}>{t('논리 모델 관리')}</button>}
         </div>
       </div>
 
       <div className="erd-status" role="status">
         {scope.kind === 'neighbors' ? (
           <>
-            <button type="button" className="btn btn-sm" onClick={() => setScope(scope.back)}><ArrowLeftIcon />{t('범위 조회로')}</button>
+            <button type="button" className="btn btn-sm" onClick={() => backToSearch(scope.back)}><ArrowLeftIcon />{areaFilter.kind === 'all' ? t('범위 조회로') : t('주제 영역 범위로')}</button>
             <span>{tx('{0} 기준 {1}단계 이웃 · 엔터티 {2}개', <strong>{scopeName}</strong>, scope.depth, graph.data?.entities.length ?? 0)}</span>
+            {areaFilter.kind !== 'all' && <span className="erd-muted">{t('· 이웃 탐색은 전체 논리 모델 기준입니다')}</span>}
           </>
         ) : (
           <span>
-            {scope.keyword ? `"${scope.keyword}"` : t('모델 전체')}
+            {areaFilter.kind !== 'all' && <strong className="subject-erd-scope" title={areaLabel}>{areaLabel}{areaFilter.kind === 'area' && !areaFilter.includeChildren ? ` (${t('직접 소속만')})` : ''} · </strong>}
+            {scope.keyword ? `"${scope.keyword}"` : areaFilter.kind === 'all' ? t('모델 전체') : t('범위 전체')}
             {graph.data && t(' · 전체 {0}개 중 {1}', graph.data.totalCount, graph.data.entities.length ? `${scope.page * PAGE_SIZE + 1}–${scope.page * PAGE_SIZE + graph.data.entities.length}` : 0)}
           </span>
         )}
@@ -529,6 +603,8 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
             <button type="button" className="btn btn-sm" disabled={loading || !graph.data?.truncated} onClick={() => setScope({ ...scope, page: scope.page + 1 })}>{t('다음 {0}개', PAGE_SIZE)}</button>
           </span>
         )}
+        <span className="erd-muted subject-erd-target">{t('· 저장 대상 : {0}', layoutTarget)}</span>
+        {layoutArea != null && (layout.data as { source?: string } | undefined)?.source === 'MODEL' && savedVersion.current == null && <span className="erd-muted">{t('· 이 영역에 저장한 배치가 없어 전체 배치의 좌표를 참고했습니다')}</span>}
         {editing && <span className="erd-mode-note">{t('편집 모드 · 엔터티·속성 변경은 바로 저장됩니다. 배치는 [배치 저장] 을 눌러야 저장됩니다.')}</span>}
         {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
@@ -539,7 +615,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
           <EndMarkers />
           {error && <div className="erd-empty" role="alert">{t('ERD 를 불러오지 못했습니다.')} {error.message}</div>}
           {!error && !loading && graph.data && !graph.data.entities.length && (
-            <div className="erd-empty">{graph.data.modelEntityCount === 0 ? t('이 논리 모델에 등록된 엔터티가 없습니다.') : t('검색 결과가 없습니다.')}</div>
+            <div className="erd-empty">{graph.data.modelEntityCount === 0 ? t('이 논리 모델에 등록된 엔터티가 없습니다.') : scope.kind === 'search' && !scope.keyword && areaFilter.kind !== 'all' ? t('이 범위에 엔터티가 없습니다.') : t('검색 결과가 없습니다.')}</div>
           )}
           {!error && !loading && scope.kind === 'neighbors' && graph.data?.entities.length === 1 && !graph.data.relationships.length && !outsideTotal && (
             <div className="erd-empty erd-empty-note">{t('선택한 엔터티에 연결된 관계가 없습니다.')}</div>
@@ -582,7 +658,7 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
             <option value="">{t('엔터티로 이동')}</option>
             {graph.data?.entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <EntityFinder modelId={modelId} onPick={(hit) => {
+          <EntityFinder modelId={modelId} area={areaFilter} areaLabel={areaLabel} onPick={(hit) => {
             if (graph.data?.entities.some((e) => e.id === hit.id)) focus(String(hit.id));
             else neighborsOf(hit.id, hit.name);
           }} />
@@ -650,16 +726,18 @@ function ErdWorkspace({ modelId, focusEntity, onDirty, onManage, onLeave, mode, 
  * 엔터티 찾기 (M-6 후속 1차) : 지금 ERD 범위와 무관하게 서버에서 이름·설명으로 찾는다 (최대 20개 + 전체 수).
  * 입력을 잠깐 멈췄을 때만 묻고, 검색어마다 따로 캐시해 늦게 온 이전 응답이 지금 결과를 덮지 않는다
  */
-function EntityFinder({ modelId, onPick }: { modelId: number; onPick: (hit: EntityHits['items'][number]) => void }) {
+function EntityFinder({ modelId, area, areaLabel, onPick }: { modelId: number; area: AreaFilter; areaLabel: string; onPick: (hit: EntityHits['items'][number]) => void }) {
   const [input, setInput] = useState('');
   const [keyword, setKeyword] = useState('');
   useEffect(() => {
     const timer = setTimeout(() => setKeyword(input.trim()), 300);
     return () => clearTimeout(timer);
   }, [input]);
+  // 주제 영역을 고른 동안은 그 범위 안에서만 찾는다 (M-6 후속 4차). 전체 논리 모델이면 예전처럼 모델 전체
+  const scopeQuery = applyAreaFilter(new URLSearchParams(), area).toString();
   const hits = useQuery({
-    queryKey: ['logical-erd-finder', modelId, keyword],
-    queryFn: ({ signal }) => api<EntityHits>(`/api/logical/model/${modelId}/erd/entities?size=20&keyword=${enc(keyword)}`, { signal, silent: true }),
+    queryKey: ['logical-erd-finder', modelId, keyword, scopeQuery],
+    queryFn: ({ signal }) => api<EntityHits>(`/api/logical/model/${modelId}/erd/entities?size=20&keyword=${enc(keyword)}${scopeQuery ? `&${scopeQuery}` : ''}`, { signal, silent: true }),
     enabled: keyword.length > 0,
     staleTime: 30_000,
   });
@@ -667,6 +745,7 @@ function EntityFinder({ modelId, onPick }: { modelId: number; onPick: (hit: Enti
     <div className="erd-finder">
       <input type="search" className="form-control" aria-label={t('엔터티 찾기')} maxLength={100} placeholder={t('엔터티 찾기 (ERD 밖의 엔터티도)')}
         value={input} onChange={(e) => setInput(e.target.value)} />
+      {area.kind !== 'all' && <p className="erd-muted subject-finder-scope" title={areaLabel}>{t('찾기 범위 : {0}', areaLabel)}</p>}
       {keyword && (
         hits.isError ? <p className="erd-muted" role="alert">{t('엔터티를 찾지 못했습니다.')}</p>
           : !hits.data ? <p className="erd-muted">{t('불러오는 중…')}</p>

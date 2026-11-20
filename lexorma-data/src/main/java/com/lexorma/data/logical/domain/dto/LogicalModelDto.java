@@ -26,11 +26,20 @@ public final class LogicalModelDto {
 
     /** attributes·identifiers 는 상세 조회에서만 채운다 (목록은 null) */
     /** modifiedAt : 응답은 지금 수정 일시, 수정 요청은 화면이 읽은 값 (DEC-08 기준값 — 없으면 검사하지 않는다) */
+    /**
+     * subjectAreaId (M-6 후속 4차) : 응답은 지금 소속 주제 영역(없으면 미분류), 등록 요청은 처음 소속(null = 미분류, 엔터티 등록과 한 트랜잭션).
+     * 수정 요청에서는 보지 않는다 — 분류는 일괄 분류 API 로만 바꾼다 (엔터티 수정의 승인 검사·기준값과 섞지 않는다)
+     */
     public record Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
-                         List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt) {
+                         List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt, Long subjectAreaId) {
         public Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
                       List<Attribute> attributes, List<Identifier> identifiers) {
-            this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, null);
+            this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, null, null);
+        }
+
+        public Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
+                      List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt) {
+            this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, modifiedAt, null);
         }
 
         public static Entity summary(LogicalEntity e) {
@@ -38,9 +47,13 @@ public final class LogicalModelDto {
         }
 
         public static Entity detail(LogicalEntity e) {
+            return detail(e, null);
+        }
+
+        public static Entity detail(LogicalEntity e, Long subjectAreaId) {
             return new Entity(e.getId(), e.getModel().getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(),
                     e.getAttributes().stream().map(Attribute::fromEntity).toList(),
-                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList(), e.modifiedAt());
+                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList(), e.modifiedAt(), subjectAreaId);
         }
     }
 
@@ -78,12 +91,28 @@ public final class LogicalModelDto {
     /**
      * 카디널리티 : 원본 쪽(sourceMin..sourceMax) = 대상 1건에 연결되는 원본 건수, 대상 쪽 = 원본 1건에 연결되는 대상 건수.
      * 최소 0 = 선택 / 1 이상 = 필수, 최대 null = 다(N). 1:N = 원본 max 1·대상 max null, N:M = 양쪽 max null.
-     * cardinality 는 조회 전용 요약 ("1:1" / "1:N" / "N:1" / "N:M")
+     * cardinality 는 조회 전용 요약 ("1:1" / "1:N" / "N:1" / "N:M").
+     * sourceSubjectAreaId·targetSubjectAreaId (M-6 후속 4차, 조회 전용) : 관계 목록 페이지에서만 채우는 양 끝 엔터티의 소속 주제 영역 (없으면 미분류·null)
      */
     public record Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
                                Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
                                Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
-                               String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt, PairState attributePairs) {
+                               String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt, PairState attributePairs,
+                               Long sourceSubjectAreaId, Long targetSubjectAreaId) {
+        public Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
+                            Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
+                            Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
+                            String cardinality, Boolean isApproval, java.time.LocalDateTime modifiedAt, PairState attributePairs) {
+            this(id, modelId, relationshipName, relationshipDescription, sourceEntityId, sourceEntityName, targetEntityId, targetEntityName,
+                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, modifiedAt, attributePairs, null, null);
+        }
+
+        /** 양 끝 엔터티의 소속 주제 영역을 채운 사본 */
+        public Relationship withSubjectAreas(Long sourceArea, Long targetArea) {
+            return new Relationship(id, modelId, relationshipName, relationshipDescription, sourceEntityId, sourceEntityName, targetEntityId, targetEntityName,
+                    isIdentifying, sourceMin, sourceMax, targetMin, targetMax, cardinality, isApproval, modifiedAt, attributePairs, sourceArea, targetArea);
+        }
+
         public Relationship(Long id, Long modelId, String relationshipName, String relationshipDescription,
                             Long sourceEntityId, String sourceEntityName, Long targetEntityId, String targetEntityName,
                             Boolean isIdentifying, Integer sourceMin, Integer sourceMax, Integer targetMin, Integer targetMax,
@@ -207,8 +236,9 @@ public final class LogicalModelDto {
      * 논리 모델 관리 엔터티 목록 1행 (M-6 후속 3차). 수는 DB 가 센다 — attributeCount : 이 엔터티의 속성,
      * relationshipCount : 출발·도착 어느 쪽이든 이 엔터티인 관계 (자기 참조는 1번 — 예전 화면이 전체 조회로 세던 것과 같다)
      */
+    /** subjectAreaId (M-6 후속 4차) : 소속 주제 영역 (없으면 미분류·null) — 경로는 화면이 영역 목록으로 만든다 */
     public record EntityRow(Long id, String entityName, String entityDescription, Boolean isApproval, Long attributeCount, Long relationshipCount,
-                            java.time.LocalDateTime modifiedAt) {
+                            java.time.LocalDateTime modifiedAt, Long subjectAreaId) {
     }
 
     /** 논리 모델 관리 상단 요약 : 모델 전체 엔터티 수·관계 수 (검색과 무관) */

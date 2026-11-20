@@ -5,6 +5,7 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
+import type { SubjectArea } from './subjectArea';
 import { api } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
 import { searchTerms, termLabel, type Term } from '../column/terms';
@@ -513,16 +514,28 @@ function RelationshipTab({ relationships, loading, failed }: { relationships: Lo
 }
 
 /** 엔터티 등록 (논리 모델 관리·논리 ERD 편집 공용). 이름 중복(모델 안, 대소문자 무시)·권한은 서버에서 검증한다 */
-export function EntityForm({ modelId, onSaved }: { modelId: number; onSaved: (entityId: number) => void }) {
+/**
+ * 엔터티 등록. 주제 영역(M-6 후속 4차, D-17·D-24) : areas 를 주면 처음 소속을 고른다 — 기본값은 지금 고른 영역(defaultAreaId, 전체·미분류에서 열면 미분류),
+ * 등록 전에 다른 영역·미분류로 바꿀 수 있다. 엔터티 등록과 소속 지정은 서버에서 한 트랜잭션이다
+ */
+export function EntityForm({ modelId, onSaved, areas, defaultAreaId }: {
+  modelId: number;
+  onSaved: (entityId: number) => void;
+  areas?: SubjectArea[];
+  defaultAreaId?: number | null;
+}) {
   const dialog = useDialog();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [area, setArea] = useState(defaultAreaId == null ? '' : String(defaultAreaId));
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('엔터티명은(는) 필수 입력 항목입니다.'));
     dialog.confirm(t('저장하시겠습니까?'), async () => {
-      const saved = await api<{ id: number }>('/api/logical/entity', { method: 'POST', body: { modelId, entityName: name.trim(), entityDescription: description.trim() || null } });
+      const saved = await api<{ id: number }>('/api/logical/entity', {
+        method: 'POST', body: { modelId, entityName: name.trim(), entityDescription: description.trim() || null, subjectAreaId: area ? Number(area) : null },
+      });
       onSaved(saved.id);
     });
   };
@@ -537,6 +550,15 @@ export function EntityForm({ modelId, onSaved }: { modelId: number; onSaved: (en
         <label htmlFor="newEntityDescription">{t('설명')}</label>
         <textarea className="form-control" id="newEntityDescription" maxLength={1000} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
+      {areas && areas.length > 0 && (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label htmlFor="newEntityArea">{t('주제 영역')}</label>
+          <select className="form-control" id="newEntityArea" value={area} onChange={(e) => setArea(e.target.value)}>
+            <option value="">{t('미분류')}</option>
+            {areas.map((a) => <option key={a.id} value={a.id}>{`${'\u00a0\u00a0'.repeat(a.depth - 1)}${a.areaName}`}</option>)}
+          </select>
+        </div>
+      )}
       <button type="submit" className="btn btn-primary">{t('저장')}</button>
     </form>
   );

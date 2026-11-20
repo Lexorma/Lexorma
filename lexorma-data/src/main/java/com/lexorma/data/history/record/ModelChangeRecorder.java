@@ -14,6 +14,8 @@ import com.lexorma.data.logical.domain.entity.LogicalIdentifierAttribute;
 import com.lexorma.data.logical.domain.entity.LogicalModel;
 import com.lexorma.data.logical.domain.entity.LogicalRelationship;
 import com.lexorma.data.logical.domain.entity.LogicalRelationshipAttribute;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectArea;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectAreaEntity;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -132,7 +134,12 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             Map.entry(EntityTableMapping.class, new Tracked(TargetType.TABLE_MAPPING, null, null,
                     List.of("entity", "table"))),
             Map.entry(AttributeColumnMapping.class, new Tracked(TargetType.COLUMN_MAPPING, null, "mapping",
-                    List.of("mapping", "attribute", "column"))));
+                    List.of("mapping", "attribute", "column"))),
+            // 주제 영역 (M-6 후속 4차) : 영역의 상위는 parent(Id·Name). 엔터티 소속은 엔터티 이력과 따로 (엔터티의 정의·승인 변경으로 남지 않는다 — D-25)
+            Map.entry(LogicalSubjectArea.class, new Tracked(TargetType.LOGICAL_SUBJECT_AREA, "areaName", null,
+                    List.of("model", "parent", "areaName", "areaDescription", "sortOrder"))),
+            Map.entry(LogicalSubjectAreaEntity.class, new Tracked(TargetType.SUBJECT_AREA_ENTITY, null, null,
+                    List.of("subjectArea", "entity"))));
 
     private static final Map<Class<?>, Child> CHILDREN = Map.of(
             TableRelationColumn.class, new Child(TableRelation.class, "relation", "columns", "columnOrder", List.of("sourceColumn", "targetColumn", "columnOrder")),
@@ -150,7 +157,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
     /** 이름 스냅샷을 남기는 연관 대상 → 이름 속성. 여기 없는 대상(매핑 등)은 ID 만 남는다 */
     private static final Map<Class<?>, String> NAME_FIELDS = Map.of(
             TableInfo.class, "tableName", ColumnInfo.class, "columnName", SchemaInfo.class, "schemaName", StandardTerm.class, "commonStandardTermName",
-            LogicalModel.class, "modelName", LogicalEntity.class, "entityName", LogicalAttribute.class, "attributeName", PhysicalView.class, "viewName");
+            LogicalModel.class, "modelName", LogicalEntity.class, "entityName", LogicalAttribute.class, "attributeName", PhysicalView.class, "viewName",
+            LogicalSubjectArea.class, "areaName");
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -653,6 +661,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                         : joined(" → ", shown.get("sourceEntityName"), shown.get("targetEntityName"));
                 case TABLE_MAPPING -> joined(" ↔ ", shown.get("entityName"), shown.get("tableName"));
                 case COLUMN_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
+                case SUBJECT_AREA_ENTITY -> joined(" ∈ ", shown.get("entityName"), shown.get("subjectAreaName"));
                 default -> (String) shown.get(tracked.nameField());
             };
         }

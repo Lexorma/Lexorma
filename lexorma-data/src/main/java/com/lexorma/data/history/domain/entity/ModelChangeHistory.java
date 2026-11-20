@@ -20,12 +20,14 @@ public class ModelChangeHistory {
     /**
      * 변경 대상 종류 (컬럼 길이 20자 안에서 정한다).
      * 물리 : PK 는 컬럼의 PK 여부(PHYSICAL_COLUMN), FK 는 관계(PHYSICAL_RELATION)에 들어 있다.
-     * 논리 (M-9 2차) : 모델·엔터티·속성·식별자·관계. 매핑 : 엔터티 ↔ 테이블(TABLE_MAPPING), 속성 ↔ 컬럼(COLUMN_MAPPING)
+     * 논리 (M-9 2차) : 모델·엔터티·속성·식별자·관계. 매핑 : 엔터티 ↔ 테이블(TABLE_MAPPING), 속성 ↔ 컬럼(COLUMN_MAPPING).
+     * 주제 영역 (M-6 후속 4차) : 영역(LOGICAL_SUBJECT_AREA), 엔터티의 영역 소속(SUBJECT_AREA_ENTITY — 엔터티 이력과 따로 남는다 : 지정 CREATE · 이동 UPDATE · 해제 DELETE)
      */
     public enum TargetType {
         PHYSICAL_TABLE, PHYSICAL_COLUMN, PHYSICAL_RELATION, PHYSICAL_INDEX, PHYSICAL_CONSTRAINT, PHYSICAL_VIEW,
         LOGICAL_MODEL, LOGICAL_ENTITY, LOGICAL_ATTRIBUTE, LOGICAL_IDENTIFIER, LOGICAL_RELATIONSHIP,
-        TABLE_MAPPING, COLUMN_MAPPING
+        TABLE_MAPPING, COLUMN_MAPPING,
+        LOGICAL_SUBJECT_AREA, SUBJECT_AREA_ENTITY
     }
 
     /** APPROVE·REVOKE 는 승인 여부만 바뀐 경우 (다른 값도 함께 바뀌면 UPDATE 한 건) */

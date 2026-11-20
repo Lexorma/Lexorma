@@ -8,15 +8,17 @@ import java.util.Map;
  * 내용은 모델 버전·변경 이력과 같은 필드 목록(ModelChangeRecorder)으로 만든 종류별 객체 목록이다. 파일 안의 id 는 이 파일 안에서만 쓰는 참조 번호다 (가져올 때 모두 새로 받는다).
  * 버전 2 (7차) : 모델 VIEW(PHYSICAL_VIEW — 정의 SQL·출력 컬럼·참조 객체)와 내보낸 사용자의 저장된 ERD 배치({@link Layouts})를 더했다.
  * 버전 3 (M-7 보강 3차) : 논리 관계 state 에 속성 짝 attributes(부모 속성 → 자식 속성, 순서 — 파일 안의 속성 번호로 잇고 가져올 때 새 속성에 다시 잇는다).
- * 버전 1·2 파일도 그대로 가져온다 (VIEW·배치 또는 속성 짝이 없을 뿐이다 — 버전 1·2 파일에 속성 짝이 있으면 거절한다).
+ * 버전 4 (M-6 후속 4차) : 논리 모델의 주제 영역(LOGICAL_SUBJECT_AREA — 상위 영역 parentId 로 계층)과 엔터티 소속(SUBJECT_AREA_ENTITY), 내보낸 사용자의 주제 영역별 배치
+ * ({@link Layouts#subjectAreas()}). 가져올 때 새 ID 로 다시 잇는다.
+ * 버전 1·2·3 파일도 그대로 가져온다 (VIEW·배치·속성 짝·주제 영역이 없을 뿐이다 — 그 버전에 없는 내용이 들어 있으면 거절한다. 주제 영역을 자동으로 만들지 않는다).
  * 넣지 않는 것 : 승인 상태, 원본 DB 연결·원본 카탈로그·원본 DB 에서 수집한 VIEW 정의(DEC-16), 비밀번호·키·토큰, 감사 컬럼·사용자·감사 로그.
  */
 public final class ModelExchangeDto {
 
     public static final String FORMAT = "lexorma-model";
-    public static final int FORMAT_VERSION = 3;
-    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 (관계 속성 짝 없음), 3 */
-    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2, 3);
+    public static final int FORMAT_VERSION = 4;
+    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 (관계 속성 짝 없음), 3 (주제 영역 없음), 4 */
+    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2, 3, 4);
 
     private ModelExchangeDto() {
     }
@@ -39,8 +41,16 @@ public final class ModelExchangeDto {
      *
      * @param physical 물리 ERD : PHYSICAL_TABLE 번호 → 좌표
      * @param logical  논리 ERD : 논리 모델별, LOGICAL_ENTITY 번호 → 좌표
+     * @param subjectAreas 주제 영역별 논리 ERD (버전 4) : LOGICAL_SUBJECT_AREA 번호별, LOGICAL_ENTITY 번호 → 좌표
      */
-    public record Layouts(PhysicalLayout physical, List<LogicalLayout> logical) {
+    public record Layouts(PhysicalLayout physical, List<LogicalLayout> logical, List<SubjectAreaLayout> subjectAreas) {
+        public Layouts(PhysicalLayout physical, List<LogicalLayout> logical) {
+            this(physical, logical, null);
+        }
+    }
+
+    /** @param subjectAreaId LOGICAL_SUBJECT_AREA 번호 (파일 안) */
+    public record SubjectAreaLayout(Long subjectAreaId, Map<Long, Point> nodes, Viewport viewport) {
     }
 
     public record PhysicalLayout(Map<Long, Point> nodes, Viewport viewport) {
@@ -83,7 +93,7 @@ public final class ModelExchangeDto {
      * 계획의 한 줄 : TABLE(컬럼·인덱스·제약조건 포함) · 관계 · 논리 모델(엔터티·속성·식별자·관계 포함) · 매핑.
      *
      * @param kind   SCHEMA · TABLE · VIEW · RELATION · LOGICAL_MODEL · TABLE_MAPPING · ERD_LAYOUT (key PHYSICAL 또는 LOGICAL:모델명)
-     * @param counts 함께 오는 것의 수 (TABLE : columns·indexes·constraints·unsafe(안전하지 않은 식이라 빼는 인덱스·제약조건), 논리 모델 : entities·relationships,
+     * @param counts 함께 오는 것의 수 (TABLE : columns·indexes·constraints·unsafe(안전하지 않은 식이라 빼는 인덱스·제약조건), 논리 모델 : entities·relationships·subjectAreas,
      *               VIEW : columns·references·linked(대상 프로젝트의 기존 객체에 잇는 참조)·unresolved(모델 밖 참조로 남기는 참조), ERD_LAYOUT : nodes·ignored). 없으면 null
      */
     public record PlanItem(String kind, String key, String name, Status status, Reason reason, Map<String, Integer> counts) {

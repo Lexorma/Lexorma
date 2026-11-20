@@ -52,6 +52,8 @@ export interface LogicalEntity {
   identifiers: LogicalIdentifier[];
   /** 수정 기준값 (DEC-08) */
   modifiedAt?: string | null;
+  /** 소속 주제 영역 (M-6 후속 4차 — null = 미분류) */
+  subjectAreaId?: number | null;
 }
 
 /**
@@ -78,6 +80,9 @@ export interface LogicalRelationship {
   isApproval: boolean | null;
   /** 속성 짝과 판정 (목록·ERD 조회에만, M-7 보강 3차) */
   attributePairs?: PairState | null;
+  /** 양 끝 엔터티의 소속 주제 영역 (관계 목록 페이지에만, M-6 후속 4차 — null = 미분류) */
+  sourceSubjectAreaId?: number | null;
+  targetSubjectAreaId?: number | null;
 }
 
 /** 관계 속성 짝 (M-7 보강 3차) : 부모(출발) 주 식별자 속성 → 자식(도착) 속성, 순서 */
@@ -209,6 +214,8 @@ export interface LogicalEntityRow {
   attributeCount: number;
   relationshipCount: number;
   modifiedAt?: string | null;
+  /** 소속 주제 영역 (M-6 후속 4차 — null = 미분류) */
+  subjectAreaId?: number | null;
 }
 
 /** 공용 그리드 페이지 응답 { data, recordsTotal } */

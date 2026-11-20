@@ -50,7 +50,7 @@ public class LogicalModelService {
     private static final int NAME_MAX = 255;
     private static final int DESCRIPTION_MAX = 1000;
     static final int PAIR_MAX = 50;
-    private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
+    static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
     private static final TypeReference<Map<Long, LogicalModelDto.Point>> NODES_TYPE = new TypeReference<>() {
     };
     private static final double MAX_COORDINATE = 10_000_000;
@@ -68,6 +68,7 @@ public class LogicalModelService {
     private final AttributeColumnMappingRepository attributeColumnMappingRepository;
     private final LogicalRelationshipAttributeRepository pairRepository;
     private final LogicalModelQueryRepository queryRepository;
+    private final LogicalSubjectAreaService subjectAreaService;
     private final jakarta.persistence.EntityManager entityManager;
 
     // ------------------------------------------------------------------ 논리 모델
@@ -108,6 +109,7 @@ public class LogicalModelService {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "{0} 에 엔터티가 있습니다.", model.getModelName());
         }
         layoutRepository.deleteByModelId(modelId); // 사용자들의 논리 ERD 배치는 모델에 딸린 화면 설정이다
+        subjectAreaService.deleteForModel(modelId); // 주제 영역과 영역별 배치 (엔터티가 없으므로 소속은 없다 — D-19)
         modelRepository.delete(model);
     }
 
@@ -133,8 +135,18 @@ public class LogicalModelService {
     /** 엔터티 목록 페이지 : 이름·설명 검색(논리 ERD 와 같은 규칙), 정렬 entityName·entityDescription·isApproval(기본 이름순), 같은 값은 ID 순 */
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<LogicalModelDto.EntityRow> selectEntityRows(AccountDto accountDto, Long modelId, String keyword, int page, int size, String sort) {
+        return selectEntityRows(accountDto, modelId, keyword, page, size, sort, null, null, null);
+    }
+
+    /** 주제 영역 범위와 함께 (M-6 후속 4차) : 영역(기본 하위 포함)·미분류, 조건이 없으면 모델 전체. 검사 순서는 모델 → 검색어 → 페이지 요청 → 범위 */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<LogicalModelDto.EntityRow> selectEntityRows(AccountDto accountDto, Long modelId, String keyword, int page, int size, String sort,
+                                                                                            Long subjectAreaId, Boolean unclassified, Boolean includeChildren) {
         model(accountDto.getProjectId(), modelId);
-        return queryRepository.findEntityRows(modelId, likePattern(keyword), com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.ENTITY_SORT_FIELDS));
+        String pattern = likePattern(keyword);
+        var pageable = com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.ENTITY_SORT_FIELDS);
+        var scope = subjectAreaService.scope(accountDto.getProjectId(), modelId, subjectAreaId, unclassified, includeChildren);
+        return queryRepository.findEntityRows(modelId, pattern, scope, pageable);
     }
 
     /**
@@ -145,13 +157,34 @@ public class LogicalModelService {
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<LogicalModelDto.Relationship> selectRelationshipRows(AccountDto accountDto, Long modelId, String keyword, Boolean identifying,
                                                                                                     int page, int size, String sort) {
+        return selectRelationshipRows(accountDto, modelId, keyword, identifying, page, size, sort, null, null, null);
+    }
+
+    /**
+     * 주제 영역 범위와 함께 (M-6 후속 4차, D-15) : 양 끝 엔터티 중 하나라도 범위 안인 관계 (한쪽이 범위 밖인 관계도 빠뜨리지 않는다).
+     * 행마다 양 끝 엔터티의 소속 영역(sourceSubjectAreaId·targetSubjectAreaId)을 한 번에 읽어 채운다
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<LogicalModelDto.Relationship> selectRelationshipRows(AccountDto accountDto, Long modelId, String keyword, Boolean identifying,
+                                                                                                    int page, int size, String sort,
+                                                                                                    Long subjectAreaId, Boolean unclassified, Boolean includeChildren) {
         model(accountDto.getProjectId(), modelId);
-        var ids = queryRepository.findRelationshipIds(modelId, likePattern(keyword), identifying,
-                com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.RELATIONSHIP_SORT_FIELDS));
+        String pattern = likePattern(keyword);
+        var pageable = com.lexorma.common.utils.PageableUtil.getGridPageable(page, size, sort, LogicalModelQueryRepository.RELATIONSHIP_SORT_FIELDS);
+        var scope = subjectAreaService.scope(accountDto.getProjectId(), modelId, subjectAreaId, unclassified, includeChildren);
+        var ids = queryRepository.findRelationshipIds(modelId, pattern, identifying, scope, pageable);
         Map<Long, LogicalRelationship> found = new java.util.HashMap<>();
         if (!ids.isEmpty()) relationshipRepository.findWithEntities(ids.getContent()).forEach(r -> found.put(r.getId(), r));
         List<LogicalRelationship> rows = ids.getContent().stream().map(found::get).filter(Objects::nonNull).toList(); // 페이지 순서 그대로
-        return new org.springframework.data.domain.PageImpl<>(withEndKeys(rows), ids.getPageable(), ids.getTotalElements());
+        Set<Long> ends = new HashSet<>();
+        rows.forEach(r -> {
+            ends.add(r.getSourceEntity().getId());
+            ends.add(r.getTargetEntity().getId());
+        });
+        Map<Long, Long> areas = subjectAreaService.areasOf(ends);
+        List<LogicalModelDto.Relationship> result = withEndKeys(rows).stream()
+                .map(r -> r.withSubjectAreas(areas.get(r.sourceEntityId()), areas.get(r.targetEntityId()))).toList();
+        return new org.springframework.data.domain.PageImpl<>(result, ids.getPageable(), ids.getTotalElements());
     }
 
     /** 예전 호출 (검색·필터·정렬 없음 = ID 순) */
@@ -193,7 +226,8 @@ public class LogicalModelService {
 
     @Transactional(readOnly = true)
     public LogicalModelDto.Entity selectEntity(AccountDto accountDto, Long entityId) {
-        return LogicalModelDto.Entity.detail(entity(accountDto.getProjectId(), entityId));
+        LogicalEntity entity = entity(accountDto.getProjectId(), entityId);
+        return LogicalModelDto.Entity.detail(entity, subjectAreaService.areaOf(entity.getId()));
     }
 
     @Transactional
@@ -215,7 +249,11 @@ public class LogicalModelService {
         }
         entity.setEntityName(name);
         entity.setEntityDescription(description(request.entityDescription()));
-        return LogicalModelDto.Entity.detail(entityRepository.save(entity));
+        boolean created = entity.getId() == null;
+        LogicalEntity saved = entityRepository.save(entity);
+        // 새 엔터티의 처음 소속 (D-17·D-24) : 같은 트랜잭션이라 영역 지정이 실패하면 엔터티 등록도 남지 않는다. 수정 요청의 subjectAreaId 는 보지 않는다
+        if (created) subjectAreaService.assignNew(saved, request.subjectAreaId());
+        return LogicalModelDto.Entity.detail(saved, created ? request.subjectAreaId() : subjectAreaService.areaOf(saved.getId()));
     }
 
     @Transactional
@@ -230,6 +268,8 @@ public class LogicalModelService {
         entityTableMappingRepository.findByEntity_Id(entityId).ifPresent(m -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "테이블 {0} 에 매핑된 엔터티입니다. 매핑을 먼저 해제해주세요.", m.getTable().getTableName());
         });
+        // 주제 영역 소속은 엔터티를 지울 때만 함께 지운다 (삭제 조건을 모두 통과한 뒤 — 실패하면 소속도 그대로다)
+        subjectAreaService.removeEntity(entityId);
         // 속성·식별자는 엔터티에 딸린 데이터라 함께 지운다. 식별자-속성 연결이 속성보다 먼저 지워지도록 식별자부터 내보낸다 (FK)
         entity.getIdentifiers().clear();
         entityRepository.flush();
@@ -559,12 +599,24 @@ public class LogicalModelService {
     /** 범위 조회 : 이름·설명에 검색어가 든 엔터티(없으면 모델 전체)를 이름순 page 번째 size 개 */
     @Transactional(readOnly = true)
     public LogicalModelDto.GraphPart selectGraphPart(AccountDto accountDto, Long modelId, String keyword, int page, int size) {
+        return selectGraphPart(accountDto, modelId, keyword, page, size, null, null, null);
+    }
+
+    /**
+     * 주제 영역 범위와 함께 (M-6 후속 4차) : 영역(기본 하위 포함)·미분류 안에서 같은 규칙(이름순, 한 번에 최대 300). 범위 밖 엔터티와의 관계는 선으로 그리지 않고
+     * 엔터티별 범위 밖 관계 수(outsideRelationships)로 준다 (D-08 — 관계를 숨기지 않는다). 조건이 없으면 예전 쿼리 그대로
+     */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.GraphPart selectGraphPart(AccountDto accountDto, Long modelId, String keyword, int page, int size,
+                                                     Long subjectAreaId, Boolean unclassified, Boolean includeChildren) {
         LogicalModel model = model(accountDto.getProjectId(), modelId);
         if (page < 0 || size < 1 || size > ERD_MAX_ENTITIES) throw invalid("한 번에 1~{0}개 엔터티까지 조회할 수 있습니다.", ERD_MAX_ENTITIES);
         String pattern = likePattern(keyword);
-        long total = entityRepository.countSearch(modelId, pattern);
+        var scope = subjectAreaService.scope(accountDto.getProjectId(), modelId, subjectAreaId, unclassified, includeChildren);
+        long total = scope == null ? entityRepository.countSearch(modelId, pattern) : queryRepository.countScopedEntities(modelId, pattern, scope);
         long offset = (long) page * size;
-        List<Long> ids = offset < total ? entityRepository.searchIds(modelId, pattern, org.springframework.data.domain.PageRequest.of(page, size)) : List.of();
+        List<Long> ids = offset >= total ? List.of() : scope == null ? entityRepository.searchIds(modelId, pattern, org.springframework.data.domain.PageRequest.of(page, size))
+                : queryRepository.findScopedEntityIds(modelId, pattern, scope, offset, size);
         return graphPart(model, ids, total, offset + ids.size() < total);
     }
 
@@ -602,9 +654,20 @@ public class LogicalModelService {
     /** 엔터티 찾기 (ERD 에 없는 엔터티도) : 이름·설명 검색, 이름순 최대 size 개(1~50) */
     @Transactional(readOnly = true)
     public LogicalModelDto.EntityHits searchEntities(AccountDto accountDto, Long modelId, String keyword, int size) {
+        return searchEntities(accountDto, modelId, keyword, size, null, null, null);
+    }
+
+    /** 주제 영역 범위와 함께 (M-6 후속 4차) : 범위 안에서 같은 규칙 (최대 50). 조건이 없으면 모델 전체 (예전 쿼리 그대로) */
+    @Transactional(readOnly = true)
+    public LogicalModelDto.EntityHits searchEntities(AccountDto accountDto, Long modelId, String keyword, int size,
+                                                     Long subjectAreaId, Boolean unclassified, Boolean includeChildren) {
         model(accountDto.getProjectId(), modelId);
         if (size < 1 || size > ERD_MAX_HITS) throw invalid("한 번에 1~{0}개 엔터티까지 찾을 수 있습니다.", ERD_MAX_HITS);
         String pattern = likePattern(keyword);
+        var scope = subjectAreaService.scope(accountDto.getProjectId(), modelId, subjectAreaId, unclassified, includeChildren);
+        if (scope != null) {
+            return new LogicalModelDto.EntityHits(queryRepository.findScopedHits(modelId, pattern, scope, size), queryRepository.countScopedEntities(modelId, pattern, scope));
+        }
         List<LogicalModelDto.EntityHit> items = entityRepository.searchHits(modelId, pattern, org.springframework.data.domain.PageRequest.of(0, size)).stream()
                 .map(row -> new LogicalModelDto.EntityHit((Long) row[0], (String) row[1], (Boolean) row[2])).toList();
         return new LogicalModelDto.EntityHits(items, entityRepository.countSearch(modelId, pattern));
@@ -702,7 +765,7 @@ public class LogicalModelService {
         }
     }
 
-    private static void validate(LogicalModelDto.Layout request) {
+    static void validate(LogicalModelDto.Layout request) {
         if (request == null || request.nodes() == null || request.viewport() == null) {
             throw new CustomException(ErrorCode.INVALID_ERD_REQUEST, "배치 정보가 없습니다.");
         }
@@ -721,7 +784,16 @@ public class LogicalModelService {
     }
 
     private static Map<Long, LogicalModelDto.Point> readNodes(LogicalErdLayout layout) {
-        return new LinkedHashMap<>(OBJECT_MAPPER.readValue(layout.getNodePositions(), NODES_TYPE));
+        return readNodes(layout.getNodePositions());
+    }
+
+    /** 배치 JSON → 엔터티 ID → 좌표 (주제 영역별 배치도 같은 모양) */
+    static Map<Long, LogicalModelDto.Point> readNodes(String json) {
+        return new LinkedHashMap<>(OBJECT_MAPPER.readValue(json, NODES_TYPE));
+    }
+
+    static String writeNodes(Map<Long, LogicalModelDto.Point> nodes) {
+        return OBJECT_MAPPER.writeValueAsString(nodes);
     }
 
     private static LogicalModelDto.Layout toDto(LogicalErdLayout layout, Map<Long, LogicalModelDto.Point> nodes) {
@@ -769,14 +841,14 @@ public class LogicalModelService {
         return term;
     }
 
-    private static String name(String value, String label) {
+    static String name(String value, String label) {
         String name = value == null ? "" : value.trim();
         if (name.isEmpty()) throw invalid("{0}을(를) 입력해주세요.", Messages.get(label));
         if (name.length() > NAME_MAX) throw invalid("{0}은(는) {1}자까지 입력할 수 있습니다.", Messages.get(label), NAME_MAX);
         return name;
     }
 
-    private static String description(String value) {
+    static String description(String value) {
         if (value == null || value.isBlank()) return null;
         if (value.length() > DESCRIPTION_MAX) throw invalid("{0}은(는) {1}자까지 입력할 수 있습니다.", Messages.get("설명"), DESCRIPTION_MAX);
         return value;
@@ -815,11 +887,11 @@ public class LogicalModelService {
         if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
     }
 
-    private static CustomException invalid(String message, Object... args) {
+    static CustomException invalid(String message, Object... args) {
         return new CustomException(ErrorCode.INVALID_LOGICAL_MODEL, message, args);
     }
 
-    private static CustomException notFound(String label) {
+    static CustomException notFound(String label) {
         return new CustomException(ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED, "{0}을(를) 찾을 수 없습니다.", Messages.get(label));
     }
 

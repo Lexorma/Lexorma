@@ -47,3 +47,48 @@
 /* 논리 모델 관리 표 머리글 (후속 3차 보완) : 공용 layout.css 는 머리글을 줄바꿈하지 않아 고정 폭 열에서 긴 영어 머리글(Identifying relationship 등)이 옆 칸과 겹쳤다 → 이 두 표만 칸 안에서 줄바꿈 */
 #logicalEntityGrid thead th,
 #logicalRelationshipGrid thead th { white-space: normal; }
+
+/* 주제 영역 (M-6 후속 4차) : 관리 화면 왼쪽 패널 + 목록. 좁은 화면에서는 패널을 접어 두고 버튼으로 연다 (페이지 전체 가로 스크롤 없음 — 표만 자기 영역에서 스크롤) */
+.subject-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+.subject-main { min-width: 0; }
+.subject-layout > .btn.subject-panel-toggle { display: none; } /* 공용 .content .btn(inline-flex)보다 앞선다 */
+.subject-panel { position: sticky; top: 8px; display: grid; gap: 8px; padding: 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); }
+.subject-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.subject-panel-head h2 { margin: 0; font-size: 14px; }
+.subject-search { font-size: 13px; }
+.subject-tree, .subject-hits { max-height: min(60vh, 560px); margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.subject-node { display: flex; align-items: center; gap: 4px; min-height: 30px; padding-inline-end: 6px; border-radius: 6px; color: var(--gh-fg); font-size: 13px; cursor: pointer;
+    transition: background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.subject-node:hover { background: var(--gh-hover); }
+.subject-node:focus-visible { outline: 2px solid var(--gh-accent); outline-offset: -2px; }
+/* 선택 표시 : 배경색만이 아니라 굵기·왼쪽 막대로도 (색에만 의존하지 않는다) */
+.subject-node.is-selected { background: var(--gh-accent-subtle); font-weight: 600; box-shadow: inset 3px 0 0 var(--gh-accent); }
+.subject-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: var(--gh-fg-muted); cursor: pointer; }
+.subject-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subject-count { flex: none; color: var(--gh-fg-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.subject-empty { padding: 8px 4px; font-size: 12px; }
+.subject-hit { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--gh-fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.subject-hit:hover, .subject-hit:focus-visible { background: var(--gh-hover); }
+.subject-hit.is-selected { background: var(--gh-accent-subtle); font-weight: 600; box-shadow: inset 3px 0 0 var(--gh-accent); }
+.subject-hit-path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.subject-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; margin: 0 0 12px; padding: 12px; border: 1px solid var(--gh-border); border-radius: 6px; }
+.subject-header-text { min-width: 0; flex: 1 1 240px; }
+.subject-header-text p { margin: 4px 0 0; }
+.subject-breadcrumb { font-weight: 600; overflow-wrap: anywhere; }
+.subject-header-counts { font-size: 12px; }
+.subject-include { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 13px; white-space: nowrap; }
+/* 긴 계층 경로는 한 줄로 줄이고 전체는 title 로 (행 높이를 늘리지 않는다) */
+.subject-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subject-end { display: block; overflow: hidden; color: var(--gh-fg-muted); text-overflow: ellipsis; white-space: nowrap; }
+.subject-classify-current { margin: 0 0 12px; padding-left: 18px; overflow-wrap: anywhere; }
+.subject-erd-select { max-width: 220px; }
+.subject-erd-scope { display: inline-block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.subject-finder-scope { margin: 4px 0 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) {
+    .subject-layout { grid-template-columns: minmax(0, 1fr); }
+    .subject-layout > .btn.subject-panel-toggle { display: block; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .subject-panel-slot { display: none; }
+    .subject-layout.is-panel-open .subject-panel-slot { display: block; }
+    .subject-panel { position: static; }
+    .subject-erd-select { max-width: 100%; }
+}

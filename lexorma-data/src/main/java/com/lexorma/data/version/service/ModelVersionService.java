@@ -46,10 +46,11 @@ public class ModelVersionService {
     /**
      * 모델 내용 JSON 의 형식 번호 (대상 종류 → [{id, name, state}]). 2 : 인덱스 state 에 indexSource·derivedColumnId (M-14 1차),
      * 3 : 인덱스 condition, 구성 요소 expression·sort (M-14 2차), 4 : 대상 종류 PHYSICAL_VIEW (M-15, state 에 columns·references),
-     * 5 : 테이블·컬럼 state 에 sourceComment (원본 COMMENT, M-4e), 6 : 논리 관계 state 에 attributes (속성 짝, M-7 보강 3차 — 예전 버전에는 없고, 비교는 빈 목록과 같게 본다).
-     * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW 가 없어 현재의 VIEW 는 모두 추가로 보인다
+     * 5 : 테이블·컬럼 state 에 sourceComment (원본 COMMENT, M-4e), 6 : 논리 관계 state 에 attributes (속성 짝, M-7 보강 3차 — 예전 버전에는 없고, 비교는 빈 목록과 같게 본다),
+     * 7 : 대상 종류 LOGICAL_SUBJECT_AREA·SUBJECT_AREA_ENTITY (주제 영역·엔터티 소속, M-6 후속 4차 — 형식 6 이하 버전에는 주제 영역 정보가 없다 : 빈 것이 아니라 담지 않았다).
+     * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW·주제 영역이 없어 현재의 VIEW·주제 영역은 모두 추가로 보인다
      */
-    static final int FORMAT_VERSION = 6;
+    static final int FORMAT_VERSION = 7;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();

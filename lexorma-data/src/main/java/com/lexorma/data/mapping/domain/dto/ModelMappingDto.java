@@ -59,4 +59,32 @@ public final class ModelMappingDto {
                     totalAttributes, mappedAttributes, totalAttributes - mappedAttributes);
         }
     }
+
+    // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차, docs/ongoing/subtype-physical-transformation.md 30장)
+
+    /** 상속 PK 매핑 저장. mappingId = 서브타입의 엔터티 ↔ 테이블 매핑, attributeId = 루트 주 식별자 속성(원본). 변경(id 있음)은 columnId 만 바꾼다 */
+    public record SubtypeKeyMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+    }
+
+    /** 상속 PK 매핑 후보 컬럼 : 매핑된 테이블의 컬럼 중 속성 매핑·다른 상속 PK 매핑에 쓰이지 않은 것 (PK·타입은 보여만 준다) */
+    public record KeyColumnCandidate(Long columnId, String columnName, String columnDesc, String dataType, Integer maxLength, java.math.BigDecimal precision, Integer scale,
+                                     Boolean isPk, Boolean isNullable, Long termId, String termName) {
+    }
+
+    /**
+     * 상속 PK 매핑 1행. 지금의 루트 주 식별자 속성마다 1행(순서대로 — 매핑이 없으면 id·column 이 null), 그 뒤에 지금 주 식별자에 없는 속성의 기존 매핑(current false).
+     * current : 지금 루트 주 식별자에 있는 속성인지 (아니면 정합하지 않은 기존 매핑 — 숨기지 않고 해제할 수 있다)
+     */
+    public record SubtypeKeyRow(Long id, int order, boolean current, Long attributeId, String attributeName, Long attributeEntityId, String attributeEntityName,
+                                Long columnId, String columnName, String dataType, Integer maxLength, java.math.BigDecimal precision, Integer scale, Boolean isPk) {
+    }
+
+    /**
+     * 서브타입 엔터티 매핑의 상속 PK 매핑과 정합성 (조회 때 계산, 저장하지 않는다). subtype false 면 지금은 서브타입이 아니다 (status NOT_SUBTYPE).
+     * status : VALID 또는 사유 코드 (INHERITED_KEY_MAPPING_MISSING · PARENT_KEY_MISMATCH · INHERITED_KEY_TYPE_MISMATCH · INHERITANCE_FK_MISSING · ROOT_KEY_MISSING ·
+     * ANCESTOR_MISSING · ROOT_KEY_MAPPING_MISSING · ANCESTOR_INVALID · NOT_SUBTYPE), complete : 루트 주 식별자 전체에 상속 PK 매핑이 있는지 (구조 판정과 별개)
+     */
+    public record SubtypeKeyDetail(EntityRow mapping, boolean subtype, Long parentEntityId, String parentEntityName, Long rootEntityId, String rootEntityName,
+                                   String status, String statusMessage, boolean complete, List<SubtypeKeyRow> keys) {
+    }
 }

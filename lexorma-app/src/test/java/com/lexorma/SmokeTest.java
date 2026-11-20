@@ -725,6 +725,43 @@ class SmokeTest {
 
     @Test
     @Order(20)
+    @DisplayName("M-7 3차 상속 PK 매핑 API (실제 HTTP) : 조회·후보(서버 페이징 400)·등록 거절 코드·없는 매핑 해제·CSRF 없음 403 — 예제(서브타입 없음)는 바꾸지 않는다")
+    void subtypeKeyMappingHttp() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        String accountRows = "/api/modelMapping/entity/data?page=0&size=50&searchColumn=entityName&searchQuery=" + java.net.URLEncoder.encode("계정", java.nio.charset.StandardCharsets.UTF_8);
+        var seeded = java.util.stream.StreamSupport.stream(mapper.readTree(get(accountRows, true).body()).path("data").spliterator(), false)
+                .filter(row -> row.path("entityName").asString().equals("계정")).findFirst().orElseThrow();
+        long mappingId = seeded.path("mappingId").asLong();
+        int before = jdbcTemplate.queryForObject("select count(*) from TB_SBTYP_IDNTFR_COL_MPNG", Integer.class);
+
+        HttpResponse<String> detail = get("/api/modelMapping/entity/" + mappingId + "/subtypeKeys", true);
+        assertThat(detail.statusCode()).as(detail.body()).isEqualTo(200);
+        assertThat(mapper.readTree(detail.body()).path("status").asString()).isEqualTo("NOT_SUBTYPE");
+        assertThat(mapper.readTree(detail.body()).path("subtype").asBoolean()).isFalse();
+        HttpResponse<String> candidates = get("/api/modelMapping/entity/" + mappingId + "/subtypeKeys/candidates?page=0&size=20&sort=columnName,asc", true);
+        assertThat(candidates.statusCode()).as(candidates.body()).isEqualTo(200);
+        assertThat(mapper.readTree(candidates.body()).path("data").size()).as("예제는 모든 컬럼이 속성 매핑에 쓰인다").isZero();
+        assertThat(get("/api/modelMapping/entity/" + mappingId + "/subtypeKeys/candidates?page=0&size=101", true).body()).contains("INVALID_PAGE_REQUEST");
+        assertThat(get("/api/modelMapping/entity/" + mappingId + "/subtypeKeys/candidates?page=0&size=20&sort=password,asc", true).body()).contains("INVALID_PAGE_REQUEST");
+        assertThat(get("/api/modelMapping/entity/999999999/subtypeKeys", true).body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
+
+        long attributeId = mapper.readTree(get("/api/modelMapping/entity/" + mappingId, true).body()).path("attributes").get(0).path("attributeId").asLong();
+        HttpResponse<String> refused = postJson("/api/modelMapping/subtypeKey", "{\"mappingId\":" + mappingId + ",\"attributeId\":" + attributeId + ",\"columnId\":1}");
+        assertThat(refused.statusCode()).isEqualTo(400);
+        assertThat(refused.body()).contains("INVALID_MODEL_MAPPING");
+        HttpResponse<String> missing = delete("/api/modelMapping/subtypeKey/999999999");
+        assertThat(missing.statusCode()).isEqualTo(400);
+        assertThat(missing.body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
+        HttpResponse<String> noCsrf = client.send(HttpRequest.newBuilder(uri("/api/modelMapping/subtypeKey"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"mappingId\":" + mappingId + "}", StandardCharsets.UTF_8))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(noCsrf.statusCode()).isEqualTo(403);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from TB_SBTYP_IDNTFR_COL_MPNG", Integer.class)).isEqualTo(before);
+    }
+
+    @Test
+    @Order(20)
     @DisplayName("M-7 논리·물리 매핑 API : 예제는 전부 매핑(V4) → 계정 매핑 해제 → 후보 → 엔터티 매핑 → 속성 매핑 → 상세, 오류 코드, 삭제 순서 → 예제 매핑 복원")
     void modelMapping() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();

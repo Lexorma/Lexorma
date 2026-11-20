@@ -105,6 +105,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         if(tableInfo == null){
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
+        // PK 구성을 바꾸는 쓰기(새 PK 컬럼)는 테이블 행을 먼저 잠근다 : 그 테이블을 부모로 쓰는 논리 → 물리 생성(M-7 3차, M7-D39)이 기다리지 않고 잠가 확인한다.
+        // PK 가 아닌 컬럼은 부모 키를 바꾸지 않으므로 잠그지 않는다 (업무 설명 직접 편집 등 테이블 행을 쥔 다른 작업을 기다리지 않는다 — AI-5 계약 그대로)
+        if ("Y".equalsIgnoreCase(columnInfoDto.getIsPk())) tableInfoRepository.findForUpdate(tableInfo.getId(), projectId);
         if(standardTerm == null){
             throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA);
         }
@@ -365,6 +368,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                         .build());
             }
 
+            // PK 컬럼을 더하는 테이블 행만 ID 순으로 잠근다 (부모 키를 바꾸는 쓰기의 공통 잠금 — M-7 3차, M7-D39. PK 가 아닌 컬럼만 올리면 기다리지 않는다 — AI-5 계약 그대로)
+            columnInfos.stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(c -> c.getTableInfo().getId()).distinct().sorted()
+                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
             columnInfoRepository.saveAll(columnInfos);
             // 참조 테이블명 → 관계 (청크의 테이블 기준, 조회 전에 자동 flush 되어 저장한 행을 DB 에서 다시 읽는다)
             physicalModelService.syncReferenceRelations(projectId, chunkTableIds);
@@ -544,7 +550,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Long projectId = accountDto.getProjectId();
 
         // 로그인 프로젝트의 승인된 테이블에만 컬럼을 등록한다. (컬럼 등록 화면과 같은 기준)
-        TableInfo tableInfo = request.getTableInfoId() == null ? null : tableInfoRepository.findByIdAndProjectId(request.getTableInfoId(), projectId);
+        // 테이블 행을 먼저 잠근다 (컬럼 구성·PK 를 바꾸는 쓰기의 공통 잠금 — M-7 3차, M7-D39. 순서 : 테이블 → 컬럼 행)
+        TableInfo tableInfo = request.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(request.getTableInfoId(), projectId).orElse(null);
         if (tableInfo == null) {
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }

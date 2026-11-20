@@ -371,6 +371,10 @@ class ProjectDeletionIntegrationTest {
                 base - 1, projectId, model.id(), base - 1, onlineOrder.id());
         jdbc.update("insert into TB_LGCL_SBTYP(LGCL_SBTYP_SN, PRJ_SN, LGCL_MDL_SN, LGCL_SBTYP_GROUP_SN, SBTYP_ENTT_SN, CLSF_VL, SORT_ORD) values(?, ?, ?, ?, ?, 'STORE', 2)",
                 base - 2, projectId, model.id(), base - 1, storeOrder.id());
+        // 상속 PK 매핑 (M-7 3차, V4) : 서브타입(온라인 주문) ↔ TB_CODE 매핑 아래 루트 주 식별자(주문 번호) ↔ GRP_CD (삭제 순서 : 상속 PK 매핑 → 엔터티 매핑·속성·컬럼)
+        EntityMapping onlineMapping = mappings.saveEntityMapping(admin, new EntityMapping(null, onlineOrder.id(), code.getId()));
+        jdbc.update("insert into TB_SBTYP_IDNTFR_COL_MPNG(SBTYP_IDNTFR_COL_MPNG_SN, ENTT_TBL_MPNG_SN, LGCL_ATRB_SN, COL_SN) values(?, ?, ?, ?)",
+                base - 1, onlineMapping.id(), orderNoAttribute.id(), grp.getId());
 
         // ERD 배치 (사용자별)
         jdbc.update("insert into TB_ERD_LYT(ERD_LYT_SN, PRJ_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO) values(?, ?, ?, '{}', 0, 0, 1, 0)", base - 1, projectId, accountId);

@@ -464,7 +464,7 @@ class ColumnManageServiceImplTest {
             ColumnInfo remove = column(2L, "OLD_COL", false, 2);
             TableInfo table = approvedTable(keep, remove);
             StandardTerm userNm = term(20L, "USER_NM");
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(userNm);
 
             ColumnBulkSaveDto.Row pkRow = existingRow(1L);
@@ -506,7 +506,7 @@ class ColumnManageServiceImplTest {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
             ColumnInfo approved = column(1L, "USER_ID", true, 5);
             TableInfo table = approvedTable(approved);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term(20L, "USER_NM"));
 
             ColumnBulkSaveDto.Row changed = existingRow(1L); // 승인된 컬럼 값을 바꿔 보내도 무시
@@ -533,7 +533,7 @@ class ColumnManageServiceImplTest {
             ColumnInfo pswd = column(2L, "PSWD_CN", true, 0);
             pswd.setSortOrder(null);
             TableInfo table = approvedTable(id, pswd);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term(20L, "USE_YN"));
 
             ColumnBulkSaveDto.Result result = service.saveColumnsBulk(login, ColumnBulkSaveDto.builder().tableInfoId(10L)
@@ -554,7 +554,7 @@ class ColumnManageServiceImplTest {
             AccountDto login = SecurityTestSupport.loginAsUser(1L);
             ColumnInfo approved = column(1L, "USER_ID", true, 1);
             TableInfo table = approvedTable(approved);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term(20L, "USER_NM"));
             when(standardTermRepository.findByIdAndProjectId(21L, 1L)).thenReturn(term(21L, "USER_ID"));
             when(standardTermRepository.findByIdAndProjectId(99L, 1L)).thenReturn(null);
@@ -585,11 +585,11 @@ class ColumnManageServiceImplTest {
         void tableRules() {
             AccountDto login = SecurityTestSupport.loginAsUser(1L);
             TableInfo pending = TableInfo.builder().id(10L).projectId(1L).tableName("TB_USER").isApproval(false).columns(new ArrayList<>()).build();
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(pending);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(pending)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
 
             assertThat(service.saveColumnsBulk(login, ColumnBulkSaveDto.builder().tableInfoId(10L).build()).result()).isFalse();
 
-            when(tableInfoRepository.findByIdAndProjectId(11L, 1L)).thenReturn(null);
+            when(tableInfoRepository.findForUpdate(11L, 1L)).thenReturn(java.util.Optional.ofNullable(null)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
             assertThatThrownBy(() -> service.saveColumnsBulk(login, ColumnBulkSaveDto.builder().tableInfoId(11L).build()))
                     .extracting("errorCode").isEqualTo(ErrorCode.TABLE_IS_NOT_DEFINED);
         }

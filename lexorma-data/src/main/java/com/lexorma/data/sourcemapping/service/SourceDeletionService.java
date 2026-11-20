@@ -377,6 +377,10 @@ public class SourceDeletionService {
                 for (Object id : entityManager.createQuery("select m.column.id from AttributeColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
                     attributeMapped.add((Long) id);
                 }
+                // 상속 PK 매핑에 쓰인 컬럼도 매핑된 컬럼이다 (M-7 3차 — 삭제 확정은 일반 컬럼 삭제가 같은 이유로 다시 거절한다)
+                for (Object id : entityManager.createQuery("select m.column.id from SubtypeIdentifierColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
+                    attributeMapped.add((Long) id);
+                }
                 for (Object[] row : entityManager.createQuery("select rc.sourceColumn.id, rc.targetColumn.id, r.relationName, r.relationSource, r.derivedColumnId from TableRelationColumn rc "
                         + "join rc.relation r where rc.sourceColumn.id in :ids or rc.targetColumn.id in :ids", Object[].class).setParameter("ids", columnIds).getResultList()) {
                     boolean derivedFromSource = row[3] == TableRelation.Source.REF_COLUMN && Objects.equals(row[4], row[0]);

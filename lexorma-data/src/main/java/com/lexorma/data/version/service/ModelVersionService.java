@@ -49,10 +49,11 @@ public class ModelVersionService {
      * 5 : 테이블·컬럼 state 에 sourceComment (원본 COMMENT, M-4e), 6 : 논리 관계 state 에 attributes (속성 짝, M-7 보강 3차 — 예전 버전에는 없고, 비교는 빈 목록과 같게 본다),
      * 7 : 대상 종류 LOGICAL_SUBJECT_AREA·SUBJECT_AREA_ENTITY (주제 영역·엔터티 소속, M-6 후속 4차 — 형식 6 이하 버전에는 주제 영역 정보가 없다 : 빈 것이 아니라 담지 않았다),
      * 8 : 대상 종류 SUBTYPE_GROUP (서브타입 그룹 — state 에 subtypes 배열, M-6 후속 5차. 상속 속성·식별자는 담지 않는다 : 원본 속성·식별자와 그룹으로 해석한다.
-     *     형식 7 이하 버전에는 상속 정보가 없다 — 지금 DB 의 상속으로 채우지 않는다).
+     *     형식 7 이하 버전에는 상속 정보가 없다 — 지금 DB 의 상속으로 채우지 않는다),
+     * 9 : 대상 종류 SUBTYPE_KEY_MAPPING (서브타입 식별자 컬럼 매핑 = 상속 PK 매핑, M-7 3차·M7-D43 — 형식 8 이하 버전에는 없다 : 담지 않았다. 예전 버전을 고치거나 채우지 않는다).
      * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW·주제 영역이 없어 현재의 VIEW·주제 영역은 모두 추가로 보인다
      */
-    static final int FORMAT_VERSION = 8;
+    static final int FORMAT_VERSION = 9;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();

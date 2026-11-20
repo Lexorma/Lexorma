@@ -18,7 +18,10 @@ import java.util.*;
  *   <li>식별 : FK 컬럼이 모두 자식 PK 이면 IDENTIFYING, 일부면 PARTIAL, 아니면(PK 없음 포함) NON_IDENTIFYING</li>
  *   <li>LOGICAL 관계(DB FK 아님)·컬럼 쌍이 없는 관계는 판단하지 않는다</li>
  * </ul>
- * PK_YN·UNQ_YN 이 비어 있으면 PK·UNIQUE 가 아닌 것으로 본다 (DDL·모델 구조 진단과 같다).
+ * 비어 있는 PK_YN·UNQ_YN (M-7 2차 M7-D38) : 화면·엑셀·원본 가져오기·생성은 늘 참/거짓을 넣으므로 비어 있으면 "기록되지 않은 값" 이다 (예전 데이터·직접 SQL·필드가 없는 교환 파일).
+ * 자식 쪽은 근거가 확정된 것만 쓴다 — 최대 1 은 확정된 유일성(PK 플래그가 모두 기록된 테이블의 PK · 참인 UNQ_YN · UNIQUE 제약 · 고유 인덱스)으로만, N 은 자식 테이블 PK 플래그와
+ * FK 컬럼의 UNQ_YN 이 모두 기록됐을 때만. 그 밖에는 판단하지 않는다 ({@link #KEY_METADATA_UNKNOWN}). 식별 여부도 FK 컬럼의 PK_YN 이 비어 있으면 판단하지 않는다.
+ * 부모 쪽 참조 키 판단은 DDL·모델 구조 진단과 같게 비어 있으면 아닌 것으로 본다 (무효 FK 판정을 화면마다 다르게 하지 않는다).
  */
 public final class PhysicalCardinality {
 
@@ -34,6 +37,8 @@ public final class PhysicalCardinality {
     public static final String COLUMNS_MISSING = "COLUMNS_MISSING";
     public static final String NULLABLE_UNKNOWN = "NULLABLE_UNKNOWN";
     public static final String NULLABLE_MIXED = "NULLABLE_MIXED";
+    /** 자식 PK_YN·UNQ_YN 이 비어 있어 자식 쪽 유일성·식별 여부를 확정할 수 없다 (M-7 2차 M7-D38) */
+    public static final String KEY_METADATA_UNKNOWN = "KEY_METADATA_UNKNOWN";
 
     private PhysicalCardinality() {
     }
@@ -42,15 +47,17 @@ public final class PhysicalCardinality {
      * 판단 근거 : 관계 양쪽 테이블의 모든 컬럼(컬럼 ID → 값, 테이블별 PK 는 한 번만 모은다)과
      * 테이블 ID → UNIQUE 제약·고유 인덱스의 컬럼 ID 집합 (조건부·표현식 인덱스는 넣지 않는다)
      */
-    public record Context(Map<Long, ColumnFlags> columns, Map<Long, Set<Long>> primaryKeys, Map<Long, List<Set<Long>>> uniqueKeys) {
+    public record Context(Map<Long, ColumnFlags> columns, Map<Long, Set<Long>> primaryKeys, Map<Long, List<Set<Long>>> uniqueKeys, Set<Long> unknownPkTables) {
         public static Context of(Collection<ColumnFlags> columns, Map<Long, List<Set<Long>>> uniqueKeys) {
             Map<Long, ColumnFlags> byId = new HashMap<>();
             Map<Long, Set<Long>> pks = new HashMap<>();
+            Set<Long> unknownPk = new HashSet<>();
             columns.forEach(c -> {
                 byId.put(c.id(), c);
                 if (Boolean.TRUE.equals(c.isPk())) pks.computeIfAbsent(c.tableId(), k -> new HashSet<>()).add(c.id());
+                if (c.isPk() == null) unknownPk.add(c.tableId());
             });
-            return new Context(byId, pks, uniqueKeys);
+            return new Context(byId, pks, uniqueKeys, unknownPk);
         }
 
         Set<Long> primaryKey(Long tableId) {
@@ -78,7 +85,8 @@ public final class PhysicalCardinality {
             referenced.add(p.targetColumnId());
         });
         Set<Long> childPk = context.primaryKey(relation.sourceTableId());
-        String identifying = childPk.containsAll(fk) && !childPk.isEmpty() ? "IDENTIFYING"
+        boolean fkPkUnknown = fk.stream().anyMatch(id -> columns.get(id) == null || columns.get(id).isPk() == null);
+        String identifying = fkPkUnknown ? null : childPk.containsAll(fk) && !childPk.isEmpty() ? "IDENTIFYING"
                 : fk.stream().anyMatch(childPk::contains) ? "PARTIAL" : "NON_IDENTIFYING";
 
         if ("LOGICAL".equals(relation.relationType())) {
@@ -90,7 +98,8 @@ public final class PhysicalCardinality {
 
         List<String> reasons = new ArrayList<>();
         String parentMin = parentMin(fk, columns, reasons);
-        String childMax = unique(fk, context, relation.sourceTableId(), childPk) ? "1" : "N";
+        String childMax = childMax(fk, context, relation.sourceTableId(), childPk);
+        if (childMax == null || identifying == null) reasons.add(KEY_METADATA_UNKNOWN);
         return new ErdDto.Cardinality(parentMin, "1", childMax, identifying, List.copyOf(reasons));
     }
 
@@ -126,6 +135,14 @@ public final class PhysicalCardinality {
     }
 
     /** 자식 쪽 : 유일성 키 하나라도 FK 컬럼 집합 안에 다 들어 있으면 같은 부모 값을 가진 자식은 1건뿐이다 */
+    /** 확정된 유일성이 있으면 "1", 근거가 모두 기록됐는데 없으면 "N", 기록되지 않은 값 때문에 정할 수 없으면 null */
+    private static String childMax(Set<Long> fk, Context context, Long tableId, Set<Long> pk) {
+        boolean pkKnown = !context.unknownPkTables().contains(tableId);
+        if (unique(fk, context, tableId, pkKnown ? pk : Set.of())) return "1";
+        boolean uniqueKnown = fk.stream().allMatch(id -> context.columns().get(id) != null && context.columns().get(id).isUnique() != null);
+        return pkKnown && uniqueKnown ? "N" : null;
+    }
+
     private static boolean unique(Set<Long> fk, Context context, Long tableId, Set<Long> pk) {
         if (!pk.isEmpty() && fk.containsAll(pk)) return true;
         for (Long id : fk) {

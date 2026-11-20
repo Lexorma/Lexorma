@@ -41,7 +41,7 @@ const COUNT_LABEL: Record<string, string> = {
   SCHEMA: t('스키마'), PHYSICAL_TABLE: 'TABLE', PHYSICAL_COLUMN: t('컬럼'), PHYSICAL_RELATION: t('관계'), PHYSICAL_INDEX: t('인덱스'), PHYSICAL_CONSTRAINT: t('제약조건'),
   LOGICAL_MODEL: t('논리 모델'), LOGICAL_ENTITY: t('엔터티'), LOGICAL_ATTRIBUTE: t('속성'), LOGICAL_RELATIONSHIP: t('논리 관계'), TABLE_MAPPING: t('엔터티 매핑'), COLUMN_MAPPING: t('속성 매핑'),
   PHYSICAL_VIEW: 'VIEW', PHYSICAL_VIEW_REFERENCE: t('VIEW 참조'), ERD_LAYOUT_NODE: t('ERD 배치 좌표'),
-  SUBTYPE_GROUP: t('서브타입 그룹'), LOGICAL_SUBTYPE: t('서브타입'),
+  SUBTYPE_GROUP: t('서브타입 그룹'), LOGICAL_SUBTYPE: t('서브타입'), SUBTYPE_KEY_MAPPING: t('상속 PK 매핑'),
 };
 /** 파일 크기 한도 (서버와 같다) */
 const MAX_BYTES = 30 * 1024 * 1024;

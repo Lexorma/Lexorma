@@ -64,6 +64,6 @@ export function scaleText(counts: Record<string, number> | null | undefined): st
     t('컬럼 {0}', count('PHYSICAL_COLUMN')),
     t('엔터티 {0}', count('LOGICAL_ENTITY')),
     t('속성 {0}', count('LOGICAL_ATTRIBUTE')),
-    t('매핑 {0}', count('TABLE_MAPPING', 'COLUMN_MAPPING')),
+    t('매핑 {0}', count('TABLE_MAPPING', 'COLUMN_MAPPING', 'SUBTYPE_KEY_MAPPING')),
   ].join(' · ');
 }

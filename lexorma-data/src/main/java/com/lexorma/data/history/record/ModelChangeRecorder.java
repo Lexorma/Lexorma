@@ -20,6 +20,7 @@ import com.lexorma.data.logical.domain.entity.LogicalSubtype;
 import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
 import com.lexorma.data.physical.domain.entity.TableConstraintColumn;
 import com.lexorma.data.physical.domain.entity.TableIndex;
@@ -144,7 +145,10 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                     List.of("subjectArea", "entity"))),
             // 서브타입 그룹 (M-6 후속 5차) : 구성원은 그룹 이력의 subtypes 배열 (추가·제거·분류 값·순서). 상속 속성·식별자는 행이 없어 하위 엔터티마다 이력을 만들지 않는다
             Map.entry(LogicalSubtypeGroup.class, new Tracked(TargetType.SUBTYPE_GROUP, "groupName", null,
-                    List.of("model", "supertypeEntity", "groupName", "groupDescription", "overlapping", "total", "classificationAttribute", "sortOrder"))));
+                    List.of("model", "supertypeEntity", "groupName", "groupDescription", "overlapping", "total", "classificationAttribute", "sortOrder"))),
+            // 상속 PK 매핑 (M-7 3차) : 서브타입 문맥 = 엔터티 매핑(mapping), 원본 = 루트 주 식별자 속성(attribute — 그 속성 자체의 이력은 속성 이력에만), 서브타입 테이블 컬럼(column)
+            Map.entry(SubtypeIdentifierColumnMapping.class, new Tracked(TargetType.SUBTYPE_KEY_MAPPING, null, "mapping",
+                    List.of("mapping", "attribute", "column"))));
 
     private static final Map<Class<?>, Child> CHILDREN = Map.of(
             TableRelationColumn.class, new Child(TableRelation.class, "relation", "columns", "columnOrder", List.of("sourceColumn", "targetColumn", "columnOrder")),
@@ -666,7 +670,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                 case LOGICAL_RELATIONSHIP -> shown.get("relationshipName") != null ? (String) shown.get("relationshipName")
                         : joined(" → ", shown.get("sourceEntityName"), shown.get("targetEntityName"));
                 case TABLE_MAPPING -> joined(" ↔ ", shown.get("entityName"), shown.get("tableName"));
-                case COLUMN_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
+                case COLUMN_MAPPING, SUBTYPE_KEY_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
                 case SUBJECT_AREA_ENTITY -> joined(" ∈ ", shown.get("entityName"), shown.get("subjectAreaName"));
                 case SUBTYPE_GROUP -> joined(" / ", shown.get("supertypeEntityName"), shown.get("groupName"));
                 default -> (String) shown.get(tracked.nameField());

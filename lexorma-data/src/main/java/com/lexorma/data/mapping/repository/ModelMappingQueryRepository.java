@@ -12,6 +12,7 @@ import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto;
 import com.lexorma.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.QSubtypeIdentifierColumnMapping;
 import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
 import com.querydsl.core.BooleanBuilder;
@@ -48,6 +49,7 @@ public class ModelMappingQueryRepository {
     private static final QLogicalAttribute attribute = QLogicalAttribute.logicalAttribute;
     private static final QEntityTableMapping mapping = QEntityTableMapping.entityTableMapping;
     private static final QAttributeColumnMapping attributeMapping = QAttributeColumnMapping.attributeColumnMapping;
+    private static final QSubtypeIdentifierColumnMapping subtypeKey = QSubtypeIdentifierColumnMapping.subtypeIdentifierColumnMapping;
     private static final QTableInfo table = QTableInfo.tableInfo;
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
     private static final QColumnInfo column = QColumnInfo.columnInfo;
@@ -147,9 +149,44 @@ public class ModelMappingQueryRepository {
                 .from(column)
                 .leftJoin(column.standardTerms, columnTerm)
                 .where(column.tableInfo.id.eq(tableId),
-                        JPAExpressions.selectOne().from(attributeMapping).where(attributeMapping.column.eq(column)).notExists())
+                        JPAExpressions.selectOne().from(attributeMapping).where(attributeMapping.column.eq(column)).notExists(),
+                        // 상속 PK 매핑에 쓰인 컬럼은 속성 매핑 후보가 아니다 (교차 중복 금지, M-7 3차)
+                        JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column)).notExists())
                 .orderBy(column.sortOrder.asc().nullsLast(), column.id.asc())
                 .fetch();
+    }
+
+    private static final Map<String, ComparableExpressionBase<?>> KEY_COLUMN_SORTS = Map.of(
+            "columnName", column.columnName,
+            "sortOrder", column.sortOrder);
+
+    /** 상속 PK 매핑 후보 컬럼 정렬 필드 (PageableUtil 허용 목록) */
+    public static final java.util.Set<String> KEY_COLUMN_SORT_FIELDS = KEY_COLUMN_SORTS.keySet();
+
+    /**
+     * 상속 PK 매핑 후보 컬럼 (M-7 3차) : 매핑된 테이블의 컬럼 중 속성 매핑·다른 상속 PK 매핑에 쓰이지 않은 것. currentId 가 있으면 그 상속 PK 매핑이 쓰는 컬럼은 후보로 둔다 (변경 화면).
+     * 검색어는 컬럼명·컬럼 설명, 기본 순서는 컬럼 순서 → ID. PK·타입은 보여만 준다 (등록이 구조를 바꾸지 않는다)
+     */
+    public Page<ModelMappingDto.KeyColumnCandidate> findKeyColumnCandidates(Long tableId, Long currentId, String searchQuery, Pageable pageable) {
+        BooleanBuilder where = new BooleanBuilder(column.tableInfo.id.eq(tableId))
+                .and(JPAExpressions.selectOne().from(attributeMapping).where(attributeMapping.column.eq(column)).notExists())
+                .and(JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column), currentId == null ? null : subtypeKey.id.ne(currentId)).notExists());
+        if (searchQuery != null && !searchQuery.isBlank()) {
+            String keyword = searchQuery.trim();
+            where.and(column.columnName.containsIgnoreCase(keyword).or(column.columnDesc.containsIgnoreCase(keyword)));
+        }
+        List<ModelMappingDto.KeyColumnCandidate> rows = query.select(Projections.constructor(ModelMappingDto.KeyColumnCandidate.class,
+                        column.id, column.columnName, column.columnDesc, column.dataType, column.maxLength, column.precision, column.scale, column.isPk,
+                        column.isNullable, columnTerm.id, columnTerm.commonStandardTermName))
+                .from(column)
+                .leftJoin(column.standardTerms, columnTerm)
+                .where(where)
+                .orderBy(orders(pageable.getSort(), KEY_COLUMN_SORTS, column.sortOrder.asc().nullsLast(), column.id.asc()))
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+        Long total = query.select(column.count()).from(column).where(where).fetchOne();
+        return new PageImpl<>(rows, pageable, total == null ? 0 : total);
     }
 
     /** 매핑 후보 테이블 : 프로젝트의 테이블 중 엔터티 매핑이 없는 것. 검색어는 테이블명·한글명 */

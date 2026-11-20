@@ -18,6 +18,10 @@ public interface AttributeColumnMappingRepository extends JpaRepository<Attribut
 
     Optional<AttributeColumnMapping> findByAttribute_Id(Long attributeId);
 
+    /** 여러 속성의 직접 매핑과 그 컬럼·테이블 (물리 생성의 상속 조상 검증 — 속성마다 따로 읽지 않는다, M-7 2차) */
+    @Query("select a from AttributeColumnMapping a join fetch a.column c left join fetch c.tableInfo where a.attribute.id in :attributeIds")
+    java.util.List<AttributeColumnMapping> findAllByAttributeIds(@Param("attributeIds") Collection<Long> attributeIds);
+
     Optional<AttributeColumnMapping> findByColumn_Id(Long columnId);
 
     /** 컬럼 삭제 차단 */

@@ -411,7 +411,7 @@ class LogicalSubtypeIntegrationTest {
         byte[] bytes = json.writeValueAsBytes(exchange.export(f.member()));
         assertThat(bytes.length).as("기존 요청 한도 30MB 안").isLessThan(30 * 1024 * 1024);
         ModelExchangeDto.Document document = json.readValue(bytes, ModelExchangeDto.Document.class);
-        assertThat(document.formatVersion()).isEqualTo(5);
+        assertThat(document.formatVersion()).isEqualTo(6);
         assertThat(document.model().get("SUBTYPE_GROUP")).extracting(i -> ((List<?>) i.state().get("subtypes")).size()).containsExactlyInAnyOrder(2, 500, 999, 1000, 1001, 2000, 2);
 
         GenerationFixture targetFixture = fixture("st-x-large-import");
@@ -824,7 +824,7 @@ class LogicalSubtypeIntegrationTest {
     // ------------------------------------------------------------------ 물리 모델
 
     @Test
-    @DisplayName("물리 생성 : 상속 참여 엔터티(슈퍼타입·중간·말단)는 UNSUPPORTED, 일반 엔터티는 생성, 미리보기 뒤 상속에 연결되면 409, 매핑된 엔터티 연결 허용·매핑 보존·정합성 표시")
+    @DisplayName("물리 생성 : 상속 참여 엔터티는 B형(M-7 2차 계획·3차 반영) — 기존 루트 테이블 재사용, 미리보기 뒤 상속에 연결되면 409, 매핑된 엔터티 연결 허용·매핑 보존·정합성 표시")
     void physicalGeneration() {
         GenerationFixture f = fixture("st-physical");
         long employee = entity(f, "직원");
@@ -852,16 +852,23 @@ class LogicalSubtypeIntegrationTest {
         group(f, employee, "직원 구분", team, dept);
         error(() -> generation.apply(f.user, f.request(List.of(product, team), stale.planToken())), ErrorCode.MODEL_CONFLICT);
 
-        // 지금 미리보기 : 직원(슈퍼타입, 이미 매핑)·팀·부서(서브타입)는 UNSUPPORTED, 상품은 CREATE — 상속이 있다고 전체를 막지 않는다
+        // 지금 미리보기 : 직원(루트, 이미 매핑)은 SKIP, 팀·부서(서브타입)는 B형 CREATE, 상품은 CREATE — 3차부터 반영된다 (기존 루트 테이블을 참조하는 상속 FK)
         var plan = generation.preview(f.user, f.request(List.of(employee, team, dept, product)));
         assertThat(plan.tables()).extracting(PhysicalGenerationDto.TablePlan::entityId, PhysicalGenerationDto.TablePlan::status)
-                .containsExactlyInAnyOrder(tuple(employee, "UNSUPPORTED"), tuple(team, "UNSUPPORTED"), tuple(dept, "UNSUPPORTED"), tuple(product, "CREATE"));
+                .containsExactlyInAnyOrder(tuple(employee, "SKIP"), tuple(team, "CREATE"), tuple(dept, "CREATE"), tuple(product, "CREATE"));
         assertThat(plan.tables()).filteredOn(t -> t.entityId().equals(team)).singleElement()
-                .satisfies(t -> assertThat(t.warnings()).contains("슈퍼타입·서브타입 구조의 물리 모델 변환은 현재 지원하지 않습니다."));
+                .satisfies(t -> assertThat(t.inheritance().role()).isEqualTo("SUBTYPE"));
         assertThat(plan.creatable()).isTrue();
+        assertThat(plan.executable()).isTrue();
+        assertThat(plan.executionBlockedReason()).isNull();
         var result = generation.apply(f.user, f.request(List.of(employee, team, dept, product), plan.planToken()));
-        assertThat(result.tables()).isOne();
-        assertThat(f.count("select count(*) from TB_ENTT_TBL_MPNG where LGCL_ENTT_SN in (?, ?)", team, dept)).as("서브타입은 만들지 않는다").isZero();
+        assertThat(result.tables()).isEqualTo(3);
+        assertThat(result.inheritanceForeignKeys()).isEqualTo(2);
+        assertThat(result.inheritedKeyMappings()).isEqualTo(2);
+        assertThat(f.count("select count(*) from TB_SBTYP_IDNTFR_COL_MPNG s join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = s.ENTT_TBL_MPNG_SN where m.LGCL_ENTT_SN in (?, ?) and s.LGCL_ATRB_SN = ?",
+                team, dept, employeeNo)).as("서브타입마다 상속 PK 매핑 — 원본은 루트 주 식별자 속성").isEqualTo(2);
+        assertThat(f.count("select count(*) from TB_TBL_REL where ORGNL_TBL_SN in (?, ?) and TRGT_TBL_SN = ? and REL_TYPE_CD = 'FK'", f.table(team), f.table(dept), employeeTable))
+                .as("상속 FK 는 기존 루트 테이블로").isEqualTo(2);
         // 매핑 보존 : 직원 매핑·테이블·컬럼 그대로
         assertThat(f.table(employee)).isEqualTo(employeeTable);
         assertThat(f.count("select count(*) from TB_COL where TBL_SN = ?", employeeTable)).isEqualTo(employeeColumns);
@@ -908,7 +915,7 @@ class LogicalSubtypeIntegrationTest {
         assertThat(count("select count(*) from TB_MDL_CHG_HSTRY where PRJ_SN = ? and TRGT_TYPE_CD = 'LOGICAL_ATTRIBUTE'", project)).as("상속 속성 이력 없음").isEqualTo(attributeHistory);
 
         ModelVersionDto.Summary after = versions.create(member, new ModelVersionDto.Create("st-after-" + System.nanoTime(), null));
-        assertThat(after.formatVersion()).isEqualTo(8);
+        assertThat(after.formatVersion()).isEqualTo(9);
         assertThat(after.counts().get("SUBTYPE_GROUP").asInt()).isOne();
         // 과거 버전의 독립성 : 버전을 만든 뒤 상속 구조·원본 속성·식별자를 바꿔도 저장된 버전 내용(상속 정의 포함)은 그대로
         String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, after.id());
@@ -960,7 +967,7 @@ class LogicalSubtypeIntegrationTest {
         String modelName = jdbc.queryForObject("select MDL_NM from TB_LGCL_MDL where LGCL_MDL_SN = ?", String.class, f.modelId);
 
         ModelExchangeDto.Document document = exchange.export(source);
-        assertThat(document.formatVersion()).isEqualTo(5);
+        assertThat(document.formatVersion()).isEqualTo(6);
         assertThat(document.model().get("SUBTYPE_GROUP")).hasSize(2);
 
         GenerationFixture targetFixture = fixture("st-import");

@@ -162,7 +162,12 @@ export function ModelMappingPage() {
           <button type="button" id="btn-physical-generate" className="btn" onClick={() => dialog.popup({
             title: t('논리 → 물리 테이블 생성'),
             content: ({ close }: DialogControls) => <PhysicalGeneration modelId={modelId} schemas={schemas}
-              onDone={(r) => { close(); reload(); dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-')); }} />,
+              onDone={(r) => {
+                close(); reload();
+                const inheritance = r.inheritanceForeignKeys || r.inheritedKeyMappings
+                  ? ' ' + t('상속 FK {0}개·상속 PK 매핑 {1}개를 함께 만들었습니다.', r.inheritanceForeignKeys ?? 0, r.inheritedKeyMappings ?? 0) : '';
+                dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-') + inheritance);
+              }} />,
           })}>{t('물리 테이블 생성')}</button>
         )}
       </div>

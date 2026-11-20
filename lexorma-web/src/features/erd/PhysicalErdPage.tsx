@@ -514,10 +514,12 @@ function ErdWorkspace() {
   // ------------------------------------------------------------------ 편집 (M-8 3차)
   // 모델 데이터는 테이블·컬럼 관리와 같은 API 로 바로 저장하고, 성공한 뒤 ERD 를 다시 조회한다 (실패하면 공통 알림만 뜨고 화면은 그대로다).
   // 다시 조회해도 기존 노드의 위치는 positions 에서 그대로 온다. 배치 API 는 부르지 않는다.
-  // 범위 밖 관계 목록(테이블별 지연 조회)도 FK 추가·삭제·규칙 변경을 반영하도록 함께 버린다
+  // 범위 밖 관계 목록(테이블별 지연 조회)도 FK 추가·삭제·규칙 변경을 반영하도록 함께 버린다.
+  // 모델 구조 진단(무효 FK 배지)도 다시 받는다 — 키·관계 변경으로 무효 FK 가 생기거나 없어진다 (M-DIAG-PERF : 진단이 빨라져 편집마다 다시 받는다)
   const queryClient = useQueryClient();
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['erd-table-relations'] });
+    void queryClient.invalidateQueries({ queryKey: ['model-diagnostics', user?.projectId] });
     return graph.refetch();
   };
   const schemaLabel = (schemaId: number) => schemaName.get(schemaId) ?? '';
@@ -668,7 +670,7 @@ function ErdWorkspace() {
           {canEdit && <ErdModeToggle mode={mode} onChange={setMode} />}
           {editing && <button type="button" className="grd-add btn btn-primary" disabled={!graph.data} onClick={addTable}><PlusIcon />{t('테이블 추가')}</button>}
           <span className="erd-muted">{pendingCount ? t('저장하지 않은 배치 {0}개', pendingCount) : t('저장된 배치와 같습니다')}</span>
-          <button type="button" className="btn" disabled={loading} onClick={() => void graph.refetch()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
+          <button type="button" className="btn" disabled={loading} onClick={() => void refresh()} title={t('물리 모델 변경 내용을 다시 불러옵니다')}><SyncIcon />{t('새로고침')}</button>
           <button type="button" className="btn" disabled={loading || !nodes.length} onClick={() => void arrange()}><WorkflowIcon />{t('자동 배치')}</button>
           <button type="button" className="btn" disabled={!nodes.length} onClick={() => fitToBoxes(flow, canvas.current, displayNodes.filter((n) => !n.hidden).map((n) => nodeBox(n.position, n.data.columns.length)), motionMs(300))}><ScreenFullIcon />{t('전체 보기')}</button>
           <button type="button" className="btn" disabled={!nodes.length || erdExport.exporting} onClick={() => void erdExport.run('png')} title={t('지금 배치 그대로 ERD 전체를 PNG 이미지로 내려받습니다')}><DownloadIcon />PNG</button>
@@ -772,7 +774,7 @@ function ErdWorkspace() {
               onOnlyRelated={setOnlyRelated}
               onFocus={() => focus(String(selected.id))}
               onDdl={() => dialog.popup({ title: `DDL · ${selected.tableName}`, size: 'large', content: <TableDdlView tableId={selected.id} /> })}
-              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void graph.refetch(), onNavigate: leave, readOnly: !editing }) : undefined}
+              onTableDetail={canView('table-manage') ? () => void openTableDetailById(selected.id, { onChanged: () => void refresh(), onNavigate: leave, readOnly: !editing }) : undefined}
               onKeys={() => openKeys(selected)}
               onRelation={(id) => { setSelectedRelation(id); setPickedRelation(null); setSelectedId(null); }}
               outsideCount={graph.data?.outsideRelations?.[String(selected.id)] ?? 0}
@@ -785,7 +787,7 @@ function ErdWorkspace() {
                 onAddRelation: () => openRelationForm({ sourceTableId: selected.id }),
               } : undefined}
               onEditColumns={editing && canView('column-manage')
-                ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void graph.refetch() })
+                ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void refresh() })
                 : undefined}
               onColumn={openColumn}
               onNeighbors={() => setScope({

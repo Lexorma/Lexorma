@@ -494,9 +494,23 @@ public final class TableDdlGenerator {
     public static boolean referencesKey(TableInfo target, List<ColumnInfo> targets, List<Set<String>> uniqueKeys) {
         Set<String> referenced = new HashSet<>(targets.stream().map(ColumnInfo::getColumnName).toList());
         Set<String> pk = new HashSet<>(target.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList());
+        return referencesKey(referenced, pk, targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique()), uniqueKeys);
+    }
+
+    /**
+     * {@link #referencesKey(TableInfo, List, List)} 의 판단 (컬럼명 기준) : 참조 컬럼 집합이 대상 PK 와 같거나, 단일 컬럼이 고유값 컬럼이거나, UNIQUE 제약·고유 인덱스와 같다.
+     * 물리 모델 구조 진단이 엔티티 없이 일괄 조회한 값으로 같은 규칙을 부른다 (M-DIAG-PERF)
+     * @param singleUniqueColumn 참조 컬럼이 하나이고 그 컬럼이 고유값(UNQ_YN) 인지
+     */
+    public static boolean referencesKey(Set<String> referenced, Set<String> pk, boolean singleUniqueColumn, List<Set<String>> uniqueKeys) {
         if (!pk.isEmpty() && referenced.equals(pk)) return true;
-        if (targets.size() == 1 && Boolean.TRUE.equals(targets.get(0).getIsUnique())) return true;
+        if (singleUniqueColumn) return true;
         return uniqueKeys.stream().anyMatch(referenced::equals);
+    }
+
+    /** FK 가 참조할 수 있는 고유 인덱스 : 고유이고 조건(부분 인덱스)이 없고 키가 모두 컬럼 (표현식·부분 UNIQUE 는 키가 아니다, INCLUDE 는 키가 아니다) */
+    public static boolean referenceableUniqueIndex(Boolean isUnique, String condition, boolean keysAreColumns) {
+        return Boolean.TRUE.equals(isUnique) && condition == null && keysAreColumns;
     }
 
     /**

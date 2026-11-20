@@ -213,7 +213,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .forEach(c -> keys.add(c.getColumns().stream().map(TableConstraintColumn::getColumn).map(ColumnInfo::getColumnName).collect(Collectors.toSet())));
         // 고유 인덱스 중 컬럼 키만이고 조건이 없는 것 (표현식·부분 UNIQUE 는 FK 가 참조할 키가 아니다. INCLUDE 는 키가 아니다)
         indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, tableId).stream()
-                .filter(i -> Boolean.TRUE.equals(i.getIsUnique()) && i.getCondition() == null && i.keyMembers().stream().allMatch(c -> c.getColumn() != null))
+                .filter(i -> TableDdlGenerator.referenceableUniqueIndex(i.getIsUnique(), i.getCondition(), i.keyMembers().stream().allMatch(c -> c.getColumn() != null)))
                 .forEach(i -> keys.add(i.keyMembers().stream().map(TableIndexColumn::getColumn).map(ColumnInfo::getColumnName).collect(Collectors.toSet())));
         return keys;
     }

@@ -48,24 +48,45 @@ public final class TableNameResolver {
      * @param hintTableId 이미 확정된 대상 (없으면 null)
      */
     public static Result resolve(String raw, SchemaInfo baseSchema, Collection<TableInfo> tables, Long hintTableId) {
-        Name name = Name.parse(raw);
-        if (name == null) return Result.NONE;
-        List<TableInfo> named = tables.stream().filter(t -> name.tableName().equalsIgnoreCase(t.getTableName())).toList();
-        if (name.schemaName() != null) {
-            return one(named.stream().filter(t -> t.getSchema() != null && name.schemaName().equalsIgnoreCase(t.getSchema().getSchemaName())).toList(), hintTableId);
-        }
-        if (baseSchema != null) {
-            List<TableInfo> same = named.stream().filter(t -> t.getSchema() != null && Objects.equals(t.getSchema().getId(), baseSchema.getId())).toList();
-            if (!same.isEmpty()) return one(same, hintTableId);
-        }
-        return one(named, hintTableId);
+        Pick<TableInfo> pick = pick(raw, baseSchema != null, baseSchema == null ? null : baseSchema.getId(), tables, TableNameResolver::view, hintTableId);
+        return pick.status() == Status.NOT_FOUND && pick.candidates().isEmpty() ? Result.NONE : new Result(pick.status(), pick.table(), pick.candidates());
     }
 
-    private static Result one(List<TableInfo> candidates, Long hintTableId) {
-        if (candidates.isEmpty()) return Result.NONE;
-        if (candidates.size() == 1) return new Result(Status.FOUND, candidates.get(0), candidates);
-        TableInfo hinted = hintTableId == null ? null : candidates.stream().filter(t -> hintTableId.equals(t.getId())).findFirst().orElse(null);
-        return hinted != null ? new Result(Status.FOUND, hinted, candidates) : new Result(Status.AMBIGUOUS, null, candidates);
+    /** 이름 판단에 쓰는 테이블 값 : 엔티티든 조회 행이든 같은 규칙을 쓰려고 나눴다 (물리 모델 구조 진단의 일괄 조회, M-DIAG-PERF). hasSchema = 스키마가 있는지 */
+    public record View(Long id, boolean hasSchema, Long schemaId, String schemaName, String tableName) {
+    }
+
+    public record Pick<T>(Status status, T table, List<T> candidates) {
+    }
+
+    private static View view(TableInfo t) {
+        SchemaInfo schema = t.getSchema();
+        return new View(t.getId(), schema != null, schema == null ? null : schema.getId(), schema == null ? null : schema.getSchemaName(), t.getTableName());
+    }
+
+    /**
+     * {@link #resolve} 와 같은 규칙을 임의의 테이블 값에 적용한다.
+     * @param hasBaseSchema 기준 스키마가 있는지 (있으면 baseSchemaId 와 같은 스키마의 테이블을 먼저 본다)
+     */
+    public static <T> Pick<T> pick(String raw, boolean hasBaseSchema, Long baseSchemaId, Collection<T> tables, java.util.function.Function<T, View> view, Long hintTableId) {
+        Name name = Name.parse(raw);
+        if (name == null) return new Pick<>(Status.NOT_FOUND, null, List.of());
+        List<T> named = tables.stream().filter(t -> name.tableName().equalsIgnoreCase(view.apply(t).tableName())).toList();
+        if (name.schemaName() != null) {
+            return one(named.stream().filter(t -> view.apply(t).hasSchema() && name.schemaName().equalsIgnoreCase(view.apply(t).schemaName())).toList(), view, hintTableId);
+        }
+        if (hasBaseSchema) {
+            List<T> same = named.stream().filter(t -> view.apply(t).hasSchema() && Objects.equals(view.apply(t).schemaId(), baseSchemaId)).toList();
+            if (!same.isEmpty()) return one(same, view, hintTableId);
+        }
+        return one(named, view, hintTableId);
+    }
+
+    private static <T> Pick<T> one(List<T> candidates, java.util.function.Function<T, View> view, Long hintTableId) {
+        if (candidates.isEmpty()) return new Pick<>(Status.NOT_FOUND, null, List.of());
+        if (candidates.size() == 1) return new Pick<>(Status.FOUND, candidates.get(0), candidates);
+        T hinted = hintTableId == null ? null : candidates.stream().filter(t -> hintTableId.equals(view.apply(t).id())).findFirst().orElse(null);
+        return hinted != null ? new Pick<>(Status.FOUND, hinted, candidates) : new Pick<>(Status.AMBIGUOUS, null, candidates);
     }
 
     /** 이 테이블을 가리킬 수 있는 이름 : 테이블명, 스키마명.테이블명 (대문자). 관계 동기화의 후보 컬럼 조회에 쓴다 */

@@ -3,6 +3,7 @@ import { Handle, Position, useStore, useUpdateNodeInternals, type NodeProps } fr
 import { columnType, DIFF_LABEL, DIFF_MARK, diffClass, HEADER_HEIGHT, MAX_ROWS, NODE_WIDTH, nodeHeight, ROW_HEIGHT, SIMPLE_WIDTH_PX, type DiffKind, type NodeDiff, type TableNode as TableNodeType } from './model';
 import { t } from '../../lib/i18n';
 import { useErdExporting } from './exportImage';
+import { MappingBadge, MappingMark, useMappingOverlay } from '../mapping/erdOverlay';
 
 /** 화면에서 노드가 작으면(축소) 컬럼을 생략한다. 노드 크기와 테이블 연결점은 그대로라 관계선이 끊기지 않는다. 이미지로 내보내는 동안에는 자세히 그린다 (DEC-22) */
 export const useSimpleNodes = () => {
@@ -28,6 +29,9 @@ export function DiffMark({ change }: { change?: DiffKind }) {
 export const TableNode = memo(function TableNode({ id, data, selected, isConnectable }: NodeProps<TableNodeType>) {
   const simple = useSimpleNodes();
   const { table, columns, diff, schemaPrefix } = data;
+  // 매핑 표시 (M-7 ERD 연계) : 화면이 표시를 켰을 때만 문맥이 있다 (버전 비교 ERD 는 없다)
+  const overlay = useMappingOverlay();
+  const mapping = overlay?.tables.get(table.id);
   const rows = columns.slice(0, MAX_ROWS);
   const rowTop = (i: number) => HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2;
   // 컬럼 연결점은 확대해 컬럼이 보일 때만 생긴다. 노드 크기는 그대로라 React Flow 가 연결점을 다시 재지 않으므로, 연결점 구성이 바뀌면 알려 준다 —
@@ -42,8 +46,9 @@ export const TableNode = memo(function TableNode({ id, data, selected, isConnect
   }, [handleKey, id, updateNodeInternals]);
 
   return (
-    <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}`} style={{ width: NODE_WIDTH, height: nodeHeight(columns.length) }}>
+    <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}${mapping ? ' has-map-badge' : ''}`} style={{ width: NODE_WIDTH, height: nodeHeight(columns.length) }}>
       <header title={schemaPrefix ? `${schemaPrefix}.${table.tableName}` : table.tableName}>
+        {mapping && <MappingBadge overlay={mapping} kind="table" />}
         <DiffBadge diff={diff} />
         {!!data.invalidFk && (
           <a className="erd-diff-badge erd-invalid-fk nodrag" href={`/modelDiagnostics`} title={t('무효 FK {0}건 : DDL 에서 FK 가 만들어지지 않습니다. 모델 구조 진단에서 확인하세요.', data.invalidFk)}
@@ -62,7 +67,7 @@ export const TableNode = memo(function TableNode({ id, data, selected, isConnect
         return (
           <div className={`erd-column${diffClass(diff?.rows.get(c.id))}`} key={c.id} title={`${c.termName || c.columnDesc || c.columnName} · ${columnType(c)}`}>
             <b>{key}</b>
-            <span><DiffMark change={diff?.rows.get(c.id)} />{c.columnName}</span>
+            <span><DiffMark change={diff?.rows.get(c.id)} />{mapping?.mapped && <MappingMark link={overlay?.columns.get(c.id)} other="attribute" />}{c.columnName}</span>
             <small>{columnType(c)}</small>
             <small>{c.isNullable === false || c.isPk ? 'NN' : ''}</small>
           </div>

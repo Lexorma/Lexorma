@@ -150,3 +150,26 @@ dialog .erd-key-form .btn.btn-primary { flex: none; width: auto; margin: 0; }
     .react-flow__edge-path { transition: none; }
     .erd-finder-list { animation: none; }
 }
+
+/* 매핑 표시 (M-7 ERD 연계, 기본 꺼짐 — M7-F02 : 매핑 상태와 정합성을 따로) : 헤더 둘째 줄 오른쪽에 매핑 여부 + 불일치 건수,
+   행 이름 앞에 매핑 기호(✓ · ⇡ · –) + 불일치 ≠. 비교 불가는 설명(title)·상세에서. 기호·글자로 구분하고 색은 보조다. 노드 크기·행 위치는 그대로 */
+.erd-table.has-map-badge header > span { padding-right: 112px; }
+.erd-map-badges { position: absolute; top: 28px; right: 6px; display: inline-flex; gap: 3px; }
+.erd-map-badge, .erd-map-issue { display: inline-flex; align-items: center; gap: 3px; max-width: 80px; overflow: hidden; padding: 0 6px;
+  border: 1px solid currentColor; border-radius: 2em; background: var(--gh-canvas); font-size: 10px; font-style: normal; font-weight: 600; line-height: 16px; white-space: nowrap; }
+.erd-map-badge b, .erd-map-issue b { font-weight: 700; }
+.erd-map-badge.is-mapped, .erd-map-mark.is-mapped { color: var(--gh-success); }
+.erd-map-badge.is-unmapped, .erd-map-mark.is-unmapped { color: var(--gh-fg-muted); }
+.erd-map-issue, .erd-map-issue-mark { color: var(--gh-danger); }
+.erd-map-mark { display: inline-block; min-width: 12px; margin-right: 2px; font-style: normal; font-weight: 700; }
+.erd-map-issue-mark { display: inline-block; min-width: 10px; margin-right: 3px; font-style: normal; font-weight: 700; }
+.erd-map-status { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.erd-map-detail summary { cursor: pointer; }
+.erd-map-detail ul { margin: 4px 0; padding-left: 16px; font-size: 12px; }
+.erd-map-detail li { overflow-wrap: anywhere; }
+.erd-map-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0; font-size: 12px; }
+.erd-map-legend span { display: inline-flex; align-items: center; }
+.erd-map-error { color: var(--gh-danger); }
+.erd-map-section { margin: 8px 0; padding-top: 8px; border-top: 1px solid var(--gh-border-muted); }
+.erd-map-section h4 { margin: 0 0 4px; }
+.erd-map-section p { margin: 2px 0; overflow-wrap: anywhere; }

@@ -98,16 +98,17 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     public void insertColumn(AccountDto accountDto, ColumnInfoDto columnInfoDto) {
         Long projectId = accountDto.getProjectId();
 
-        TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(columnInfoDto.getTableInfoId(), projectId);
+        // 테이블 행을 먼저 잠그고 읽는다 (기다림) : 같은 테이블의 컬럼 구성을 바꾸는 쓰기의 공통 잠금이다 — 컬럼 일괄 저장·엑셀 업로드·컬럼 삭제·PK 변경,
+        // 물리명 추천 일괄 적용(프로젝트 배타 뒤 이 행을 NOWAIT), 논리 → 물리 생성(M7-D39). 아래 이름 중복 검사는 이 잠금 뒤의 최신 상태로 한다 —
+        // 같은 테이블에 같은 이름을 동시에 등록하거나, 그 이름으로 다른 컬럼의 이름을 바꾸는 적용과 함께 커밋되지 않는다 (M-7 물리명 일괄 적용 2차 후속, 2026-11-21).
+        // 예전에는 새 PK 컬럼일 때만 잠갔다 (PK 가 아닌 등록은 업무 설명 직접 편집처럼 테이블 행을 쥔 짧은 작업을 이제 기다린다)
+        TableInfo tableInfo = columnInfoDto.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(columnInfoDto.getTableInfoId(), projectId).orElse(null);
         StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
 
         // 테이블/표준용어를 선택하지 않았거나 다른 프로젝트의 정보면 등록할 수 없다.
         if(tableInfo == null){
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
-        // PK 구성을 바꾸는 쓰기(새 PK 컬럼)는 테이블 행을 먼저 잠근다 : 그 테이블을 부모로 쓰는 논리 → 물리 생성(M-7 3차, M7-D39)이 기다리지 않고 잠가 확인한다.
-        // PK 가 아닌 컬럼은 부모 키를 바꾸지 않으므로 잠그지 않는다 (업무 설명 직접 편집 등 테이블 행을 쥔 다른 작업을 기다리지 않는다 — AI-5 계약 그대로)
-        if ("Y".equalsIgnoreCase(columnInfoDto.getIsPk())) tableInfoRepository.findForUpdate(tableInfo.getId(), projectId);
         if(standardTerm == null){
             throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA);
         }
@@ -270,6 +271,10 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             List<Map<String, String>> columnRows = rows.stream().filter(map -> !map.get("tableName").isEmpty()).toList();
 
             loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdByAbbreviation);
+            // 이 청크가 컬럼을 더할 테이블 행을 ID 순으로 먼저 잠그고(기다림), 그 뒤에 이미 있는 컬럼을 읽는다 — 단건 등록과 같은 공통 잠금
+            // (같은 이름 등록·물리명 일괄 적용과 함께 커밋되지 않게, M-7 물리명 일괄 적용 2차 후속). 예전에는 PK 컬럼을 더하는 테이블만 잠갔다
+            columnRows.stream().map(map -> tableIdByName.get(map.get("tableName").toUpperCase())).filter(java.util.Objects::nonNull).distinct().sorted()
+                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
             Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
 
             List<ColumnInfo> columnInfos = new ArrayList<>();
@@ -368,9 +373,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                         .build());
             }
 
-            // PK 컬럼을 더하는 테이블 행만 ID 순으로 잠근다 (부모 키를 바꾸는 쓰기의 공통 잠금 — M-7 3차, M7-D39. PK 가 아닌 컬럼만 올리면 기다리지 않는다 — AI-5 계약 그대로)
-            columnInfos.stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(c -> c.getTableInfo().getId()).distinct().sorted()
-                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
+            // 테이블 행 잠금은 위(이미 있는 컬럼을 읽기 전)에서 이 청크의 모든 테이블에 걸었다 (PK 컬럼을 더하는 테이블 포함 — M-7 3차 M7-D39 의 잠금을 넓힌 것)
             columnInfoRepository.saveAll(columnInfos);
             // 참조 테이블명 → 관계 (청크의 테이블 기준, 조회 전에 자동 flush 되어 저장한 행을 DB 에서 다시 읽는다)
             physicalModelService.syncReferenceRelations(projectId, chunkTableIds);

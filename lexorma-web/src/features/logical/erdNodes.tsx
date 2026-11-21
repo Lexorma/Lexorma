@@ -7,6 +7,7 @@ import { centered, endShift, relationLanes, type Lane } from '../erd/relationLan
 import { EndMarkerDefs } from '../erd/endMarkers';
 import { participation, type GraphEntity, type GraphSubtypeGroup, type LogicalRelationship } from './model';
 import { completeness, disjointness, disjointSymbol } from './subtype';
+import { MappingBadge, MappingMark, useMappingOverlay } from '../mapping/erdOverlay';
 
 /** 논리 ERD 의 노드·관계선 (논리 ERD 화면과 버전 비교 ERD 가 같이 쓴다) */
 
@@ -40,11 +41,15 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<Entity
   const simple = useSimpleNodes();
   const { entity, diff } = data;
   const connectable = !!data.connectable;
+  // 매핑 표시 (M-7 ERD 연계) : 화면이 표시를 켰을 때만 문맥이 있다 (버전 비교 ERD 는 없다)
+  const overlay = useMappingOverlay();
+  const mapping = overlay?.entities.get(entity.id);
   const inheritedKey = entity.inheritedKey ?? [];
   const rows = entityRows(entity);
   return (
-    <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}${entity.supertypeEntityId != null ? ' logical-subtype-node' : ''}`} style={{ width: NODE_WIDTH, height: nodeHeight(rows) }}>
+    <div className={`erd-table${selected ? ' selected' : ''}${diffClass(diff?.change)}${entity.supertypeEntityId != null ? ' logical-subtype-node' : ''}${mapping ? ' has-map-badge' : ''}`} style={{ width: NODE_WIDTH, height: nodeHeight(rows) }}>
       <header title={entity.name}>
+        {mapping && <MappingBadge overlay={mapping} kind="entity" />}
         <DiffBadge diff={diff} />
         <strong className="logical-entity-name">{entity.name}</strong>
         <span>{diff?.caption ? `${diff.caption} · ` : ''}{entity.description || t('설명 없음')}{entity.isApproval ? '' : t(' · 승인 대기')}</span>
@@ -53,7 +58,7 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<Entity
       {!simple && inheritedKey.slice(0, MAX_ROWS).map((k) => (
         <div className="erd-column logical-inherited-key" key={`k${k.attributeId}`} title={t('상속 주 식별자 · 정의 : {0}', k.definedEntityName ?? '')}>
           <b>PI</b>
-          <span className="logical-attribute-name">{k.name}</span>
+          <span className="logical-attribute-name">{mapping?.mapped && <MappingMark link={mapping.inheritedKeys.find((m) => m.attributeId === k.attributeId)} other="column" />}{k.name}</span>
           <small className="logical-inherited-mark">{t('상속')}</small>
           <small>*</small>
         </div>
@@ -61,7 +66,7 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<Entity
       {!simple && entity.attributes.slice(0, Math.max(0, MAX_ROWS - inheritedKey.length)).map((a) => (
         <div className={`erd-column${diffClass(diff?.rows.get(a.id))}`} key={a.id} title={[a.name, a.termName, a.domainName].filter(Boolean).join(' · ')}>
           <b>{a.primaryIdentifier ? 'PI' : a.identifier ? 'AI' : ''}</b>
-          <span className="logical-attribute-name"><DiffMark change={diff?.rows.get(a.id)} />{a.name}</span>
+          <span className="logical-attribute-name"><DiffMark change={diff?.rows.get(a.id)} />{mapping?.mapped && <MappingMark link={overlay?.attributes.get(a.id)} other="column" />}{a.name}</span>
           <small>{a.domainName || a.dataType || ''}</small>
           <small>{a.isRequired || a.primaryIdentifier ? '*' : ''}</small>
         </div>

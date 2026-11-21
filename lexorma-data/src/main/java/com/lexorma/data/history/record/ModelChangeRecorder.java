@@ -439,6 +439,16 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         pending.importGroupId = groupId;
     }
 
+    /**
+     * 이 트랜잭션의 변경 그룹 ID 를 정한다 (출처는 바꾸지 않는다 — 사람이 고른 변경이면 USER, 동기화가 만든 변경은 AUTO_SYNC).
+     * 물리명 추천 일괄 적용(M-7)이 그룹 ID 를 직전 모델 버전명({@code RENAME-<요청 ID>})과 같게 남겨 한 번의 적용을 이력에서 찾을 수 있게 한다. 쓰기 트랜잭션 안에서만
+     */
+    public void markChangeGroup(String groupId) {
+        Pending pending = current();
+        if (pending == null) throw new IllegalStateException("쓰기 트랜잭션 안에서 불러야 합니다.");
+        pending.groupId = groupId;
+    }
+
     /** 이 트랜잭션을 AI 설명 제안 승인으로 표시한다 : 업무 설명 변경의 출처를 AI_APPROVAL 로 남긴다 (사람이 직접 고친 USER 와 구분). 쓰기 트랜잭션 안에서만 */
     public void markAiApproval() {
         Pending pending = current();
@@ -487,6 +497,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
         private String importGroupId;
         /** AI 설명 제안 승인 트랜잭션 */
         private boolean aiApproval;
+        /** 정해 둔 변경 그룹 ID (출처는 그대로 — markChangeGroup) */
+        private String groupId;
 
         Entry entry(Class<?> entityClass, Long id) {
             return entries.computeIfAbsent(entityClass.getSimpleName() + ":" + id, key -> new Entry(entityClass, id));
@@ -531,7 +543,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
             resolveNames(prepared);
 
             // 3) 실제로 달라진 것만 저장한다
-            String groupId = importGroupId != null ? importGroupId : UUID.randomUUID().toString();
+            String groupId = importGroupId != null ? importGroupId : this.groupId != null ? this.groupId : UUID.randomUUID().toString();
             String userId = currentUserId();
             LocalDateTime now = LocalDateTime.now();
             int saved = 0;

@@ -1,7 +1,7 @@
 # M-7 2차. 논리·물리 매핑 관리 UI 및 정합성 비교 — 설계 결정과 구현 기록
 
 > [데이터 모델링 로드맵](../reference/data-modeling-roadmap.md) M-7 중 **2차(매핑 관리 화면·정합성 비교)** 의 기록이다. 1차(매핑 도메인·API)는 [logical-physical-mapping-m7.md](logical-physical-mapping-m7.md).
-> 작성일 2026-11-11. **DB 스키마 변경 없음** (Flyway V0~V3 그대로). 예제 매핑 데이터만 `V4__mapping_example_data.sql` 로 추가했다 (8장). 정합성 비교는 조회 전용 — 논리 모델·물리 모델·표준 사전·매핑을 바꾸지 않는다.
+> 작성일 2026-11-11 (2026-11-21 구조 정합성 — 9장 : 논리 관계 ↔ 물리 FK, 보조 식별자 ↔ UNIQUE, 물리 기준 역방향). **DB 스키마 변경 없음** (Flyway V0~V3 그대로). 예제 매핑 데이터만 `V4__mapping_example_data.sql` 로 추가했다 (8장). 정합성 비교는 조회 전용 — 논리 모델·물리 모델·표준 사전·매핑을 바꾸지 않는다.
 
 ## 1. 기존 구조 분석과 결정
 
@@ -240,3 +240,87 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/lexorma_m7q_test \
 
 - **개발 DB(`localhost:15439/lexorma`)에는 직접 적용하지 않았다.** IDE 에서 실행 중인 애플리케이션이 다시 시작할 때 Flyway 가 V4 를 적용한다 (위 복사본 검증과 같은 경로). 적용된 뒤에는 V4 파일을 바꾸면 안 된다.
 - V4 를 넣은 뒤의 화면은 브라우저로 다시 확인하지 않았다 (API 응답만 확인).
+
+## 9. 구조 정합성 (2026-11-21) : 논리 관계 ↔ 물리 FK · 보조 식별자 ↔ UNIQUE · 물리 기준 역방향
+
+> M-7 '모델링 기능 후속' 의 세 항목을 기존 [정합성 비교] 에 통합했다. 새 메뉴·API·테이블·마이그레이션 없음 (기존 모델·매핑 데이터만으로 계산), AI 호출 없음. 진단은 조회 전용이다 (M7-C01).
+
+### 9.1 기존 구조 확인
+
+| 항목 | 저장 구조 (구현 기준) |
+|---|---|
+| 논리 관계 | `TB_LGCL_REL` : 원본(ORGNL) = **부모**, 대상(TRGT) = **자식**. 속성 짝 `TB_LGCL_REL_ATRB` (부모 속성 → 자식 속성, `SORT_ORD`) |
+| 식별자 | `TB_LGCL_IDNTFR` (`BSC_YN` 주 / 보조) + `TB_LGCL_IDNTFR_ATRB` (`SORT_ORD` — **보조 식별자도 순서가 저장되어 있다** → UNIQUE 순서도 비교한다, M7-C04) |
+| 물리 FK | `TB_TBL_REL` (FK) : 원본 테이블 = **자식**(FK 를 가진 쪽), 대상 = **부모**. 컬럼 쌍 `TB_TBL_REL_COL` (자식 컬럼 → 부모 컬럼, `COL_ORD`). 단일 FK 는 참조 테이블명에서 만든 REF_COLUMN 관계, 복합·자기 참조는 USER 관계 |
+| 물리 UNIQUE | `TB_TBL_CNSTRT` (UNIQUE) + `TB_TBL_CNSTRT_COL` (`COL_ORD`), 그리고 컬럼 단위 고유값(`UNQ_YN`, PK 아님 — DDL 이 `UK_테이블_컬럼` 으로 만든다). **UNIQUE 인덱스(`TB_TBL_IDX`)·식·부분 인덱스는 UNIQUE 로 보지 않는다** (지시 15) |
+| 매핑 | 엔터티 ↔ 테이블, 속성 ↔ 컬럼 (1:1), 상속 PK 매핑 (서브타입 테이블 컬럼 ↔ 루트 주 식별자 속성) |
+| 상속 | B형(TABLE_PER_TYPE)만 구현되어 있다. 서브타입 → 직계 슈퍼타입 FK 는 기존 [상속 구조] 진단(INHERITANCE, M-7 4차)이 이미 판정한다 |
+
+### 9.2 결정 (지시서 M7-C01~C06 반영)
+
+- **기존 계약 유지** : 정합성 비교의 예전 목록(조건 `group` 없음)과 요약의 `match`·`mismatch`·`notComparable`·`unmapped`(속성·컬럼 + 상속 구조)는 그대로다 — "미매핑 = 미매핑 엔터티 + 속성", "상태별 목록 건수 = 요약" 같은 기존 테스트 계약을 깨지 않는다. 새 진단은 **진단 범위 `group`** 으로 고를 때만 목록에 나오고, 요약에는 새 `structure`(범위별 total·match·mismatch·notComparable·unmapped, 물리 전용 FK·UNIQUE 수)로 따로 센다.
+- **판정 코드** : 상태는 기존 4개(MATCH·MISMATCH·UNMAPPED·NOT_COMPARABLE) 그대로, 진단 유형 4개 추가(`RELATIONSHIP`·`ALTERNATE_KEY`·`PHYSICAL_FK`·`PHYSICAL_UNIQUE`), 상세 사유는 행의 `structure.code` (9.3·9.4·9.5).
+- **대응은 저장된 매핑으로만** (M7-C02) : 속성 → 컬럼은 직접 속성 매핑(그 엔터티 테이블의 컬럼), 없으면 상속 PK 매핑. 이름·표준 용어로 짝을 짓지 않는다.
+- **승인 상태와 무관** (M7-C05), **프로젝트·모델 범위** (M7-C06) : 모든 조회가 프로젝트 ID 와 논리 모델로 거르고, 물리 쪽은 그 모델 엔터티에 매핑된 테이블만 본다.
+- **범위 밖** : 모델의 어떤 엔터티에도 매핑되지 않은 테이블의 FK·UNIQUE 는 역방향 진단 대상이 아니다 (그 모델과 대응을 말할 수 없다). 자식 테이블이 매핑되고 부모 테이블이 매핑되지 않은 FK 는 비교 불가로 보인다.
+
+### 9.3 논리 관계 ↔ 물리 FK (`RELATIONSHIP`, 관계마다 1행 — 자식 엔터티의 행)
+
+1. 부모·자식 엔터티 중 매핑이 없으면 `UNMAPPED · ENTITY_UNMAPPED`.
+2. 짝 상태 (`LogicalRelationshipPairs.evaluate` 와 같은 규칙, 부모가 서브타입이면 루트의 주 식별자) : 짝 없음 `PAIRS_MISSING`, 부모 주 식별자 없음 `PARENT_KEY_MISSING`, 일부만 `PAIRS_INCOMPLETE`, 식별자와 안 맞음 `PAIRS_INVALID` → `NOT_COMPARABLE` (물리 생성도 이 상태에서는 FK 를 만들지 않는다 — 같은 기준).
+3. 짝 속성의 컬럼이 하나라도 없으면 `UNMAPPED · ATTRIBUTE_UNMAPPED`.
+4. 자식 테이블의 FK 와 비교 : 같은 부모 테이블·같은 (자식 → 부모) 컬럼 쌍·같은 순서 → `MATCH · FK_MATCH` (모든 관계를 먼저 이 단계로 대응시켜, 앞 관계의 불일치 판정이 뒤 관계의 정확한 FK 를 가져가지 않는다). 쌍은 같고 순서만 다름 `MISMATCH · FK_ORDER`, 같은 자식 컬럼인데 다른 테이블을 참조 `MISMATCH · FK_TARGET`, 부모 테이블로의 FK 가 하나인데 구성이 다름 `MISMATCH · FK_COLUMNS`, 그런 FK 가 여럿 `NOT_COMPARABLE · FK_AMBIGUOUS`, 같은 FK 가 이미 다른 관계에 정확히 대응 `NOT_COMPARABLE · FK_SHARED`.
+5. FK 가 없음 : 부모 컬럼이 부모 테이블 PK 와 같고 자기 키만 잇는 자기 참조가 아니면 `UNMAPPED · FK_MISSING` (대응 객체 없음 — 오류로 단정하지 않는다), 아니면 생성 대상이 아닌 모양이라 `NOT_COMPARABLE · FK_NOT_EXPECTED` (물리 생성의 `PARENT_KEY_NOT_TABLE_KEY`·`SELF_KEY_ONLY` 와 같은 기준).
+- 관계 행이 다룬 FK(일치·불일치·후보·짝 미완성 관계의 부모 테이블 FK)는 "대응됨" 으로 표시해 역방향에서 다시 보이지 않는다 (지시 19).
+
+### 9.4 보조 식별자 ↔ UNIQUE (`ALTERNATE_KEY`, 보조 식별자마다 1행)
+
+엔터티 미매핑 `UNMAPPED · ENTITY_UNMAPPED`, 속성 미매핑 `UNMAPPED · ATTRIBUTE_UNMAPPED`. 그 테이블의 UNIQUE(제약조건·컬럼 단위) 중 같은 컬럼·같은 순서 → `MATCH · UNIQUE_MATCH` (먼저 전부 대응), 같은 구성·다른 순서 `MISMATCH · UNIQUE_ORDER`, 가장 많이 겹치는 UNIQUE 하나가 일부만 `UNIQUE_COLUMNS_MISSING` / 더 많음 `UNIQUE_COLUMNS_EXTRA` / 엇갈림 `UNIQUE_COLUMNS_DIFFER` (모두 MISMATCH), 겹치는 후보가 여럿 `NOT_COMPARABLE · UNIQUE_AMBIGUOUS`, 겹치는 것이 없음 `UNMAPPED · UNIQUE_MISSING`, 보조 식별자 컬럼 = 테이블 PK `NOT_COMPARABLE · ALTERNATE_KEY_IS_PRIMARY_KEY`. 기존 주 식별자 ↔ PK(`IDENTIFIER`)는 그대로다.
+
+### 9.5 물리 기준 역방향 (`PHYSICAL_FK` · `PHYSICAL_UNIQUE`)
+
+위 두 판정이 대응시키지 않은 것만 1행씩 :
+- FK : 참조받는 테이블이 이 모델에 매핑되지 않음 `NOT_COMPARABLE · FK_PARENT_UNMAPPED`, 그 밖 `UNMAPPED · PHYSICAL_ONLY_FK` (대응 논리 관계 없음 — 오류로 보지 않고 지우지 않는다). **서브타입 테이블 → 직계 슈퍼타입 테이블 FK 는 상속 FK 라 내지 않는다** — [상속 관계] 범위의 INHERITANCE 행이 상속 PK 매핑으로 판정한다 (상속 PK 매핑이 빠져도 테이블 쌍으로 상속 FK 로 본다; INHERITANCE 행은 UNMAPPED 가 된다). A·C 전략은 구현하지 않았다.
+- UNIQUE : 컬럼이 모두 속성에 매핑됨 `UNMAPPED · PHYSICAL_ONLY_UNIQUE`, 일부 매핑 없음 `NOT_COMPARABLE · UNIQUE_COLUMN_UNMAPPED`.
+
+### 9.6 API · 화면
+
+- `GET /api/modelMapping/quality/data` 에 `group`(ATTRIBUTE·INHERITANCE·RELATIONSHIP·ALTERNATE_KEY·PHYSICAL_ONLY·ALL, 잘못된 값 400) 추가, 행에 `structure`(kind, code, 논리 관계·식별자 ID·이름, 부모 엔터티·테이블, 대응 FK·UNIQUE ID·이름, **순서대로의 전체 구성** `columns[]`, 정하지 못한 후보 `candidates[]`) 추가. `type` 으로 새 유형을 직접 골라도 된다. `GET …/quality/summary` 에 `structure` 추가. 기존 필드·의미·권한(VIEWER)·정렬·페이징 그대로.
+- 판정 : `mapping/service/ModelStructureQualityJudge` (순수 함수), 재료 : `mapping/repository/ModelStructureQualityQueryRepository` (모델 단위 투영 질의 10개 — 행마다 다시 읽지 않는다), 통합 : `ModelMappingQualityService` (예전 목록은 그룹이 없거나 속성·상속 범위일 때만 계산, 구조는 범위·유형으로 고를 때만 계산).
+- 화면 (`features/mapping/MappingQuality.tsx`, 새 `structureDetail.tsx`) : 정합성 비교 탭 위에 **진단 범위** 버튼(기본(속성·컬럼·상속) · 속성·컬럼 · 논리 관계·물리 FK · 보조 식별자·UNIQUE · 물리 전용 구조 · 상속 관계 · 전체 진단), 범위에 맞춰 요약 카드 건수와 유형 선택지가 바뀐다. 목록의 [논리 속성] 칸에 관계·식별자 이름, [물리 컬럼] 칸에 FK·UNIQUE 이름. 상세 : 상세 사유, 논리·부모·물리 객체, **자리별 구성 표**(FK = 논리 짝 · 매핑 기준 컬럼 쌍 · 물리 FK 컬럼 쌍, UNIQUE = 식별자 속성 · 매핑 컬럼 · UNIQUE 컬럼 — 다른 자리는 강조), 후보, 이동(논리 엔터티 상세 `/logicalModel?modelId&entityId`, 논리 ERD, 부모 엔터티 ERD, 테이블 상세·물리 ERD). 좁은 화면에서 상세의 긴 항목 이름이 값 칸을 밀어내던 것(예전 유형에도 있던 `max-content` 문제)을 이 상세에서 고쳤다. 한·영 문구 70개.
+
+### 9.7 검증
+
+**자동 테스트 (2026-11-21, 실제 실행)**
+
+- `ModelStructureQualityJudgeTest` 5 (순수 판정 : 후보 FK 여럿 `FK_AMBIGUOUS`·두 관계 한 FK `FK_SHARED`·같은 구성 두 번째 FK = 물리 전용·FK 없음 `FK_MISSING`/`FK_NOT_EXPECTED`·UNIQUE 후보 여럿·구성 엇갈림·보조 식별자 = PK·상속 FK 제외).
+- `ModelStructureQualityIntegrationTest` 5 (논리 → 물리 생성으로 만든 모델, H2·PostgreSQL 같은 판정) : 단일·복합·자기 참조 FK 일치, 짝 없음, 부모 미매핑, 복합 FK 순서 바꿈 `FK_ORDER`(자리별 구성), 대상 바꿈 `FK_TARGET`, FK 지움 `FK_MISSING`, 속성·엔터티 매핑 지움, 진단이 아무것도 바꾸지 않음(관계·제약조건·이력·컬럼 스냅샷 비교) / 물리 전용 FK·같은 FK 한 번만(중복 없음)·부모 매핑 해제 `FK_PARENT_UNMAPPED` / 보조 식별자 : 컬럼 단위 고유값 일치(`UK_…`)·순서·누락·추가·UNIQUE 없음·물리 전용 UNIQUE, 승인된 테이블·엔터티도 진단, 요약 `structure` 건수, 예전 목록에 구조 행 없음·예전 요약 = 예전 목록 / 상속 B형 3단계 : 상속 FK 는 물리 전용이 아니고 INHERITANCE 일치, 상속 PK 매핑 지워도 물리 전용 아님(INHERITANCE UNMAPPED) / 프로젝트 격리(같은 모양 다른 프로젝트 섞이지 않음, 다른 프로젝트 모델 조회 거절)·엔터티·속성명·컬럼명 검색·유형 조건.
+- `SmokeTest.modelMappingQuality` : `group` HTTP 바인딩, 범위별 목록 건수 = 요약 `structure`, 예제 관계 일치 행의 `structure.columns`, 예전 목록에 구조 행 없음, 잘못된 범위 400. 기존 `ModelMappingQualityIntegrationTest` 는 컨트롤러 메서드 인자 하나(`group`)만 더했다.
+- 전체 : H2 `./gradlew build --continue --rerun` 1,231 — 성공 1,174 · 실패 0 · 건너뜀 57 (이전 1,220 + 새 11, 건너뜀 +1 은 성능 테스트). PostgreSQL 18.6 빈 임시 DB(기존 컨테이너, 격리 복사본 — `lexorma/volume` 제외, 끝나고 삭제) 1,231 — 성공 1,194 · 실패 0 · 건너뜀 37 (`ModelStructureQualityIntegrationTest` 5건 실행 확인). 프런트 `tsc -b`·`vite build`(bootJar 빌드에 포함) 통과.
+
+**Chromium E2E (Playwright, 이번 단일 JAR 로 띄운 격리 앱 9981 · 임시 H2 데이터)** : 29건 모두 통과. 준비 = 테스트 계정 픽스처 + 앱 API 로 E2E 스키마·모델 "E2E 구조"(계정 복합 PK·사용자 아이디 보조 식별자, 역할·역할 명 보조 식별자, 프로젝트 회원 — 계정 복합 FK·역할 단일 FK) 생성(USER 계정 — 미승인) → SQL 로 복합 FK 순서 바꿈·컬럼 단위 고유값·컬럼이 더 많은 UNIQUE·물리 전용 UNIQUE·물리 전용 FK.
+확인 : 진입·기본 목록(구조 행 없음) → [논리 관계·물리 FK] 계정 소속 불일치·역할 부여 일치·카드(대상 2·일치 1·불일치 1) → 복합 FK 순서 상세(자리 2개 모두·차이 강조·논리 짝·매핑 기준·물리 FK) → 이동(논리 엔터티 상세·논리 ERD·테이블 상세) → [보조 식별자·UNIQUE] 일치(`UK_TB_ACNT_USER_ID`)·컬럼 추가 상세 → [물리 전용 구조] FK_E2E_ONLY·UX_E2E_MBR, 생성된 FK 는 다시 보이지 않음, 카드(물리 FK 1·UNIQUE 1) → [상속 관계] 빈 목록 → [전체 진단]. 예제 LEXORMA : 관계 103 = 일치 94 · 비교 불가 9(복합 FK 짝 없음), 보조 식별자 0, 물리 전용 UNIQUE 3(예제의 UNIQUE 제약조건 — 대응 보조 식별자 없음). VIEWER 조회 가능. 한·영 × 라이트·다크 × 1440·375 : 테마·가로 넘침 0·문구 언어·대화상자 화면 안·상세 값 칸 폭(375 에서 188px)·Esc 닫힘·JS 오류 0. E2E 중 고친 것 : 375 에서 상세의 값 칸이 0 폭이 되던 문제(9.6).
+
+**성능 (PostgreSQL, `ModelStructureQualityPerformanceTest`, `LEXORMA_PERF=true`)** : 엔터티 N(속성 10, 앞 엔터티를 부모로 하는 관계·짝, 5번째마다 보조 식별자)을 생성한 모델. 5회 중앙값 ms (Hibernate 준비 문장 수).
+
+| 엔터티 / 관계 | 요약 (문장, 할당 MB) | 예전 목록 한 쪽 | 관계 범위 한 쪽 | 전체 범위 한 쪽 |
+|---|---|---|---|---|
+| 100 / 99 | 48 (17, 8) | 27 (6) | 14 (12) | 41 (17) |
+| 300 / 299 | 55 (17, 23) | 33 (6) | 23 (12) | 54 (17) |
+
+구조 진단은 규모와 무관하게 문장 수가 일정하다(모델 단위 질의 10개 + 계층 조회). 예전 목록은 구조 진단을 계산하지 않는다(6문 그대로). 요약은 예전 계산 + 구조 계산이다. 할당량은 이 스레드의 누적값이며 상주 메모리가 아니다. 1회 측정, 개발 PC, HTTP 제외. 격리 앱(H2)에서 예제 모델 관계 범위 화면 진입 약 1.3초(로그인 직후 첫 조회 포함).
+
+**미검증** : Chromium 외 브라우저, 엔터티 수천 개 모델(목록은 모델 단위 메모리 진단 — 기존 구조와 같은 한계, [M-MAPPING-PERF]).
+
+### 9.8 남은 것
+
+- M-7 의 나머지 후속 : 같은 표준 용어 기반 자동 매핑 후보, ERD 의 매핑 표시·논리 ↔ 물리 ERD 상호 이동, 상속 A·C 전략 (지시 — 이번에 하지 않음).
+- UNIQUE 인덱스를 UNIQUE 로 볼지, 모델 밖 테이블의 FK·UNIQUE 를 역방향에 넣을지는 정하지 않았다 (지금은 넣지 않음).
+- 예제(LEXORMA)의 9개 복합 FK(원본 카탈로그 `(…_SN, SRC_CNTN_SN)` UNIQUE 키 참조)는 관계 속성 짝이 없어 `PAIRS_MISSING` 비교 불가로 보인다 (V1 의 의도된 상태 — 부모 주 식별자가 아니라 UNIQUE 키를 참조).
+
+## 10. 판정 재사용 (2026-11-21) : 자동 매핑 후보 · ERD 매핑 표시
+
+정합성 비교의 판정을 다른 화면이 그대로 쓴다 — 규칙을 복제하지 않는다 ([logical-physical-mapping-m7.md 18장](logical-physical-mapping-m7.md)).
+- 컬럼 후보의 "매핑하면 생길 불일치" : 후보 짝을 매핑된 것으로 놓고 `ModelMappingQualityService.diagnose` 를 돌려 MISMATCH 행만 보인다.
+- ERD 매핑 표시 : `modelRows`(조건 없는 예전 목록 + 구조 진단)를 엔터티·속성·상속 구조별로 모은다. M7-F02(2026-11-21)부터 ERD 는 매핑 상태(저장된 매핑)와 정합성 상태(이 판정 그대로 — `CheckStatus`, 사유 포함)를 따로 받아 보이며, 비교 불가를 일치로 바꾸지 않는다. 정합성 비교의 판정·목록·요약 계약은 바뀌지 않았다.
+

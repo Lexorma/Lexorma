@@ -38,6 +38,7 @@ import {
   type Cardinality, type ErdColumn, type ErdGraph, type ErdLayout, type ErdRelation, type RelationEdge, type RelationPage, type Schema, type TableHits, type TableNode as TableNodeType, type XY,
 } from './model';
 import { useErdExport, erdFileName } from './exportImage';
+import { MappingLegend, MappingOverlayContext, MappingToggle, TableMappingSection, useTableOverlay, type TableOverlay } from '../mapping/erdOverlay';
 import { t, tx } from '../../lib/i18n';
 import { motionMs } from '../../lib/motion';
 
@@ -133,6 +134,8 @@ function ErdWorkspace() {
       schemaId: /^\d+$/.test(params.get('schemaId') ?? '') ? params.get('schemaId')! : '',
       tableId: /^\d+$/.test(params.get('tableId') ?? '') ? params.get('tableId') : null,
       viewId: /^\d+$/.test(params.get('viewId') ?? '') ? params.get('viewId') : null,
+      // 논리 ERD 에서 넘어온 경우 (?mapping=1) : 매핑 표시를 켠 채로 연다 (M-7 ERD 연계)
+      mapping: params.get('mapping') === '1',
     };
   });
   const focusRequest = useRef<string | null>(linked.tableId);
@@ -141,7 +144,7 @@ function ErdWorkspace() {
   const [, setSearchParams] = useSearchParams();
   useEffect(() => {
     // 한 번 쓴 파라미터는 지운다 (새로 고침·범위 변경 뒤에 다시 그 테이블로 끌려가지 않게)
-    if (linked.schemaId || linked.tableId || linked.viewId) setSearchParams({}, { replace: true });
+    if (linked.schemaId || linked.tableId || linked.viewId || linked.mapping) setSearchParams({}, { replace: true });
   }, []);
 
   const [scope, setScope] = useState<Scope>({ ...INITIAL_SCOPE, schemaId: linked.schemaId });
@@ -203,6 +206,10 @@ function ErdWorkspace() {
     queryFn: ({ signal }) => api<ErdGraph>(graphKey, { signal, silent: true }),
     enabled: layout.isSuccess,
   });
+  // 매핑 표시 (M-7 ERD 연계, 기본 꺼짐) : 켜면 지금 범위의 테이블 매핑을 한 번에 받는다
+  const canMapping = canView('model-mapping');
+  const [showMapping, setShowMapping] = useState(linked.mapping && canMapping);
+  const mappingOverlay = useTableOverlay(graph.data?.tables.map((x) => x.id) ?? [], showMapping, graph.dataUpdatedAt);
 
   // VIEW : 범위 조회는 같은 스키마 조건, 이웃 조회는 전체에서 화면의 테이블·VIEW 를 참조하는 것만 (아래 shownViews)
   const viewScope = scope.kind === 'search' ? scope.schemaId : '';
@@ -698,6 +705,7 @@ function ErdWorkspace() {
           <input type="checkbox" checked={showViews} onChange={(e) => { setShowViews(e.target.checked); if (!e.target.checked && selectedView) setSelectedId(null); }} />
           {showViews ? t('VIEW 표시 ({0})', shownViews.length) : t('VIEW 표시')}
         </label>
+        {canMapping && <MappingToggle checked={showMapping} onChange={setShowMapping} loading={mappingOverlay.isFetching} error={mappingOverlay.isError} />}
         {graph.data?.truncated && <Label variant="attention">{scope.kind === 'neighbors' ? t('한도(300개)까지만 표시') : t('일부만 표시 - 스키마·검색으로 범위를 줄이거나 다음 페이지로')}</Label>}
         {scope.kind === 'search' && (
           <span className="erd-pager">
@@ -716,6 +724,7 @@ function ErdWorkspace() {
           {!error && !loading && graph.data && !graph.data.tables.length && (
             <div className="erd-empty">{scope.kind === 'search' && (scope.keyword || scope.isApproval || scope.isMasterTable) ? t('검색 결과가 없습니다.') : t('조회 범위에 등록된 테이블이 없습니다.')}</div>
           )}
+          <MappingOverlayContext.Provider value={showMapping ? mappingOverlay.overlay : null}>
           <ReactFlow
             nodes={displayNodes}
             edges={edges}
@@ -753,6 +762,7 @@ function ErdWorkspace() {
             <Background />
             <Controls showInteractive={false} />
           </ReactFlow>
+          </MappingOverlayContext.Provider>
           <EndMarkerDefs prefix={PHYSICAL_END_PREFIX} kinds={PHYSICAL_END_KINDS} className="logical-end-markers" />
         </div>
 
@@ -790,6 +800,8 @@ function ErdWorkspace() {
                 ? () => void openColumnBulkEditor({ id: selected.id, tableName: selected.tableName, tableKorName: selected.tableKorName ?? undefined }, { onSaved: () => void refresh() })
                 : undefined}
               onColumn={openColumn}
+              mapping={showMapping ? mappingOverlay.overlay?.tables.get(selected.id) : undefined}
+              onLeave={leave}
               onNeighbors={() => setScope({
                 kind: 'neighbors', tableId: selected.id, tableName: selected.tableName, depth,
                 back: scope.kind === 'neighbors' ? scope.back : scope,
@@ -811,6 +823,7 @@ function ErdWorkspace() {
             <p className="erd-muted">{t('테이블이나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}
           <div className="erd-legend">
+            {showMapping && <MappingLegend />}
             <span><i className="erd-line" />FK</span>
             <span><i className="erd-line dashed" />{t('논리 관계')}</span>
             <span><i className="erd-line view-ref" />{t('VIEW 참조 (FK 아님, 직접 관리)')}</span>
@@ -942,7 +955,7 @@ function ColumnDetail({ column, tableName, isFk, onDictionary, onNavigate }: {
   );
 }
 
-function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn, onKeys, onRelation, outsideCount, onOutsideRelation, onTable, schemaNames, edit }: {
+function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, onOnlyRelated, onFocus, onNeighbors, onDdl, onTableDetail, onEditColumns, onColumn, onKeys, onRelation, outsideCount, onOutsideRelation, onTable, schemaNames, edit, mapping, onLeave }: {
   graph: ErdGraph;
   tableId: number;
   schemaName: string;
@@ -969,6 +982,10 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
   /** 편집 모드의 테이블 동작 */
   edit?: { onEditTable: () => void; onDeleteTable: () => void; onAddRelation: () => void };
   onColumn: (column: ErdColumn, tableName: string, isFk: boolean) => void;
+  /** 매핑 표시가 켜져 있을 때의 이 테이블 상태 (M-7 ERD 연계) */
+  mapping?: TableOverlay;
+  /** 다른 화면으로 이동 (논리 ERD — 저장하지 않은 배치 확인) */
+  onLeave: (path: string) => void;
 }) {
   const table = graph.tables.find((t) => t.id === tableId)!;
   const columns = graph.columns.filter((c) => c.tableId === tableId);
@@ -1011,6 +1028,7 @@ function TableDetail({ graph, tableId, schemaName, depth, onDepth, onlyRelated, 
         )}
       </div>
 
+      <TableMappingSection key={tableId} tableId={tableId} overlay={mapping} onLeave={onLeave} />
       {edit && (
         <div className="erd-toolbar erd-links erd-edit-actions">
           <button type="button" className="btn btn-sm" disabled={!!table.isApproval} title={table.isApproval ? t('승인된 테이블은 수정할 수 없습니다.') : undefined} onClick={edit.onEditTable}>{t('테이블 수정')}</button>

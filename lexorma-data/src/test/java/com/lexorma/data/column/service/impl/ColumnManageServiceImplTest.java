@@ -96,7 +96,7 @@ class ColumnManageServiceImplTest {
         @DisplayName("같은 테이블에 같은 컬럼명이 있으면 SAVED_DATA_EXISTS")
         void duplicate() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table());
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table())); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
             when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 10L, "USER_NM")).thenReturn(List.of(column(1L, true)));
 
@@ -111,7 +111,7 @@ class ColumnManageServiceImplTest {
         void sameNameInOtherTable() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
             TableInfo table = table();
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
             when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 10L, "USER_NM")).thenReturn(List.of());
 
@@ -125,7 +125,7 @@ class ColumnManageServiceImplTest {
         @DisplayName("테이블을 찾을 수 없으면 TABLE_IS_NOT_DEFINED (저장하지 않음)")
         void tableMissing() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(null);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(null)); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
 
             assertThatThrownBy(() -> service.insertColumn(login, newColumn()))
                     .extracting("errorCode").isEqualTo(ErrorCode.TABLE_IS_NOT_DEFINED);
@@ -136,7 +136,7 @@ class ColumnManageServiceImplTest {
         @DisplayName("표준용어를 찾을 수 없으면 NOT_FOUND_TERM_DATA (저장하지 않음)")
         void termMissing() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table());
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table())); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(null);
 
             assertThatThrownBy(() -> service.insertColumn(login, newColumn()))
@@ -150,7 +150,7 @@ class ColumnManageServiceImplTest {
             AccountDto login = SecurityTestSupport.loginAsUser(1L);
             TableInfo table = table();
             StandardTerm term = term();
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table);
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term);
 
             service.insertColumn(login, newColumn());
@@ -170,7 +170,7 @@ class ColumnManageServiceImplTest {
         @DisplayName("승인 권한자가 등록하면 승인으로 저장하고, PK 컬럼은 필수/유일로 설정한다")
         void approverInsertPk() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
-            when(tableInfoRepository.findByIdAndProjectId(10L, 1L)).thenReturn(table());
+            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table())); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
             ColumnInfoDto dto = newColumn();
             dto.setIsPk("Y");

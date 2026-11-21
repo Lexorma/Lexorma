@@ -308,6 +308,23 @@ public class TableDesignServiceImpl implements TableDesignService {
     }
 
     @Override
+    public List<ColumnInfo> columnsReferencingTable(Long projectId, TableInfo table) {
+        return columnsReferencing(projectId, table);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void renameLockedTable(TableInfo table, String newName, List<ColumnInfo> referencing) {
+        String tableName = newName.toUpperCase();
+        // updateTable 의 이름 변경 부분과 같다 (스키마 이동은 없다) : 소속 컬럼의 테이블명 사본 → 테이블명 → 참조 컬럼의 참조 테이블명 (스키마를 적어 둔 참조는 스키마명 그대로)
+        table.getColumns().forEach(column -> column.setTableName(tableName));
+        table.setTableName(tableName);
+        String schemaName = table.getSchema().getSchemaName().toUpperCase();
+        referencing.forEach(column -> column.setRefTableName(
+                TableNameResolver.Name.parse(column.getRefTableName()).schemaName() == null ? tableName : schemaName + "." + tableName));
+    }
+
+    @Override
     @Transactional
     public void updateTableIsApproval(boolean isApproval, AccountDto accountDto, List<TableInfoDto> tableInfoDtos) {
         // 승인·승인취소는 승인 권한(관리자·매니저·프로젝트 관리자)만 (화면은 버튼을 숨기지만 API 직접 호출도 막는다)

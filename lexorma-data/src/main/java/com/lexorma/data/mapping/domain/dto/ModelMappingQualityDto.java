@@ -28,7 +28,69 @@ public final class ModelMappingQualityDto {
          * 상속 구조 (M-7 4차) : 매핑된 서브타입 1개의 상속 PK·FK 물리 구조 (엔터티 단위 1행 — 기존 부모 재사용과 같은 판정) + 지금 유효하지 않은 기존 상속 PK 매핑 (매핑마다 1행, MISMATCH).
          * 상속 PK 연결이 일부·없음 = UNMAPPED, 구조 불일치 = MISMATCH, 상위 정보 부족 = NOT_COMPARABLE. 일반 엔터티·루트에는 행이 없다 (대상 아님)
          */
-        INHERITANCE
+        INHERITANCE,
+        /** (M-7 구조 정합성) 논리 관계 ↔ 물리 FK : 관계마다 1행 (자식 엔터티의 행) */
+        RELATIONSHIP,
+        /** (M-7 구조 정합성) 논리 보조 식별자 ↔ 물리 UNIQUE : 보조 식별자마다 1행 */
+        ALTERNATE_KEY,
+        /** (M-7 구조 정합성, 물리 기준 역방향) 대응 논리 관계가 없거나 찾을 수 없는 물리 FK (상속 FK 제외 — INHERITANCE 가 본다) */
+        PHYSICAL_FK,
+        /** (M-7 구조 정합성, 물리 기준 역방향) 대응 보조 식별자가 없거나 찾을 수 없는 물리 UNIQUE */
+        PHYSICAL_UNIQUE;
+
+        /** 구조 진단 유형 (목록 기본 조회에는 들어가지 않는다 — group 또는 type 으로 고를 때만) */
+        public boolean structure() {
+            return this == RELATIONSHIP || this == ALTERNATE_KEY || this == PHYSICAL_FK || this == PHYSICAL_UNIQUE;
+        }
+    }
+
+    /**
+     * 진단 범위 (M-7 구조 정합성, 목록 조건 group). 없으면 예전 목록(속성·컬럼 진단 + 상속 구조) 그대로 — 기존 요약 건수·목록 계약을 바꾸지 않는다.
+     * ATTRIBUTE = MAPPING~IDENTIFIER, INHERITANCE, RELATIONSHIP, ALTERNATE_KEY, PHYSICAL_ONLY = PHYSICAL_FK + PHYSICAL_UNIQUE, ALL = 전부
+     */
+    public enum CheckGroup {
+        ATTRIBUTE, INHERITANCE, RELATIONSHIP, ALTERNATE_KEY, PHYSICAL_ONLY, ALL;
+
+        public boolean includes(CheckType type) {
+            return switch (this) {
+                case ALL -> true;
+                case ATTRIBUTE -> !type.structure() && type != CheckType.INHERITANCE;
+                case INHERITANCE -> type == CheckType.INHERITANCE;
+                case RELATIONSHIP -> type == CheckType.RELATIONSHIP;
+                case ALTERNATE_KEY -> type == CheckType.ALTERNATE_KEY;
+                case PHYSICAL_ONLY -> type == CheckType.PHYSICAL_FK || type == CheckType.PHYSICAL_UNIQUE;
+            };
+        }
+    }
+
+    /**
+     * 구조 진단 상세 (RELATIONSHIP · ALTERNATE_KEY · PHYSICAL_FK · PHYSICAL_UNIQUE 행에만, 나머지는 null).
+     * code : 상세 사유 코드 (FK_MATCH, FK_MISSING, FK_ORDER, FK_TARGET, FK_COLUMNS, FK_AMBIGUOUS, FK_SHARED, FK_NOT_EXPECTED, PAIRS_MISSING, PAIRS_INCOMPLETE, PAIRS_INVALID,
+     * PARENT_KEY_MISSING, ENTITY_UNMAPPED, ATTRIBUTE_UNMAPPED, UNIQUE_MATCH, UNIQUE_MISSING, UNIQUE_ORDER, UNIQUE_COLUMNS_MISSING, UNIQUE_COLUMNS_EXTRA, UNIQUE_COLUMNS_DIFFER,
+     * UNIQUE_AMBIGUOUS, ALTERNATE_KEY_IS_PRIMARY_KEY, PHYSICAL_ONLY_FK, FK_PARENT_UNMAPPED, PHYSICAL_ONLY_UNIQUE, UNIQUE_COLUMN_UNMAPPED).
+     * logical* : 논리 관계 / 보조 식별자, parent* : 관계의 부모 엔터티·테이블 (FK 는 참조받는 쪽), physical* : 대응한 FK(관계 ID) / UNIQUE(제약조건 ID 또는 컬럼 단위 고유값의 컬럼 ID),
+     * columns : 순서대로의 컬럼 구성 (복합 키 전체), candidates : 대응을 정하지 못한 후보 FK·UNIQUE
+     */
+    public record Structure(CheckType kind, String code, Long logicalId, String logicalName, Long parentEntityId, String parentEntityName,
+                            Long parentTableId, String parentTableName, Long physicalId, String physicalName, java.util.List<StructureColumn> columns,
+                            java.util.List<String> candidates) {
+    }
+
+    /**
+     * 구성 1자리 (order 1부터). FK : logicalAttribute = 자식 속성, parentAttribute = 부모 속성, expected* = 매핑으로 정한 자식·부모 컬럼, physical* = 그 자리의 FK 자식·부모 컬럼.
+     * UNIQUE : logicalAttribute = 보조 식별자 속성, expectedColumn = 매핑 컬럼, physicalColumn = 그 자리의 UNIQUE 컬럼. 역방향 행은 physical* 과 매핑된 속성 이름만 있다
+     */
+    public record StructureColumn(int order, Long logicalAttributeId, String logicalAttributeName, Long parentAttributeId, String parentAttributeName,
+                                  Long expectedColumnId, String expectedColumnName, Long expectedParentColumnId, String expectedParentColumnName,
+                                  Long physicalColumnId, String physicalColumnName, Long physicalParentColumnId, String physicalParentColumnName) {
+    }
+
+    /** 구조 진단 건수 (진단 범위별) */
+    public record Counts(long total, long match, long mismatch, long notComparable, long unmapped) {
+    }
+
+    /** 구조 진단 요약 (M-7 구조 정합성) : 기존 요약의 match·mismatch·notComparable·unmapped 에 들어가지 않는다 (그 건수의 뜻을 바꾸지 않는다) */
+    public record StructureSummary(Counts relationship, Counts alternateKey, Counts physicalOnly, long physicalForeignKeys, long physicalUniques) {
     }
 
     public enum CheckStatus {
@@ -66,18 +128,26 @@ public final class ModelMappingQualityDto {
     public record Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
                       Long attributeId, String attributeName,
                       Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
-                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance) {
+                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance, Structure structure) {
+        public Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
+                   Long attributeId, String attributeName,
+                   Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
+                   CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance) {
+            this(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
+                    type, status, logicalValue, physicalValue, reason, inheritance, null);
+        }
+
         public Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
                    Long attributeId, String attributeName,
                    Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
                    CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason) {
             this(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
-                    type, status, logicalValue, physicalValue, reason, false);
+                    type, status, logicalValue, physicalValue, reason, false, null);
         }
 
         public Row withInheritance(boolean value) {
             return new Row(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
-                    type, status, logicalValue, physicalValue, reason, value);
+                    type, status, logicalValue, physicalValue, reason, value, structure);
         }
     }
 
@@ -88,11 +158,19 @@ public final class ModelMappingQualityDto {
     /** inheritanceEntities (M-6 후속 5차, D-48) : 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 — 그 엔터티들의 상속 구조 전체 물리 정합성은 검증하지 않는다 */
     public record Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
                           long totalAttributes, long mappedAttributes, long unmappedAttributes,
-                          long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities, InheritanceSummary inheritance) {
+                          long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities, InheritanceSummary inheritance,
+                          StructureSummary structure) {
+        public Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
+                       long totalAttributes, long mappedAttributes, long unmappedAttributes,
+                       long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities, InheritanceSummary inheritance) {
+            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped,
+                    inheritanceEntities, inheritance, null);
+        }
+
         public Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
                        long totalAttributes, long mappedAttributes, long unmappedAttributes,
                        long match, long mismatch, long notComparable, long unmapped) {
-            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped, 0, null);
+            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped, 0, null, null);
         }
     }
 
@@ -106,7 +184,15 @@ public final class ModelMappingQualityDto {
                                      long valid, long mismatch, long unmapped, long notComparable) {
     }
 
-    /** 진단 목록 조건. modelId 는 필수. searchColumn : entityName / attributeName / columnName */
-    public record Search(Long modelId, Long entityId, CheckType type, CheckStatus status, String searchColumn, String searchQuery) {
+    /** 진단 목록 조건. modelId 는 필수. searchColumn : entityName / attributeName / columnName. group : 진단 범위 (없으면 예전 목록) */
+    public record Search(Long modelId, Long entityId, CheckType type, CheckStatus status, String searchColumn, String searchQuery, CheckGroup group) {
+        public Search(Long modelId, Long entityId, CheckType type, CheckStatus status, String searchColumn, String searchQuery) {
+            this(modelId, entityId, type, status, searchColumn, searchQuery, null);
+        }
+
+        /** 구조 진단(관계·보조 식별자·물리 전용)을 계산해야 하는가 */
+        public boolean wantsStructure() {
+            return (group != null && group != CheckGroup.ATTRIBUTE && group != CheckGroup.INHERITANCE) || (type != null && type.structure());
+        }
     }
 }

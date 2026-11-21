@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, enc } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
 import type { LabelVariant } from '../../components/grid/cells';
+import type { Applicability } from './physicalRename';
 
 /** /api/modelMapping (ModelMappingDto·ModelMappingQualityDto) : 논리 엔터티 ↔ 물리 테이블, 논리 속성 ↔ 물리 컬럼 (1:1) */
 
@@ -215,7 +216,39 @@ export interface MappingStatus {
   unmappedAttributes: number;
 }
 
-export type CheckType = 'MAPPING' | 'TERM' | 'NAME' | 'DATA_TYPE' | 'LENGTH' | 'REQUIRED' | 'IDENTIFIER' | 'INHERITANCE';
+export type CheckType = 'MAPPING' | 'TERM' | 'NAME' | 'DATA_TYPE' | 'LENGTH' | 'REQUIRED' | 'IDENTIFIER' | 'INHERITANCE'
+  | 'RELATIONSHIP' | 'ALTERNATE_KEY' | 'PHYSICAL_FK' | 'PHYSICAL_UNIQUE';
+
+/** 진단 범위 (M-7 구조 정합성, 목록 조건 group) : 비우면 예전 목록 (속성·컬럼 + 상속 구조) */
+export type CheckGroup = 'ATTRIBUTE' | 'INHERITANCE' | 'RELATIONSHIP' | 'ALTERNATE_KEY' | 'PHYSICAL_ONLY' | 'ALL';
+
+export const CHECK_GROUPS: { group: CheckGroup; label: string; types: CheckType[] }[] = [
+  { group: 'ATTRIBUTE', label: t('속성·컬럼'), types: ['MAPPING', 'TERM', 'NAME', 'DATA_TYPE', 'LENGTH', 'REQUIRED', 'IDENTIFIER'] },
+  { group: 'RELATIONSHIP', label: t('논리 관계·물리 FK'), types: ['RELATIONSHIP'] },
+  { group: 'ALTERNATE_KEY', label: t('보조 식별자·UNIQUE'), types: ['ALTERNATE_KEY'] },
+  { group: 'PHYSICAL_ONLY', label: t('물리 전용 구조'), types: ['PHYSICAL_FK', 'PHYSICAL_UNIQUE'] },
+  { group: 'INHERITANCE', label: t('상속 관계'), types: ['INHERITANCE'] },
+  { group: 'ALL', label: t('전체 진단'), types: [] },
+];
+
+/** 구조 진단 상세의 구성 1자리 (ModelMappingQualityDto.StructureColumn) */
+export interface StructureColumn {
+  order: number;
+  logicalAttributeId: number | null; logicalAttributeName: string | null; parentAttributeId: number | null; parentAttributeName: string | null;
+  expectedColumnId: number | null; expectedColumnName: string | null; expectedParentColumnId: number | null; expectedParentColumnName: string | null;
+  physicalColumnId: number | null; physicalColumnName: string | null; physicalParentColumnId: number | null; physicalParentColumnName: string | null;
+}
+
+/** 구조 진단 상세 (ModelMappingQualityDto.Structure) : 관계·보조 식별자·물리 전용 행에만 */
+export interface QualityStructure {
+  kind: CheckType; code: string; logicalId: number | null; logicalName: string | null; parentEntityId: number | null; parentEntityName: string | null;
+  parentTableId: number | null; parentTableName: string | null; physicalId: number | null; physicalName: string | null; columns: StructureColumn[]; candidates: string[];
+}
+
+export interface StructureCounts { total: number; match: number; mismatch: number; notComparable: number; unmapped: number }
+
+/** 구조 진단 요약 : 예전 네 건수(속성·컬럼 + 상속 구조)에 들어가지 않는다 */
+export interface StructureSummary { relationship: StructureCounts; alternateKey: StructureCounts; physicalOnly: StructureCounts; physicalForeignKeys: number; physicalUniques: number }
 export type CheckStatus = 'MATCH' | 'MISMATCH' | 'NOT_COMPARABLE' | 'UNMAPPED';
 
 /** GET /api/modelMapping/quality/summary : 엔터티·속성 수는 매핑 현황과 같고, 진단 건수는 매핑된 속성 × 진단 유형 */
@@ -228,6 +261,8 @@ export interface QualitySummary extends MappingStatus {
   inheritanceEntities?: number;
   /** 상속 PK 현황 (M-7 4차) — 직접 속성 매핑률과 따로 센다 */
   inheritance?: InheritanceSummary | null;
+  /** 구조 진단 (M-7 구조 정합성) */
+  structure?: StructureSummary | null;
 }
 
 /** subtypes : 서브타입 수, mappedSubtypes : 그중 매핑된 수, valid·mismatch·unmapped·notComparable 의 합 = mappedSubtypes */
@@ -259,6 +294,8 @@ export interface QualityRow {
   reason: string | null;
   /** 엔터티가 슈퍼타입·서브타입 구조에 참여 : 판정은 직접 정의 속성만 본 것이다 (D-48) */
   inheritance?: boolean;
+  /** 구조 진단 상세 (관계·보조 식별자·물리 전용 행에만) */
+  structure?: QualityStructure | null;
 }
 
 export const CHECK_TYPES: { type: CheckType; label: string }[] = [
@@ -270,6 +307,10 @@ export const CHECK_TYPES: { type: CheckType; label: string }[] = [
   { type: 'REQUIRED', label: t('필수 여부') },
   { type: 'IDENTIFIER', label: t('식별자') },
   { type: 'INHERITANCE', label: t('상속 구조') },
+  { type: 'RELATIONSHIP', label: t('관계·FK') },
+  { type: 'ALTERNATE_KEY', label: t('보조 식별자·UNIQUE') },
+  { type: 'PHYSICAL_FK', label: t('물리 전용 FK') },
+  { type: 'PHYSICAL_UNIQUE', label: t('물리 전용 UNIQUE') },
 ];
 
 export const CHECK_STATUSES: { status: CheckStatus; label: string; variant: LabelVariant; count: 'match' | 'mismatch' | 'notComparable' | 'unmapped' }[] = [
@@ -314,6 +355,8 @@ export interface ColumnRecommendation {
   status: RecommendationStatus;
   source: RecommendationSource | null;
   reason: string;
+  /** 일괄 적용 판정 (M-7 일괄 적용 1차 — 추천끼리 충돌은 전체 후보 기준) */
+  applicability: Applicability;
 }
 
 /** GET /api/modelMapping/recommendation/column/summary : total = 모델의 속성 수 = 네 상태의 합 */
@@ -352,6 +395,8 @@ export interface TableRecommendation {
   reason: string;
   tablePrefix: string | null;
   words: TableNameWord[];
+  /** 일괄 적용 판정 (M-7 일괄 적용 1차) */
+  applicability: Applicability;
 }
 
 export const RECOMMENDATION_STATUSES: { status: RecommendationStatus; label: string; variant: LabelVariant; count: 'available' | 'alreadyMatched' | 'unavailable' | 'conflict' }[] = [

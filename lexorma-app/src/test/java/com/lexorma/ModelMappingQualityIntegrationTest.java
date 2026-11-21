@@ -274,11 +274,11 @@ class ModelMappingQualityIntegrationTest {
         // 권한 : 조회는 VIEWER, 미승인 사용자는 불가 (컨트롤러 메서드 보안)
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, projectId, "910", "ROLE_VIEWER");
         assertThat(controller.selectQualitySummary(viewer, model.id()).getBody().mismatch()).isEqualTo(11L);
-        assertThat(controller.selectQualityRows(viewer, 0, 10, null, null, null, model.id(), null, null, CheckStatus.UNMAPPED).getBody()).containsEntry("recordsTotal", 5L);
+        assertThat(controller.selectQualityRows(viewer, 0, 10, null, null, null, model.id(), null, null, CheckStatus.UNMAPPED, null).getBody()).containsEntry("recordsTotal", 5L);
         assertThat(controller.selectEntityRow(viewer, member.id(), null).getBody().tableName()).isEqualTo("TB_MEMBER");
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "911", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.selectQualitySummary(notApproved, model.id())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectQualityRows(notApproved, 0, 10, null, null, null, model.id(), null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.selectQualityRows(notApproved, 0, 10, null, null, null, model.id(), null, null, null, null)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.selectEntityRow(notApproved, member.id(), null)).isInstanceOf(AccessDeniedException.class);
     }
 

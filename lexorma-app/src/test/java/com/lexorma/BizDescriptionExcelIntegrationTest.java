@@ -287,7 +287,7 @@ class BizDescriptionExcelIntegrationTest {
     }
 
     @Test
-    @DisplayName("동시 편집 : 직접 편집이 커밋 전일 때 같은 테이블에 업로드(새 컬럼 + 이미 있는 테이블 행) — 업로드는 기다리지 않고, 커밋된 직접 편집 값이 남는다")
+    @DisplayName("동시 편집 : 직접 편집이 커밋 전일 때 같은 테이블에 업로드(새 컬럼 + 이미 있는 테이블 행) — 업로드는 테이블 행을 기다렸다가(컬럼 등록의 공통 잠금) 이어서 반영되고, 커밋된 직접 편집 값이 남는다")
     void concurrentDirectEditAndUpload() throws Exception {
         CountDownLatch edited = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -311,12 +311,20 @@ class BizDescriptionExcelIntegrationTest {
                 throw new IllegalStateException(e);
             }
         });
+        // M-7 물리명 일괄 적용 2차 후속 (2026-11-21) : 컬럼 업로드는 컬럼을 더할 테이블 행을 먼저 잠근다 — 직접 편집이 테이블 행을 쥔 동안에는 기다린다
+        // (예전에는 PK 가 아닌 컬럼이면 기다리지 않았다). 직접 편집이 커밋되면 이어서 끝난다 (교착 없음, 잃는 값 없음)
+        boolean waited;
         try {
-            upload.get(10, TimeUnit.SECONDS);
+            upload.get(500, TimeUnit.MILLISECONDS);
+            waited = false;
+        } catch (java.util.concurrent.TimeoutException e) {
+            waited = true;
         } finally {
             release.countDown();
         }
+        assertThat(waited).as("업로드는 직접 편집이 쥔 테이블 행을 기다린다").isTrue();
         editor.get(10, TimeUnit.SECONDS);
+        upload.get(10, TimeUnit.SECONDS);
 
         assertThat(column("LGN_ACNT").getBizDescription()).isEqualTo("직접 고친 설명");
         assertThat(table("TB_MBR").getBizDescription()).isEqualTo("직접 고친 테이블 설명");

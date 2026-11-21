@@ -25,6 +25,7 @@ import { edgeTypes, EndMarkers, entityRows, LAYER_GAP, nodeTypes, relationshipEd
 import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
+import { EntityMappingSection, MappingLegend, MappingOverlayContext, MappingToggle, useEntityOverlay, type EntityOverlay } from '../mapping/erdOverlay';
 import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { ALL_AREAS, applyAreaFilter, areaMap, areaPath, useSubjectAreas, type AreaFilter } from './subjectArea';
 
@@ -78,8 +79,10 @@ export default function LogicalErdPage() {
   const [params, setParams] = useSearchParams();
   const [focusEntity] = useState(() => (/^\d+$/.test(params.get('entityId') ?? '') ? params.get('entityId') : null));
   const [initialArea] = useState(() => linkedArea(params));
+  // 물리 ERD 에서 넘어온 경우 (?mapping=1) : 매핑 표시를 켠 채로 연다 (M-7 ERD 연계)
+  const [initialMapping] = useState(() => params.get('mapping') === '1');
   useEffect(() => {
-    if (['entityId', 'subjectAreaId', 'includeChildren', 'unclassified'].some((k) => params.has(k))) setParams(params.get('modelId') ? { modelId: params.get('modelId')! } : {}, { replace: true });
+    if (['entityId', 'subjectAreaId', 'includeChildren', 'unclassified', 'mapping'].some((k) => params.has(k))) setParams(params.get('modelId') ? { modelId: params.get('modelId')! } : {}, { replace: true });
   }, []);
   const [dirty, setDirty] = useState(false);
   // 조회 / 편집 모드 (M-8) : 모델을 바꿔도 유지한다. 편집 모드는 논리 모델 변경 권한(USER 이상)이 있어야 들어간다
@@ -110,6 +113,7 @@ export default function LogicalErdPage() {
               modelId={selected.id}
               focusEntity={focusEntity}
               initialArea={initialArea}
+              initialMapping={initialMapping}
               onDirty={setDirty}
               onManage={canView('logical-model') ? (entityId, area) => {
                 const query = new URLSearchParams({ modelId: String(selected.id) });
@@ -136,9 +140,11 @@ export default function LogicalErdPage() {
   );
 }
 
-function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, onLeave, mode, onMode, modelSelect }: {
+function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDirty, onManage, onLeave, mode, onMode, modelSelect }: {
   modelId: number;
   focusEntity: string | null;
+  /** 매핑 표시를 켠 채로 시작 (물리 ERD 에서 넘어온 경우) */
+  initialMapping: boolean;
   /** 처음 볼 주제 영역 범위 (관리 화면에서 넘어온 경우) */
   initialArea: AreaFilter;
   onDirty: (dirty: boolean) => void;
@@ -180,6 +186,9 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
   const shown = useRef(false);
   // 화면 위치를 맞춘 조회 범위 (D-52) : 검색·페이지·영역·하위 포함·이웃·범위 복귀로 범위가 바뀌면 새 결과에 맞추고, 같은 범위를 다시 받으면(새로고침·편집) 보던 화면을 유지한다
   const fittedScope = useRef<string | null>(null);
+  // 매핑 표시 (M-7 ERD 연계, 기본 꺼짐) : 켜면 지금 범위의 엔터티 매핑을 한 번에 받는다
+  const canMapping = canView('model-mapping');
+  const [showMapping, setShowMapping] = useState(initialMapping && canMapping);
 
   // 주제 영역 (M-6 후속 4차) : 범위 조회를 영역(기본 하위 포함)·미분류로 거른다. 영역을 보는 동안의 배치는 그 영역의 내 배치에 따로 저장한다 (D-07)
   const subjectAreas = useSubjectAreas(modelId);
@@ -208,6 +217,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
     queryFn: ({ signal }) => api<LogicalGraphPart>(graphUrl, { signal, silent: true }),
     enabled: layout.isSuccess,
   });
+  const mappingOverlay = useEntityOverlay(modelId, graph.data?.entities.map((e) => e.id) ?? [], showMapping, graph.dataUpdatedAt);
   // 저장하지 않은 배치 : 범위를 바꿔도 잃지 않도록 화면 밖 엔터티의 옮긴 좌표도 기억했다가 [배치 저장] 때 함께 보낸다 (서버는 기존 좌표에 합친다)
   const pending = useRef(new Set<string>());
   const [pendingCount, setPendingCount] = useState(0);
@@ -640,6 +650,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
         )}
         <span className="erd-muted subject-erd-target">{t('· 저장 대상 : {0}', layoutTarget)}</span>
         {layoutArea != null && (layout.data as { source?: string } | undefined)?.source === 'MODEL' && savedVersion.current == null && <span className="erd-muted">{t('· 이 영역에 저장한 배치가 없어 전체 배치의 좌표를 참고했습니다')}</span>}
+        {canMapping && <MappingToggle checked={showMapping} onChange={setShowMapping} loading={mappingOverlay.isFetching} error={mappingOverlay.isError} />}
         {editing && <span className="erd-mode-note">{t('편집 모드 · 엔터티·속성 변경은 바로 저장됩니다. 배치는 [배치 저장] 을 눌러야 저장됩니다.')}</span>}
         {loading && <span className="erd-muted">{t('불러오는 중…')}</span>}
         {message && <span className="erd-muted">{message}</span>}
@@ -655,6 +666,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
           {!error && !loading && scope.kind === 'neighbors' && graph.data?.entities.length === 1 && !graph.data.relationships.length && !outsideTotal && (
             <div className="erd-empty erd-empty-note">{t('선택한 엔터티에 연결된 관계가 없습니다.')}</div>
           )}
+          <MappingOverlayContext.Provider value={showMapping ? mappingOverlay.overlay : null}>
           <ReactFlow
             nodes={displayNodes}
             edges={displayEdges}
@@ -695,6 +707,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
             <Background />
             <Controls showInteractive={false} />
           </ReactFlow>
+          </MappingOverlayContext.Provider>
         </div>
 
         <aside className="erd-detail">
@@ -735,6 +748,8 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
               } : undefined}
               onManage={onManage ? () => onManage(selected.id) : undefined}
               onMapping={canView('model-mapping') ? () => onLeave(mappingPath(modelId, selected.id)) : undefined}
+              mapping={showMapping ? mappingOverlay.overlay?.entities.get(selected.id) : undefined}
+              onLeave={onLeave}
               onRelationship={(id) => { setSelectedRelationship(id); setSelectedId(null); }}
             />
           ) : relationship ? (
@@ -746,6 +761,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, onDirty, onManage, on
             <p className="erd-muted">{t('엔터티나 관계선을 누르면 상세를 볼 수 있습니다.')}</p>
           )}
           <div className="erd-legend">
+            {showMapping && <MappingLegend />}
             <span><i className="erd-line" style={{ borderTopColor: 'var(--gh-fg-muted)' }} />{t('식별 관계')}</span>
             <span><i className="erd-line dashed" style={{ borderTopColor: 'var(--gh-fg-muted)' }} />{t('비식별 관계')}</span>
             {/* Crow's Foot (M-6 후속 2차) : 관계선 끝과 같은 기호. 그 엔터티 쪽의 참여 수 = 최소(○ 선택 / | 필수)와 최대(| 하나 / 까치발 여러 건) */}
@@ -835,7 +851,7 @@ interface EntityEdit {
   onDeleteIdentifier: (identifier: LogicalIdentifier) => void;
 }
 
-function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, depth, onDepth, onNeighbors, onFocus, onDetail, onManage, onMapping, onRelationship, edit, version }: {
+function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, depth, onDepth, onNeighbors, onFocus, onDetail, onManage, onMapping, mapping, onLeave, onRelationship, edit, version }: {
   graph: LogicalGraph;
   entity: GraphEntity;
   /** 상대 엔터티가 조회 범위 밖이라 그리지 않은 관계 수 */
@@ -850,6 +866,10 @@ function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, dept
   onManage?: () => void;
   /** 논리·물리 매핑 화면으로 (메뉴 권한이 없으면 undefined) */
   onMapping?: () => void;
+  /** 매핑 표시가 켜져 있을 때의 이 엔터티 상태 */
+  mapping?: EntityOverlay;
+  /** 다른 화면으로 이동 (물리 ERD — 저장하지 않은 배치 확인) */
+  onLeave: (path: string) => void;
   onRelationship: (relationshipId: number) => void;
   edit?: EntityEdit;
   /** ERD 조회 시각 : 바뀌면 식별자 목록도 다시 받는다 */
@@ -883,6 +903,7 @@ function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, dept
         {onManage && <button type="button" className="btn btn-sm" onClick={onManage}>{t('관리 화면에서 보기')}</button>}
         {onMapping && <button type="button" className="btn btn-sm" onClick={onMapping}>{t('매핑 관리')}</button>}
       </div>
+      <EntityMappingSection key={entity.id} entityId={entity.id} overlay={mapping} onLeave={onLeave} />
       {edit && (
         <div className="erd-toolbar erd-links erd-edit-actions">
           <button type="button" className="btn btn-sm" onClick={edit.onEditEntity} title={edit.entityEditable ? undefined : approvedNote}>{t('엔터티 수정')}</button>

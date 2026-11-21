@@ -13,6 +13,9 @@ import com.lexorma.data.dictionary.service.StandardizationQualityService.DomainC
 import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.CheckStatus;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.CheckType;
+import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.InheritanceSummary;
+import com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping;
+import com.lexorma.data.logical.service.LogicalHierarchy;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Row;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Search;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Source;
@@ -68,15 +71,18 @@ public class ModelMappingQualityService {
     private final ModelMappingQueryRepository queryRepository;
     private final ProjectRepository projectRepository;
     private final com.lexorma.data.logical.service.LogicalSubtypeService subtypeService;
+    private final SubtypePlanContexts subtypeContexts;
+    private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyRepository;
 
     public Summary selectSummary(AccountDto accountDto, Long modelId) {
         // 엔터티·속성 수는 매핑 현황과 같은 집계를 쓴다 (없는 모델·다른 프로젝트의 모델은 여기서 거절된다)
         ModelMappingDto.Status status = status(accountDto, modelId);
-        List<Row> rows = rows(accountDto.getProjectId(), new Search(modelId, null, null, null, null, null));
+        Computed computed = compute(accountDto.getProjectId(), new Search(modelId, null, null, null, null, null));
+        List<Row> rows = computed.rows();
         return new Summary(status.modelId(), status.modelName(), status.totalEntities(), status.mappedEntities(), status.unmappedEntities(),
                 status.totalAttributes(), status.mappedAttributes(), status.unmappedAttributes(),
                 count(rows, CheckStatus.MATCH), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE), count(rows, CheckStatus.UNMAPPED),
-                subtypeService.hierarchy(modelId).participants().size());
+                computed.participants(), computed.inheritance());
     }
 
     public Page<Row> selectRows(AccountDto accountDto, Search search, Pageable pageable) {
@@ -100,15 +106,131 @@ public class ModelMappingQualityService {
     }
 
     private List<Row> rows(Long projectId, Search search) {
+        return compute(projectId, search).rows();
+    }
+
+    private record Computed(List<Row> rows, long participants, InheritanceSummary inheritance) {
+    }
+
+    private Computed compute(Long projectId, Search search) {
         DbType db = projectRepository.findById(projectId).map(Project::getDbType).map(DbType::orDefault).orElse(DbType.DEFAULT);
         // 속성명·컬럼명으로 찾을 때는 엔터티 단위 행(속성·컬럼이 없다)을 내지 않는다
         boolean entityRows = search.searchQuery() == null || search.searchQuery().isBlank()
                 || !("attributeName".equals(search.searchColumn()) || "columnName".equals(search.searchColumn()));
-        // 상속 구조 참여 엔터티 (D-48) : 판정은 그대로 두고 "상속 구조 전체는 검증하지 않음" 표시만 붙인다 (MISMATCH 로 바꾸지 않는다)
-        java.util.Set<Long> inheritance = subtypeService.hierarchy(search.modelId()).participants();
-        List<Row> rows = diagnose(db, queryRepository.findQualitySources(projectId, search),
-                queryRepository.findPrimaryIdentifierAttributes(projectId, search.modelId()), entityRows);
-        return inheritance.isEmpty() ? rows : rows.stream().map(row -> row.withInheritance(inheritance.contains(row.entityId()))).toList();
+        // 상속 구조 참여 엔터티 (D-48) : 직접 속성 판정은 그대로 두고 표시만 붙인다 (MISMATCH 로 바꾸지 않는다). 상속 PK·FK 는 INHERITANCE 행이 따로 본다 (M-7 4차)
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(search.modelId());
+        java.util.Set<Long> inheritance = hierarchy.participants();
+        List<Source> sources = queryRepository.findQualitySources(projectId, search);
+        List<Row> rows = diagnose(db, sources, queryRepository.findPrimaryIdentifierAttributes(projectId, search.modelId()), entityRows);
+        if (!inheritance.isEmpty()) rows = rows.stream().map(row -> row.withInheritance(inheritance.contains(row.entityId()))).toList();
+        return inheritanceRows(projectId, db, hierarchy, search, sources, rows, entityRows);
+    }
+
+    /**
+     * 상속 구조 행 (M-7 4차) : 매핑된 서브타입마다 구조 1행({@link SubtypePlanContext#inspect} — 기존 부모 재사용·상속 PK 매핑 상세와 같은 판정)과
+     * 유효하지 않은 기존 상속 PK 매핑마다 1행. 상속 PK 매핑은 모델 단위 한 번, 판정 재료는 {@link SubtypePlanContext#prepare} 가 종류별로 한 번에 읽는다.
+     * 행은 그 엔터티의 다른 진단 뒤에 둔다 (조회 순서 유지)
+     */
+    private Computed inheritanceRows(Long projectId, DbType db, LogicalHierarchy hierarchy, Search search, List<Source> sources, List<Row> rows, boolean entityRows) {
+        List<SubtypeIdentifierColumnMapping> links = subtypeKeyRepository.findAllByModelId(projectId, search.modelId());
+        long subtypeCount = hierarchy.participants().stream().filter(id -> hierarchy.parent(id) != null).count();
+        if (hierarchy.isEmpty() && links.isEmpty()) {
+            return new Computed(rows, 0, new InheritanceSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+        }
+        Map<Long, List<SubtypeIdentifierColumnMapping>> linksByMapping = new java.util.HashMap<>();
+        links.forEach(l -> linksByMapping.computeIfAbsent(l.getMapping().getId(), k -> new ArrayList<>()).add(l));
+        Map<Long, Source> firstSource = new java.util.LinkedHashMap<>();
+        sources.forEach(source -> firstSource.putIfAbsent(source.entityId(), source));
+        List<Long> mappedSubtypes = firstSource.values().stream().filter(source -> source.mappingId() != null && hierarchy.parent(source.entityId()) != null)
+                .map(Source::entityId).toList();
+        SubtypePlanContext context = subtypeContexts.lightForModel(projectId, search.modelId(), hierarchy, db);
+        context.prepare(mappedSubtypes);
+        String keyword = search.searchQuery() == null || search.searchQuery().isBlank() ? null : search.searchQuery().trim().toLowerCase(java.util.Locale.ROOT);
+        Map<Long, List<Row>> extra = new java.util.HashMap<>();
+        long requiredKeys = 0, mappedKeys = 0, invalid = 0, valid = 0, mismatch = 0, unmapped = 0, notComparable = 0;
+        for (Source source : firstSource.values()) {
+            if (source.mappingId() == null) continue;
+            List<SubtypeIdentifierColumnMapping> own = linksByMapping.getOrDefault(source.mappingId(), List.of());
+            boolean subtype = hierarchy.parent(source.entityId()) != null;
+            if (!subtype && own.isEmpty()) continue;
+            List<Row> list = extra.computeIfAbsent(source.entityId(), k -> new ArrayList<>());
+            java.util.Set<Long> current = new HashSet<>();
+            if (subtype) {
+                SubtypePlanContext.Inspection inspection = context.inspect(source.entityId());
+                List<com.lexorma.data.logical.domain.entity.LogicalAttribute> key = context.rootKey(source.entityId());
+                key.forEach(a -> current.add(a.getId()));
+                requiredKeys += key.size();
+                mappedKeys += own.stream().filter(l -> current.contains(l.getAttribute().getId())).count();
+                CheckStatus status = CheckStatus.valueOf(inspection.result());
+                switch (status) {
+                    case MATCH -> valid++;
+                    case MISMATCH -> mismatch++;
+                    case UNMAPPED -> unmapped++;
+                    default -> notComparable++;
+                }
+                if (entityRows) {
+                    String reason = inspection.checks().stream().filter(c -> !SubtypePlanContext.OK.equals(c.level()) && !SubtypePlanContext.WARNING.equals(c.level()))
+                            .map(SubtypePlanContext.Check::message).findFirst().orElse(null);
+                    list.add(new Row(CheckType.INHERITANCE + ":" + source.entityId() + ":", source.modelId(), source.modelName(), source.mappingId(), source.entityId(),
+                            source.entityName(), null, null, source.schemaId(), source.schemaName(), source.tableId(), source.tableName(), null, null, CheckType.INHERITANCE, status,
+                            Messages.get("상속 PK {0}개 중 {1}개 연결", key.size(), own.stream().filter(l -> current.contains(l.getAttribute().getId())).count()),
+                            inspection.tableKey().isEmpty() ? "-" : "PK (" + String.join(", ", inspection.tableKey().stream().map(SubtypePlanContext.KeyCol::name).toList()) + ")",
+                            reason, true));
+                }
+            }
+            for (SubtypeIdentifierColumnMapping link : own) {
+                if (current.contains(link.getAttribute().getId())) continue;
+                invalid++;
+                if (keyword != null && !entityRows && !(contains(link.getAttribute().getAttributeName(), keyword) || contains(link.getColumn().getColumnName(), keyword))) continue;
+                list.add(new Row(CheckType.INHERITANCE + ":" + source.entityId() + ":" + link.getAttribute().getId(), source.modelId(), source.modelName(), source.mappingId(),
+                        source.entityId(), source.entityName(), link.getAttribute().getId(), link.getAttribute().getAttributeName(), source.schemaId(), source.schemaName(),
+                        source.tableId(), source.tableName(), link.getColumn().getId(), link.getColumn().getColumnName(), CheckType.INHERITANCE, CheckStatus.MISMATCH,
+                        Messages.get("유효하지 않은 기존 상속 PK 매핑"), link.getColumn().getColumnName(),
+                        subtype ? Messages.get("지금 루트 주 식별자에 없는 속성의 기존 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다.")
+                                : Messages.get("엔터티가 지금 서브타입이 아닌데 남은 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다."), true));
+            }
+        }
+        // 속성명·컬럼명으로 찾으면 조회 결과에 없는 엔터티(그 이름의 속성이 없는 서브타입)의 기존 매핑도 이름으로 찾는다 — 매핑에서 엔터티·테이블을 읽는다
+        if (!entityRows && keyword != null) {
+            java.util.Set<Long> visited = new HashSet<>();
+            firstSource.values().forEach(source -> { if (source.mappingId() != null) visited.add(source.mappingId()); });
+            for (Map.Entry<Long, List<SubtypeIdentifierColumnMapping>> entry : linksByMapping.entrySet()) {
+                if (visited.contains(entry.getKey())) continue;
+                for (SubtypeIdentifierColumnMapping link : entry.getValue()) {
+                    com.lexorma.data.mapping.domain.entity.EntityTableMapping m = link.getMapping();
+                    if (search.entityId() != null && !search.entityId().equals(m.getEntity().getId())) continue;
+                    boolean subtype = hierarchy.parent(m.getEntity().getId()) != null;
+                    if (subtype && context.rootKey(m.getEntity().getId()).stream().anyMatch(a -> a.getId().equals(link.getAttribute().getId()))) continue;
+                    if (!(contains(link.getAttribute().getAttributeName(), keyword) || contains(link.getColumn().getColumnName(), keyword))) continue;
+                    com.lexorma.data.table.domain.entity.TableInfo table = m.getTable();
+                    extra.computeIfAbsent(m.getEntity().getId(), k -> new ArrayList<>()).add(new Row(CheckType.INHERITANCE + ":" + m.getEntity().getId() + ":" + link.getAttribute().getId(),
+                            m.getEntity().getModel().getId(), m.getEntity().getModel().getModelName(), m.getId(), m.getEntity().getId(), m.getEntity().getEntityName(),
+                            link.getAttribute().getId(), link.getAttribute().getAttributeName(), table.getSchema() == null ? null : table.getSchema().getId(),
+                            table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getId(), table.getTableName(), link.getColumn().getId(),
+                            link.getColumn().getColumnName(), CheckType.INHERITANCE, CheckStatus.MISMATCH, Messages.get("유효하지 않은 기존 상속 PK 매핑"), link.getColumn().getColumnName(),
+                            subtype ? Messages.get("지금 루트 주 식별자에 없는 속성의 기존 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다.")
+                                    : Messages.get("엔터티가 지금 서브타입이 아닌데 남은 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다."), true));
+                }
+            }
+        }
+        InheritanceSummary summary = new InheritanceSummary(subtypeCount, mappedSubtypes.size(), requiredKeys, mappedKeys, requiredKeys - mappedKeys, invalid,
+                valid, mismatch, unmapped, notComparable);
+        if (extra.isEmpty()) return new Computed(rows, hierarchy.participants().size(), summary);
+        // 엔터티의 마지막 진단 행 뒤에 넣는다. 진단 행이 없는 엔터티(속성이 모두 상속 PK 인 서브타입 등)는 조회 순서 자리에 둔다
+        Map<Long, List<Row>> byEntity = new java.util.LinkedHashMap<>();
+        firstSource.keySet().forEach(id -> byEntity.put(id, new ArrayList<>()));
+        extra.keySet().stream().filter(id -> !byEntity.containsKey(id)).sorted().forEach(id -> byEntity.put(id, new ArrayList<>()));
+        rows.forEach(row -> byEntity.computeIfAbsent(row.entityId(), k -> new ArrayList<>()).add(row));
+        List<Row> merged = new ArrayList<>(rows.size() + extra.size());
+        byEntity.forEach((id, list) -> {
+            merged.addAll(list);
+            merged.addAll(extra.getOrDefault(id, List.of()));
+        });
+        return new Computed(merged, hierarchy.participants().size(), summary);
+    }
+
+    private static boolean contains(String value, String keyword) {
+        return value != null && value.toLowerCase(java.util.Locale.ROOT).contains(keyword);
     }
 
     private static long count(List<Row> rows, CheckStatus status) {

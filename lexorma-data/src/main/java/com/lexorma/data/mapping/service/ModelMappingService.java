@@ -61,12 +61,16 @@ public class ModelMappingService {
     private final com.lexorma.data.logical.service.LogicalSubtypeService subtypeService;
     private final SubtypePlanContexts subtypeContexts;
     private final com.lexorma.core.project.repository.ProjectRepository projectRepository;
+    private final com.lexorma.data.logical.repository.LogicalSubtypeGroupRepository subtypeGroupRepository;
 
     // ------------------------------------------------------------------ 조회
 
+    /** 엔터티 목록 페이지 + 행마다 상속 역할·상속 PK 현황 (M-7 4차 — 페이지 단위 일괄 조회, 엔터티별 조회 없음) */
     @Transactional(readOnly = true)
     public Page<ModelMappingDto.EntityRow> selectEntityRows(AccountDto accountDto, ModelMappingDto.EntitySearch search, Pageable pageable) {
-        return queryRepository.findEntityRows(accountDto.getProjectId(), search, pageable);
+        Page<ModelMappingDto.EntityRow> page = queryRepository.findEntityRows(accountDto.getProjectId(), search, pageable);
+        List<ModelMappingDto.EntityRow> rows = withInheritance(accountDto.getProjectId(), page.getContent());
+        return new org.springframework.data.domain.PageImpl<>(rows, pageable, page.getTotalElements());
     }
 
     /** 매핑 1건과 그 엔터티의 속성 전체(매핑된 컬럼 포함), 아직 연결하지 않은 테이블 컬럼 */
@@ -74,7 +78,73 @@ public class ModelMappingService {
     public ModelMappingDto.Detail selectEntityMapping(AccountDto accountDto, Long mappingId) {
         ModelMappingDto.EntityRow row = mappingId == null ? null : queryRepository.findEntityRow(accountDto.getProjectId(), mappingId);
         if (row == null) throw notFound();
-        return new ModelMappingDto.Detail(row, queryRepository.findAttributeRows(row.entityId()), queryRepository.findUnmappedColumns(row.tableId()));
+        return new ModelMappingDto.Detail(withInheritance(accountDto.getProjectId(), List.of(row)).get(0), queryRepository.findAttributeRows(row.entityId()),
+                queryRepository.findUnmappedColumns(row.tableId()));
+    }
+
+    /**
+     * 행들의 상속 요약을 채운다 (M-7 4차). 모델마다 계층 1번({@link com.lexorma.data.logical.service.LogicalSubtypeService#hierarchy} — ID 투영),
+     * 매핑된 엔터티의 상속 PK 매핑 1번, 판정은 {@link SubtypePlanContext#prepare} 의 종류별 일괄 조회 — 조회 수가 행 수에 비례하지 않는다.
+     * 판정은 상세·물리 생성과 같은 {@link SubtypePlanContext#ancestor} 다
+     */
+    List<ModelMappingDto.EntityRow> withInheritance(Long projectId, List<ModelMappingDto.EntityRow> rows) {
+        if (rows.isEmpty()) return rows;
+        java.util.Map<Long, com.lexorma.data.logical.service.LogicalHierarchy> hierarchies = new java.util.HashMap<>();
+        rows.stream().map(ModelMappingDto.EntityRow::modelId).distinct().forEach(m -> hierarchies.put(m, subtypeService.hierarchy(m)));
+        java.util.Map<Long, List<SubtypeIdentifierColumnMapping>> links = new java.util.HashMap<>();
+        List<Long> mappingIds = rows.stream().map(ModelMappingDto.EntityRow::mappingId).filter(java.util.Objects::nonNull).toList();
+        if (!mappingIds.isEmpty()) subtypeKeyRepository.findAllByMappingIds(mappingIds).forEach(l -> links.computeIfAbsent(l.getMapping().getId(), k -> new java.util.ArrayList<>()).add(l));
+        com.lexorma.core.project.domain.enums.DbType db = null;
+        java.util.Map<Long, SubtypePlanContext> contexts = new java.util.HashMap<>();
+        List<ModelMappingDto.EntityRow> result = new java.util.ArrayList<>(rows.size());
+        for (ModelMappingDto.EntityRow row : rows) {
+            com.lexorma.data.logical.service.LogicalHierarchy hierarchy = hierarchies.get(row.modelId());
+            List<SubtypeIdentifierColumnMapping> own = row.mappingId() == null ? List.of() : links.getOrDefault(row.mappingId(), List.of());
+            if (!hierarchy.participates(row.entityId()) && own.isEmpty()) {
+                result.add(row);
+                continue;
+            }
+            if (!contexts.containsKey(row.modelId())) {
+                if (db == null) db = dbType(projectId);
+                SubtypePlanContext context = subtypeContexts.light(projectId, hierarchy, db);
+                context.prepare(rows.stream().filter(r -> r.modelId().equals(row.modelId())).map(ModelMappingDto.EntityRow::entityId).toList());
+                contexts.put(row.modelId(), context);
+            }
+            result.add(row.withInheritance(inheritance(contexts.get(row.modelId()), row, own)));
+        }
+        return result;
+    }
+
+    private static ModelMappingDto.Inheritance inheritance(SubtypePlanContext context, ModelMappingDto.EntityRow row, List<SubtypeIdentifierColumnMapping> own) {
+        com.lexorma.data.logical.service.LogicalHierarchy hierarchy = context.hierarchy();
+        Long id = row.entityId();
+        if (!hierarchy.participates(id)) {
+            // 상속이 해제됐는데 남은 상속 PK 매핑 : 모두 유효하지 않은 기존 매핑이다 (숨기지 않는다)
+            return new ModelMappingDto.Inheritance(null, false, false, null, null, null, null, 0, 0, own.size(), SubtypePlanContext.NOT_SUBTYPE, "MISMATCH");
+        }
+        boolean subtype = context.isSubtype(id);
+        boolean supertype = !hierarchy.groupsOf(id).isEmpty();
+        Long parentId = hierarchy.parent(id);
+        Long rootId = hierarchy.root(id);
+        String parentName = parentId == null ? null : context.entity(parentId).getEntityName();
+        String rootName = context.entity(rootId).getEntityName();
+        if (!subtype) {
+            return new ModelMappingDto.Inheritance("ROOT", supertype, false, null, null, rootId, rootName, 0, 0, own.size(),
+                    own.isEmpty() ? null : SubtypePlanContext.NOT_SUBTYPE, own.isEmpty() ? null : "MISMATCH");
+        }
+        List<LogicalAttribute> key = context.rootKey(id);
+        java.util.Set<Long> current = new java.util.HashSet<>();
+        key.forEach(a -> current.add(a.getId()));
+        int mapped = (int) own.stream().filter(l -> current.contains(l.getAttribute().getId())).count();
+        int invalid = own.size() - mapped;
+        String status = null;
+        String resultStatus = null;
+        if (row.mappingId() != null) {
+            SubtypePlanContext.Inspection inspection = context.inspect(id);
+            status = inspection.code() == null ? "VALID" : inspection.code();
+            resultStatus = inspection.result();
+        }
+        return new ModelMappingDto.Inheritance(context.role(id), supertype, true, parentId, parentName, rootId, rootName, key.size(), mapped, invalid, status, resultStatus);
     }
 
     /**
@@ -200,7 +270,10 @@ public class ModelMappingService {
 
     // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차)
 
-    /** 서브타입 엔터티 매핑의 상속 PK 매핑과 지금 메타데이터로 계산한 정합성 (지금 서브타입이 아니거나 루트 주 식별자가 바뀐 기존 매핑도 숨기지 않는다) */
+    /**
+     * 서브타입 엔터티 매핑의 상속 PK 매핑과 지금 메타데이터로 계산한 정합성 (지금 서브타입이 아니거나 루트 주 식별자가 바뀐 기존 매핑도 숨기지 않는다).
+     * structure (M-7 4차) : 같은 판정의 항목별 점검과 테이블 PK·직계 상위 키·나가는 FK — 이 상세를 열 때만 계산한다
+     */
     @Transactional(readOnly = true)
     public ModelMappingDto.SubtypeKeyDetail selectSubtypeKeys(AccountDto accountDto, Long mappingId) {
         Long projectId = accountDto.getProjectId();
@@ -214,35 +287,105 @@ public class ModelMappingService {
         List<ModelMappingDto.SubtypeKeyRow> keys = new java.util.ArrayList<>();
         java.util.Map<Long, SubtypeIdentifierColumnMapping> byAttribute = new java.util.HashMap<>();
         links.forEach(l -> byAttribute.put(l.getAttribute().getId(), l));
-        if (!subtype) {
-            for (SubtypeIdentifierColumnMapping link : links) keys.add(keyRow(link, 0, false, link.getAttribute()));
-            return new ModelMappingDto.SubtypeKeyDetail(row, false, null, null, null, null, SubtypePlanContext.NOT_SUBTYPE,
-                    Messages.get("엔터티 {0} 은(는) 지금 서브타입이 아닙니다. 상속 PK 매핑을 해제할 수 있습니다.", entity.getEntityName()), false, keys);
-        }
-        SubtypePlanContext context = subtypeContexts.create(projectId, hierarchy, dbType(projectId));
+        SubtypePlanContext context = subtypeContexts.light(projectId, hierarchy, dbType(projectId));
         context.prepare(List.of(entity.getId()));
+        row = withInheritance(projectId, List.of(row)).get(0);
+        if (!subtype) {
+            for (SubtypeIdentifierColumnMapping link : links) keys.add(keyRow(link, 0, false, link.getAttribute(), null));
+            return new ModelMappingDto.SubtypeKeyDetail(row, false, null, null, null, null, SubtypePlanContext.NOT_SUBTYPE,
+                    links.isEmpty() ? Messages.get("엔터티 {0} 은(는) 서브타입이 아니라 상속 PK 매핑 대상이 아닙니다.", entity.getEntityName())
+                            : Messages.get("엔터티 {0} 은(는) 지금 서브타입이 아닙니다. 상속 PK 매핑을 해제할 수 있습니다.", entity.getEntityName()), false, keys, null);
+        }
+        SubtypePlanContext.Inspection inspection = context.inspect(entity.getId());
+        java.util.Map<Long, SubtypePlanContext.KeyState> states = new java.util.HashMap<>();
+        inspection.keys().forEach(k -> states.put(k.attributeId(), k));
         List<LogicalAttribute> rootKey = context.rootKey(entity.getId());
         java.util.Set<Long> current = new java.util.HashSet<>();
         for (int i = 0; i < rootKey.size(); i++) {
             LogicalAttribute attribute = rootKey.get(i);
             current.add(attribute.getId());
             SubtypeIdentifierColumnMapping link = byAttribute.get(attribute.getId());
+            SubtypePlanContext.KeyState state = states.get(attribute.getId());
             keys.add(link == null ? new ModelMappingDto.SubtypeKeyRow(null, i + 1, true, attribute.getId(), attribute.getAttributeName(), attribute.getEntity().getId(),
-                    attribute.getEntity().getEntityName(), null, null, null, null, null, null, null) : keyRow(link, i + 1, true, attribute));
+                    attribute.getEntity().getEntityName(), null, null, null, null, null, null, null, termName(attribute), attributeType(attribute), null,
+                    state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), "UNMAPPED") : keyRow(link, i + 1, true, attribute, state));
         }
         for (SubtypeIdentifierColumnMapping link : links) {
-            if (!current.contains(link.getAttribute().getId())) keys.add(keyRow(link, 0, false, link.getAttribute()));
+            if (!current.contains(link.getAttribute().getId())) keys.add(keyRow(link, 0, false, link.getAttribute(), null));
         }
-        SubtypePlanContext.AncestorState state = context.ancestor(entity.getId(), java.util.Set.of());
         Long parentId = hierarchy.parent(entity.getId());
         Long rootId = hierarchy.root(entity.getId());
         boolean complete = !rootKey.isEmpty() && rootKey.stream().allMatch(a -> byAttribute.containsKey(a.getId()));
-        String status = state.code() == null ? "VALID" : state.code();
+        String status = inspection.code() == null ? "VALID" : inspection.code();
+        SubtypePlanContext.AncestorState state = context.ancestor(entity.getId(), java.util.Set.of());
         String message = state.code() == null ? null : SubtypePlanContext.ANCESTOR_INVALID.equals(state.code())
                 ? Messages.get("상위 엔터티 쪽 물리 구조가 맞지 않아 이 테이블의 상속 경로를 확인할 수 없습니다.")
                 : context.message(state, entity);
         return new ModelMappingDto.SubtypeKeyDetail(row, true, parentId, context.entity(parentId).getEntityName(), rootId, context.entity(rootId).getEntityName(),
-                status, message, complete, keys);
+                status, message, complete, keys, structure(inspection, hierarchy, entity.getId()));
+    }
+
+    private ModelMappingDto.Structure structure(SubtypePlanContext.Inspection inspection, com.lexorma.data.logical.service.LogicalHierarchy hierarchy, Long entityId) {
+        com.lexorma.data.table.domain.entity.TableInfo table = inspection.table();
+        com.lexorma.data.table.domain.entity.TableInfo parent = inspection.parentTable();
+        com.lexorma.core.project.domain.enums.DbType db = dbType(table.getProjectId());
+        java.util.function.Function<ColumnInfo, ModelMappingDto.KeyColumn> key = c -> new ModelMappingDto.KeyColumn(c.getId(), c.getColumnName(),
+                com.lexorma.data.table.ddl.TableDdlGenerator.mappedType(db, c), Boolean.TRUE.equals(c.getIsPk()), com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(c));
+        List<ModelMappingDto.ForeignKey> fks = new java.util.ArrayList<>();
+        java.util.Set<Long> linkColumns = new java.util.HashSet<>();
+        inspection.keys().forEach(k -> { if (k.column() != null) linkColumns.add(k.column().getId()); });
+        List<SubtypePlanContext.KeyState> keys = inspection.keys();
+        java.util.Set<String> expected = new java.util.HashSet<>();
+        if (inspection.parentKey().size() == keys.size()) {
+            for (SubtypePlanContext.KeyState k : keys) if (k.column() != null) expected.add(k.column().getId() + ">" + k.parentColumn().getId());
+        }
+        for (SubtypePlanContext.Fk relation : inspection.foreignKeys()) {
+            java.util.Set<String> pairs = new java.util.HashSet<>();
+            for (int i = 0; i < relation.childIds().size(); i++) {
+                if (relation.childIds().get(i) != null && relation.parentIds().get(i) != null) pairs.add(relation.childIds().get(i) + ">" + relation.parentIds().get(i));
+            }
+            boolean toParent = parent != null && parent.getId().equals(relation.targetTableId());
+            boolean link = toParent && expected.size() == keys.size() && !expected.isEmpty() && pairs.equals(expected) && relation.childIds().size() == expected.size();
+            // 상속과 무관한 일반 FK 는 상세에 넣지 않는다 (상속 PK 컬럼을 쓰거나 직계 상위 테이블을 참조하는 FK 만)
+            if (!link && !toParent && relation.childIds().stream().noneMatch(id -> id != null && linkColumns.contains(id))) continue;
+            fks.add(new ModelMappingDto.ForeignKey(relation.id(), relation.name(), relation.source(), relation.targetTableId(), relation.targetTableName(),
+                    relation.childNames().stream().map(n -> n == null ? "?" : n).toList(), relation.parentNames().stream().map(n -> n == null ? "?" : n).toList(), link));
+        }
+        // 테이블 PK 의 타입·NOT NULL 은 상세에서만 컬럼을 읽어 채운다 (한 테이블)
+        java.util.Map<Long, ColumnInfo> tableColumns = new java.util.HashMap<>();
+        table.getColumns().forEach(c -> tableColumns.put(c.getId(), c));
+        List<ModelMappingDto.KeyColumn> tableKey = inspection.tableKey().stream().map(k -> tableColumns.containsKey(k.id()) ? key.apply(tableColumns.get(k.id()))
+                : new ModelMappingDto.KeyColumn(k.id(), k.name(), null, true, true)).toList();
+        List<ModelMappingDto.StructureCheck> checks = inspection.checks().stream().map(c -> new ModelMappingDto.StructureCheck(c.code(), c.level(), c.message())).toList();
+        com.lexorma.data.logical.service.LogicalHierarchy.Group group = hierarchy.parentGroup(entityId);
+        String note = null;
+        if (group != null) {
+            com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup row = subtypeGroupRepository.findById(group.id()).orElse(null);
+            if (row != null && (!Boolean.TRUE.equals(row.getOverlapping()) || Boolean.TRUE.equals(row.getTotal()))) {
+                List<String> rules = new java.util.ArrayList<>();
+                if (!Boolean.TRUE.equals(row.getOverlapping())) rules.add(Messages.get("배타(Disjoint)"));
+                if (Boolean.TRUE.equals(row.getTotal())) rules.add(Messages.get("완전(Total)"));
+                note = Messages.get("상속 그룹 {0} 의 {1} 규칙은 PK·FK 로 보장되지 않습니다 (물리 미보장). 상속 PK·FK 구조 정합성과 따로 보며 불일치로 세지 않습니다.",
+                        row.getGroupName(), String.join(", ", rules));
+            }
+        }
+        return new ModelMappingDto.Structure(inspection.result(), table.getId(), table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getTableName(),
+                inspection.parentMappingId(), parent == null ? null : parent.getId(), parent == null || parent.getSchema() == null ? null : parent.getSchema().getSchemaName(),
+                parent == null ? null : parent.getTableName(), tableKey, inspection.parentKey().stream().map(key).toList(),
+                fks, checks, note);
+    }
+
+    private static String termName(LogicalAttribute attribute) {
+        return attribute.getStandardTerm() == null ? null : attribute.getStandardTerm().getCommonStandardTermName();
+    }
+
+    /** 원본 속성의 데이터 타입 표시 : 표준 용어의 도메인 타입(길이), 없으면 속성에 적은 데이터 유형 */
+    private static String attributeType(LogicalAttribute attribute) {
+        com.lexorma.data.dictionary.domain.entity.StandardDomain domain = attribute.getStandardTerm() == null ? null : attribute.getStandardTerm().getStandardDomain();
+        if (domain == null || domain.getDataType() == null || domain.getDataType().isBlank()) return attribute.getDataType();
+        Integer length = domain.getDataLength() != null && domain.getDataLength() != 0 ? domain.getDataLength() : null;
+        if (length == null) return domain.getDataType();
+        return domain.getDataType() + "(" + length + (domain.getDataDecimalLength() != null ? "," + domain.getDataDecimalLength() : "") + ")";
     }
 
     /** 상속 PK 매핑 후보 컬럼 (서버 페이징 — 그리드 목록 규칙). currentId : 변경할 상속 PK 매핑 (그 컬럼도 후보로 보인다) */
@@ -271,7 +414,7 @@ public class ModelMappingService {
             // 잠근 논리 모델의 지금 상속 구조로 판단한다 (요청의 엔터티·소속 정보를 믿지 않는다)
             com.lexorma.data.logical.service.LogicalHierarchy hierarchy = subtypeService.hierarchy(entity.getModel().getId());
             if (hierarchy.parent(entity.getId()) == null) throw invalid("엔터티 {0} 은(는) 서브타입이 아니라 상속 PK 매핑을 등록할 수 없습니다.", entity.getEntityName());
-            SubtypePlanContext context = subtypeContexts.create(projectId, hierarchy, dbType(projectId));
+            SubtypePlanContext context = subtypeContexts.light(projectId, hierarchy, dbType(projectId));
             LogicalAttribute attribute = request.attributeId() == null ? null
                     : context.rootKey(entity.getId()).stream().filter(a -> a.getId().equals(request.attributeId())).findFirst().orElse(null);
             if (attribute == null) throw invalid("엔터티 {0} 의 루트 주 식별자 속성만 상속 PK 로 연결할 수 있습니다.", entity.getEntityName());
@@ -308,11 +451,12 @@ public class ModelMappingService {
         subtypeKeyRepository.delete(subtypeKeyRepository.findById(id).orElseThrow(ModelMappingService::notFound));
     }
 
-    private static ModelMappingDto.SubtypeKeyRow keyRow(SubtypeIdentifierColumnMapping link, int order, boolean current, LogicalAttribute attribute) {
+    private static ModelMappingDto.SubtypeKeyRow keyRow(SubtypeIdentifierColumnMapping link, int order, boolean current, LogicalAttribute attribute, SubtypePlanContext.KeyState state) {
         ColumnInfo column = link.getColumn();
         return new ModelMappingDto.SubtypeKeyRow(link.getId(), order, current, attribute.getId(), attribute.getAttributeName(), attribute.getEntity().getId(),
                 attribute.getEntity().getEntityName(), column.getId(), column.getColumnName(), column.getDataType(), column.getMaxLength(), column.getPrecision(),
-                column.getScale(), column.getIsPk());
+                column.getScale(), column.getIsPk(), termName(attribute), attributeType(attribute), com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(column),
+                state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), !current ? "STALE" : state == null ? null : state.state());
     }
 
     /** 다른 상속 PK 매핑이 쓰는 컬럼은 속성 매핑·상속 PK 매핑에 다시 쓸 수 없다 (self : 바꾸는 상속 PK 매핑 자신) */

@@ -25,6 +25,11 @@ public interface SubtypeIdentifierColumnMappingRepository extends JpaRepository<
     @Query("select s from SubtypeIdentifierColumnMapping s join fetch s.column c left join fetch c.tableInfo where s.mapping.id in :mappingIds order by s.id")
     List<SubtypeIdentifierColumnMapping> findAllByMappingIds(@Param("mappingIds") Collection<Long> mappingIds);
 
+    /** 논리 모델 하나의 상속 PK 매핑 전체와 속성·컬럼 (정합성 비교 — M-7 4차, 모델당 한 번) */
+    @Query("select s from SubtypeIdentifierColumnMapping s join fetch s.mapping m join fetch s.attribute a join fetch s.column c "
+            + "where m.projectId = :projectId and m.entity.model.id = :modelId order by s.id")
+    List<SubtypeIdentifierColumnMapping> findAllByModelId(@Param("projectId") Long projectId, @Param("modelId") Long modelId);
+
     Optional<SubtypeIdentifierColumnMapping> findByColumn_Id(Long columnId);
 
     Optional<SubtypeIdentifierColumnMapping> findByMapping_IdAndAttribute_Id(Long mappingId, Long attributeId);

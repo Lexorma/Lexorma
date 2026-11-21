@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
@@ -8,6 +9,7 @@ import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { useSchemas } from '../schema/schemas';
 import type { ColumnCandidate, MappingAttribute, MappingDetail, MappingRow, TableCandidate } from './model';
+import { InheritanceRoleLabel, needsSubtypeKeys, SubtypeKeySection } from './subtypeKeys';
 
 const CANDIDATE_PAGE_SIZE = 10;
 
@@ -118,6 +120,8 @@ const includes = (value: string | null | undefined, keyword: string) => (value ?
  * 매핑 상세 : 엔터티의 속성 전체와 매핑된 컬럼, 양쪽 표준 용어. 변경 권한이 있으면 속성마다 컬럼을 골라 매핑·변경·해제한다.
  * 컬럼 후보는 매핑된 테이블의 컬럼 중 아직 속성에 연결하지 않은 것뿐이다 (다른 속성에 매핑된 컬럼은 고를 수 없다 — 서버도 1:1 을 검사한다).
  * 표준 용어가 서로 달라도 매핑을 막거나 풀지 않는다.
+ * M-7 4차 : 직접 속성 매핑(이 엔터티에 정의된 속성)과 상속 PK 매핑(서브타입 — 루트 주 식별자, {@link SubtypeKeySection})을 영역으로 나눈다.
+ * 상속 PK 는 직접 속성이 아니라 위 속성 표·매핑 수에 들어가지 않는다. 상속 PK 매핑에 쓰인 컬럼은 직접 속성 후보에서 빠진다(서버)
  */
 export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged, onQuality, onRecommendation }: {
   mappingId: number;
@@ -131,6 +135,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
   onRecommendation?: (mapping: MappingRow) => void;
 }) {
   const dialog = useDialog();
+  const navigate = useNavigate();
   const detail = useQuery({
     queryKey: ['mapping-detail', mappingId],
     queryFn: () => api<MappingDetail>(`/api/modelMapping/entity/${mappingId}`, { silent: true }),
@@ -180,9 +185,16 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
         <strong>{mapping.entityName}</strong>
         <span aria-hidden>↔</span>
         <Mono>{mapping.schemaName}.{mapping.tableName}</Mono>
-        <Label variant={mappedCount === attributes.length && attributes.length > 0 ? 'success' : 'attention'}>{t('속성 {0} / {1} 매핑', mappedCount, attributes.length)}</Label>
+        <InheritanceRoleLabel value={mapping.inheritance} />
         <span className="gh-muted">{mapping.modelName}</span>
       </div>
+
+      <h4 className="mapping-subtitle">
+        {t('직접 속성 매핑')}{' '}
+        {attributes.length > 0
+          ? <Label variant={mappedCount === attributes.length ? 'success' : 'attention'}>{t('속성 {0} / {1} 매핑', mappedCount, attributes.length)}</Label>
+          : <Label>{t('직접 속성 0개')}</Label>}
+      </h4>
 
       {canEdit && (
         <div className="mapping-search">
@@ -193,7 +205,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
       )}
 
       {attributes.length === 0 ? (
-        <p className="gh-muted">{t('등록된 속성이 없습니다.')}</p>
+        <p className="gh-muted">{needsSubtypeKeys(mapping.inheritance) ? t('이 엔터티에 직접 정의한 속성이 없습니다. 상속 PK 는 아래 [상속 PK 매핑] 에서 연결합니다.') : t('등록된 속성이 없습니다.')}</p>
       ) : (
         <div className="dict-detail-columns">
           <div className="table-wrap">
@@ -259,6 +271,11 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
         <p className="mapping-chips">
           {unmappedColumns.map((c) => <Label key={c.columnId} title={[c.columnDesc, c.termName].filter(Boolean).join(' · ') || undefined}><span className="gh-mono">{c.columnName}</span></Label>)}
         </p>
+      )}
+
+      {needsSubtypeKeys(mapping.inheritance) && (
+        <SubtypeKeySection mappingId={mappingId} canEdit={canEdit} onChanged={changed}
+          onNavigate={(path) => { controls.close(); navigate(path); }} />
       )}
 
       <div className="gh-dialog-actions">

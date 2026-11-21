@@ -23,4 +23,8 @@ public interface EntityTableMappingRepository extends JpaRepository<EntityTableM
     /** 논리 → 물리 생성 : 여러 엔터티의 매핑과 테이블·스키마를 한 번에 */
     @Query("select m from EntityTableMapping m join fetch m.table t join fetch t.schema where m.entity.id in :entityIds")
     List<EntityTableMapping> findAllByEntityIds(@Param("entityIds") java.util.Collection<Long> entityIds);
+
+    /** 논리 모델 하나의 엔터티 매핑과 테이블·스키마 (정합성 비교 — 모델 전체를 볼 때 긴 IN 목록 대신, M-7 4차) */
+    @Query("select m from EntityTableMapping m join fetch m.table t join fetch t.schema where m.projectId = :projectId and m.entity.model.id = :modelId")
+    List<EntityTableMapping> findAllByModelId(@Param("projectId") Long projectId, @Param("modelId") Long modelId);
 }

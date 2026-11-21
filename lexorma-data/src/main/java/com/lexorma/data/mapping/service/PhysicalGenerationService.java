@@ -521,7 +521,31 @@ public class PhysicalGenerationService {
         boolean creatable = result.stream().noneMatch(t -> "ERROR".equals(t.status())) && result.stream().anyMatch(t -> "CREATE".equals(t.status()));
         // 반영 가능 (M-7 3차) : 상속 생성도 반영한다 — creatable 과 같다 (2차의 INHERITANCE_GENERATION_NOT_AVAILABLE 차단을 푼다)
         return new PhysicalGenerationDto.Plan(result, creatable, sha256(canonical.toString()), db.name(), identifiers, relationPlans,
-                creatable, null, inheritanceKeys, new ArrayList<>(required.values()), constraintWarnings);
+                creatable, null, inheritanceKeys, new ArrayList<>(required.values()), constraintWarnings, ancestorUses(chosen, skipped.keySet(), planned, subtypes));
+    }
+
+    /** 고른 서브타입(건너뛰는 것 제외)의 조상마다 쓰임 (M-7 4차). 판정은 위에서 이미 한 {@link SubtypePlanContext#ancestor} 결과를 다시 쓴다 (새 조회 없음) */
+    private static List<PhysicalGenerationDto.AncestorUse> ancestorUses(List<LogicalEntity> chosen, Set<Long> skipped, Set<Long> planned, SubtypePlanContext subtypes) {
+        Map<Long, List<Long>> requiredBy = new TreeMap<>();
+        for (LogicalEntity entity : chosen) {
+            if (skipped.contains(entity.getId()) || !subtypes.isSubtype(entity.getId())) continue;
+            for (Long ancestor : subtypes.hierarchy().ancestors(entity.getId())) requiredBy.computeIfAbsent(ancestor, k -> new ArrayList<>()).add(entity.getId());
+        }
+        List<PhysicalGenerationDto.AncestorUse> uses = new ArrayList<>();
+        requiredBy.forEach((id, by) -> {
+            String name = subtypes.entity(id).getEntityName();
+            Optional<EntityTableMapping> mapping = subtypes.mapping(id);
+            String tableName = mapping.map(m -> m.getTable().getTableName()).orElse(null);
+            Long mappingId = mapping.map(EntityTableMapping::getId).orElse(null);
+            if (planned.contains(id)) {
+                uses.add(new PhysicalGenerationDto.AncestorUse(id, name, "SELECTED", null, null, null, by));
+                return;
+            }
+            SubtypePlanContext.AncestorState state = subtypes.ancestor(id, planned);
+            String use = state.code() == null ? "REUSE" : SubtypePlanContext.ANCESTOR_MISSING.equals(state.code()) ? "MISSING" : "REVIEW";
+            uses.add(new PhysicalGenerationDto.AncestorUse(id, name, use, state.code(), mappingId, tableName, by));
+        });
+        return uses;
     }
 
     /**

@@ -72,7 +72,15 @@ public final class PhysicalGenerationDto {
      */
     public record Plan(List<TablePlan> tables, boolean creatable, String planToken, String dbType, List<IdentifierIssue> identifiers, List<RelationPlan> relations,
                        boolean executable, String executionBlockedReason, List<InheritanceForeignKeyPlan> inheritanceForeignKeys,
-                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings) {
+                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors) {
+    }
+
+    /**
+     * 고른 서브타입의 조상 하나가 이 계획에서 어떻게 쓰이는가 (M-7 4차 — 필요한 조상 함께 선택 화면). 조상마다 1건, requiredBy = 그 조상이 필요한 고른 엔터티.
+     * state : SELECTED(이번 계획에서 만든다) · REUSE(유효한 기존 매핑 테이블을 재사용) · REVIEW(매핑은 있지만 구조가 맞지 않음 — 함께 선택해도 해결되지 않는다, reason = 판정 사유,
+     * mappingId = 검토할 엔터티 매핑) · MISSING(매핑·선택 모두 없음 — requiredAncestors 와 같다). 계획 토큰에는 이미 조상 근거가 들어 있어 따로 넣지 않는다
+     */
+    public record AncestorUse(Long entityId, String entityName, String state, String reason, Long mappingId, String tableName, List<Long> requiredBy) {
     }
 
     /**

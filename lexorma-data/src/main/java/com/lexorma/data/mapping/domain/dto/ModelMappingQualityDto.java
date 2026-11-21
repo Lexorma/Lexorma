@@ -23,7 +23,12 @@ public final class ModelMappingQualityDto {
         /** 논리 필수 여부 ↔ 컬럼 NOT NULL */
         REQUIRED,
         /** 논리 주 식별자 ↔ 컬럼 PK */
-        IDENTIFIER
+        IDENTIFIER,
+        /**
+         * 상속 구조 (M-7 4차) : 매핑된 서브타입 1개의 상속 PK·FK 물리 구조 (엔터티 단위 1행 — 기존 부모 재사용과 같은 판정) + 지금 유효하지 않은 기존 상속 PK 매핑 (매핑마다 1행, MISMATCH).
+         * 상속 PK 연결이 일부·없음 = UNMAPPED, 구조 불일치 = MISMATCH, 상위 정보 부족 = NOT_COMPARABLE. 일반 엔터티·루트에는 행이 없다 (대상 아님)
+         */
+        INHERITANCE
     }
 
     public enum CheckStatus {
@@ -83,12 +88,22 @@ public final class ModelMappingQualityDto {
     /** inheritanceEntities (M-6 후속 5차, D-48) : 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 — 그 엔터티들의 상속 구조 전체 물리 정합성은 검증하지 않는다 */
     public record Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
                           long totalAttributes, long mappedAttributes, long unmappedAttributes,
-                          long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities) {
+                          long match, long mismatch, long notComparable, long unmapped, long inheritanceEntities, InheritanceSummary inheritance) {
         public Summary(Long modelId, String modelName, long totalEntities, long mappedEntities, long unmappedEntities,
                        long totalAttributes, long mappedAttributes, long unmappedAttributes,
                        long match, long mismatch, long notComparable, long unmapped) {
-            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped, 0);
+            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, match, mismatch, notComparable, unmapped, 0, null);
         }
+    }
+
+    /**
+     * 상속 PK 현황 (M-7 4차). 직접 속성 매핑률(mappedAttributes / totalAttributes)과 따로 센다 — 상속 PK 는 그 분자·분모에 들어가지 않는다.
+     * subtypes : 모델의 서브타입 엔터티 수, mappedSubtypes : 그중 테이블에 매핑된 수(상속 PK 매핑이 가능한 것), requiredKeys : 매핑된 서브타입의 루트 주 식별자 수 합,
+     * mappedKeys : 그중 상속 PK 매핑된 수(≤ requiredKeys), unmappedKeys = requiredKeys - mappedKeys, invalidMappings : 유효하지 않은 기존 상속 PK 매핑 수 (mappedKeys 에 들어가지 않는다),
+     * valid·mismatch·unmapped·notComparable : 매핑된 서브타입의 구조 판정 수 (합 = mappedSubtypes). 루트·일반 엔터티는 대상이 아니라 세지 않는다
+     */
+    public record InheritanceSummary(long subtypes, long mappedSubtypes, long requiredKeys, long mappedKeys, long unmappedKeys, long invalidMappings,
+                                     long valid, long mismatch, long unmapped, long notComparable) {
     }
 
     /** 진단 목록 조건. modelId 는 필수. searchColumn : entityName / attributeName / columnName */

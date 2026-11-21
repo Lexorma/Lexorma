@@ -1013,5 +1013,37 @@ final class EnglishMessages {
         add("테이블 {0} 의 상속 PK 컬럼 타입이 상위 테이블의 키 컬럼과 FK 로 묶일 수 없습니다. 기존 테이블은 고치지 않습니다. (엔터티 {1})", "The inherited PK column types of table {0} cannot be linked by a foreign key to the key columns of the supertype table. Existing tables are not changed. (entity {1})");
         add("형식 버전 {0} 파일에는 상속 PK 매핑이 들어갈 수 없습니다.", "A format version {0} file cannot contain inherited PK mappings.");
         add("관계 {0} → {1} : 부모 {0} 의 기존 테이블에 상속 PK 매핑이 없어 상속 PK 컬럼을 정할 수 없습니다. FK 없이 만듭니다.", "Relationship {0} → {1}: the existing table of parent {0} has no inherited PK mapping, so the inherited PK columns cannot be determined. It is created without the FK.");
+        add("PK 컬럼 순서({0})가 루트 주 식별자 순서({1})와 다릅니다. 상속 FK 는 식별자 순서로 짝지으므로 구조 판정은 바꾸지 않습니다.", "The PK column order ({0}) differs from the root primary identifier order ({1}). The inheritance FK pairs columns in identifier order, so the structure result is not changed.");
+        add("PK 컬럼 순서가 루트 주 식별자 순서와 같습니다.", "The PK column order matches the root primary identifier order.");
+        add("루트 엔터티 {0} 에 주 식별자가 없어 상속 PK 를 판단할 수 없습니다.", "Root entity {0} has no primary identifier, so the inherited PK cannot be determined.");
+        add("루트 주 식별자 {0}개 중 {1}개만 상속 PK 매핑되어 있습니다. 매핑하지 않은 {2}개를 등록해야 구조를 확인할 수 있습니다.", "Only {1} of the {0} root primary identifier attributes have inherited PK mappings. Register the remaining {2} to check the structure.");
+        add("루트 주 식별자 {0}개가 모두 상속 PK 매핑되어 있습니다.", "All {0} root primary identifier attributes have inherited PK mappings.");
+        add("매핑된 컬럼이 모두 테이블 {0} 의 컬럼입니다.", "All mapped columns belong to table {0}.");
+        add("배타(Disjoint)", "Disjoint");
+        add("상속 PK {0}개 중 {1}개 연결", "{1} of {0} inherited PK attributes linked");
+        add("상속 PK 또는 직계 상위 테이블의 키를 확정할 수 없어 타입과 부모 FK 를 비교하지 않았습니다.", "The inherited PK or the key of the direct supertype table could not be determined, so the types and the parent FK were not compared.");
+        add("상속 PK 매핑이 완전하지 않아 물리 PK 구성을 비교하지 않았습니다.", "The inherited PK mapping is incomplete, so the physical PK composition was not compared.");
+        add("상속 PK 컬럼 {0} 의 길이·정밀도가 상위 키와 다릅니다. FK 로는 묶일 수 있습니다.", "The length or precision of inherited PK column {0} differs from the parent key. They can still be linked by a foreign key.");
+        add("상속 PK 컬럼 {0} 이(가) NULL 을 허용합니다.", "Inherited PK column {0} allows NULL.");
+        add("상속 PK 컬럼 타입이 직계 상위 테이블 {0} 의 키와 FK 로 묶일 수 없습니다.", "The inherited PK column types cannot be linked by a foreign key to the key of the direct supertype table {0}.");
+        add("상속 PK 컬럼 타입이 직계 상위 테이블의 키와 FK 로 묶일 수 있습니다.", "The inherited PK column types can be linked by a foreign key to the key of the direct supertype table.");
+        add("상속 PK 컬럼이 모두 NOT NULL 입니다.", "All inherited PK columns are NOT NULL.");
+        add("상속 PK 컬럼이 직계 상위 테이블 {0} 이(가) 아닌 테이블 {1} 을(를) 참조합니다.", "The inherited PK columns reference table {1}, not the direct supertype table {0}.");
+        add("상속 그룹 {0} 의 {1} 규칙은 PK·FK 로 보장되지 않습니다 (물리 미보장). 상속 PK·FK 구조 정합성과 따로 보며 불일치로 세지 않습니다.", "The {1} rule of inheritance group {0} is not enforced by PKs and FKs (not physically enforced). It is considered separately from the inherited PK/FK structure and is not counted as a mismatch.");
+        add("상위 상속 경로가 유효합니다.", "The ancestor inheritance path is valid.");
+        add("엔터티 {0} 은(는) 서브타입이 아니라 상속 PK 매핑 대상이 아닙니다.", "Entity {0} is not a subtype, so inherited PK mappings do not apply.");
+        add("엔터티가 지금 서브타입이 아닌데 남은 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다.", "An inherited PK mapping left on an entity that is no longer a subtype. You can remove it in mapping management.");
+        add("완전(Total)", "Total");
+        add("유효하지 않은 기존 상속 PK 매핑", "Invalid existing inherited PK mapping");
+        add("지금 루트 주 식별자에 없는 속성의 기존 상속 PK 매핑이 {0}건 있습니다. 구조 판정에는 쓰지 않으며 해제할 수 있습니다.", "There are {0} existing inherited PK mapping(s) for attributes that are no longer in the root primary identifier. They are not used for the structure result and can be removed.");
+        add("지금 루트 주 식별자에 없는 속성의 기존 상속 PK 매핑입니다. 매핑 관리에서 해제할 수 있습니다.", "An existing inherited PK mapping for an attribute that is no longer in the root primary identifier. You can remove it in mapping management.");
+        add("직계 상위 엔터티 {0} 은(는) 테이블 {1} 에 매핑되어 있습니다.", "Direct supertype entity {0} is mapped to table {1}.");
+        add("직계 상위 엔터티 {0} 이(가) 물리 테이블에 매핑되지 않아 상속 FK 를 확인할 수 없습니다.", "Direct supertype entity {0} is not mapped to a physical table, so the inheritance FK cannot be checked.");
+        add("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 있습니다.", "There is a foreign key that references the direct supertype table {0} with the inherited PK.");
+        add("테이블 PK 가 상속 PK 매핑 컬럼과 같습니다.", "The table PK matches the inherited PK mapping columns.");
+        add("테이블 {0} 에 속하지 않은 컬럼이 상속 PK 매핑에 있습니다.", "An inherited PK mapping uses a column that does not belong to table {0}.");
+        add("테이블 {0} 에 직계 상위 테이블 {1} 을(를) 참조하는 FK 가 없습니다.", "Table {0} has no foreign key that references the direct supertype table {1}.");
+        add("테이블 {0} 에서 {1} 을(를) 참조하는 FK 가 있지만 컬럼 쌍이 상속 PK 전체와 같지 않습니다 (일부 누락 또는 다른 컬럼).", "Table {0} has a foreign key referencing {1}, but its column pairs differ from the whole inherited PK (some missing or different columns).");
+        add("테이블 {0} 의 PK 구성({1})이 상속 PK 매핑 컬럼({2})과 다릅니다.", "The PK of table {0} ({1}) differs from the inherited PK mapping columns ({2}).");
     }
 }

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, enc } from '../../lib/api';
-import { t } from '../../lib/i18n';
+import { t, tc } from '../../lib/i18n';
 import type { LabelVariant } from '../../components/grid/cells';
 
 /** /api/modelMapping (ModelMappingDto·ModelMappingQualityDto) : 논리 엔터티 ↔ 물리 테이블, 논리 속성 ↔ 물리 컬럼 (1:1) */
@@ -20,7 +20,149 @@ export interface MappingRow {
   tableApproval: boolean | null;
   attributeCount: number;
   mappedAttributeCount: number;
+  /** 상속 역할·상속 PK 현황 (M-7 4차, 목록·상세 조회 때 계산). 일반 엔터티(참여하지 않고 남은 상속 PK 매핑도 없음)는 null */
+  inheritance?: MappingInheritance | null;
 }
+
+export type InheritanceRole = 'ROOT' | 'INTERMEDIATE' | 'SUBTYPE';
+export type StructureResult = 'MATCH' | 'MISMATCH' | 'UNMAPPED' | 'NOT_COMPARABLE';
+
+/**
+ * 엔터티의 상속 역할과 상속 PK 현황 (ModelMappingDto.Inheritance). 직접 속성 매핑 수와 따로 센다.
+ * requiredKeys : 루트 주 식별자 수(서브타입만), mappedKeys : 그중 상속 PK 매핑된 수(≤ requiredKeys), invalidKeys : 유효하지 않은 기존 매핑 수(mappedKeys 에 들어가지 않는다).
+ * status : 구조 판정(VALID · 사유 코드 · NOT_SUBTYPE), result : 정합성 비교 상태 — 매핑 없는 엔터티는 null
+ */
+export interface MappingInheritance {
+  role: InheritanceRole | null;
+  supertype: boolean;
+  subtype: boolean;
+  parentEntityId: number | null;
+  parentEntityName: string | null;
+  rootEntityId: number | null;
+  rootEntityName: string | null;
+  requiredKeys: number;
+  mappedKeys: number;
+  invalidKeys: number;
+  status: string | null;
+  result: StructureResult | null;
+}
+
+/** 상속 PK 매핑 1행 (GET /api/modelMapping/entity/{mappingId}/subtypeKeys 의 keys). current false = 지금 루트 주 식별자에 없는 기존 매핑 */
+export interface SubtypeKeyRow {
+  id: number | null;
+  order: number;
+  current: boolean;
+  attributeId: number;
+  attributeName: string;
+  attributeEntityId: number;
+  attributeEntityName: string;
+  columnId: number | null;
+  columnName: string | null;
+  dataType: string | null;
+  maxLength: number | null;
+  precision: number | null;
+  scale: number | null;
+  isPk: boolean | null;
+  attributeTermName: string | null;
+  attributeDataType: string | null;
+  notNull: boolean | null;
+  parentColumnName: string | null;
+  /** OK · UNMAPPED · OTHER_TABLE · NOT_PK · TYPE_MISMATCH · LENGTH_DIFFERS · STALE */
+  check: string | null;
+}
+
+export type CheckLevel = 'OK' | 'ERROR' | 'MISSING' | 'UNKNOWN' | 'WARNING';
+export interface KeyColumn { columnId: number; columnName: string; dataType: string; pk: boolean; notNull: boolean }
+export interface StructureForeignKey { relationId: number; relationName: string | null; source: string | null; targetTableId: number | null; targetTableName: string | null; childColumns: string[]; parentColumns: string[]; parentLink: boolean }
+export interface StructureCheck { code: string; level: CheckLevel; message: string }
+/** 상속 물리 구조 상세 (상세를 열 때만 계산) — status 와 같은 판정을 항목별로 나눈 것 */
+export interface SubtypeStructure {
+  result: StructureResult;
+  tableId: number; schemaName: string | null; tableName: string;
+  parentMappingId: number | null; parentTableId: number | null; parentSchemaName: string | null; parentTableName: string | null;
+  tableKey: KeyColumn[]; parentKey: KeyColumn[]; foreignKeys: StructureForeignKey[]; checks: StructureCheck[]; constraintNote: string | null;
+}
+
+export interface SubtypeKeyDetail {
+  mapping: MappingRow;
+  subtype: boolean;
+  parentEntityId: number | null;
+  parentEntityName: string | null;
+  rootEntityId: number | null;
+  rootEntityName: string | null;
+  status: string;
+  statusMessage: string | null;
+  complete: boolean;
+  keys: SubtypeKeyRow[];
+  structure: SubtypeStructure | null;
+}
+
+/** 상속 PK 매핑 후보 컬럼 (서버 페이징) */
+export interface KeyColumnCandidate {
+  columnId: number; columnName: string; columnDesc: string | null; dataType: string | null; maxLength: number | null; precision: number | null; scale: number | null;
+  isPk: boolean | null; isNullable: boolean | null; termId: number | null; termName: string | null;
+}
+
+export const INHERITANCE_ROLES: Record<InheritanceRole, string> = {
+  ROOT: t('루트 슈퍼타입'), INTERMEDIATE: t('중간 슈퍼타입'), SUBTYPE: tc('상속 역할', '서브타입'),
+};
+
+/** 구조 정합성 표시 (정합성 비교 상태와 같은 이름) */
+export const STRUCTURE_RESULTS: Record<StructureResult, { label: string; variant: LabelVariant }> = {
+  MATCH: { label: t('구조 일치'), variant: 'success' },
+  MISMATCH: { label: t('구조 불일치'), variant: 'danger' },
+  UNMAPPED: { label: t('상속 PK 미완성'), variant: 'attention' },
+  NOT_COMPARABLE: { label: t('판단 정보 부족'), variant: '' },
+};
+
+/** 상속 구조 판정 사유 (SubtypePlanContext — 서버 코드) */
+export const INHERITANCE_STATUS: Record<string, string> = {
+  VALID: t('유효'),
+  NOT_SUBTYPE: t('서브타입 아님'),
+  ROOT_KEY_MISSING: t('루트 주 식별자 없음'),
+  ANCESTOR_MISSING: t('상위 엔터티 테이블 없음'),
+  ROOT_KEY_MAPPING_MISSING: t('루트 주 식별자 매핑 없음'),
+  PARENT_KEY_MISMATCH: t('PK 구성 불일치'),
+  INHERITED_KEY_MAPPING_MISSING: t('상속 PK 매핑 미완성'),
+  INHERITED_KEY_TYPE_MISMATCH: t('상속 PK 타입 불일치'),
+  INHERITANCE_FK_MISSING: t('상속 FK 없음·불일치'),
+  ANCESTOR_INVALID: t('상위 상속 경로 불일치'),
+};
+
+/** 상세 점검 항목 이름 */
+export const STRUCTURE_CHECKS: Record<string, string> = {
+  ROOT_KEY_MISSING: t('루트 주 식별자'),
+  KEY_COMPLETE: t('상속 PK 매핑 완전성'),
+  COLUMN_OWNER: t('컬럼 소속'),
+  STALE_MAPPING: t('유효하지 않은 기존 매핑'),
+  PK_SET: t('물리 PK 구성'),
+  PK_ORDER: t('물리 PK 순서'),
+  NOT_NULL: t('NOT NULL'),
+  PARENT_TABLE: t('직계 상위 테이블'),
+  ANCESTOR_PATH: t('상위 상속 경로'),
+  KEY_TYPE: t('데이터 타입'),
+  KEY_LENGTH: t('길이·정밀도'),
+  PARENT_FK: t('부모 FK'),
+};
+
+export const CHECK_LEVELS: Record<CheckLevel, { label: string; variant: LabelVariant }> = {
+  OK: { label: t('정상'), variant: 'success' },
+  ERROR: { label: t('불일치'), variant: 'danger' },
+  MISSING: { label: t('매핑 필요'), variant: 'attention' },
+  UNKNOWN: { label: t('판단 불가'), variant: '' },
+  WARNING: { label: t('참고'), variant: 'accent' },
+};
+
+/** 상속 PK 1개의 점검 (SubtypeKeyRow.check) */
+export const KEY_CHECKS: Record<string, { label: string; variant: LabelVariant }> = {
+  OK: { label: t('정상'), variant: 'success' },
+  UNMAPPED: { label: t('미매핑'), variant: 'attention' },
+  OTHER_TABLE: { label: t('다른 테이블 컬럼'), variant: 'danger' },
+  NOT_PK: { label: t('PK 아님'), variant: 'danger' },
+  TYPE_MISMATCH: { label: t('타입 불일치'), variant: 'danger' },
+  LENGTH_DIFFERS: { label: t('길이 다름'), variant: 'accent' },
+  STALE: { label: t('유효하지 않은 기존 매핑'), variant: 'danger' },
+};
 
 /** 매핑된 엔터티의 속성 1행. 매핑하지 않은 속성은 mappingId·column 이 null */
 export interface MappingAttribute {
@@ -73,7 +215,7 @@ export interface MappingStatus {
   unmappedAttributes: number;
 }
 
-export type CheckType = 'MAPPING' | 'TERM' | 'NAME' | 'DATA_TYPE' | 'LENGTH' | 'REQUIRED' | 'IDENTIFIER';
+export type CheckType = 'MAPPING' | 'TERM' | 'NAME' | 'DATA_TYPE' | 'LENGTH' | 'REQUIRED' | 'IDENTIFIER' | 'INHERITANCE';
 export type CheckStatus = 'MATCH' | 'MISMATCH' | 'NOT_COMPARABLE' | 'UNMAPPED';
 
 /** GET /api/modelMapping/quality/summary : 엔터티·속성 수는 매핑 현황과 같고, 진단 건수는 매핑된 속성 × 진단 유형 */
@@ -82,8 +224,16 @@ export interface QualitySummary extends MappingStatus {
   mismatch: number;
   notComparable: number;
   unmapped: number;
-  /** 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 (M-6 후속 5차, D-48) — 그 엔터티들의 상속 구조 전체 물리 정합성은 검증하지 않는다 */
+  /** 슈퍼타입·서브타입 구조에 참여하는 엔터티 수 (M-6 후속 5차, D-48) — 직접 속성 진단은 직접 정의 속성만 본다 */
   inheritanceEntities?: number;
+  /** 상속 PK 현황 (M-7 4차) — 직접 속성 매핑률과 따로 센다 */
+  inheritance?: InheritanceSummary | null;
+}
+
+/** subtypes : 서브타입 수, mappedSubtypes : 그중 매핑된 수, valid·mismatch·unmapped·notComparable 의 합 = mappedSubtypes */
+export interface InheritanceSummary {
+  subtypes: number; mappedSubtypes: number; requiredKeys: number; mappedKeys: number; unmappedKeys: number; invalidMappings: number;
+  valid: number; mismatch: number; unmapped: number; notComparable: number;
 }
 
 /** GET /api/modelMapping/quality/data 의 1행. 엔터티 단위 행(매핑하지 않은 엔터티)은 attributeId 가 null */
@@ -119,6 +269,7 @@ export const CHECK_TYPES: { type: CheckType; label: string }[] = [
   { type: 'LENGTH', label: t('길이·정밀도') },
   { type: 'REQUIRED', label: t('필수 여부') },
   { type: 'IDENTIFIER', label: t('식별자') },
+  { type: 'INHERITANCE', label: t('상속 구조') },
 ];
 
 export const CHECK_STATUSES: { status: CheckStatus; label: string; variant: LabelVariant; count: 'match' | 'mismatch' | 'notComparable' | 'unmapped' }[] = [

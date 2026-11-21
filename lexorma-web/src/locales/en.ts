@@ -3309,4 +3309,6 @@ export const en = {
   '후보 컬럼': 'Candidate columns',
   '후보 컬럼을 불러오지 못했습니다.': 'Could not load the candidate columns.',
   '상속 역할|서브타입': 'Subtype',
+  '관계 속성 짝': 'Relationship attribute pairs',
+  '주제 영역 분류': 'Subject area classifications',
 };

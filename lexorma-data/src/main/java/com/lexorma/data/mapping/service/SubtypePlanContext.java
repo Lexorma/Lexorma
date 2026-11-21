@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * 슈퍼타입·서브타입 물리 구조 판정 (M-7 2차 계획, 3차 상속 PK 매핑 — docs/ongoing/subtype-physical-transformation.md 29·30장).
+ * 슈퍼타입·서브타입 물리 구조 판정 (M-7 2차 계획, 3차 상속 PK 매핑 — docs/completed/subtype-physical-transformation.md 29·30장).
  * 요청 안에서만 쓰고 저장하지 않는다. 계층은 M-6 의 {@link LogicalHierarchy}(ID 투영), 엔터티·매핑·관계는 {@link #prepare} 가 한꺼번에 읽는다.
  * 물리 생성(기존 조상 재사용)과 상속 PK 매핑 조회(정합성 사유)가 같은 판정을 쓴다 (M7-D36 — 규칙을 서비스마다 복제하지 않는다).
  * <ul>

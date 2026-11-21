@@ -42,6 +42,8 @@ const COUNT_LABEL: Record<string, string> = {
   LOGICAL_MODEL: t('논리 모델'), LOGICAL_ENTITY: t('엔터티'), LOGICAL_ATTRIBUTE: t('속성'), LOGICAL_RELATIONSHIP: t('논리 관계'), TABLE_MAPPING: t('엔터티 매핑'), COLUMN_MAPPING: t('속성 매핑'),
   PHYSICAL_VIEW: 'VIEW', PHYSICAL_VIEW_REFERENCE: t('VIEW 참조'), ERD_LAYOUT_NODE: t('ERD 배치 좌표'),
   SUBTYPE_GROUP: t('서브타입 그룹'), LOGICAL_SUBTYPE: t('서브타입'), SUBTYPE_KEY_MAPPING: t('상속 PK 매핑'),
+  // 결과·계획에 나오지만 이름이 없어 코드 그대로 보이던 종류 (M-7 5차 브라우저 확인에서 발견)
+  LOGICAL_RELATIONSHIP_ATTRIBUTE: t('관계 속성 짝'), LOGICAL_SUBJECT_AREA: t('주제 영역'), SUBJECT_AREA_ENTITY: t('주제 영역 분류'),
 };
 /** 파일 크기 한도 (서버와 같다) */
 const MAX_BYTES = 30 * 1024 * 1024;

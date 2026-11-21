@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 서브타입 식별자 컬럼 매핑 = 상속 PK 매핑 (M-7 3차, V4, docs/ongoing/subtype-physical-transformation.md 30장).
+ * 서브타입 식별자 컬럼 매핑 = 상속 PK 매핑 (M-7 3차, V4, docs/completed/subtype-physical-transformation.md 30장).
  * 서브타입 엔터티의 엔터티 ↔ 테이블 매핑 아래에서, 루트 주 식별자 속성(원본 속성 ID) ↔ 서브타입 테이블의 상속 PK 컬럼을 연결한다.
  * <ul>
  *   <li>같은 원본 속성을 여러 서브타입 테이블의 컬럼이 각각 쓴다 — 속성 단독 UNIQUE 가 없다 ((매핑, 속성)·컬럼 UNIQUE)</li>

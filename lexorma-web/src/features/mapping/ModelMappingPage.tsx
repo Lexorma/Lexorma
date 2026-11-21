@@ -16,6 +16,7 @@ import { MAPPING_ENTITY_GRID_MIN_WIDTH, mappingEntityColumns } from './columns';
 import { MappingQuality } from './MappingQuality';
 import { MappingRecommendation } from './MappingRecommendation';
 import { AttributeMappingDetail, EntityMappingForm } from './mappingDialogs';
+import { InheritanceRoleLabel, InheritedKeySummary } from './subtypeKeys';
 import { rate, useMappingLookup, type MappingRow, type MappingStatus, type MappingTab } from './model';
 import '../../styles/logical.css';
 import '../../styles/mapping.css';
@@ -96,10 +97,16 @@ export function ModelMappingPage() {
     if (focus.mappingId != null) openDetail(focus.mappingId);
   }, [focus, tab]);
 
+  // 엔터티 매핑에 걸린 상속 PK 매핑 수 (유효·무효 모두 — 서버도 거절한다)
+  const inheritedLinks = (row: MappingRow) => (row.inheritance ? row.inheritance.mappedKeys + row.inheritance.invalidKeys : 0);
+
   const openEntityForm = (row: MappingRow) => {
     // 서버도 거절하지만(INVALID_MODEL_MAPPING) 먼저 이유와 해결 방법을 알려 준다
     if (row.mappingId != null && row.mappedAttributeCount > 0) {
       return dialog.alert(t('속성 매핑이 {0}건 있어 물리 테이블을 바꿀 수 없습니다. [속성 매핑] 에서 속성 매핑을 먼저 해제해주세요.', row.mappedAttributeCount));
+    }
+    if (row.mappingId != null && inheritedLinks(row) > 0) {
+      return dialog.alert(t('상속 PK 매핑이 {0}건 있어 물리 테이블을 바꿀 수 없습니다. [속성 매핑] 의 상속 PK 매핑을 먼저 해제해주세요.', inheritedLinks(row)));
     }
     dialog.open({
       title: row.mappingId != null ? t('엔터티 매핑 변경') : t('엔터티 매핑'),
@@ -111,6 +118,9 @@ export function ModelMappingPage() {
   const removeMapping = (row: MappingRow) => {
     if (row.mappedAttributeCount > 0) {
       return dialog.alert(t('속성 매핑이 {0}건 있어 엔터티 매핑을 해제할 수 없습니다. [속성 매핑] 에서 속성 매핑을 먼저 해제해주세요.', row.mappedAttributeCount));
+    }
+    if (inheritedLinks(row) > 0) {
+      return dialog.alert(t('상속 PK 매핑이 {0}건 있어 엔터티 매핑을 해제할 수 없습니다. [속성 매핑] 의 상속 PK 매핑을 먼저 해제해주세요.', inheritedLinks(row)));
     }
     dialog.confirm(t('{0} 엔터티와 {1} 테이블의 매핑을 해제하시겠습니까? 엔터티와 테이블은 삭제되지 않습니다.', row.entityName, row.tableName ?? ''), async () => {
       await api(`/api/modelMapping/entity/${row.mappingId}`, { method: 'DELETE' });
@@ -162,7 +172,13 @@ export function ModelMappingPage() {
           <button type="button" id="btn-physical-generate" className="btn" onClick={() => dialog.popup({
             title: t('논리 → 물리 테이블 생성'),
             content: ({ close }: DialogControls) => <PhysicalGeneration modelId={modelId} schemas={schemas}
-              onDone={(r) => { close(); reload(); dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-')); }} />,
+              onReview={(entityId) => { close(); scope(entityId, 'mapping'); }}
+              onDone={(r) => {
+                close(); reload();
+                const inheritance = r.inheritanceForeignKeys || r.inheritedKeyMappings
+                  ? ' ' + t('상속 FK {0}개·상속 PK 매핑 {1}개를 함께 만들었습니다.', r.inheritanceForeignKeys ?? 0, r.inheritedKeyMappings ?? 0) : '';
+                dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-') + inheritance);
+              }} />,
           })}>{t('물리 테이블 생성')}</button>
         )}
       </div>
@@ -227,7 +243,8 @@ export function ModelMappingPage() {
                   renderCell={(field, row: Row) => {
                     const item = row as MappingRow;
                     if (field === 'entityName') {
-                      return <>{item.entityName}{!item.entityApproval && <> <Label variant="attention">{t('승인 대기')}</Label></>}</>;
+                      return <>{item.entityName}{!item.entityApproval && <> <Label variant="attention">{t('승인 대기')}</Label></>}
+                        {item.inheritance && <> <InheritanceRoleLabel value={item.inheritance} /></>}</>;
                     }
                     if (field === 'tableName') {
                       return item.tableName ? <><Mono>{item.tableName}</Mono>{!item.tableApproval && <> <Label variant="attention">{t('승인 대기')}</Label></>}</> : <Muted>-</Muted>;
@@ -237,7 +254,11 @@ export function ModelMappingPage() {
                       return item.mappingId != null ? <Label variant="success" dot>{t('매핑 완료')}</Label> : <Label variant="attention" dot>{t('미매핑')}</Label>;
                     }
                     if (field === 'mappedAttributeCount') {
-                      return item.mappingId != null ? `${item.mappedAttributeCount} / ${item.attributeCount}` : <Muted>{`- / ${item.attributeCount}`}</Muted>;
+                      // 직접 속성 매핑 수와 상속 PK 현황을 따로 보인다 (상속 PK 는 직접 속성 수에 들어가지 않는다)
+                      return <>
+                        {item.mappingId != null ? `${item.mappedAttributeCount} / ${item.attributeCount}` : <Muted>{`- / ${item.attributeCount}`}</Muted>}
+                        <InheritedKeySummary value={item.inheritance} mapped={item.mappingId != null} />
+                      </>;
                     }
                     if (field === 'actions') {
                       return (

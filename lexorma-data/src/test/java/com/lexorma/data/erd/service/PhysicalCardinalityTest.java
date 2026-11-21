@@ -166,4 +166,60 @@ class PhysicalCardinalityTest {
         ErdDto.Cardinality self = PhysicalCardinality.judge(relation, PhysicalCardinality.Context.of(columns.values(), uniqueKeys));
         assertThat(self).isEqualTo(new ErdDto.Cardinality("0", "1", "N", "NON_IDENTIFYING", List.of()));
     }
+
+    @Test
+    @DisplayName("M-7 2차 M7-D38 : PK_YN·UNQ_YN 이 비면(기록되지 않은 값) 자식 최대를 N 으로 단정하지 않는다 — 확정된 유일성이 있으면 1, 근거가 모두 기록됐을 때만 N")
+    void unknownKeyFlags() {
+        // 기준 : 모두 기록됨 · 유일성 없음 → N
+        assertThat(fk(A, PU).childMax()).isEqualTo("N");
+        // FK 컬럼의 UNQ_YN 이 비어 있음 → 판단 불가
+        set(A, false, false, null, false);
+        ErdDto.Cardinality uniqueUnknown = fk(A, PU);
+        assertThat(uniqueUnknown.childMax()).isNull();
+        assertThat(uniqueUnknown.reasons()).containsExactly(PhysicalCardinality.KEY_METADATA_UNKNOWN);
+        assertThat(uniqueUnknown.parentMin()).as("다른 끝은 그대로").isEqualTo("1");
+        assertThat(uniqueUnknown.parentMax()).isEqualTo("1");
+        // 자식 테이블의 다른 컬럼 PK_YN 이 비어 있음 (FK 컬럼 아님) → PK 집합을 확정할 수 없어 N 이 아니다, 식별 여부는 FK 컬럼 기준이라 그대로
+        set(A, false, false, false, false);
+        set(D, false, null, false, false);
+        ErdDto.Cardinality pkUnknown = fk(A, PU);
+        assertThat(pkUnknown.childMax()).isNull();
+        assertThat(pkUnknown.identifying()).isEqualTo("NON_IDENTIFYING");
+        // 비어 있어도 확정된 유일성이 있으면 1 : 명시적 UNIQUE 제약 / 참인 UNQ_YN
+        uniqueKeys.put(CHILD, new ArrayList<>(List.of(Set.of(A))));
+        assertThat(fk(A, PU).childMax()).isEqualTo("1");
+        uniqueKeys.remove(CHILD);
+        set(B, false, false, true, false);
+        assertThat(fk(B, PU).childMax()).as("UNQ_YN 참").isEqualTo("1");
+        // PK 가 확정된 테이블(모든 PK_YN 기록)의 PK ⊆ FK → 1, PK 플래그 하나라도 비면 PK 근거는 쓰지 않는다
+        set(D, false, false, false, false);
+        set(C, false, true, false, false);
+        assertThat(fk(C, PU).childMax()).as("PK 전체 기록, PK (C) = FK").isEqualTo("1");
+        set(D, false, null, false, false);
+        assertThat(fk(C, PU).childMax()).as("D 가 PK 인지 몰라 (C) 가 PK 전체인지 확정할 수 없다").isNull();
+        // FK 컬럼의 PK_YN 이 비면 식별 여부도 판단하지 않는다
+        set(A, false, null, false, false);
+        ErdDto.Cardinality fkPkUnknown = fk(A, PU);
+        assertThat(fkPkUnknown.identifying()).isNull();
+        assertThat(fkPkUnknown.reasons()).contains(PhysicalCardinality.KEY_METADATA_UNKNOWN);
+        // 복합 FK : 두 컬럼 모두 기록 + 유일성 없음 → N, 한 컬럼 UNQ_YN 비면 판단 불가, 복합 UNIQUE 로 확정되면 1
+        set(A, false, false, false, false);
+        set(B, false, false, false, false);
+        set(D, false, false, false, false);
+        set(C, false, false, false, false);
+        assertThat(fk(A, P1, B, P2).childMax()).isEqualTo("N");
+        set(B, false, false, null, false);
+        assertThat(fk(A, P1, B, P2).childMax()).isNull();
+        uniqueKeys.put(CHILD, new ArrayList<>(List.of(Set.of(A, B))));
+        assertThat(fk(A, P1, B, P2).childMax()).isEqualTo("1");
+    }
+
+    @Test
+    @DisplayName("B형 상속 FK (M-7 2차) : 서브타입 상속 PK = FK → 부모 정확히 1 · 자식 최대 1 · 식별 — 단일·복합")
+    void inheritanceKey() {
+        set(A, false, true, false, false);
+        assertThat(fk(A, PU)).isEqualTo(new ErdDto.Cardinality("1", "1", "1", "IDENTIFYING", List.of()));
+        set(B, false, true, false, false);
+        assertThat(fk(A, P1, B, P2)).isEqualTo(new ErdDto.Cardinality("1", "1", "1", "IDENTIFYING", List.of()));
+    }
 }

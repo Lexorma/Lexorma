@@ -75,4 +75,14 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     @Query("select c.tableInfo.id, count(c), sum(case when c.bizDescription is null then 1 else 0 end) from ColumnInfo c"
             + " where c.projectId = :projectId and c.tableInfo.id in :tableIds group by c.tableInfo.id")
     List<Object[]> countBizDescriptionsByTables(@Param("projectId") Long projectId, @Param("tableIds") Collection<Long> tableIds);
+
+    /** 여러 테이블의 PK 컬럼 (투영 — 테이블 ID·컬럼 ID·이름·순서, M-7 4차 상속 구조 정합성) */
+    @org.springframework.data.jpa.repository.Query("select c.tableInfo.id, c.id, c.columnName, c.sortOrder from ColumnInfo c where c.tableInfo.id in :ids and c.isPk = true")
+    java.util.List<Object[]> findPrimaryKeyColumns(@org.springframework.data.repository.query.Param("ids") java.util.Collection<Long> tableIds);
+
+    /** {@link #findPrimaryKeyColumns} 의 모델 단위 : 그 논리 모델의 엔터티에 매핑된 테이블의 PK 컬럼 (정합성 비교 — 긴 IN 목록 대신) */
+    @org.springframework.data.jpa.repository.Query("select c.tableInfo.id, c.id, c.columnName, c.sortOrder from ColumnInfo c where c.isPk = true and c.tableInfo.id in "
+            + "(select m.table.id from com.lexorma.data.mapping.domain.entity.EntityTableMapping m where m.projectId = :projectId and m.entity.model.id = :modelId)")
+    java.util.List<Object[]> findPrimaryKeyColumnsByModel(@org.springframework.data.repository.query.Param("projectId") Long projectId,
+                                                          @org.springframework.data.repository.query.Param("modelId") Long modelId);
 }

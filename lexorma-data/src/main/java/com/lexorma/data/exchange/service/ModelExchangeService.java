@@ -32,6 +32,7 @@ import com.lexorma.data.logical.domain.entity.LogicalSubtype;
 import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
 import com.lexorma.data.physical.domain.entity.TableConstraintColumn;
 import com.lexorma.data.physical.domain.entity.TableIndex;
@@ -118,7 +119,7 @@ public class ModelExchangeService {
 
     static final List<String> TYPES = List.of(ModelChangeRecorder.SCHEMA, "PHYSICAL_TABLE", "PHYSICAL_COLUMN", "PHYSICAL_RELATION", "PHYSICAL_INDEX", "PHYSICAL_CONSTRAINT",
             "PHYSICAL_VIEW", "LOGICAL_MODEL", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "TABLE_MAPPING", "COLUMN_MAPPING",
-            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY", "SUBTYPE_GROUP");
+            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY", "SUBTYPE_GROUP", "SUBTYPE_KEY_MAPPING");
     /** 주제 영역 계층 한도 (LogicalSubjectAreaService 와 같다 : 최상위 = 1단계) */
     static final int SUBJECT_AREA_MAX_DEPTH = 3;
     /** 상속 단계 한도 (LogicalHierarchy 와 같다 : 루트 = 1단계), 그룹의 구성원 수 (LogicalSubtypeService 와 같다) */
@@ -300,6 +301,7 @@ public class ModelExchangeService {
         validateIdentifiers(document);
         Map<Long, Long> supertypes = validateSubtypes(document);
         validatePairs(document, supertypes);
+        validateSubtypeKeys(document, supertypes);
         validateSubjectAreas(document);
         validateLayouts(document);
         return document;
@@ -409,6 +411,50 @@ public class ModelExchangeService {
                         && parents.add(parent) && childs.add(child) && orders.add(order);
                 if (!ok) throw invalid("논리 관계 {0} 의 속성 짝이 올바르지 않습니다 (부모 주 식별자 속성 · 자식 엔터티 속성 · 중복 없는 순서).", String.valueOf(r.id()));
             }
+        }
+    }
+
+    /**
+     * 상속 PK 매핑 (형식 6, M-7 3차 — M7-D43) : 서비스의 등록 검사와 같은 규칙을 파일 안의 번호로 본다. 어기면 파일 전체를 거절한다 (조용히 빼지 않는다).
+     * 부모 = 파일의 엔터티 매핑이고 그 엔터티는 서브타입, 속성 = 그 서브타입 루트의 주 식별자 속성, 컬럼 = 그 매핑 테이블의 컬럼, (매핑, 속성)·컬럼은 한 번만,
+     * 컬럼은 속성 매핑(COLUMN_MAPPING)에 쓰이지 않는다. 물리 구조(PK·FK·타입)는 보지 않는다 (등록과 같다 — 정합성은 가져온 뒤 조회에서 계산한다)
+     */
+    private static void validateSubtypeKeys(ModelExchangeDto.Document document, Map<Long, Long> supertypes) {
+        List<Item> keys = listOf(document, "SUBTYPE_KEY_MAPPING");
+        if (keys.isEmpty()) return;
+        if (document.formatVersion() < 6) throw invalid("형식 버전 {0} 파일에는 상속 PK 매핑이 들어갈 수 없습니다.", document.formatVersion());
+        Map<Long, Item> mappings = new HashMap<>();
+        listOf(document, "TABLE_MAPPING").forEach(m -> mappings.put(m.id(), m));
+        Map<Long, Long> columnTable = new HashMap<>();
+        listOf(document, "PHYSICAL_COLUMN").forEach(c -> columnTable.put(c.id(), ref(c, "tableInfo")));
+        Set<Long> attributes = ids(listOf(document, "LOGICAL_ATTRIBUTE"));
+        Map<Long, Set<Long>> primaryKey = new HashMap<>();
+        for (Item i : listOf(document, "LOGICAL_IDENTIFIER")) {
+            if (!Boolean.TRUE.equals(bool(i, "isPrimary"))) continue;
+            Set<Long> members = new HashSet<>();
+            children(i, "attributes").forEach(a -> members.add(longValue(a.get("attributeId"))));
+            primaryKey.put(ref(i, "entity"), members);
+        }
+        Set<Long> directColumns = new HashSet<>();
+        listOf(document, "COLUMN_MAPPING").forEach(c -> directColumns.add(ref(c, "column")));
+        Set<String> pairs = new HashSet<>();
+        Set<Long> used = new HashSet<>();
+        for (Item key : keys) {
+            String label = String.valueOf(key.id());
+            Item mapping = mappings.get(ref(key, "mapping"));
+            Long attribute = ref(key, "attribute");
+            Long column = ref(key, "column");
+            Long entity = mapping == null ? null : ref(mapping, "entity");
+            if (mapping == null || attribute == null || !attributes.contains(attribute) || column == null || !columnTable.containsKey(column)) {
+                throw invalid("상속 PK 매핑 {0} 이(가) 올바르지 않습니다 (엔터티 매핑·속성·컬럼).", label);
+            }
+            if (entity == null || !supertypes.containsKey(entity)) throw invalid("상속 PK 매핑 {0} 의 엔터티가 서브타입이 아닙니다.", label);
+            Long root = entity;
+            for (int guard = 0; supertypes.containsKey(root) && guard <= SUBTYPE_MAX_LEVEL; guard++) root = supertypes.get(root);
+            if (!primaryKey.getOrDefault(root, Set.of()).contains(attribute)) throw invalid("상속 PK 매핑 {0} 의 속성이 루트 엔터티의 주 식별자 속성이 아닙니다.", label);
+            if (!Objects.equals(columnTable.get(column), ref(mapping, "table"))) throw invalid("상속 PK 매핑 {0} 의 컬럼이 매핑된 테이블의 컬럼이 아닙니다.", label);
+            if (!pairs.add(mapping.id() + ":" + attribute)) throw invalid("상속 PK 매핑 {0} : 같은 엔터티 매핑의 같은 속성이 두 번 있습니다.", label);
+            if (!used.add(column) || directColumns.contains(column)) throw invalid("상속 PK 매핑 {0} 의 컬럼이 다른 매핑에 이미 쓰였습니다.", label);
         }
     }
 
@@ -600,6 +646,8 @@ public class ModelExchangeService {
         private final Map<Long, ModelExchangeDto.Viewport> subjectAreaViewports = new HashMap<>();
         private final List<Item> tableMappings = new ArrayList<>();
         private final Map<Long, List<Item>> columnMappingsByMapping = new HashMap<>();
+        /** 상속 PK 매핑 (형식 6) : 부모 엔터티 매핑 번호 → 매핑 */
+        private final Map<Long, List<Item>> subtypeKeysByMapping = new HashMap<>();
         private final Map<Long, Item> views = new LinkedHashMap<>();
 
         /** 대상 프로젝트 : 스키마 이름(소문자) → ID, TABLE 키(스키마.테이블 소문자), 논리 모델 이름(소문자), 표준 용어 이름 → ID */
@@ -668,6 +716,7 @@ public class ModelExchangeService {
             model.getOrDefault("SUBTYPE_GROUP", List.of()).forEach(item -> subtypeGroupsByModel.computeIfAbsent(ref(item, "model"), id -> new ArrayList<>()).add(item));
             tableMappings.addAll(model.getOrDefault("TABLE_MAPPING", List.of()));
             model.getOrDefault("COLUMN_MAPPING", List.of()).forEach(item -> columnMappingsByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
+            model.getOrDefault("SUBTYPE_KEY_MAPPING", List.of()).forEach(item -> subtypeKeysByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("PHYSICAL_VIEW", List.of()).forEach(item -> views.put(item.id(), item));
 
             for (Object[] row : entityManager.createQuery("select s.id, s.schemaName from SchemaInfo s where s.projectId = :p", Object[].class).setParameter("p", projectId).getResultList()) {
@@ -944,6 +993,8 @@ public class ModelExchangeService {
             counts.put("LOGICAL_MODEL", newModels.size());
             counts.put("LOGICAL_ENTITY", newModels.stream().mapToInt(id -> entitiesByModel.getOrDefault(id, List.of()).size()).sum());
             counts.put("TABLE_MAPPING", newMappings.size());
+            int newKeys = newMappings.stream().mapToInt(id -> subtypeKeysByMapping.getOrDefault(id, List.of()).size()).sum();
+            if (newKeys > 0) counts.put("SUBTYPE_KEY_MAPPING", newKeys); // 형식 6 : 상속 PK 매핑이 있을 때만 (예전 파일의 계획은 그대로)
             counts.put("PHYSICAL_VIEW", newViews.size());
             int newAreas = newModels.stream().mapToInt(id -> subjectAreasByModel.getOrDefault(id, List.of()).size()).sum();
             if (newAreas > 0) counts.put("LOGICAL_SUBJECT_AREA", newAreas);
@@ -1206,6 +1257,7 @@ public class ModelExchangeService {
             count(created, "SUBTYPE_GROUP", subtypeGroups);
             count(created, "LOGICAL_SUBTYPE", subtypes);
             int columnMappings = 0;
+            int subtypeKeys = 0;
             for (Item item : tableMappings) {
                 if (!newMappings.contains(item.id())) continue;
                 EntityTableMapping mapping = EntityTableMapping.builder().projectId(projectId).entity(entityMap.get(ref(item, "entity"))).table(tableMap.get(ref(item, "table"))).build();
@@ -1217,9 +1269,18 @@ public class ModelExchangeService {
                     entityManager.persist(AttributeColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
                     columnMappings++;
                 }
+                // 상속 PK 매핑 (형식 6) : 모델·TABLE 을 함께 새로 만드는 매핑이라 원본 속성(같은 모델의 루트)·컬럼(같은 TABLE)도 새로 만들었다 — 없으면 빼지 않고 전체를 되돌린다
+                for (Item k : subtypeKeysByMapping.getOrDefault(item.id(), List.of())) {
+                    LogicalAttribute attribute = attributeMap.get(ref(k, "attribute"));
+                    ColumnInfo column = columnMap.get(ref(k, "column"));
+                    if (attribute == null || column == null) throw invalid("상속 PK 매핑 {0} 의 속성·컬럼을 가져오지 못했습니다.", String.valueOf(k.id()));
+                    entityManager.persist(SubtypeIdentifierColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
+                    subtypeKeys++;
+                }
             }
             count(created, "TABLE_MAPPING", newMappings.size());
             count(created, "COLUMN_MAPPING", columnMappings);
+            if (subtypeKeys > 0) count(created, "SUBTYPE_KEY_MAPPING", subtypeKeys);
             entityManager.flush();
             count(created, "ERD_LAYOUT_NODE", createLayouts(tableMap, entityMap, areaMap));
             try {

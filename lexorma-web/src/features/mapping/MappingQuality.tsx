@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
-import { api } from '../../lib/api';
+import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { MAPPING_QUALITY_GRID_MIN_WIDTH, mappingQualityColumns } from './columns';
-import { CHECK_STATUSES, CHECK_TYPES, checkTypeLabel, type CheckStatus, type CheckType, type QualityRow, type QualitySummary } from './model';
+import { CHECK_STATUSES, CHECK_TYPES, checkTypeLabel, type CheckStatus, type CheckType, type QualityRow, type QualitySummary, type SubtypeKeyDetail } from './model';
+import { SubtypeStructureView } from './subtypeKeys';
 
 /** 진단 유형별 논리 측 값 / 물리 측 값의 이름 */
 const VALUE_LABELS: Record<CheckType, [string, string]> = {
@@ -17,6 +19,7 @@ const VALUE_LABELS: Record<CheckType, [string, string]> = {
   LENGTH: [t('표준 도메인 정의'), t('컬럼 정의')],
   REQUIRED: [t('논리 필수 여부'), t('물리 NULL 허용')],
   IDENTIFIER: [t('논리 식별자'), t('물리 PK')],
+  INHERITANCE: [t('상속 PK 연결'), t('물리 PK')],
 };
 
 /** 진단 결과 표시 : 불일치는 무엇이 다른지 함께 적는다 (표준 용어 불일치 등) */
@@ -38,6 +41,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   onMapping: (entityId: number) => void;
 }) {
   const dialog = useDialog();
+  const navigate = useNavigate();
   const grid = useRef<GridHandle>(null);
   const [type, setType] = useState<CheckType | ''>('');
   const [status, setStatus] = useState<CheckStatus | ''>('');
@@ -52,14 +56,15 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   if (status) params.status = status;
   if (entity) params.entityId = String(entity.id);
 
-  const value = (count: keyof QualitySummary) => (summary.data ? summary.data[count] : '-');
+  const value = (count: keyof QualitySummary) => (summary.data ? summary.data[count] as number | undefined ?? '-' : '-');
 
   const openDetail = (row: Row) => {
     const issue = row as QualityRow;
     dialog.open({
       title: t('정합성 진단 상세'),
       className: 'dialog-wide',
-      content: ({ close }: DialogControls) => <QualityDetail row={issue} onMapping={() => { close(); onMapping(issue.entityId); }} />,
+      content: ({ close }: DialogControls) => <QualityDetail row={issue} onMapping={() => { close(); onMapping(issue.entityId); }}
+        onLeave={(path) => { close(); navigate(path); }} />,
     });
   };
 
@@ -70,7 +75,17 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       {summary.isError && <p className="gh-muted" role="alert">{t('정합성 요약을 불러오지 못했습니다.')}</p>}
       {!!summary.data?.inheritanceEntities && (
         <p className="mapping-focus-note" role="note">
-          {t('슈퍼타입·서브타입 구조에 참여하는 엔터티 {0}개는 직접 정의 속성과 매핑 컬럼만 비교했습니다. 상속 구조 전체(상속 속성·상속 주 식별자 ↔ 물리 PK·FK)의 물리 정합성은 아직 지원하지 않습니다.', summary.data.inheritanceEntities)}
+          {t('슈퍼타입·서브타입 구조에 참여하는 엔터티 {0}개 : 표준 용어·명칭·타입 등은 직접 정의 속성만 비교하고, 서브타입의 상속 PK·FK 물리 구조는 [상속 구조] 유형으로 따로 비교합니다. 상속 일반 속성은 복제하지 않으므로 비교하지 않습니다.', summary.data.inheritanceEntities)}
+        </p>
+      )}
+      {!!summary.data?.inheritance && (summary.data.inheritance.subtypes > 0 || summary.data.inheritance.invalidMappings > 0) && (
+        <p className="mapping-inheritance-summary" role="note">
+          <strong>{t('상속 PK 현황')}</strong>{' '}
+          {t('서브타입 {0}개 중 매핑 {1}개 · 상속 PK {2}개 중 연결 {3}개 (미매핑 {4}) · 유효하지 않은 기존 매핑 {5}건 · 구조 일치 {6} · 불일치 {7} · 미완성 {8} · 판단 불가 {9}',
+            summary.data.inheritance.subtypes, summary.data.inheritance.mappedSubtypes, summary.data.inheritance.requiredKeys, summary.data.inheritance.mappedKeys,
+            summary.data.inheritance.unmappedKeys, summary.data.inheritance.invalidMappings, summary.data.inheritance.valid, summary.data.inheritance.mismatch,
+            summary.data.inheritance.unmapped, summary.data.inheritance.notComparable)}
+          {' '}<button type="button" className="logical-link" onClick={() => { setType('INHERITANCE'); setStatus(''); }}>{t('상속 구조만 보기')}</button>
         </p>
       )}
       <div className="dash dash-stats quality-stats">
@@ -84,7 +99,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
             <div className="dash-stat-label">{item.label}</div>
             <div className={`dash-stat-value${(item.status === 'MISMATCH' || item.status === 'UNMAPPED') && summary.data?.[item.count] ? ' is-pending' : ''}`}>{value(item.count)}</div>
             <div className="mapping-stat-foot">
-              {item.status === 'UNMAPPED' ? t('엔터티 {0} · 속성 {1}', value('unmappedEntities'), value('unmappedAttributes')) : t('속성 × 진단 유형 건수')}
+              {item.status === 'UNMAPPED' ? t('엔터티 {0} · 속성 {1}', value('unmappedEntities'), value('unmappedAttributes')) : t('진단 건수 (상속 구조 포함)')}
             </div>
           </button>
         ))}
@@ -130,8 +145,15 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   );
 }
 
-function QualityDetail({ row, onMapping }: { row: QualityRow; onMapping: () => void }) {
+function QualityDetail({ row, onMapping, onLeave }: { row: QualityRow; onMapping: () => void; onLeave: (path: string) => void }) {
   const [logicalLabel, physicalLabel] = VALUE_LABELS[row.type];
+  // 상속 구조 행 (M-7 4차) : 구조 상세는 이 상세를 열 때만 읽는다 (목록 응답에 넣지 않는다) — 매핑 화면의 상속 PK 매핑과 같은 API·판정
+  const structure = useQuery({
+    queryKey: ['mapping-subtype-keys', row.mappingId],
+    queryFn: () => api<SubtypeKeyDetail>(`/api/modelMapping/entity/${enc(row.mappingId)}/subtypeKeys`, { silent: true }),
+    enabled: row.type === 'INHERITANCE' && row.mappingId != null,
+    gcTime: 0,
+  });
   const items: [string, string | null, boolean?][] = [
     [t('진단 유형'), checkTypeLabel(row.type)],
     [t('논리 모델'), row.modelName],
@@ -142,7 +164,7 @@ function QualityDetail({ row, onMapping }: { row: QualityRow; onMapping: () => v
     [logicalLabel, row.logicalValue],
     [physicalLabel, row.physicalValue, true],
     [t('사유'), row.reason],
-    ...(row.inheritance ? [[t('상속 구조'), t('이 엔터티는 슈퍼타입·서브타입 구조에 참여합니다. 직접 정의 속성만 비교했으며 상속 구조 전체의 물리 정합성은 검증하지 않았습니다.')] as [string, string]] : []),
+    ...(row.inheritance && row.type !== 'INHERITANCE' ? [[t('상속 구조'), t('이 엔터티는 슈퍼타입·서브타입 구조에 참여합니다. 이 진단은 직접 정의 속성만 비교했습니다. 상속 PK·FK 구조는 [상속 구조] 진단에서 확인합니다.')] as [string, string]] : []),
   ];
   return (
     <div>
@@ -157,6 +179,12 @@ function QualityDetail({ row, onMapping }: { row: QualityRow; onMapping: () => v
           <dd key={`d-${label}`} className={value == null ? 'gh-muted' : mono ? 'gh-mono' : undefined}>{value ?? '-'}</dd>,
         ])}
       </dl>
+      {row.type === 'INHERITANCE' && (
+        structure.isError ? <p role="alert">{t('상속 구조 상세를 불러오지 못했습니다.')}</p>
+          : !structure.data ? <p className="gh-muted" role="status">{t('불러오는 중입니다.')}</p>
+            : structure.data.structure ? <SubtypeStructureView detail={structure.data} onNavigate={onLeave} />
+              : <p className="gh-muted">{structure.data.statusMessage}</p>
+      )}
       <p className="form-help">
         {row.status === 'NOT_COMPARABLE' ? t('비교 기준이 되는 정보가 없어 판정하지 않았습니다. 불일치로 세지 않습니다.')
           : t('진단 결과는 조회할 때 계산합니다. 논리·물리 모델과 표준 사전은 자동으로 바뀌지 않습니다.')}

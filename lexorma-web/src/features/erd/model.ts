@@ -68,7 +68,7 @@ export interface Cardinality {
   identifying: 'IDENTIFYING' | 'PARTIAL' | 'NON_IDENTIFYING' | null;
   reasons: CardinalityReason[];
 }
-export type CardinalityReason = 'LOGICAL_RELATION' | 'INVALID_REFERENCE' | 'COLUMNS_MISSING' | 'NULLABLE_UNKNOWN' | 'NULLABLE_MIXED';
+export type CardinalityReason = 'LOGICAL_RELATION' | 'INVALID_REFERENCE' | 'COLUMNS_MISSING' | 'NULLABLE_UNKNOWN' | 'NULLABLE_MIXED' | 'KEY_METADATA_UNKNOWN';
 
 /**
  * relationScope=INNER 로 받은 응답 : relations 는 양 끝이 범위 안인 관계만, outsideRelations 는 범위 안 테이블 ID → 범위 밖 상대와의 관계 수 (FK 1개 = 1),

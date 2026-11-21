@@ -65,7 +65,9 @@ class ModelSnapshotFieldCoverageTest {
             // 서브타입 (M-6 후속 5차) : 구성원은 그룹의 subtypes 배열 (자식 행)
             Map.entry("LogicalSubtypeGroup", Map.of("id", ID, "projectId", PROJECT)),
             Map.entry("LogicalSubtype", Map.of("id", ID, "group", PARENT, "projectId", PROJECT,
-                    "modelId", "모델 : 그룹·서브타입 엔터티의 논리 모델과 같은 조회용 값이다 (그룹의 model·subtypeEntity 로 담는다)")));
+                    "modelId", "모델 : 그룹·서브타입 엔터티의 논리 모델과 같은 조회용 값이다 (그룹의 model·subtypeEntity 로 담는다)")),
+            // 상속 PK 매핑 (M-7 3차) : 프로젝트는 엔터티 매핑으로 따라간다 (속성 매핑과 같다)
+            Map.entry("SubtypeIdentifierColumnMapping", Map.of("id", ID)));
 
     @Autowired EntityManagerFactory entityManagerFactory;
 
@@ -73,8 +75,8 @@ class ModelSnapshotFieldCoverageTest {
     @DisplayName("이력·버전 대상 엔티티의 모든 영속 속성은 담는 필드이거나, 사유를 적은 제외 속성이다")
     void everyPersistentAttributeIsRecordedOrExcludedWithReason() {
         Map<Class<?>, List<String>> recorded = ModelChangeRecorder.recordedFields();
-        // 스키마 1 + 이력 대상 15 (VIEW, 주제 영역·엔터티 소속 포함) + 자식 행 7 (VIEW 의 출력 컬럼·참조 객체, 관계 속성 짝 포함)
-        assertThat(recorded).hasSize(25);
+        // 스키마 1 + 이력 대상 16 (VIEW, 주제 영역·엔터티 소속, 서브타입 그룹, 상속 PK 매핑 포함) + 자식 행 7 (VIEW 의 출력 컬럼·참조 객체, 관계 속성 짝 포함)
+        assertThat(recorded).hasSize(26);
         assertThat(recorded.keySet()).extracting(Class::getSimpleName).containsExactlyInAnyOrderElementsOf(EXCLUDED.keySet());
 
         Map<String, Set<String>> missing = new TreeMap<>();   // 엔티티에는 있는데 어디에도 없는 속성

@@ -59,7 +59,8 @@ class LogicalSubtypeMigrationTest {
             int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
             int exampleIndexes = jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class);
 
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
+            // V3 까지만 (V4 이후는 각 증분의 업그레이드 테스트가 본다 — SubtypeIdentifierColumnMappingMigrationTest)
+            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("3")).load();
             assertThat(latest.migrate().migrationsExecuted).isOne();
             assertThat(latest.validateWithResult().validationSuccessful).isTrue();
 

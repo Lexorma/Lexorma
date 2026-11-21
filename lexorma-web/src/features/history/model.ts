@@ -41,6 +41,7 @@ export const TARGET_TYPES: [string, string][] = [
   ['LOGICAL_SUBJECT_AREA', t('주제 영역')],
   ['SUBJECT_AREA_ENTITY', t('주제 영역 소속')],
   ['SUBTYPE_GROUP', t('서브타입 그룹')],
+  ['SUBTYPE_KEY_MAPPING', t('상속 PK 매핑')],
 ];
 
 export const ACTIONS: [string, string][] = [

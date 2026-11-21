@@ -142,9 +142,13 @@ function DialogView({
 
   useEffect(() => {
     const dialog = ref.current;
+    // 연 자리 : 닫힌 뒤 포커스를 돌려준다. 요소가 빠진 뒤 close() 가 불려 브라우저가 스스로 돌려주지 못한다 (M-7 4차에서 확인)
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     if (dialog && !dialog.open) dialog.showModal();
     return () => {
       if (dialog?.open) dialog.close();
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || !active.isConnected)) opener.focus({ preventScroll: true });
     };
   }, []);
 

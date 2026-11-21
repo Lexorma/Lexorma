@@ -44,7 +44,7 @@ public class ModelMappingRestController {
         return ResponseEntity.ok(generationService.preview(accountDto, request));
     }
 
-    @Operation(summary = "논리 → 물리 생성 반영 (DEC-10)", description = "미리보기의 planToken 과 같은 계획일 때만 미승인 테이블·컬럼과 매핑을 만든다. 그 사이 바뀌었으면 409, 하나라도 실패하면 전체 롤백")
+    @Operation(summary = "논리 → 물리 생성 반영 (DEC-10)", description = "미리보기의 planToken 과 같은 계획일 때만 미승인 테이블·컬럼과 매핑(서브타입은 상속 PK 매핑·상속 FK 포함, M-7 3차)을 만든다. 그 사이 바뀌었거나 참조할 기존 테이블이 바뀌는 중이면 409, 하나라도 실패하면 전체 롤백")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/generate")
     public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Result> generate(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto.Request request,
@@ -113,6 +113,44 @@ public class ModelMappingRestController {
     @DeleteMapping("/attribute/{attributeMappingId}")
     public ResponseEntity<Map<String, Object>> deleteAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "attributeMappingId") Long attributeMappingId) {
         modelMappingService.deleteAttributeMapping(accountDto, attributeMappingId);
+        return ResponseEntity.ok(DONE);
+    }
+
+    @Operation(summary = "상속 PK 매핑 조회 (M-7 3차)", description = "서브타입 엔터티 매핑의 상속 PK 매핑 : 지금 루트 주 식별자 속성마다 1행(없으면 컬럼 null), 지금 주 식별자에 없는 기존 매핑(current false), "
+            + "지금 메타데이터로 계산한 정합성(status — 저장하지 않는다). 서브타입이 아니게 된 엔터티의 기존 매핑도 보인다 (status NOT_SUBTYPE)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeKeys")
+    public ResponseEntity<ModelMappingDto.SubtypeKeyDetail> selectSubtypeKeys(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "mappingId") Long mappingId) {
+        return ResponseEntity.ok(modelMappingService.selectSubtypeKeys(accountDto, mappingId));
+    }
+
+    @Operation(summary = "상속 PK 매핑 후보 컬럼 (M-7 3차)", description = "매핑된 테이블의 컬럼 중 속성 매핑·다른 상속 PK 매핑에 쓰이지 않은 것. currentId(변경할 상속 PK 매핑)의 컬럼은 후보로 둔다. 검색 : 컬럼명·컬럼 설명")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeKeys/candidates")
+    public ResponseEntity<Map<String, Object>> selectSubtypeKeyCandidates(@AuthenticationPrincipal AccountDto accountDto,
+                                                                          @PathVariable(name = "mappingId") Long mappingId,
+                                                                          @RequestParam(value = "page") int page,
+                                                                          @RequestParam(value = "size") int size,
+                                                                          @RequestParam(value = "sort", required = false) String sort,
+                                                                          @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                          @RequestParam(value = "currentId", required = false) Long currentId) {
+        return PageableUtil.getGridPageableMap(modelMappingService.selectSubtypeKeyCandidates(accountDto, mappingId, currentId, searchQuery,
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.ModelMappingQueryRepository.KEY_COLUMN_SORT_FIELDS)));
+    }
+
+    @Operation(summary = "상속 PK 매핑 등록·변경 (M-7 3차)", description = "mappingId(서브타입 엔터티 매핑)의 루트 주 식별자 속성(attributeId)과 그 테이블의 컬럼을 연결한다. 변경(id 있음)은 컬럼만 바꾼다. "
+            + "속성 매핑·다른 상속 PK 매핑에 쓰인 컬럼은 거절한다. 물리 PK·FK·컬럼은 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/subtypeKey")
+    public ResponseEntity<ModelMappingDto.SubtypeKeyMapping> saveSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @RequestBody ModelMappingDto.SubtypeKeyMapping mapping) {
+        return ResponseEntity.ok(modelMappingService.saveSubtypeKeyMapping(accountDto, mapping));
+    }
+
+    @Operation(summary = "상속 PK 매핑 해제 (M-7 3차)", description = "매핑만 지운다. 물리 PK·FK·컬럼과 논리 식별자는 그대로")
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/subtypeKey/{id}")
+    public ResponseEntity<Map<String, Object>> deleteSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
+        modelMappingService.deleteSubtypeKeyMapping(accountDto, id);
         return ResponseEntity.ok(DONE);
     }
 

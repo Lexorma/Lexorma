@@ -5,18 +5,18 @@ import { t } from '../../lib/i18n';
  * 매핑 화면 그리드의 최소 폭(px, Grid minWidth). 컬럼 폭(%)은 이 폭 기준이다 : 좁은 화면(모바일)에서는 열을 줄여 값이 옆 칸과 겹치지 않게
  * 줄이지 않고 표 영역을 가로 스크롤한다 (인덱스·VIEW 관리와 같다)
  */
-export const MAPPING_ENTITY_GRID_MIN_WIDTH = 880;
+export const MAPPING_ENTITY_GRID_MIN_WIDTH = 960;
 export const MAPPING_QUALITY_GRID_MIN_WIDTH = 1000;
 export const RECOMMENDATION_COLUMN_GRID_MIN_WIDTH = 960;
 export const RECOMMENDATION_TABLE_GRID_MIN_WIDTH = 760;
 
 /** 엔터티 기준 매핑 목록 (GET /api/modelMapping/entity/data) : 행 1개 = 논리 엔터티 1개. 서버 정렬은 엔터티명·테이블명·스키마만. 컬럼 폭은 고정이다 (조회 결과에 따라 바뀌지 않는다) */
 export const mappingEntityColumns: GridColumn[] = [
-  { columnName: t('논리 엔터티'), column: 'entityName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '24%' },
-  { columnName: t('물리 테이블'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '22%' },
-  { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '12%' },
-  { columnName: t('매핑 상태'), column: 'mapped', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '12%' },
-  { columnName: t('속성 매핑'), column: 'mappedAttributeCount', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '10%' },
+  { columnName: t('논리 엔터티'), column: 'entityName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '23%' },
+  { columnName: t('물리 테이블'), column: 'tableName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '19%' },
+  { columnName: t('스키마'), column: 'schemaName', columnType: 'STRING', isSearch: false, isFilter: true, rowType: 'TEXT', width: '10%' },
+  { columnName: t('매핑 상태'), column: 'mapped', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
+  { columnName: t('속성 매핑 (직접 · 상속 PK)'), column: 'mappedAttributeCount', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '17%' },
   { columnName: t('관리'), column: 'actions', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '20%' },
 ];
 

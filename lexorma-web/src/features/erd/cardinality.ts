@@ -26,6 +26,7 @@ export const REASON_TEXT: Record<CardinalityReason, string> = {
   COLUMNS_MISSING: t('관계의 컬럼 대응이 없어 판단할 수 없습니다.'),
   NULLABLE_UNKNOWN: t('FK 컬럼의 NULL 허용 여부가 입력되지 않아 부모 쪽 최소를 판단하지 않습니다.'),
   NULLABLE_MIXED: t('복합 FK 에 NOT NULL 과 NULL 허용 컬럼이 섞여 있고 MATCH 방식(SIMPLE/FULL)을 저장하지 않아 부모 쪽 최소를 판단하지 않습니다.'),
+  KEY_METADATA_UNKNOWN: t('자식 테이블의 PK·UNIQUE 여부가 기록되지 않은 컬럼이 있어 자식 쪽 최대 또는 식별 여부를 판단하지 않습니다.'),
 };
 
 export const IDENTIFYING_TEXT: Record<NonNullable<Cardinality['identifying']>, string> = {

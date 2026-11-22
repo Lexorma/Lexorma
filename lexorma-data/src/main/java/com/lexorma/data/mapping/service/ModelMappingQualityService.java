@@ -104,7 +104,7 @@ public class ModelMappingQualityService {
      * 구조 진단 행 (M-7 구조 정합성 — 논리 관계 ↔ FK, 보조 식별자 ↔ UNIQUE, 물리 기준 역방향). 모델 단위로 종류별 한 번씩 읽어({@link ModelStructureQualityQueryRepository})
      * 순수 판정({@link ModelStructureQualityJudge})에 넘긴다. 상속 FK 판단용 계층은 상속 구조 진단과 같은 것을 쓴다
      */
-    private List<Row> structureRows(Long projectId, Long modelId, String modelName) {
+    List<Row> structureRows(Long projectId, Long modelId, String modelName) {
         LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId);
         return ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(modelId, modelName,
                 structureRepository.entities(projectId, modelId), structureRepository.relationships(projectId, modelId), structureRepository.pairs(projectId, modelId),

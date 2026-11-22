@@ -22,10 +22,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 통합 V5 의 유니코드 정규화 (M7-U06 B3 · M7-U09, docs/completed/column-name-uniqueness-m7.md 14·15장) : COL_NM_CMPR_VL = 앞뒤 U+0020 제거 + 로캘 중립 확장 대문자, varchar(765).
- * 신규 설치 · V4 → V5 업그레이드가 기존 데이터(ID·이름·승인·수정 일시·관계·매핑)를 그대로 두고 비교 값을 계산하며 (확장 대문자로 255자를 넘는 이름 포함 — 예전 V5 의 255자 비교 컬럼 경유 문제 해결),
- * 최종 기준(필수값·B3 중복·길이)에 걸리는 기존 데이터가 있으면 유형별 건수와 목록 오류로 표 변경 전에 멈추고(정리 → repair → 다시 실행), 최대 길이·바이트 입력이 저장되고 같은 입력은 거절된다.
- * H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL — libc · ICU und · ICU tr-TR 기본 로캘 DB 로 따로 실행해 확인).
+ * 유니코드 정규화 (M7-U06 B3 · M7-U09, docs/completed/column-name-uniqueness-m7.md 14·15장) : COL_NM_CMPR_VL = 앞뒤 U+0020 제거 + 로캘 중립 확장 대문자, varchar(765).
+ * 2026-11-22 네 번째 합침으로 예전 V5 는 V0·V1 에 있다 — 새 설치(V0·V1)의 최종 스키마, 로캘 무관 비교, 최대 길이·바이트 입력 저장과 같은 입력 거절을 본다
+ * (예전 V4 → V5 업그레이드·사전 검사·복구 시나리오는 경로가 없어 뺐다). H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL — libc · ICU und · ICU tr-TR 기본 로캘 DB 로 따로 실행해 확인).
  */
 class ColumnNameUnicodeMigrationTest {
 
@@ -107,7 +106,7 @@ class ColumnNameUnicodeMigrationTest {
     @ParameterizedTest(name = "신규 설치 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void freshInstall(String vendor) {
-        Db db = install(vendor, null, 6);
+        Db db = install(vendor, null, 2);
         try {
             assertFinalSchema(db);
             column(db, 900001020, 900001010, "STRAßE");
@@ -130,118 +129,10 @@ class ColumnNameUnicodeMigrationTest {
         }
     }
 
-    @ParameterizedTest(name = "V4 → 통합 V5 (유니코드 · 최대 길이) {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeFromV4(String vendor) {
-        Db db = install(vendor, "4", 5);
-        try {
-            // ASCII · 한중일 · 앞뒤 공백 · 그리스어 · 합자 · 독일어(다른 테이블끼리) · 탭·NBSP · 확장 대문자로 255자를 넘는 이름 (예전 V5 의 varchar(255) 비교 컬럼은 여기서 멈췄다)
-            column(db, 900001030, 900001010, "CUST_NO");
-            column(db, 900001031, 900001010, "고객번호");
-            column(db, 900001032, 900001010, " Memo ");
-            column(db, 900001033, 900001010, "σ_cd");
-            column(db, 900001034, 900001010, "ﬁle_nm");
-            column(db, 900001035, 900001010, "A\tB");
-            column(db, 900001036, 900001010, "\u00A0x");
-            column(db, 900001037, 900001010, "straße");
-            column(db, 900001038, 900001011, "STRASSE");
-            column(db, 900001039, 900001010, "ß".repeat(200));
-            column(db, 900001040, 900001011, "ß".repeat(255));
-            column(db, 900001041, 900001010, "\u0390".repeat(255));                 // 3글자로 늘어난다 (765자 · 1,530바이트)
-            column(db, 900001042, 900001011, ("고객顧客客户ＡΣßﬃ" + "e\u0301").repeat(26).substring(0, 255)); // 다국어 혼합 최대 길이
-            db.jdbc().update("insert into " + db.s() + "TB_TBL_CNSTRT(CNSTRT_SN, PRJ_SN, TBL_SN, CNSTRT_NM, CNSTRT_TYPE_CD, APRV_YN) values (900001090, 900001001, 900001010, 'UK_T', 'UNIQUE', false)");
-            db.jdbc().update("insert into " + db.s() + "TB_TBL_CNSTRT_COL(CNSTRT_COL_SN, CNSTRT_SN, COL_SN, COL_ORD) values (900001091, 900001090, 900001037, 1)");
-            List<Map<String, Object>> before = rows(db);
-            List<Map<String, Object>> checksums = db.jdbc().queryForList("select \"version\", \"checksum\" from " + db.s() + "\"flyway_schema_history\" where \"version\" is not null order by \"installed_rank\"");
-            int exampleColumns = db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_COL where PRJ_SN = 0", Integer.class);
-            int mappings = db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_ATRB_COL_MPNG", Integer.class);
-            assertThat(keyLength(db)).as("V4 에는 비교 컬럼이 없다").isNull();
-
-            assertThat(db.flyway(null).migrate().migrationsExecuted).isOne();
-            assertThat(db.flyway(null).validateWithResult().validationSuccessful).isTrue();
-            assertThat(db.jdbc().queryForList("select \"version\", \"checksum\" from " + db.s() + "\"flyway_schema_history\" where \"version\" is not null and \"version\" <> '5' order by \"installed_rank\""))
-                    .as("V0~V4 체크섬 그대로").isEqualTo(checksums);
-            assertThat(rows(db)).as("기존 컬럼·ID·이름·승인·수정 일시 그대로").isEqualTo(before);
-            assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_TBL_CNSTRT_COL where CNSTRT_SN = 900001090 and COL_SN = 900001037", Integer.class))
-                    .as("제약조건 컬럼(관계) 그대로").isOne();
-            assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_COL where PRJ_SN = 0", Integer.class)).as("예제 컬럼 1개 추가").isEqualTo(exampleColumns + 1);
-            assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_ATRB_COL_MPNG", Integer.class)).as("매핑 그대로 + 예제 1").isEqualTo(mappings + 1);
-            assertFinalSchema(db);
-            for (long id = 900001030; id <= 900001042; id++) {
-                String name = db.jdbc().queryForObject("select COL_NM from " + db.s() + "TB_COL where COL_SN = ?", String.class, id);
-                assertThat(key(db, id)).as(name).isEqualTo(ColumnNameKey.of(name));
-            }
-            assertThat(key(db, 900001037)).isEqualTo("STRASSE");
-            assertThat(key(db, 900001034)).isEqualTo("FILE_NM");
-            assertThat(key(db, 900001035)).isEqualTo("A\tB");
-            assertThat(key(db, 900001039)).isEqualTo("SS".repeat(200));
-            assertThat(key(db, 900001040)).isEqualTo("SS".repeat(255));
-            assertThat(key(db, 900001041)).hasSize(765);
-            // 새 기준 : 같은 테이블의 STRASSE · FILE_NM · Σ_CD 거절, 이름 변경도 비교 값이 따라 바뀐다
-            for (String dup : List.of("STRASSE", "file_nm", "Σ_CD", "ς_cd", "CUST_NO ")) {
-                assertThatThrownBy(() -> column(db, 900001050, 900001010, dup)).as(dup).isInstanceOf(DataAccessException.class)
-                        .satisfies(e -> assertThat(ColumnNameKey.isNameConflict(e)).isTrue());
-            }
-            db.jdbc().update("update " + db.s() + "TB_COL set COL_NM = 'ﬃx' where COL_SN = 900001036");
-            assertThat(key(db, 900001036)).isEqualTo("FFIX");
-            assertThatThrownBy(() -> db.jdbc().update("update " + db.s() + "TB_COL set COL_NM_CMPR_VL = 'X' where COL_SN = 900001030")).isInstanceOf(DataAccessException.class);
-        } finally {
-            db.flyway(null).clean();
-        }
-    }
-
-    @ParameterizedTest(name = "최종 기준 위반이 있는 V4 → V5 실패 · 복구 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void violationsStopSafely(String vendor) {
-        Db db = install(vendor, "4", 5);
-        try {
-            // V4 에는 제약이 없다 : 최종 B3 기준 중복 (STRAßE ↔ STRASSE · 터키어 로캘에서 예전에 허용되던 i_x ↔ I_X · ﬁ ↔ FI), NULL·빈 이름, 부모 없음을 한 번에 넣는다
-            column(db, 900001070, 900001010, "STRAßE");
-            column(db, 900001071, 900001010, "STRASSE");
-            column(db, 900001072, 900001010, "i_x");
-            column(db, 900001073, 900001010, "I_X");
-            column(db, 900001074, 900001011, "ﬁ_cd");
-            column(db, 900001075, 900001011, "FI_CD");
-            column(db, 900001076, 900001011, "STRASSE");   // 다른 테이블 : 중복 아님
-            column(db, 900001077, 900001010, null);
-            column(db, 900001078, 900001010, " \t ");
-            db.jdbc().update("insert into " + db.s() + "TB_COL(COL_SN, PRJ_SN, TBL_SN, COL_NM) values (900001079, 900001001, null, 'ORPHAN')");
-            List<Map<String, Object>> before = rows(db);
-
-            assertThatThrownBy(() -> db.flyway(null).migrate()).hasStackTraceContaining("V5 컬럼 무결성 사전 검사").hasStackTraceContaining("필수값 위반 3건")
-                    .hasStackTraceContaining("새 기준 중복 3개 그룹").hasStackTraceContaining("비교 값 765자 초과 0건")
-                    .hasStackTraceContaining("[중복] TBL_SN=900001010 새 비교 값=STRASSE : COL_SN 900001070 [STRAßE] · COL_SN 900001071 [STRASSE]")
-                    .hasStackTraceContaining("[중복] TBL_SN=900001010 새 비교 값=I_X").hasStackTraceContaining("[중복] TBL_SN=900001011 새 비교 값=FI_CD")
-                    .hasStackTraceContaining("[필수값] COL_SN=900001079");
-            assertThat(rows(db)).as("데이터 그대로").isEqualTo(before);
-            assertThat(keyLength(db)).as("표 변경 없음 — 비교 컬럼 없음").isNull();
-            assertThat(constraint(db, "UX_COL_01", "UNIQUE")).isZero();
-            assertThat(constraint(db, "CK_COL_01", "CHECK")).isZero();
-            assertThat(db.jdbc().queryForList("select IS_NULLABLE from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = ? and upper(TABLE_NAME) = 'TB_COL' and upper(COLUMN_NAME) = 'COL_NM'",
-                    String.class, db.schema())).containsExactly("YES");
-            assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "\"flyway_schema_history\" where \"version\" = '5' and \"success\" = true", Integer.class)).isZero();
-            if (db.h2()) {
-                // H2 는 DDL 이 바로 확정된다 : 사전 검사 앞의 별칭만 남는다 (다시 실행하면 if not exists)
-                assertThat(db.jdbc().queryForObject("select count(*) from INFORMATION_SCHEMA.ROUTINES where ROUTINE_SCHEMA = ? and ROUTINE_NAME = 'FN_UPPER_ROOT'", Integer.class, db.schema())).isOne();
-            }
-
-            // 사람이 정리한 뒤 (여기서는 테스트가 만든 행) repair → 다시 실행
-            db.jdbc().update("update " + db.s() + "TB_COL set COL_NM = COL_NM || '2' where COL_SN in (900001071, 900001073, 900001075)");
-            db.jdbc().update("delete from " + db.s() + "TB_COL where COL_SN in (900001077, 900001078, 900001079)");
-            db.flyway(null).repair();
-            assertThat(db.flyway(null).migrate().migrationsExecuted).isOne();
-            assertFinalSchema(db);
-            assertThat(key(db, 900001070)).isEqualTo("STRASSE");
-            assertThat(key(db, 900001072)).isEqualTo("I_X");
-        } finally {
-            db.flyway(null).clean();
-        }
-    }
-
     @ParameterizedTest(name = "최대 길이·바이트 경계 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void maximumLengthAndBytes(String vendor) {
-        Db db = install(vendor, null, 6);
+        Db db = install(vendor, null, 2);
         try {
             // 압축하기 어려운 입력 : 대문자가 4바이트 이상이 되는 BMP 글자(ΐ ΰ ᾳ ﬓ և ŉ …)를 섞은 255자. H2 의 varchar(255) 는 UTF-16 단위라 BMP 만 쓴다
             List<Integer> wide = new ArrayList<>();

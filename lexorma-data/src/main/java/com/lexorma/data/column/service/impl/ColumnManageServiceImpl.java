@@ -54,6 +54,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private final StandardTermRepository standardTermRepository;
     private final EntityManager entityManager;
     private final PhysicalModelService physicalModelService;
+    private final com.lexorma.core.project.repository.ProjectRepository projectRepository;
+    private final com.lexorma.core.project.guard.ProjectWriteGuard projectWriteGuard;
+    private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
     private static final int FIRST_ROW = 1;
 
     @Override
@@ -200,6 +203,22 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         Long projectId = accountDto.getProjectId();
         Set<Long> tableIds = new HashSet<>();
+
+        // PK 컬럼을 지우면 구조 변경이다 (M7-FK-D11) : 프로젝트 행 배타(맨 먼저) → 테이블 행 → 지울 컬럼(키 강도) → 참조 컬럼, 모두 기다리지 않는다 (바쁘면 409).
+        // PK 가 아닌 컬럼 삭제는 예전 그대로 기다린다 — 소속 테이블 행을 ID 순으로 먼저 잡고(releaseColumns 가 잡던 잠금), 잡은 뒤 PK 여부를 다시 본다
+        Set<Long> requested = columnInfoDtos.stream().map(ColumnInfoDto::getId).filter(Objects::nonNull).collect(Collectors.toCollection(java.util.TreeSet::new));
+        if (!requested.isEmpty()) {
+            boolean keyChange = !columnInfoRepository.findPkColumnIds(projectId, requested).isEmpty();
+            List<Long> ownerTables = columnInfoRepository.findTableIdsOfColumns(projectId, requested);
+            if (keyChange) {
+                Set<Long> deletes = new HashSet<>(columnInfoRepository.findIdsByTableIds(ownerTables));
+                deletes.retainAll(requested); // 이 프로젝트의 컬럼만
+                lockForKeyChange(projectId, ownerTables, deletes, Set.of());
+            } else {
+                ownerTables.stream().sorted().forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
+                if (!columnInfoRepository.findPkColumnIds(projectId, requested).isEmpty()) throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
+            }
+        }
 
         columnInfoDtos.forEach(columnInfoDto -> {
             ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
@@ -593,7 +612,20 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         // 로그인 프로젝트의 승인된 테이블에만 컬럼을 등록한다. (컬럼 등록 화면과 같은 기준)
         // 테이블 행을 먼저 잠근다 (컬럼 구성·PK 를 바꾸는 쓰기의 공통 잠금 — M-7 3차, M7-D39. 순서 : 테이블 → 컬럼 행)
-        TableInfo tableInfo = request.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(request.getTableInfoId(), projectId).orElse(null);
+        // PK 컬럼을 지우는 저장은 구조 변경이다 (M7-FK-D11) : 잠그기 전에 판정해 프로젝트 행 배타(맨 먼저) → 테이블 행·컬럼 행 NOWAIT 로 잠근다 (바쁘면 409).
+        // 지운 PK 를 다른 저장의 관계 동기화가 참조(KEY SHARE)하고, 그 저장이 지운 PK 를 이쪽 동기화가 참조하던 교차 교착(40P01)을 없앤다. 다른 저장은 예전 그대로다
+        Set<Long> requestedDeletes = request.getDeletedIds() == null ? Set.of()
+                : request.getDeletedIds().stream().filter(Objects::nonNull).collect(Collectors.toCollection(java.util.TreeSet::new));
+        boolean keyChange = request.getTableInfoId() != null && !requestedDeletes.isEmpty()
+                && !columnInfoRepository.findPkColumnIds(projectId, requestedDeletes).isEmpty();
+        TableInfo tableInfo;
+        if (keyChange) {
+            List<Long> own = columnInfoRepository.findIdsByTableIds(List.of(request.getTableInfoId()));
+            Set<Long> deletes = requestedDeletes.stream().filter(own::contains).collect(Collectors.toSet());
+            tableInfo = lockForKeyChange(projectId, List.of(request.getTableInfoId()), deletes, own).stream().findFirst().orElse(null);
+        } else {
+            tableInfo = request.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(request.getTableInfoId(), projectId).orElse(null);
+        }
         if (tableInfo == null) {
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
@@ -614,6 +646,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             } else if (Boolean.TRUE.equals(column.getIsApproval())) {
                 errors.add(new ColumnBulkSaveDto.RowError(String.valueOf(id), Messages.get("{0} : 승인된 컬럼은 삭제할 수 없습니다.", column.getColumnName())));
             }
+        }
+
+        // 잠그기 전에는 PK 가 아니던 삭제 대상이 잠근 뒤 PK 다 (그 사이 다른 저장이 바꿨다) : 이 행 잠금을 쥔 채 프로젝트 배타를 뒤늦게 잡지 않고 409 로 끝낸다 (D11)
+        if (!keyChange && deletedIds.stream().map(existing::get).anyMatch(column -> column != null && Boolean.TRUE.equals(column.getIsPk()))) {
+            throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
         }
 
         // 남는 기존 컬럼명의 비교 값 (중복 확인용 — 앞뒤 공백 제거 + 대문자, M7-U01). 이 저장에서 지우는 컬럼의 이름은 새 컬럼이 쓸 수 있다
@@ -756,6 +793,37 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         ColumnNameKey.flush(entityManager, () -> new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName()));
         physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
         return new ColumnBulkSaveDto.Result(true, created, updated, deletedIds.size(), List.of());
+    }
+
+    /**
+     * PK 컬럼 삭제(구조 변경, M7-FK-D11)의 잠금 — 테이블 이름 변경·물리명 일괄 적용과 같은 규칙 (physical/sync/ModelRowLocks) : 프로젝트 행 배타를 <b>맨 먼저</b> 잡고,
+     * 그 뒤에는 어떤 행 잠금도 기다리지 않는다 (일반 저장은 행을 쥔 채 커밋 직전에 프로젝트 행을 공유 잠금으로 확인하므로, 기다리면 서로 기다린다).
+     * <ol>
+     *   <li>테이블 행 NOWAIT (FOR NO KEY UPDATE)</li>
+     *   <li>지울 컬럼 행 FOR UPDATE NOWAIT — DELETE 는 키 강도라 다른 트랜잭션의 FK 검사(KEY SHARE, 그 PK 를 참조하는 관계 INSERT)를 기다린다. 미리 잡아 바쁘면 409</li>
+     *   <li>남는 컬럼 + 이 테이블들을 참조 테이블명으로 가리키는 컬럼 NOWAIT — 이 저장이 고치거나, 관계 동기화가 그 컬럼의 관계를 지우거나 새로 만들(KEY SHARE) 행</li>
+     * </ol>
+     * 이 뒤 관계 동기화가 새 참조 관계로 거는 KEY SHARE 는 대상 테이블 행과 대상 PK 컬럼 행뿐이다. 그 행을 키 강도로 잡는 쓰기(PK 컬럼 삭제·이름 변경·스키마 이동·
+     * 원본 삭제 반영)는 모두 프로젝트 배타를 먼저 잡으므로 여기서 기다릴 상대가 없다. 잠근 테이블 엔티티를 돌려준다 (ID 순)
+     */
+    private List<TableInfo> lockForKeyChange(Long projectId, java.util.Collection<Long> tableIds, java.util.Collection<Long> deletedIds, java.util.Collection<Long> ownColumnIds) {
+        projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        projectWriteGuard.lock(projectId);
+        List<TableInfo> tables = rowLocks.tablesNoWait(tableIds).stream().filter(t -> projectId.equals(t.getProjectId())).toList();
+        rowLocks.columnsForKeyChange(deletedIds);
+        // 이 저장이 고칠 수 있는 소속 컬럼은 읽기 전에 잠근다 (잠근 뒤 읽은 상태로 판정·저장)
+        Set<Long> own = new java.util.TreeSet<>(ownColumnIds);
+        own.removeAll(deletedIds);
+        rowLocks.columnsNoWait(own);
+        Set<String> names = tables.stream().flatMap(t -> TableNameResolver.namesOf(t).stream()).collect(Collectors.toSet());
+        if (!names.isEmpty()) {
+            Set<Long> referencing = new java.util.TreeSet<>();
+            columnInfoRepository.findAllReferencing(projectId, names).forEach(c -> referencing.add(c.getId()));
+            referencing.removeAll(deletedIds);
+            referencing.removeAll(own);
+            rowLocks.columnsNoWait(referencing);
+        }
+        return tables;
     }
 
     /**

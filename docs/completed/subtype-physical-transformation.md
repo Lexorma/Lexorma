@@ -1,5 +1,7 @@
 # M-7 슈퍼타입·서브타입 물리 모델 변환 — 1차 설계 · 2차 정책·계획 · 3차 상속 PK 매핑·실제 생성 · 4차 화면·정합성 비교 · 5차 보존·호환 검증 · 6차 최종 통합 검증
 
+> **2026-11-22 네 번째 Flyway 합침 (사용자 결정)** : 이 문서의 마이그레이션 V4 는 `V0__init.sql`(스키마 — 끝의 '예전 증분 V4 (… 네 번째 합침)' 구간)·`V1__seed_data.sql`(예제 — 같은 이름의 구간)로 합쳐져 지금 파일로는 없다. 아래의 V4 파일명·업그레이드 검증은 기록용이다 ([completed-work.md](../completed-work.md) 마이그레이션 기록).
+
 - 상태 : **완료 (1~6차, 2026-11-20~21)** — 정책 M7-D01~D43 확정, V4 상속 PK 매핑(`TB_SBTYP_IDNTFR_COL_MPNG`)·수동 매핑 API·실제 B형 생성·스냅샷 9·교환 6 (30장), 상속 PK 매핑 화면·정합성 비교 상속 구조·필요한 조상 함께 선택 (31장), 스냅샷 9·교환 6 보존·하위 호환·원자성·제한 검증 (32장), 최종 통합 검증·완료 판단 (33장). 남은 것은 후속 과제뿐이다 (33.10 — A·C형, 보조 식별자 UNIQUE, 참조 키 공통화, 성능 과제). 6차에 `ongoing/` 에서 `completed/` 로 옮겼다
 - 범위 : M-6 D-47 에서 후속으로 남긴 상속 구조 물리 변환. 기존 M-7(매핑·선택 생성·보강 1~5차)을 다시 만들지 않는다. 이 문서의 권장안은 확정 정책이 아니다 — 26장의 결정(M7-D01~D30) 뒤 별도 지시로 구현한다.
 - 근거 : 2026-11-20 HEAD(`1de0a9b`) 소스·마이그레이션(V0~V3)·문서. 관련 기록 [logical-subtype.md](../completed/logical-subtype.md) 0·14·15장, [logical-physical-mapping-m7.md](../completed/logical-physical-mapping-m7.md), [physical-erd-m2-improvement.md](../completed/physical-erd-m2-improvement.md), [physical-diagnostics-performance.md](../completed/physical-diagnostics-performance.md), [model-exchange-dec22.md](../completed/model-exchange-dec22.md).

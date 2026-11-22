@@ -155,13 +155,17 @@ class ViewNamePolicyIntegrationTest {
         Long r = viewService.create(login(projectId, adminId), save("VW_R", "SELECT 1")).id();
         TableInfo table = table(projectId, null, "TB_RENAME_ME");
         Long requestR = viewService.update(member(projectId), r, save("OBJ_X", "SELECT 'r'")).request().id();
-        assertThat(race(List.of(
+        List<String> three = race(List.of(
                 () -> viewService.processRequest(login(projectId, adminId), requestR, true),
                 () -> viewService.create(login(projectId, adminId), save("OBJ_X", "SELECT 'new'")),
                 () -> {
                     tableDesignService.updateTable(TableInfoDto.builder().id(table.getId()).tableName("OBJ_X").tableDescription("x").isMasterTable("N").sortOrder(1).build(), login(projectId, adminId));
                     return null;
-                }))).containsOnlyOnce("ok").filteredOn(result -> !result.equals("ok")).containsOnly("SAVED_DATA_EXISTS");
+                }));
+        // 하나만 성공한다. VIEW 쪽은 이름 공간을 기다렸다가 이름 중복. 테이블 이름 변경(M7-FK-D06 : 프로젝트 행 배타 뒤 기다리지 않음)은 이름 공간이 잡혀 있으면 409(MODEL_CONFLICT)
+        assertThat(three).containsOnlyOnce("ok");
+        for (int i = 0; i < 2; i++) if (!three.get(i).equals("ok")) assertThat(three.get(i)).isEqualTo("SAVED_DATA_EXISTS");
+        if (!three.get(2).equals("ok")) assertThat(three.get(2)).isIn("SAVED_DATA_EXISTS", "MODEL_CONFLICT");
         assertThat(count(projectId, "OBJ_X") + tableInfoRepository.findAllByTableNameAndProjectId("OBJ_X", projectId).size()).isEqualTo(1);
 
         // 3) 같은 요청을 동시에 세 번 승인 → 한 번만 처리

@@ -403,29 +403,29 @@ final class EnglishMessages {
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
 
-                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, ERD로 구조와 관계를 확인하며, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
+                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, 논리 모델에서 물리 모델을 만들고 둘의 정합성을 확인하며, ERD로 구조와 관계를 살펴보고, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
 
                 ## 주요 기능
 
                 ### 1. 데이터 사전
 
-                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치)으로 표준 준수 여부를 확인합니다.
+                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치, 중복 도메인·용어, DBMS 식별자 규칙)으로 표준 준수 여부를 확인합니다.
 
                 ### 2. 논리 모델
 
-                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
+                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 관계마다 부모 주 식별자와 자식 속성의 짝을 지정하고, 주제 영역(최대 3단계)으로 엔터티를 분류하며, 슈퍼타입·서브타입(상속) 구조를 표현합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
 
                 ### 3. 테이블 및 컬럼
 
-                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다.
+                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다. 같은 테이블 안의 컬럼명은 대소문자와 앞뒤 공백을 무시하고 하나만 둘 수 있고, 모델 구조 진단이 무효 FK와 중복 인덱스를 알려 줍니다.
 
                 ### 4. 논리·물리 ERD
 
-                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 드래그로 관계를 연결하고, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다.
+                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 검색·주제 영역·이웃 탐색으로 필요한 범위만 불러오고, 드래그로 관계를 연결하며, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다. 물리 ERD는 FK마다 관계선과 제약조건에서 계산한 카디널리티를 보여 주고, ERD를 PNG·SVG 이미지로 내려받을 수 있습니다. 매핑 표시를 켜면 논리·물리 매핑 상태를 함께 봅니다.
 
                 ### 5. 논리·물리 매핑
 
-                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 정합성을 진단합니다.
+                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 규칙에 따른 매핑 후보를 추천합니다. 논리 모델에서 고른 엔터티로 물리 테이블을 만들고(관계 속성 짝으로 FK 생성, 서브타입은 엔터티마다 테이블), 정합성 비교에서 속성·상속 구조·관계 ↔ FK·보조 식별자 ↔ UNIQUE를 진단합니다. 물리명 추천을 골라 한 번에 적용하고, 누락된 복합·자기 참조 FK를 미리보기한 뒤 보정할 수 있습니다. 생성·일괄 적용·보정 직전의 모델은 모델 버전으로 자동 보존됩니다.
 
                 ### 6. DDL 내보내기
 
@@ -433,11 +433,11 @@ final class EnglishMessages {
 
                 ### 7. 변경 이력과 모델 버전
 
-                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다.
+                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다. 모델을 파일로 내보내 다른 프로젝트로 가져오거나 복사할 수도 있습니다 (새 객체는 미승인 상태로 만들어지고 기존 객체는 덮어쓰지 않습니다).
 
                 ### 8. 원본 DB 연결과 가져오기
 
-                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 가져오기 직전의 모델은 모델 버전으로 자동 보존됩니다.
+                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조와 VIEW 정의를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 이름이 바뀐 테이블·컬럼은 확인해 연결하고, 원본에서 사라진 테이블·컬럼은 따로 골라 모델에서 지우며, 원본이 다시 바뀌면 마지막으로 가져온 값을 기준으로 다시 가져옵니다. 가져오기·삭제 직전의 모델은 모델 버전으로 자동 보존됩니다.
 
                 ### 9. 프로젝트
 
@@ -449,16 +449,20 @@ final class EnglishMessages {
 
                 ### 11. AI 기능 (선택)
 
-                관리자가 **AI 관리 › AI Provider 설정**에서 AI 서버(현재 Ollama)를 등록하고 시스템 기본 AI Provider로 지정하면 AI 기능을 사용할 수 있습니다. AI를 사용하지 않아도 다른 기능은 그대로 동작하며, 기본 AI Provider가 없으면 AI 관리 메뉴는 관리자에게만 보입니다.
+                관리자가 **AI 관리 › AI Provider 설정**에서 AI 서버(현재 Ollama)를 등록하고 시스템 기본 AI Provider로 지정하면 AI 기능을 사용할 수 있습니다. 프로젝트마다 다른 AI Provider를 지정할 수도 있습니다. AI를 사용하지 않아도 다른 기능은 그대로 동작하며, 기본 AI Provider가 없으면 AI 관리 메뉴는 관리자에게만 보입니다.
 
                 - **AI 도우미** : 화면 오른쪽 아래 버튼으로 현재 프로젝트의 메타데이터에 대해 질문합니다. AI는 읽기 전용 조회만 할 수 있고, 답변이 근거로 든 메타데이터는 Lexorma가 다시 확인해 표시합니다.
                 - **AI 설명 제안** : AI 관리 › AI 설명 제안에서 테이블·컬럼의 업무 설명 초안을 만들고 근거, 확인할 수 없는 부분, 확인 질문과 함께 검토합니다. 승인한 내용만 업무 설명에 반영되며, 원본 COMMENT와 표준 용어 연결은 바꾸지 않습니다.
                 - **AI 품질 평가** : AI 관리 › AI 품질 평가에서 업무 담당자·검토자가 확인한 실제 의미를 기준으로 AI 설명을 판정하고 모델별 지표를 봅니다. AI가 스스로 정답을 판정하지 않습니다.
+                - **MCP 연결** : 서버 설정과 프로젝트 설정에서 켜면 외부 AI 도구가 프로젝트 토큰으로 이 프로젝트의 메타데이터를 읽기 전용으로 조회할 수 있습니다. 토큰은 만료일이 있고 언제든 폐기할 수 있습니다.
 
                 ## 이용 안내
 
-                - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
+                - 설치 후 처음 접속하면 최초 관리자 계정을 만듭니다. 이후 가입한 사용자는 관리자가 권한을 부여해야 이용할 수 있습니다.
+                - 로그인할 때 접근 가능한 프로젝트를 선택해 주세요.
                 - 기본 프로젝트 `LEXORMA`에서 Lexorma 자체 스키마를 예제로 담은 데이터 사전, 논리·물리 모델과 ERD를 확인해 보세요.
+                - 승인된 데이터는 수정할 수 없습니다. 승인 권한자가 승인을 취소한 뒤 수정해 주세요.
+                - 다른 사용자가 같은 모델을 동시에 바꾸고 있으면 저장이 충돌로 거절될 수 있습니다. 화면을 새로 고친 뒤 다시 시도해 주세요.
                 - 원본 DB 정보는 모든 사용자가 조회할 수 있고, 연결·수집·매핑·가져오기는 프로젝트 관리자 또는 ADMIN만 실행할 수 있습니다. 원본 DB에는 조회만 하며 원본 구조를 바꾸지 않습니다.
                 - 원본 DB 연결 비밀번호를 저장하려면 서버에 암호화 키(`LEXORMA_SECRET_KEYS`)가 설정되어 있어야 합니다.
                 - AI 서버 연결은 관리자가 등록한 주소와 외부 연결 보안의 허용 규칙으로만 이루어지며, 질문과 조회한 메타데이터가 그 AI 서버로 전송됩니다. 실제 업무 데이터는 보내지 않습니다.
@@ -479,36 +483,36 @@ final class EnglishMessages {
 
                 ## 안내 사항
 
-                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 품질 점검 등)은 저장소의 문서를 확인해 주세요.
+                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(관계 관리 개선, AI 기반 품질 점검 등)은 저장소의 문서를 확인해 주세요.
                 서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
 
                 감사합니다.
                 **Lexorma**""", """
                 Hello, and thank you for using **Lexorma**.
 
-                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
+                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, generate physical models from logical models and check that the two stay consistent, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
 
                 ## Key features
 
                 ### 1. Data dictionary
 
-                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches) show how well the model follows the standard.
+                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches, duplicate domains and terms, DBMS identifier rules) show how well the model follows the standard.
 
                 ### 2. Logical model
 
-                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Physical names are recommended from the standard dictionary.
+                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Each relationship pairs the parent's primary identifier with child attributes, entities can be grouped into subject areas (up to three levels), and supertype/subtype (inheritance) structures can be modeled. Physical names are recommended from the standard dictionary.
 
                 ### 3. Tables and columns
 
-                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled.
+                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled. Column names are unique within a table regardless of case and surrounding spaces, and the model structure diagnostics report invalid foreign keys and duplicate indexes.
 
                 ### 4. Logical and physical ERD
 
-                View and edit the logical and physical models directly in ERDs. Connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts.
+                View and edit the logical and physical models directly in ERDs. Load only the scope you need by search, subject area or neighbor exploration, connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts. The physical ERD draws one line per foreign key with cardinalities computed from the constraints, and ERDs can be downloaded as PNG or SVG images. Turn on the mapping overlay to see the logical ↔ physical mapping status as well.
 
                 ### 5. Logical ↔ physical mapping
 
-                Manage entity ↔ table and attribute ↔ column mappings and check their consistency.
+                Manage entity ↔ table and attribute ↔ column mappings, with rule-based mapping candidates. Generate physical tables from the entities you choose in a logical model (foreign keys from relationship attribute pairs, one table per entity for subtypes), and check attributes, inheritance structures, relationships ↔ foreign keys and alternate identifiers ↔ UNIQUE constraints in the consistency check. Apply chosen physical name recommendations in one go, and preview and correct missing composite and self-referencing foreign keys. The model just before a generation, bulk rename or correction is kept automatically as a model version.
 
                 ### 6. DDL export
 
@@ -516,11 +520,11 @@ final class EnglishMessages {
 
                 ### 7. Change history and model versions
 
-                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs.
+                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs. You can also export a model to a file and import or copy it into another project (new objects are created unapproved and existing objects are never overwritten).
 
                 ### 8. Source database connections and import
 
-                Connect to a live database (PostgreSQL for now), collect its structure read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. The model just before each import is kept automatically as a model version.
+                Connect to a live database (PostgreSQL for now), collect its structure and view definitions read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. Confirm renamed tables and columns, remove tables and columns that disappeared from the source as a separate choice, and re-import later source changes against the values you last imported. The model just before each import or removal is kept automatically as a model version.
 
                 ### 9. Projects
 
@@ -532,16 +536,20 @@ final class EnglishMessages {
 
                 ### 11. AI features (optional)
 
-                When an administrator registers an AI server (Ollama for now) under **AI management › AI provider settings** and sets it as the system default AI provider, the AI features become available. Everything else works without AI, and without a default AI provider the AI management menu is shown only to administrators.
+                When an administrator registers an AI server (Ollama for now) under **AI management › AI provider settings** and sets it as the system default AI provider, the AI features become available. A project can also use its own AI provider. Everything else works without AI, and without a default AI provider the AI management menu is shown only to administrators.
 
                 - **AI assistant** : ask about the metadata of the current project with the button at the bottom right of the screen. The AI can only read, and Lexorma checks again the metadata that an answer cites.
                 - **AI description proposals** : under AI management › AI description proposals, draft business descriptions of tables and columns and review them with their evidence, the points that cannot be determined and questions to confirm. Only approved text becomes the business description; source comments and standard term links are not changed.
                 - **AI quality evaluation** : under AI management › AI quality evaluation, judge AI descriptions against the actual meaning confirmed by business owners or reviewers and see metrics per model. The AI never judges its own answers.
+                - **MCP access** : when enabled in the server and project settings, external AI tools can read this project's metadata with a project token. Tokens expire and can be revoked at any time.
 
                 ## Getting started
 
-                - On your first login, change the initial password and choose a project you can access.
+                - The first visit after installation creates the first administrator account. Users who sign up later can work once an administrator grants them a role.
+                - Choose a project you can access when you log in.
                 - Explore the default project `LEXORMA`, whose example data dictionary, logical and physical models and ERDs describe Lexorma's own schema.
+                - Approved data cannot be edited. Ask an approver to revoke the approval first.
+                - If another user is changing the same model at the same time, your save may be rejected as a conflict. Refresh the screen and try again.
                 - Every user can view source database information; connecting, collecting, mapping and importing are limited to the project manager or ADMIN. Lexorma only reads from source databases and never changes their structure.
                 - Storing a source database password requires an encryption key (`LEXORMA_SECRET_KEYS`) configured on the server.
                 - Lexorma connects only to the AI server address an administrator registered and allowed in external connection security; questions and the metadata looked up are sent to that AI server. Actual business data is not sent.
@@ -562,7 +570,7 @@ final class EnglishMessages {
 
                 ## About
 
-                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted quality checks and more).
+                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (relationship management improvements, AI-assisted quality checks and more).
                 Any problems or suggestions you share while using the service help the project grow.
 
                 Thank you.
@@ -1120,5 +1128,30 @@ final class EnglishMessages {
         add("이 UNIQUE 에 대응하는 논리 보조 식별자가 없습니다. 물리에만 있는 구조입니다 (오류로 보지 않으며 자동으로 지우지 않습니다).", "There is no logical alternate identifier for this UNIQUE constraint. It exists only in the physical model (not treated as an error and never deleted automatically).");
         add("자기 참조 관계의 자식 속성이 부모 키 속성 자신이라 물리 FK 를 만들 대상이 아닙니다.", "The child attributes of the self-referencing relationship are the parent key attributes themselves, so it is not a target for a physical foreign key.");
         add("참조받는 테이블 {0} 이(가) 이 논리 모델의 엔터티에 매핑되지 않아 대응 논리 관계를 찾을 수 없습니다.", "The referenced table {0} is not mapped to an entity of this logical model, so no corresponding logical relationship can be found.");
+        add("다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 시도해주세요.", "Another user is changing the same model, tables or columns. Try again in a moment.");
+        add("FK 보정 계획", "Foreign key correction plan");
+        add("보정할 수 없는 관계가 있습니다. 미리보기의 사유를 확인하고 그 관계를 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some relationships cannot be corrected. Check the reasons in the preview, remove those relationships and preview again. ({0}: {1})");
+        add("누락 FK 보정 직전 상태 (논리 관계 {0}개, 요청 {1})", "State before the missing foreign key correction ({0} logical relationships, request {1})");
+        add("보정한 FK 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected foreign key does not match in the consistency check. ({0}: {1})");
+        add("이 논리 모델의 관계가 아닙니다. (관계 ID {0})", "This is not a relationship of this logical model. (relationship ID {0})");
+        add("함께 고른 다른 관계도 같은 이름의 FK {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected relationship also creates a foreign key named {0}. Select only one of them.");
+        add("진단 결과가 FK 누락이 아닙니다 ({0}). 기존 FK 는 고치거나 지우지 않습니다.", "The diagnosis is not a missing foreign key ({0}). Existing foreign keys are never changed or deleted.");
+        add("관계 속성 짝의 컬럼을 정할 수 없습니다.", "The columns of the relationship attribute pairs cannot be determined.");
+        add("서브타입과 직계 슈퍼타입 사이의 관계입니다. 상속 FK 는 상속 구조 진단에서 다루며 이 기능으로 만들지 않습니다.", "This is a relationship between a subtype and its direct supertype. Inheritance foreign keys are handled by the inheritance structure check and are not created here.");
+        add("자기 참조가 아닌 단일 FK 는 기존 규칙상 자식 컬럼의 참조 테이블명으로 만들며, 그 관계는 동기화에서 항상 승인 상태로 만들어져 승인 절차를 거치지 않습니다. 승인 정책과 충돌하여 이 유형의 보정은 보류합니다 (컬럼 관리에서 참조 테이블을 직접 지정할 수 있습니다).", "A single-column foreign key that is not self-referencing is represented by the child column's referenced table name, and the reference sync always creates that relation as approved without the approval process. Because this conflicts with the approval policy, correcting this type is on hold (you can set the referenced table directly in column management).");
+        add("관계 속성 짝의 컬럼을 찾을 수 없습니다.", "The columns of the relationship attribute pairs cannot be found.");
+        add("자식 테이블 {0} 이(가) 승인되어 있어 FK 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "The child table {0} is approved, so a foreign key cannot be added. Revoke the approval and try again.");
+        add("자식 컬럼 {0} 이(가) 승인되어 있어 FK 에 쓸 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "The child column {0} is approved, so it cannot be used in a foreign key. Revoke the approval and try again.");
+        add("{0} 은(는) 참조 테이블({1})이 지정된 컬럼입니다. 그 값으로 관계가 만들어지므로 FK 를 따로 만들지 않습니다.", "{0} has a referenced table ({1}). The relation is created from that value, so no separate foreign key is created.");
+        add("관계 속성 짝에 같은 컬럼이 두 번 쓰였습니다.", "The same column is used twice in the relationship attribute pairs.");
+        add("부모 컬럼이 부모 테이블 {0} 의 PK 가 아닙니다.", "The parent columns are not the PK of the parent table {0}.");
+        add("같은 컬럼 구성으로 {0} 을(를) 가리키는 관계 {1} 이(가) 이미 있습니다.", "Relation {1} with the same columns referencing {0} already exists.");
+        add("같은 FK 구성을 기대하는 다른 논리 관계가 있습니다 ({0}). 만들면 하나의 FK 를 여러 관계가 함께 쓰게 되어 자동으로 고르지 않습니다.", "Other logical relationships expect the same foreign key ({0}). Creating it would make several relationships share one foreign key, so none is chosen automatically.");
+        add("같은 스키마에 이름이 {0} 인 FK 가 이미 있습니다.", "A foreign key named {0} already exists in the same schema.");
+        add("논리 모델을 고르세요.", "Select a logical model.");
+        add("보정할 논리 관계를 고르세요.", "Select the logical relationships to correct.");
+        add("한 번에 {0}개까지 보정할 수 있습니다. (요청 {1}개)", "Up to {0} can be corrected at once. ({1} requested)");
+        add("논리 관계 ID 가 비어 있습니다.", "A logical relationship ID is empty.");
+        add("같은 논리 관계가 두 번 들어 있습니다. (관계 ID {0})", "The same logical relationship is included twice. (relationship ID {0})");
     }
 }

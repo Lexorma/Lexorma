@@ -101,7 +101,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Transactional
     public PhysicalModelDto.Relation saveRelation(AccountDto accountDto, PhysicalModelDto.Relation request) {
         Long projectId = accountDto.getProjectId();
-        TableInfo source = requireTable(projectId, request.sourceTableId());
+        // 원본(자식) 테이블 행을 먼저 잠그고 같은 구성의 관계를 찾는다 : 누락 FK 보정(같은 행을 NOWAIT 로 잡고 같은 FK 를 만든다)이 다시 계획한 뒤 커밋하기 전에
+        // 같은 FK 를 넣으면 중복 FK 가 생겼다 (docs/completed/physical-fk-correction-m7.md 14장). 보정이 끝나면 그 FK 를 보고 중복으로 거절한다
+        TableInfo source = lockTable(projectId, request.sourceTableId());
         TableInfo target = requireTable(projectId, request.targetTableId());
 
         List<PhysicalModelDto.ColumnPair> pairs = request.columns() == null ? List.of() : request.columns();

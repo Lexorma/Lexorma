@@ -194,7 +194,11 @@ class ViewManagementIntegrationTest {
                     tableDesignService.updateTable(TableInfoDto.builder().id(table.getId()).tableName("TB_RACE").tableDescription("x").isMasterTable("N").sortOrder(1).build(), login(projectId, adminId));
                     return null;
                 }));
-        assertThat(mixed).containsExactlyInAnyOrder("ok", "SAVED_DATA_EXISTS");
+        // 하나만 성공한다. VIEW 등록은 이름 공간을 기다렸다가 이름 중복을 본다. 테이블 이름 변경(M7-FK-D06 : 프로젝트 행 배타 → 이후 잠금은 기다리지 않음)은
+        // VIEW 등록이 이름 공간을 잡고 있으면 기다리지 않고 409(MODEL_CONFLICT), 늦게 와서 등록이 끝난 뒤면 이름 중복이다
+        assertThat(mixed).containsOnlyOnce("ok");
+        if (!mixed.get(0).equals("ok")) assertThat(mixed.get(0)).isEqualTo("SAVED_DATA_EXISTS");
+        if (!mixed.get(1).equals("ok")) assertThat(mixed.get(1)).isIn("SAVED_DATA_EXISTS", "MODEL_CONFLICT");
         int tables = tableInfoRepository.findAllByTableNameAndProjectId("TB_RACE", projectId).size();
         int views = jdbc.queryForObject("select count(*) from TB_VIEW where PRJ_SN = ? and VIEW_NM = 'TB_RACE'", Integer.class, projectId);
         assertThat(tables + views).isEqualTo(1);

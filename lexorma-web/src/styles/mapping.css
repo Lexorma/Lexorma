@@ -100,6 +100,8 @@ ul.mapping-chips { padding: 0; list-style: none; }
 .rename-preview-table thead th { position: sticky; top: 0; background: var(--gh-canvas); z-index: 1; }
 .rename-issues { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; }
 .rename-issues .gh-label { margin-right: 4px; }
+/* 누락 FK 보정 미리보기 (M7-FK-01) : FK 컬럼 쌍 — 순서 번호를 보인다 */
+.fk-pairs { margin: 0; padding-left: 1.4em; display: grid; gap: 2px; font-size: 12px; }
 .rename-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; max-width: 100%; }
 .rename-cell-code { font-size: 12px; color: var(--gh-fg-muted); overflow-wrap: anywhere; }
 

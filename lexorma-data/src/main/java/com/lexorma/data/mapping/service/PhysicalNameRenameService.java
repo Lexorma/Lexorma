@@ -103,6 +103,7 @@ public class PhysicalNameRenameService {
     private final PhysicalModelService physicalModelService;
     private final ProjectRepository projectRepository;
     private final ProjectWriteGuard projectWriteGuard;
+    private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
     private final ModelVersionService versionService;
     private final ModelChangeRecorder recorder;
     private final DdlIdentifierQueryRepository identifierRepository;
@@ -148,8 +149,13 @@ public class PhysicalNameRenameService {
                 schemaIds.remove(defaultSchemaId);
             }
             for (Long schemaId : schemaIds) entityManager.find(SchemaInfo.class, schemaId, LockModeType.PESSIMISTIC_WRITE, NO_WAIT);
+            // 이름을 바꿀 테이블 행 : 키 강도(FOR UPDATE NOWAIT) 먼저 (M7-FK-D06). 이름 UPDATE 가 다른 트랜잭션의 FK KEY SHARE(그 테이블을 부모로 하는 관계 INSERT —
+            // 엑셀 업로드의 청크 동기화 등)를 프로젝트 행을 쥔 채 기다리면 교착(S6b)이라, 같은 강도를 미리 기다리지 않고 잡는다
+            rowLocks.tablesForKeyChange(tableIds);
             // 테이블 행 : 승인·CHECK·인덱스·관계·PK 를 바꾸는 쓰기와 컬럼 일괄 저장이 먼저 잠그는 행
             for (Long tableId : lockedTables) tableEntities.put(tableId, entityManager.find(TableInfo.class, tableId, LockModeType.PESSIMISTIC_WRITE, NO_WAIT));
+            // 이름을 바꿀 컬럼 행 : 키 강도 먼저 (컬럼명 = UX_COL_01 의 열 — 같은 이유)
+            rowLocks.columnsForKeyChange(columnIds);
             // 컬럼 행 : 이름을 바꿀 컬럼 + 이름을 바꿀 테이블의 컬럼 (테이블명 사본) — 한 번에 ID 순
             if (!columnIds.isEmpty() || !tableIds.isEmpty()) {
                 entityManager.createQuery("select c from ColumnInfo c where c.id in :columnIds or c.tableInfo.id in :tableIds order by c.id", ColumnInfo.class)
@@ -191,6 +197,13 @@ public class PhysicalNameRenameService {
                 List<ColumnInfo> list = tableDesignService.columnsReferencingTable(projectId, tableEntities.get(tableId));
                 referencing.put(tableId, list);
                 list.stream().map(ColumnInfo::getId).filter(id -> !columnEntities.containsKey(id)).forEach(more::add);
+                // 새 이름을 미리 참조하던 컬럼 : 동기화가 관계를 새로 만들며 그 컬럼·테이블 행에 KEY SHARE 를 건다 — 기다리지 않고 미리 잠근다
+                TableInfo renamed = tableEntities.get(tableId);
+                String newName = computed.newTableNames().get(tableId).toUpperCase(Locale.ROOT);
+                entityManager.createQuery("select c.id from ColumnInfo c where c.projectId = :projectId and upper(trim(c.refTableName)) in :names", Long.class)
+                        .setParameter("projectId", projectId)
+                        .setParameter("names", List.of(newName, renamed.getSchema().getSchemaName().toUpperCase(Locale.ROOT) + "." + newName))
+                        .getResultList().stream().filter(id -> !columnEntities.containsKey(id)).forEach(more::add);
             }
             if (!more.isEmpty()) {
                 entityManager.createQuery("select c from ColumnInfo c where c.id in :ids order by c.id", ColumnInfo.class).setParameter("ids", more)

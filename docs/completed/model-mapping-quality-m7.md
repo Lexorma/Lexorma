@@ -324,3 +324,4 @@ LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/lexorma_m7q_test \
 - 컬럼 후보의 "매핑하면 생길 불일치" : 후보 짝을 매핑된 것으로 놓고 `ModelMappingQualityService.diagnose` 를 돌려 MISMATCH 행만 보인다.
 - ERD 매핑 표시 : `modelRows`(조건 없는 예전 목록 + 구조 진단)를 엔터티·속성·상속 구조별로 모은다. M7-F02(2026-11-21)부터 ERD 는 매핑 상태(저장된 매핑)와 정합성 상태(이 판정 그대로 — `CheckStatus`, 사유 포함)를 따로 받아 보이며, 비교 불가를 일치로 바꾸지 않는다. 정합성 비교의 판정·목록·요약 계약은 바뀌지 않았다.
 
+> **2026-11-22 후속** : 관계 진단이 `FK_MISSING` 인 관계는 같은 화면의 [논리 관계·물리 FK] 범위에서 골라 누락 FK 보정(미리보기 → 적용)을 할 수 있다 — [physical-fk-correction-m7.md](physical-fk-correction-m7.md). 진단 계산·상태·건수·사유 문구는 바뀌지 않았다 (보정 가능 여부는 따로 판정하는 별도 칸). 후속 마무리(M7-FK-D09~D11, [physical-fk-correction-m7.md 14장](physical-fk-correction-m7.md))도 진단을 바꾸지 않았다 — 자기 참조가 아닌 단일 FK 는 계속 `FK_MISSING` 이고 보정만 보류(M-8 이관)다.

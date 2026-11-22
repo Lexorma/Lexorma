@@ -138,6 +138,10 @@ public final class ModelMappingDto {
     }
 
     /** level : OK · ERROR · MISSING · UNKNOWN · WARNING */
-    public record StructureCheck(String code, String level, String message) {
+    /** detail : 기계 판정용 상세 코드 (M7-INH-03 — PARENT_FK 의 INHERITANCE_FK_MISSING·_COLUMNS·_ORDER·_TARGET·_DUPLICATE 등, 없으면 null). 화면은 문구를 해석하지 않는다 */
+    public record StructureCheck(String code, String level, String message, String detail) {
+        public StructureCheck(String code, String level, String message) {
+            this(code, level, message, null);
+        }
     }
 }

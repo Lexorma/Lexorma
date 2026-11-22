@@ -1191,5 +1191,26 @@ final class EnglishMessages {
         add("한 번에 {0}개까지 보정할 수 있습니다. (요청 {1}개)", "Up to {0} can be corrected at once. ({1} requested)");
         add("논리 관계 ID 가 비어 있습니다.", "A logical relationship ID is empty.");
         add("같은 논리 관계가 두 번 들어 있습니다. (관계 ID {0})", "The same logical relationship is included twice. (relationship ID {0})");
+        add("같은 서브타입이 두 번 들어 있습니다. (엔터티 ID {0})", "The same subtype is included twice. (entity ID {0})");
+        add("같은 컬럼 쌍의 FK {0} 이(가) 이미 있어 참조 테이블명으로 FK 를 다시 만들지 않습니다. 참조 테이블명을 비우거나 기존 FK 를 먼저 삭제해주세요. ({1}.{2} → {3}.{4})", "Foreign key {0} with the same column pair already exists, so no foreign key is created again from the referenced table name. Clear the referenced table name or delete the existing foreign key first. ({1}.{2} → {3}.{4})");
+        add("관계 속성 짝의 FK 구성이 서브타입 {0} 의 상속 FK(직계 슈퍼타입 {1} 참조)와 같습니다. 상속 FK 는 [상속 구조] 진단·상속 FK 보정에서 다루며, 같은 구성의 FK 를 따로 만들지 않습니다.", "The foreign key the attribute pairs describe is the inheritance foreign key of subtype {0} (referencing its direct supertype {1}). Inheritance foreign keys are handled by the [Inheritance] check and the inheritance foreign key correction; no separate foreign key with the same columns is created.");
+        add("관계의 FK 구성이 서브타입의 상속 FK 와 같습니다. 상속 FK 는 [상속 구조] 정합성의 상속 FK 보정에서 다루며 이 기능으로 만들지 않습니다.", "The relationship's foreign key is the same as the subtype's inheritance foreign key. Inheritance foreign keys are created by the inheritance foreign key correction of the [Inheritance] consistency check, not by this function.");
+        add("누락 상속 FK 보정 직전 상태 (서브타입 {0}개, 요청 {1})", "State before the missing inheritance foreign key correction ({0} subtypes, request {1})");
+        add("보정한 상속 FK 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected inheritance foreign key does not match in the consistency check. ({0} : {1})");
+        add("보정할 서브타입을 고르세요.", "Select the subtypes to correct.");
+        add("보정할 수 없는 서브타입이 있습니다. 미리보기의 사유를 확인하고 그 서브타입을 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some subtypes cannot be corrected. Check the reasons in the preview, remove those subtypes and preview again. ({0} : {1})");
+        add("상속 FK 보정 계획", "inheritance foreign key correction plan");
+        add("상속 PK 컬럼 쌍을 정할 수 없습니다.", "The inherited PK column pairs cannot be determined.");
+        add("상속 구조를 판정할 수 없어 보정하지 않습니다.", "The inheritance structure cannot be judged, so it is not corrected.");
+        add("상속받은 보조 식별자는 현재 부모 엔터티 {0} 의 참조 키로 사용할 수 없습니다. 해당 식별자를 직접 정의한 엔터티를 부모로 지정해 주세요. (ID {1})", "An inherited alternate identifier cannot be used as the reference key of the parent entity {0}. Make the entity that defines that identifier the parent. (ID {1})");
+        add("상위 서브타입 {0} 의 상속 FK 가 아직 없습니다. {0} 을(를) 먼저 보정한 뒤 다시 미리보기해주세요.", "The upper subtype {0} has no inheritance foreign key yet. Correct {0} first and preview again.");
+        add("서브타입 {0} 이(가) 물리 테이블에 매핑되지 않았습니다.", "Subtype {0} is not mapped to a physical table.");
+        add("엔터티 ID 가 비어 있습니다.", "An entity ID is empty.");
+        add("엔터티 {0} 은(는) 서브타입이 아닙니다 (상속 관계가 없거나 지워졌습니다).", "Entity {0} is not a subtype (it has no inheritance link, or the link was removed).");
+        add("이 논리 모델의 엔터티가 아닙니다. (엔터티 ID {0})", "Not an entity of this logical model. (entity ID {0})");
+        add("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 둘 이상 있습니다. 기존 FK 는 자동으로 지우지 않습니다.", "More than one foreign key references the direct supertype table {0} with the inherited PK. Existing foreign keys are not deleted automatically.");
+        add("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 이미 있습니다. 기존 FK 는 고치거나 지우지 않습니다.", "A foreign key already references the direct supertype table {0} with the inherited PK. Existing foreign keys are not changed or deleted.");
+        add("테이블 {0} 에서 {1} 을(를) 상속 PK 컬럼으로 참조하는 FK 가 있지만 컬럼 순서가 루트 주 식별자 순서와 다릅니다. 기존 FK 는 고치지 않습니다.", "Table {0} has a foreign key referencing {1} with the inherited PK columns, but its column order differs from the root primary identifier order. Existing foreign keys are not changed.");
+        add("함께 고른 다른 서브타입도 같은 이름의 FK {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected subtype also creates a foreign key named {0}. Select only one of them.");
     }
 }

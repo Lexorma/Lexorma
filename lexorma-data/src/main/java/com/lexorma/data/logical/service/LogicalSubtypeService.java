@@ -574,7 +574,20 @@ public class LogicalSubtypeService {
             if (!beforeKey.equals(afterKey)) keyChanged.add(id);
         }
         if (!keyChanged.isEmpty()) {
-            pairRepository.findAllBySourceEntityIds(keyChanged).stream().findFirst().ifPresent(p -> {
+            // 엔터티 자체의 보조 식별자 하나 전체를 잇는 짝은 유효 주 식별자가 바뀌어도 그대로 유효하다 (M7-INH-02, D-INH-03·04 — ReferenceKeys.referenceable). 그 밖의 짝만 막는다
+            List<LogicalRelationshipAttribute> pairs = pairRepository.findAllBySourceEntityIds(keyChanged);
+            Map<Long, List<Long>> parentsByRelationship = new java.util.LinkedHashMap<>();
+            pairs.forEach(p -> parentsByRelationship.computeIfAbsent(p.getRelationship().getId(), k -> new java.util.ArrayList<>()).add(p.getParentAttribute().getId()));
+            Map<Long, List<LogicalIdentifier>> own = new HashMap<>();
+            pairs.stream().map(p -> p.getRelationship().getSourceEntity().getId()).distinct()
+                    .forEach(id -> own.put(id, identifiers.containsKey(id) ? identifiers.get(id) : identifierRepository.findAllByEntityIds(List.of(id))));
+            pairs.stream().filter(p -> {
+                Long source = p.getRelationship().getSourceEntity().getId();
+                Set<Long> parents = new java.util.HashSet<>(parentsByRelationship.get(p.getRelationship().getId()));
+                List<ReferenceKeys.Key> alternates = ReferenceKeys.referenceable(source, id -> own.getOrDefault(id, List.of()).stream()
+                        .filter(i -> !Boolean.TRUE.equals(i.getIsPrimary())).map(i -> new ReferenceKeys.Key(i.getId(), i.getIdentifierName(), false, keyIds(i))).toList());
+                return ReferenceKeys.representative(alternates, parents) == null || parents.size() != parentsByRelationship.get(p.getRelationship().getId()).size();
+            }).findFirst().ifPresent(p -> {
                 LogicalRelationship r = p.getRelationship();
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "관계 {0} 의 속성 짝이 엔터티 {1} 의 상속 주 식별자를 쓰고 있어 상속을 바꿀 수 없습니다. 속성 짝을 먼저 해제해주세요.",
                         r.getRelationshipName() != null ? r.getRelationshipName() : r.getSourceEntity().getEntityName() + " → " + r.getTargetEntity().getEntityName(),

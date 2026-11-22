@@ -356,7 +356,7 @@ public class ModelMappingService {
         table.getColumns().forEach(c -> tableColumns.put(c.getId(), c));
         List<ModelMappingDto.KeyColumn> tableKey = inspection.tableKey().stream().map(k -> tableColumns.containsKey(k.id()) ? key.apply(tableColumns.get(k.id()))
                 : new ModelMappingDto.KeyColumn(k.id(), k.name(), null, true, true)).toList();
-        List<ModelMappingDto.StructureCheck> checks = inspection.checks().stream().map(c -> new ModelMappingDto.StructureCheck(c.code(), c.level(), c.message())).toList();
+        List<ModelMappingDto.StructureCheck> checks = inspection.checks().stream().map(c -> new ModelMappingDto.StructureCheck(c.code(), c.level(), c.message(), c.detail())).toList();
         com.lexorma.data.logical.service.LogicalHierarchy.Group group = hierarchy.parentGroup(entityId);
         String note = null;
         if (group != null) {

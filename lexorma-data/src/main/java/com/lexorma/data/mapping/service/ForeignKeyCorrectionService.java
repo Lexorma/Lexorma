@@ -64,7 +64,7 @@ import static com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.MAX_RE
  * <ul>
  *   <li>대상 : 정합성 비교의 관계 진단({@link ModelStructureQualityJudge}, {@link ModelMappingQualityService#structureRows})이 <b>FK_MISSING</b> 인 논리 관계 중 사용자가 고른 것.
  *       진단을 다시 구현하지 않는다 — 기대 자식·부모 컬럼 쌍(짝 순서)을 진단 결과에서 그대로 쓴다. FK_MISSING 이 곧 보정 가능은 아니다 : 아래 검사를 따로 한다.</li>
- *   <li>검사 : 상속 FK(서브타입 → 직계 슈퍼타입)는 제외, 자기 참조가 아닌 단일 FK 는 보류(참조 테이블명 동기화가 관계를 항상 승인 상태로 만든다 — D08),
+ *   <li>검사 : 상속 FK 와 같은 구성의 관계(진단 INHERITANCE_FK_OVERLAP — M7-INH-01 D-INH-11, 상속 FK 는 InheritanceForeignKeyCorrectionService)는 제외, 자기 참조가 아닌 단일 FK 는 보류(참조 테이블명 동기화가 관계를 항상 승인 상태로 만든다 — D08),
  *       승인된 자식 테이블·자식 컬럼은 막음(부모는 참조만 하므로 승인돼 있어도 된다), 참조 테이블명이 있는 자식 컬럼·같은 구성의 기존 관계·부모 PK·타입 호환·중복 컬럼
  *       (관계 저장 {@code buildRelation} 과 같은 기준), 같은 구성의 FK 를 기대하는 다른 논리 관계(만들면 FK_SHARED), FK 이름 충돌(같은 스키마의 FK·같은 요청 안).</li>
  *   <li>만들기 : 복합·자기 참조 = 미승인 사용자 관계({@link PhysicalModelService#createGeneratedForeignKey} — 논리 → 물리 생성과 같은 경로·검사, P2 규칙). 이름 = DDL FK 이름 규칙.</li>
@@ -80,7 +80,8 @@ public class ForeignKeyCorrectionService {
     static final String VERSION_PREFIX = "FKFIX-";
     /** 계획 해시 형식 (판정 규칙·정규화 형식이 바뀌면 올린다) */
     /** 2 : 보조 식별자 참조(참조 키 유형·부모 UNIQUE 판정)가 계획에 들어간다 (M7-AK-03 — 1 의 토큰은 새 계획과 맞지 않는다) */
-    static final String TOKEN_VERSION = "fk-correction/2";
+    /** 3 : 상속 FK 판별을 실제 상속 PK 쌍으로 좁혔다 (M7-INH-01 D-INH-11 — 상속 관계 차단은 상속 FK 와 같은 구성일 때만, 2 의 토큰은 새 계획과 맞지 않는다) */
+    static final String TOKEN_VERSION = "fk-correction/3";
 
     private final ModelMappingQualityService qualityService;
     private final LogicalSubtypeService subtypeService;
@@ -276,6 +277,13 @@ public class ForeignKeyCorrectionService {
         List<Issue> blockers = new ArrayList<>();
         String code = s.code();
         boolean self = Objects.equals(row.tableId(), s.parentTableId()) && row.tableId() != null;
+        if ("INHERITANCE_FK_OVERLAP".equals(code)) {
+            // 일반 관계의 FK 구성 = 상속 FK (D-INH-11 · 29.3) : 이 기능으로 만들지 않는다 — 상속 FK 는 상속 FK 보정(전용 경로)에서 만든다
+            blockers.add(new Issue(Code.INHERITANCE_LINK, Messages.get("관계의 FK 구성이 서브타입의 상속 FK 와 같습니다. 상속 FK 는 [상속 구조] 정합성의 상속 FK 보정에서 다루며 이 기능으로 만들지 않습니다.")));
+            return new Item(id, s.logicalName(), row.logicalValue(), s.parentEntityId(), s.parentEntityName(), row.entityId(), row.entityName(),
+                    s.parentTableId(), null, s.parentTableName(), row.tableId(), row.schemaName(), row.tableName(), code, null, self, null, false, List.of(), false, blockers,
+                    s.referenceKey(), s.referenceKeyName());
+        }
         if (!"FK_MISSING".equals(code)) {
             blockers.add(new Issue(Code.NOT_MISSING, Messages.get("진단 결과가 FK 누락이 아닙니다 ({0}). 기존 FK 는 고치거나 지우지 않습니다.", code)));
             return new Item(id, s.logicalName(), row.logicalValue(), s.parentEntityId(), s.parentEntityName(), row.entityId(), row.entityName(),
@@ -305,10 +313,7 @@ public class ForeignKeyCorrectionService {
         Representation representation = single && !self && !alternate ? Representation.REF_COLUMN : Representation.USER_RELATION;
         String name = loaded ? DbIdentifierRules.foreignKeyName(childTable.getTableName(), childColumns.get(0).getColumnName()) : null;
 
-        // 상속 FK : 서브타입 → 직계 슈퍼타입 (상속 구조 진단이 본다)
-        if (Objects.equals(hierarchy.parent(row.entityId()), s.parentEntityId())) {
-            blockers.add(new Issue(Code.INHERITANCE_LINK, Messages.get("서브타입과 직계 슈퍼타입 사이의 관계입니다. 상속 FK 는 상속 구조 진단에서 다루며 이 기능으로 만들지 않습니다.")));
-        }
+        // 상속 FK 와 같은 구성의 관계는 진단이 INHERITANCE_FK_OVERLAP 으로 따로 낸다 (위). 서브타입 ↔ 직계 슈퍼타입 사이의 다른 일반 관계는 일반 FK 로 보정한다 (D-INH-11 — 예전에는 모두 막았다)
         if (representation == Representation.REF_COLUMN) {
             blockers.add(new Issue(Code.SINGLE_FK_HELD, Messages.get("자기 참조가 아닌 단일 FK 는 기존 규칙상 자식 컬럼의 참조 테이블명으로 만들며, 그 관계는 동기화에서 항상 승인 상태로 만들어져 승인 절차를 거치지 않습니다. 승인 정책과 충돌하여 이 유형의 보정은 보류합니다 (컬럼 관리에서 참조 테이블을 직접 지정할 수 있습니다).")));
         }

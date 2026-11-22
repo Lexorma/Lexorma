@@ -413,7 +413,7 @@ DDL Export 성능 : `DdlExportService` 가 테이블마다 `tableDesignService.r
 |---|---|---|
 | M-7 A·C 전략 | 단일 테이블·구체 테이블 | M7-D02 |
 | 보조 식별자 → UNIQUE 생성·비교 | 상속과 무관한 기존 후속 | pending [M-7] 에 이미 있음 |
-| 기존 테이블의 B 구조 보정 | 상속 FK 추가 등 기존 테이블 변경 | pending [M-7] 별도 정책 ① |
+| 기존 테이블의 B 구조 보정 | 상속 FK 추가 등 기존 테이블 변경 | pending [M-7] 별도 정책 ① — **누락 상속 FK 만 2026-11-22 M7-INH-03 으로 보정** (미승인 USER 관계, [inheritance-reference-key-m7.md](inheritance-reference-key-m7.md) 5장). 상속 PK 컬럼·매핑 자동 생성·기존 FK 수정은 여전히 하지 않는다 (D-INH-10) |
 | 논리 → 물리 자동 동기화 | 금지 원칙 유지 | — |
 | 업무 DB DDL 실행·트리거 생성·ORM 코드 생성 | 범위 밖 | — |
 | **M-DDL-PERF (등록 제안)** | DDL Export 의 테이블별 `referencedKeys`·`ddlExtras` 반복 — **측정 먼저** | 미측정 |
@@ -552,7 +552,7 @@ M7-D01~D38 그대로. 추가 확정 :
 
 - 엔티티 `mapping/domain/entity/SubtypeIdentifierColumnMapping`, 리포지토리 `SubtypeIdentifierColumnMappingRepository` (매핑별·여러 매핑 일괄·컬럼·속성 참조 조회).
 - 판정 : `SubtypePlanContext` 하나가 물리 생성(기존 조상 재사용)과 조회 API(정합성 사유)를 함께 맡는다 (M7-D36, 규칙 복제 없음). `SubtypePlanContexts`(컴포넌트)가 요청 단위로 만들고 `prepare(엔터티들)` 가 조상 체인의 엔터티·엔터티 매핑·루트 키 직접 매핑·상속 PK 매핑·서브타입 테이블에서 나가는 관계를 종류마다 한 번에 읽는다.
-- 기존 서브타입(중간 엔터티) 유효 조건 : 지금 루트 주 식별자 전체의 상속 PK 매핑(일부만 = 미완성), 그 컬럼 집합 = 테이블 PK 전체, 직계 부모 키 컬럼과 순서대로 FK 타입 호환(`TableDdlGenerator.isReferenceTypeCompatible`), 직계 부모 테이블을 그 쌍 그대로 참조하는 FK(출처 무관 — REF_COLUMN 관계도), 직계 부모도 유효. 사유 : `INHERITED_KEY_MAPPING_MISSING`·`PARENT_KEY_MISMATCH`·`INHERITED_KEY_TYPE_MISMATCH`·`INHERITANCE_FK_MISSING`·`ANCESTOR_INVALID`(부모 쪽 원인 — 목록에서는 원인만 보인다). 컬럼명·FK 이름으로 추론하지 않는다.
+- 기존 서브타입(중간 엔터티) 유효 조건 : 지금 루트 주 식별자 전체의 상속 PK 매핑(일부만 = 미완성), 그 컬럼 집합 = 테이블 PK 전체, 직계 부모 키 컬럼과 순서대로 FK 타입 호환(`TableDdlGenerator.isReferenceTypeCompatible`), 직계 부모 테이블을 그 쌍 그대로 참조하는 FK(출처 무관 — REF_COLUMN 관계도. 2026-11-22 M7-INH-01 D-INH-11 부터 쌍의 **순서까지** 같아야 한다 — 순서만 다른 FK 는 `INHERITANCE_FK_ORDER`), 직계 부모도 유효. 사유 : `INHERITED_KEY_MAPPING_MISSING`·`PARENT_KEY_MISMATCH`·`INHERITED_KEY_TYPE_MISMATCH`·`INHERITANCE_FK_MISSING`·`ANCESTOR_INVALID`(부모 쪽 원인 — 목록에서는 원인만 보인다). 컬럼명·FK 이름으로 추론하지 않는다.
 
 | API (`/api/modelMapping`) | 권한 | 내용 |
 |---|---|---|

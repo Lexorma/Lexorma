@@ -19,6 +19,7 @@ const CODE_LABELS: Record<string, string> = {
   FK_AMBIGUOUS: t('후보 FK 여러 개'),
   FK_SHARED: t('같은 FK 를 다른 관계가 사용'),
   FK_NOT_EXPECTED: t('FK 생성 대상 아님'),
+  INHERITANCE_FK_OVERLAP: t('상속 FK 와 같은 구성'),
   PAIRS_MISSING: t('관계 속성 짝 없음'),
   PAIRS_INCOMPLETE: t('관계 속성 짝 일부만'),
   PAIRS_INVALID: t('관계 속성 짝이 식별자와 맞지 않음'),

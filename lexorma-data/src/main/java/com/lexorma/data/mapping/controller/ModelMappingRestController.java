@@ -39,6 +39,7 @@ public class ModelMappingRestController {
     private final com.lexorma.data.mapping.service.PhysicalNameRenameService renameService;
     private final com.lexorma.data.mapping.service.ForeignKeyCorrectionService foreignKeyCorrectionService;
     private final com.lexorma.data.mapping.service.UniqueCorrectionService uniqueCorrectionService;
+    private final com.lexorma.data.mapping.service.InheritanceForeignKeyCorrectionService inheritanceForeignKeyCorrectionService;
 
     @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK 계획과 막는 문제·경고, 논리 관계별 FK 미생성 사유(relations), DBMS 식별자 진단(identifiers), planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
     @PreAuthorize("hasRole('USER')")
@@ -351,5 +352,31 @@ public class ModelMappingRestController {
     public ResponseEntity<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Result> uniqueApply(@RequestBody com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Request request,
                                                                                                      @AuthenticationPrincipal AccountDto accountDto) {
         return ResponseEntity.ok(uniqueCorrectionService.apply(accountDto, request));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 가능 여부 (M7-INH-03)", description = "정합성 비교 [상속 구조]의 서브타입(entityIds, 같은 모델, 최대 100개 — 목록 한 쪽)마다 직계 슈퍼타입을 참조하는 상속 FK 를 만들 수 있는지와 막는 사유·선행 보정 대상. 조회 전용 (계획 토큰 없음)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/quality/inheritanceFk/status")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Item>> inheritanceFkStatus(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                              @RequestParam(value = "modelId") Long modelId,
+                                                                                                                              @RequestParam(value = "entityIds") List<Long> entityIds) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.status(accountDto, modelId, entityIds));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 미리보기 (M7-INH-03)", description = "고른 서브타입의 만들 상속 FK(자식·부모 테이블, 컬럼 쌍·순서, 미승인 USER 관계, 이름)와 보정 가능 여부·사유, planToken. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/inheritanceFk/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Plan> inheritanceFkPreview(@RequestBody com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Request request,
+                                                                                                                         @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 적용 (M7-INH-03)", description = "미리보기의 planToken 과 같은 계획이고 고른 서브타입을 모두 보정할 수 있을 때만, 직전 모델 버전(INHFIX-요청 ID)을 남긴 뒤 미승인 상속 FK 를 만든다. "
+            + "기존 테이블·컬럼·FK 는 바꾸지 않는다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 서브타입이 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/inheritanceFk/apply")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Result> inheritanceFkApply(@RequestBody com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Request request,
+                                                                                                                         @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.apply(accountDto, request));
     }
 }

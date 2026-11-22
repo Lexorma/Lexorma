@@ -378,7 +378,7 @@ public class ModelExchangeService {
 
     /**
      * 논리 관계 속성 짝 (형식 3, M-7 보강 3차) : 부모 속성은 관계 원본 엔터티의 주 식별자 속성(일부 허용 — 저장 경로와 같다) 또는 원본 엔터티 자체의 보조 식별자 하나 전체
-     * (M7-AK-D09 — 상속 구조에 참여하는 원본은 보조 식별자 참조 보류, D16, 판정 {@link com.lexorma.data.logical.service.ReferenceKeys}), 자식 속성은 대상 엔터티의 속성,
+     * (M7-AK-D09 · M7-INH-02 — 상속 참여 무관, 조상의 보조 식별자는 아니다, 판정 {@link com.lexorma.data.logical.service.ReferenceKeys#referenceable}), 자식 속성은 대상 엔터티의 속성,
      * 부모·자식·순서 각각 중복 없음 (파일 안의 번호로 확인). 교환 형식은 그대로다 (짝 구조가 같다 — M7-AK-D17).
      * 어기면 파일 전체를 거절한다 (가져오지 않은 것을 조용히 빼지 않는다). 형식 1·2 파일에는 속성 짝이 있을 수 없다
      */
@@ -399,8 +399,6 @@ public class ModelExchangeService {
             Set<Long> key = primaryKeys.computeIfAbsent(ref(i, "entity"), id -> new HashSet<>());
             children(i, "attributes").forEach(member -> key.add(longValue(member.get("attributeId"))));
         }
-        Set<Long> participants = new HashSet<>(supertypes.keySet());
-        participants.addAll(supertypes.values());
         for (Item r : relationships) {
             List<Map<String, Object>> pairs = children(r, "attributes");
             if (pairs.isEmpty()) continue;
@@ -411,7 +409,7 @@ public class ModelExchangeService {
             Set<Long> parents = new HashSet<>();
             Set<Long> childs = new HashSet<>();
             Set<Integer> orders = new HashSet<>();
-            List<com.lexorma.data.logical.service.ReferenceKeys.Key> sourceAlternates = participants.contains(source) ? List.of() : alternates.getOrDefault(source, List.of());
+            List<com.lexorma.data.logical.service.ReferenceKeys.Key> sourceAlternates = com.lexorma.data.logical.service.ReferenceKeys.referenceable(source, id -> alternates.getOrDefault(id, List.of()));
             Set<Long> alternateAttributes = new HashSet<>();
             sourceAlternates.forEach(k -> alternateAttributes.addAll(k.attributeIds()));
             List<Long> orderedParents = new ArrayList<>();

@@ -32,7 +32,7 @@
 | D13 | 화면은 기존 정합성 비교 | [보조 식별자·UNIQUE] 범위의 고르기·보정 판정 칸·미리보기 팝업 |
 | D14 | 최대 100개, planToken, 변경 전 모델 버전, 원자적 | `uk-correction/1`, `UKFIX-<uuid>`, 적용 뒤 모두 MATCH 아니면 전체 롤백 |
 | D15 | 대상 행만 잠근다. `saveConstraint` 의 확인→저장 사이 경합(TOCTOU) 제거 | §6 |
-| D16 | 상속 B : 보조 식별자 UNIQUE 는 엔터티 **자체**의 것만. 상속 구조에 참여하는 부모의 보조 식별자를 참조하는 짝은 보류 | `LogicalHierarchy.participates` 이면 후보 없음 (저장 거절 메시지 별도) |
+| D16 | 상속 B : 보조 식별자 UNIQUE 는 엔터티 **자체**의 것만. 상속 구조에 참여하는 부모의 보조 식별자를 참조하는 짝은 보류 | `LogicalHierarchy.participates` 이면 후보 없음 (저장 거절 메시지 별도). **2026-11-22 M7-INH-02 로 보류 해제** — 부모 자체 AK 는 상속 참여와 무관하게 참조 가능, 상속받은 AK 만 참조 불가 (D-INH-03~05, [inheritance-reference-key-m7.md](inheritance-reference-key-m7.md) 3장) |
 | D17 | 마이그레이션·교환 형식 변경 없음 | 짝 행(`TB_LGCL_REL_ATRB`)의 부모 속성 집합으로 참조 키를 해석 — 저장 구조 없음 |
 
 ## 3. 참조 키 해석 (`logical/service/ReferenceKeys`)
@@ -79,7 +79,7 @@
 - 관계 행 `structure` 에 `referenceKey`(PRIMARY·ALTERNATE)·`referenceKeyId`·`referenceKeyName`.
 - 보조 식별자 참조 관계는 `FK_NOT_EXPECTED` 가 아니라 FK 를 기대한다 (없으면 `FK_MISSING`).
 - 구성이 일치하는 FK 라도 부모 컬럼이 지금 부모 테이블의 참조 가능한 키(PK·고유값 컬럼·UNIQUE·조건 없는 고유 인덱스 — DDL 생성기의 `referencesKey` 와 같은 범위)가 아니면 `FK_KEY_INVALID` (MISMATCH, DEC-09 사후 무효).
-- 상속 구조 참여 부모는 보조 식별자 후보가 없다 (D16).
+- 상속 구조 참여 부모는 보조 식별자 후보가 없다 (D16). → M7-INH-01 이후 : 후보 = 부모 자체 보조 식별자 (`ReferenceKeys.referenceable`), 상속 FK 후보는 일반 관계 후보·물리 전용 진단에서 뺀다 ([inheritance-reference-key-m7.md](inheritance-reference-key-m7.md) 4장).
 
 ## 8. 검증
 
@@ -90,7 +90,7 @@
 
 ## 9. 남은 것
 
-- 상속 구조에 참여하는 부모의 보조 식별자 참조 (D16 보류), 서브타입 자체 보조 식별자의 상속 계층 안 의미.
+- ~~상속 구조에 참여하는 부모의 보조 식별자 참조 (D16 보류), 서브타입 자체 보조 식별자의 상속 계층 안 의미.~~ 2026-11-22 M7-INH-02 로 완료 ([inheritance-reference-key-m7.md](inheritance-reference-key-m7.md)) — 상속받은 AK 참조(A·C형 전략별)는 남음.
 - 일반 단일 PK FK 보정, REF_COLUMN 관계 승인 구조 — [M-8].
 - 순서·구성이 다른 기존 UNIQUE 의 수정·교체 (D07 범위 밖).
 - AI·MCP 는 참조 키 유형을 아직 노출하지 않는다.

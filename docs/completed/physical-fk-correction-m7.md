@@ -68,7 +68,7 @@
 
 | 코드 | 조건 |
 |---|---|
-| `INHERITANCE_LINK` | 자식 엔터티의 직계 슈퍼타입이 부모 엔터티 — 상속 FK 는 상속 구조 진단이 다룬다 (상속 FK 가 있으면 진단은 원래 `FK_COLUMNS`) |
+| `INHERITANCE_LINK` | 자식 엔터티의 직계 슈퍼타입이 부모 엔터티 — 상속 FK 는 상속 구조 진단이 다룬다 (상속 FK 가 있으면 진단은 원래 `FK_COLUMNS`). **2026-11-22 M7-INH-01 (D-INH-11) 로 좁힘** : 관계의 FK 구성이 실제 상속 FK 쌍과 같을 때(진단 `INHERITANCE_FK_OVERLAP`)만. 그 밖의 서브타입 ↔ 직계 슈퍼타입 일반 관계는 일반 FK 로 진단·보정한다 (FK-11 기대값 변경 — [inheritance-reference-key-m7.md](inheritance-reference-key-m7.md) 4.4) |
 | `SINGLE_FK_HELD` | 자기 참조가 아닌 단일 FK (3장) |
 | `CHILD_TABLE_APPROVED`·`CHILD_COLUMN_APPROVED` | 승인된 자식 테이블·자식 컬럼 |
 | `REF_COLUMN_CONFLICT` | 자식 컬럼에 참조 테이블명이 있다 (관계 저장 `buildRelation` 과 같은 규칙) |

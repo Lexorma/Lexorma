@@ -666,7 +666,8 @@ public class PhysicalGenerationService {
                 LogicalEntity parent = relationship.getSourceEntity();
                 boolean self = parent.getId().equals(child.getId());
                 // 짝 판정은 유효 주 식별자로 (서브타입 부모는 루트의 주 식별자 — 상속 구조는 아래에서 UNSUPPORTED 가 된다)
-                // 보조 식별자 참조 (M7-AK-D09) : 부모 자체의 보조 식별자 — 상속 구조에 참여하는 부모는 후보로 넘기지 않는다 (D16 보류)
+                // 보조 식별자 참조 (M7-AK-D09 · M7-INH-02) : 부모 자체의 보조 식별자 (상속 참여 무관 — ReferenceKeys.referenceable, 조상의 것은 넣지 않는다 D-INH-05).
+                // 부모가 서브타입이어도 그 자체 보조 식별자 속성은 부모 테이블의 직접 컬럼이다 (아래 직접 매핑 경로)
                 LogicalModelDto.PairState pairState = LogicalRelationshipPairs.evaluate(relationship, pairsByRelationship.getOrDefault(relationship.getId(), List.of()),
                         new LogicalRelationshipPairs.KeyLookup() {
                             @Override
@@ -676,7 +677,7 @@ public class PhysicalGenerationService {
 
                             @Override
                             public List<com.lexorma.data.logical.service.ReferenceKeys.Key> alternates(LogicalEntity e) {
-                                return inheritance.participates(e.getId()) ? List.of() : LogicalRelationshipPairs.alternateKeys(e);
+                                return com.lexorma.data.logical.service.ReferenceKeys.referenceable(e.getId(), id -> LogicalRelationshipPairs.alternateKeys(e));
                             }
                         });
                 boolean alternate = "ALTERNATE".equals(pairState.keyType());

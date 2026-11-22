@@ -483,7 +483,8 @@ class ForeignKeyCorrectionIntegrationTest {
     }
 
     @Test
-    @DisplayName("FK-11·12 상속 : 서브타입 → 직계 슈퍼타입 관계는 상속 FK 가 있으면 FK_COLUMNS, 없으면 INHERITANCE_LINK 로 막는다. 상속 PK 를 참조하는 일반 관계는 상속 PK 매핑 컬럼으로 판정한다 (단일이면 보류)")
+    @DisplayName("FK-11·12 상속 (D-INH-11 계약 변경) : 슈퍼타입 → 서브타입 일반 관계(상속 PK 가 아닌 자식 컬럼)는 상속 FK 를 후보로 잡지 않아 상속 FK 가 있든 없든 FK_MISSING 이고, 일반 단일 PK FK 라 보류(SINGLE_FK_HELD — M-8)다."
+            + " 예전 기대 FK_COLUMNS / INHERITANCE_LINK 는 직계 부모 테이블로 가는 모든 FK 를 상속 FK 로 보던 판정이었다. 상속 PK 를 참조하는 일반 관계는 상속 PK 매핑 컬럼으로 판정한다 (단일이면 보류)")
     void inheritance() {
         GenerationFixture f = SubtypePhysicalGenerationIntegrationTest.fixture(context, "fkc-inh");
         long party = f.entity("당사자");
@@ -502,15 +503,15 @@ class ForeignKeyCorrectionIntegrationTest {
         List<Long> chosen = List.of(party, org, person, order);
         PhysicalGenerationDto.Plan plan = generation.preview(f.user, f.request(chosen));
         generation.apply(f.user, f.request(chosen, plan.planToken()));
-        // 당사자(슈퍼) → 조직(서브) 관계 : 상속 FK(조직.PTY_NO → 당사자) 가 있어 구성 불일치로 진단된다 (FK 누락 아님)
+        // 당사자(슈퍼) → 조직(서브) 관계 : 상속 FK(조직.PTY_NO → 당사자)는 이 관계의 후보가 아니다 — 기대 FK(조직.UP_PTY_NO → 당사자)가 없어 FK 누락 (예전 FK_COLUMNS)
         LogicalModelDto.Relationship up = f.rel("상위", party, org, false, 0);
         f.pairs(up, new long[]{partyNo, orgUpper});
         // 조직(서브) → 주문 : 부모 키 = 상속 PK (조직.PTY_NO)
         LogicalModelDto.Relationship byOrg = f.rel("주문 조직", org, order, false, 0);
         f.pairs(byOrg, new long[]{partyNo, ordOrg});
         Fx x = new Fx(f, Map.of("당사자", party, "조직", org, "주문", order), Map.of(), Map.of());
-        assertThat(relationship(x, up.id()).structure().code()).isEqualTo("FK_COLUMNS");
-        assertThat(preview(x, up.id()).items().get(0).blockers()).extracting(b -> b.code()).containsExactly(Code.NOT_MISSING);
+        assertThat(relationship(x, up.id()).structure().code()).isEqualTo("FK_MISSING");
+        assertThat(preview(x, up.id()).items().get(0).blockers()).extracting(b -> b.code()).containsExactly(Code.SINGLE_FK_HELD);
         Row inherited = relationship(x, byOrg.id());
         assertThat(inherited.structure().code()).isEqualTo("FK_MISSING");
         Item item = preview(x, byOrg.id()).items().get(0);
@@ -519,14 +520,14 @@ class ForeignKeyCorrectionIntegrationTest {
             assertThat(p.parentColumnId()).isEqualTo(column(f.table(org), "PTY_NO"));
         });
         assertThat(item.blockers()).extracting(b -> b.code()).containsExactly(Code.SINGLE_FK_HELD);
-        // 상속 FK 를 지우면 상위 관계가 FK 누락으로 진단되지만 상속 관계라 보정하지 않는다
+        // 상속 FK 를 지워도 상위 관계의 진단은 같다 (상속 FK 는 상속 구조 진단·상속 FK 보정이 다룬다). 상속 관계라는 이유로 막지 않고, 일반 단일 PK FK 라 보류만 한다 (예전 INHERITANCE_LINK)
         for (Long rel : relations(f.table(org), f.table(party))) {
             jdbc.update("delete from TB_TBL_REL_COL where REL_SN = ?", rel);
             jdbc.update("delete from TB_TBL_REL where REL_SN = ?", rel);
         }
         jdbc.update("update TB_COL set RFRNC_TBL_NM = null where TBL_SN = ?", f.table(org));
         assertThat(relationship(x, up.id()).structure().code()).isEqualTo("FK_MISSING");
-        assertThat(preview(x, up.id()).items().get(0).blockers()).extracting(b -> b.code()).contains(Code.INHERITANCE_LINK);
+        assertThat(preview(x, up.id()).items().get(0).blockers()).extracting(b -> b.code()).containsExactly(Code.SINGLE_FK_HELD);
     }
 
     // ------------------------------------------------------------------ 계획 토큰 · 최신 상태 · 원자성

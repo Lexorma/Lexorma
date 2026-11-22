@@ -24,7 +24,7 @@ public final class ForeignKeyCorrectionDto {
     public enum Code {
         /** 진단이 FK 누락이 아니다 (일치·불일치·비교 불가·미매핑 — 기존 FK 는 고치지 않는다) */
         NOT_MISSING,
-        /** 서브타입 → 직계 슈퍼타입 관계 : 상속 FK 는 상속 구조 진단이 다룬다 (이번 범위 밖) */
+        /** 관계의 FK 구성이 서브타입의 상속 FK 와 같다 (진단 INHERITANCE_FK_OVERLAP — D-INH-11) : 상속 FK 는 상속 FK 보정에서 만든다 */
         INHERITANCE_LINK,
         /** 자기 참조가 아닌 단일 FK : 참조 테이블명 동기화(REF_COLUMN)가 관계를 항상 승인 상태로 만들어 승인 절차를 우회한다 — 정책 제한으로 보류 (M7-FK-D08) */
         SINGLE_FK_HELD,

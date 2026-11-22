@@ -307,20 +307,77 @@ final class SubtypePlanContext {
         return new AncestorState(id, null, table, columns);
     }
 
-    /** 테이블에서 부모 테이블로, 키 컬럼 쌍(자식 i → 부모 i)과 정확히 같은 FK 가 있는가 (출처는 묻지 않는다 — 참조 테이블명에서 만든 관계도 같은 FK) */
+    /**
+     * 테이블에서 부모 테이블로, 키 컬럼 쌍(자식 i → 부모 i)과 순서까지 정확히 같은 FK 가 있는가 (D-INH-11 — {@link ModelStructureQualityJudge#isExactInheritanceFk}).
+     * 출처는 묻지 않는다 — 참조 테이블명에서 만든 관계도 사용자 관계도 같은 FK. (M7-INH-01 전에는 쌍 집합만 비교해 순서가 다른 FK 도 상속 FK 로 보았다)
+     */
     private boolean hasForeignKey(TableInfo table, TableInfo parent, List<ColumnInfo> columns, List<ColumnInfo> parentColumns) {
-        Set<String> expected = new HashSet<>();
-        for (int i = 0; i < columns.size(); i++) expected.add(columns.get(i).getId() + ">" + parentColumns.get(i).getId());
-        for (Fk fk : foreignKeys.getOrDefault(table.getId(), List.of())) {
-            if (fk.targetTableId() == null || !fk.targetTableId().equals(parent.getId())) continue;
-            Set<String> pairs = new HashSet<>();
-            for (int i = 0; i < fk.childIds().size(); i++) {
-                if (fk.childIds().get(i) == null || fk.parentIds().get(i) == null) continue;
-                pairs.add(fk.childIds().get(i) + ">" + fk.parentIds().get(i));
-            }
-            if (pairs.equals(expected) && fk.childIds().size() == expected.size()) return true;
+        return exactForeignKeys(table.getId(), parent.getId(), ids(columns), ids(parentColumns)) > 0;
+    }
+
+    private int exactForeignKeys(Long tableId, Long parentTableId, List<Long> childKey, List<Long> parentKey) {
+        int count = 0;
+        for (Fk fk : foreignKeys.getOrDefault(tableId, List.of())) {
+            if (ModelStructureQualityJudge.isExactInheritanceFk(fk.targetTableId(), fk.childIds(), fk.parentIds(), parentTableId, childKey, parentKey)) count++;
         }
-        return false;
+        return count;
+    }
+
+    private static List<Long> ids(List<ColumnInfo> columns) {
+        return columns.stream().map(ColumnInfo::getId).toList();
+    }
+
+    /**
+     * 부모 FK 상세 (D-INH-11, 18장) : 정상 상속 FK 수 → 상속 FK 후보({@link ModelStructureQualityJudge#isInheritanceCandidate})의 모양 순으로 판정한다.
+     * 후보가 아닌 FK(상속 PK 가 아닌 컬럼의 일반 FK)는 보지 않는다 — 같은 두 테이블 사이의 일반 FK 는 상속 FK 를 대신하지도 막지도 않는다
+     */
+    static String foreignKeyDetail(List<Fk> outgoing, Long parentTableId, List<Long> childKey, List<Long> parentKey) {
+        int exact = 0;
+        for (Fk fk : outgoing) {
+            if (ModelStructureQualityJudge.isExactInheritanceFk(fk.targetTableId(), fk.childIds(), fk.parentIds(), parentTableId, childKey, parentKey)) exact++;
+        }
+        if (exact > 1) return FK_DUPLICATE;
+        if (exact == 1) return FK_OK;
+        Set<Long> keySet = new HashSet<>(childKey);
+        Set<String> expectedPairs = new HashSet<>();
+        for (int i = 0; i < childKey.size() && i < parentKey.size(); i++) expectedPairs.add(childKey.get(i) + ">" + parentKey.get(i));
+        String result = FK_MISSING;
+        for (Fk fk : outgoing) {
+            if (!ModelStructureQualityJudge.isInheritanceCandidate(fk.childIds(), keySet)) continue;
+            if (fk.targetTableId() == null || !fk.targetTableId().equals(parentTableId)) {
+                if (FK_MISSING.equals(result)) result = FK_TARGET;
+                continue;
+            }
+            Set<String> pairs = new HashSet<>();
+            for (int i = 0; i < fk.childIds().size(); i++) pairs.add(fk.childIds().get(i) + ">" + (i < fk.parentIds().size() ? fk.parentIds().get(i) : null));
+            if (pairs.equals(expectedPairs)) return FK_ORDER;
+            result = FK_COLUMNS;
+        }
+        return result;
+    }
+
+    /** 매핑된 서브타입의 부모 FK 상세 (상속 PK·직계 부모 키를 정할 수 없으면 null). {@link #prepare} 뒤에 부른다 — 상속 FK 보정이 쓴다 */
+    String foreignKeyDetail(Long entityId) {
+        Optional<EntityTableMapping> mapping = mapping(entityId);
+        Long parentId = hierarchy.parent(entityId);
+        if (mapping.isEmpty() || parentId == null) return null;
+        TableInfo table = mapping.get().getTable();
+        List<LogicalAttribute> key = rootKey(entityId);
+        Map<Long, SubtypeIdentifierColumnMapping> links = inheritedKeys(mapping.get().getId());
+        List<Long> childKey = new ArrayList<>();
+        for (LogicalAttribute attribute : key) {
+            SubtypeIdentifierColumnMapping link = links.get(attribute.getId());
+            if (link == null || !inTable(link.getColumn(), table)) return null;
+            childKey.add(link.getColumn().getId());
+        }
+        AncestorState parent = ancestor(parentId, Set.of());
+        if (parent.code() != null || parent.table() == null || parent.keyColumns().size() != childKey.size() || childKey.isEmpty()) return null;
+        return foreignKeyDetail(foreignKeys.getOrDefault(table.getId(), List.of()), parent.table().getId(), childKey, ids(parent.keyColumns()));
+    }
+
+    /** 미리 읽은 테이블의 나가는 FK (판정 재료 — 상속 FK 보정의 계획 근거) */
+    List<Fk> outgoing(Long tableId) {
+        return foreignKeys.getOrDefault(tableId, List.of());
     }
 
     /** 부모 FK 판정에 쓴 관계 (계획 근거 — 물리 생성만, 관계를 엔티티로 읽은 경우) */
@@ -354,8 +411,15 @@ final class SubtypePlanContext {
 
     // ------------------------------------------------------------------ 구조 정합성 상세 (M-7 4차 — 매핑 화면·정합성 비교)
 
-    /** 상세 점검 1건. level : OK · ERROR(구조 불일치) · MISSING(필요한 상속 PK 매핑 없음) · UNKNOWN(판단할 정보 부족) · WARNING(구조는 맞음 — 참고) */
-    record Check(String code, String level, java.util.function.Supplier<String> text) {
+    /**
+     * 상세 점검 1건. level : OK · ERROR(구조 불일치) · MISSING(필요한 상속 PK 매핑 없음) · UNKNOWN(판단할 정보 부족) · WARNING(구조는 맞음 — 참고).
+     * detail : 기계 판정용 상세 코드 (M7-INH-03 — PARENT_FK 의 {@link #FK_MISSING} 등, 없으면 null). 화면·보정은 문구가 아니라 이 값으로 판단한다
+     */
+    record Check(String code, String level, java.util.function.Supplier<String> text, String detail) {
+        Check(String code, String level, java.util.function.Supplier<String> text) {
+            this(code, level, text, null);
+        }
+
         /** 문구는 읽을 때 만든다 (목록·정합성 비교는 대부분 읽지 않는다 — 서브타입마다 문구를 만들면 큰 모델에서 비싸다) */
         String message() {
             return text.get();
@@ -374,6 +438,19 @@ final class SubtypePlanContext {
     record Inspection(String code, String result, TableInfo table, TableInfo parentTable, Long parentMappingId, List<KeyCol> tableKey,
                       List<ColumnInfo> parentKey, List<KeyState> keys, List<Fk> foreignKeys, List<Check> checks) {
     }
+
+    /** 부모 FK 상세 (D-INH-11, 18장) : 정상 상속 FK 1개 */
+    static final String FK_OK = "INHERITANCE_FK_OK";
+    /** 상속 FK 후보가 전혀 없다 (상속 FK 보정 대상이 될 수 있는 유일한 상세) */
+    static final String FK_MISSING = "INHERITANCE_FK_MISSING";
+    /** 상속 PK 컬럼 집합 FK 가 직계 부모를 참조하지만 부모 컬럼이 다르다 */
+    static final String FK_COLUMNS = "INHERITANCE_FK_COLUMNS";
+    /** 상속 PK 컬럼 집합 FK 가 직계 부모를 같은 쌍으로 참조하지만 순서가 다르다 */
+    static final String FK_ORDER = "INHERITANCE_FK_ORDER";
+    /** 상속 PK 컬럼 집합 FK 가 직계 부모가 아닌 테이블을 참조한다 */
+    static final String FK_TARGET = "INHERITANCE_FK_TARGET";
+    /** 정상 상속 FK 가 둘 이상 (구조는 유효 — 경고) */
+    static final String FK_DUPLICATE = "INHERITANCE_FK_DUPLICATE";
 
     static final String OK = "OK";
     static final String ERROR = "ERROR";
@@ -495,9 +572,14 @@ final class SubtypePlanContext {
                 checks.add(new Check("KEY_LENGTH", WARNING, () -> Messages.get("상속 PK 컬럼 {0} 의 길이·정밀도가 상위 키와 다릅니다. FK 로는 묶일 수 있습니다.", String.join(", ", lengths))));
             }
             if (typesOk) {
-                boolean fk = hasForeignKey(table, parentTable, columns, parentKey);
+                String detail = foreignKeyDetail(outgoing, parentTable.getId(), ids(columns), ids(parentKey));
+                boolean fk = FK_OK.equals(detail) || FK_DUPLICATE.equals(detail);
                 checks.add(new Check("PARENT_FK", fk ? OK : ERROR, () -> fk ? Messages.get("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 있습니다.", parentTable.getTableName())
-                        : foreignKeyProblem(table, parentTable, columns, outgoing)));
+                        : foreignKeyProblem(detail, table, parentTable, outgoing, columns), detail));
+                if (FK_DUPLICATE.equals(detail)) {
+                    checks.add(new Check(FK_DUPLICATE, WARNING, () -> Messages.get("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 둘 이상 있습니다. 기존 FK 는 자동으로 지우지 않습니다.",
+                            parentTable.getTableName()), FK_DUPLICATE));
+                }
             }
         }
         // 판정과 항목 점검이 어긋나지 않게 판정 결과를 기준으로 남긴다 (항목에 잡히지 않은 판정 사유가 있으면 그 사유를 오류로 더한다)
@@ -507,22 +589,17 @@ final class SubtypePlanContext {
         return new Inspection(judged.code(), result(checks), table, parentTable, parentMappingId, tableKey, parentKey, states, outgoing, checks);
     }
 
-    /** 부모 FK 가 없을 때 이유 : 부모를 참조하는 FK 의 컬럼 쌍이 다르거나 일부만 있음 · 상속 PK 컬럼이 다른 테이블을 참조 · FK 없음 */
-    private static String foreignKeyProblem(TableInfo table, TableInfo parent, List<ColumnInfo> columns, List<Fk> outgoing) {
-        Set<Long> keyIds = new HashSet<>();
-        columns.forEach(c -> keyIds.add(c.getId()));
-        for (Fk fk : outgoing) {
-            if (fk.targetTableId() != null && fk.targetTableId().equals(parent.getId())) {
-                return Messages.get("테이블 {0} 에서 {1} 을(를) 참조하는 FK 가 있지만 컬럼 쌍이 상속 PK 전체와 같지 않습니다 (일부 누락 또는 다른 컬럼).", table.getTableName(), parent.getTableName());
-            }
-        }
-        for (Fk fk : outgoing) {
-            boolean usesKey = fk.childIds().stream().anyMatch(id -> id != null && keyIds.contains(id));
-            if (usesKey && fk.targetTableId() != null) {
-                return Messages.get("상속 PK 컬럼이 직계 상위 테이블 {0} 이(가) 아닌 테이블 {1} 을(를) 참조합니다.", parent.getTableName(), fk.targetTableName());
-            }
-        }
-        return Messages.get("테이블 {0} 에 직계 상위 테이블 {1} 을(를) 참조하는 FK 가 없습니다.", table.getTableName(), parent.getTableName());
+    /** 부모 FK 가 없을 때 이유 (상세 코드별 — 문구는 표시용, 판정은 상세 코드로 한다) */
+    private static String foreignKeyProblem(String detail, TableInfo table, TableInfo parent, List<Fk> outgoing, List<ColumnInfo> columns) {
+        Set<Long> keySet = new HashSet<>(ids(columns));
+        String otherTarget = outgoing.stream().filter(fk -> ModelStructureQualityJudge.isInheritanceCandidate(fk.childIds(), keySet) && !parent.getId().equals(fk.targetTableId()))
+                .map(Fk::targetTableName).filter(Objects::nonNull).findFirst().orElse("-");
+        return switch (detail) {
+            case FK_ORDER -> Messages.get("테이블 {0} 에서 {1} 을(를) 상속 PK 컬럼으로 참조하는 FK 가 있지만 컬럼 순서가 루트 주 식별자 순서와 다릅니다. 기존 FK 는 고치지 않습니다.", table.getTableName(), parent.getTableName());
+            case FK_COLUMNS -> Messages.get("테이블 {0} 에서 {1} 을(를) 참조하는 FK 가 있지만 컬럼 쌍이 상속 PK 전체와 같지 않습니다 (일부 누락 또는 다른 컬럼).", table.getTableName(), parent.getTableName());
+            case FK_TARGET -> Messages.get("상속 PK 컬럼이 직계 상위 테이블 {0} 이(가) 아닌 테이블 {1} 을(를) 참조합니다.", parent.getTableName(), otherTarget);
+            default -> Messages.get("테이블 {0} 에 직계 상위 테이블 {1} 을(를) 참조하는 FK 가 없습니다.", table.getTableName(), parent.getTableName());
+        };
     }
 
     private static String result(List<Check> checks) {

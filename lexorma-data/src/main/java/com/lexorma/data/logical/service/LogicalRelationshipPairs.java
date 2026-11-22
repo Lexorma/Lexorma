@@ -31,7 +31,7 @@ public final class LogicalRelationshipPairs {
     private LogicalRelationshipPairs() {
     }
 
-    /** 엔터티 → 유효 주 식별자(속성 ID, 식별자 순서) · 참조할 수 있는 보조 식별자 (상속 참여 부모면 빈 목록 — M7-AK-D16) */
+    /** 엔터티 → 유효 주 식별자(속성 ID, 식별자 순서) · 참조할 수 있는 보조 식별자 ({@link ReferenceKeys#referenceable} — 엔터티 자체의 것, 상속 참여 무관 — M7-INH-01) */
     public interface KeyLookup {
         List<Long> primary(LogicalEntity entity);
 
@@ -66,7 +66,7 @@ public final class LogicalRelationshipPairs {
                 .map(LogicalIdentifierAttribute::getAttribute).distinct().toList();
     }
 
-    /** 엔터티 자체의 보조 식별자 (식별자 ID 순) */
+    /** 엔터티 자체의 보조 식별자 (식별자 ID 순) = 참조할 수 있는 보조 식별자 후보 (D-INH-03·04, {@link ReferenceKeys#referenceable}) */
     public static List<ReferenceKeys.Key> alternateKeys(LogicalEntity entity) {
         return entity.getIdentifiers().stream().filter(i -> !Boolean.TRUE.equals(i.getIsPrimary()))
                 .sorted(Comparator.comparing(LogicalIdentifier::getId, Comparator.nullsLast(Comparator.naturalOrder())))

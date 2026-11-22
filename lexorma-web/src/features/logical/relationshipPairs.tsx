@@ -141,6 +141,7 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
               {keys.map((k) => (
                 <option key={keyId(k)} value={keyId(k)}>
                   {k.keyType === 'PRIMARY' ? t('주 식별자') : t('보조 식별자 {0}', k.identifierName ?? '-')} ({k.attributeNames.join(', ')})
+                  {k.ownerEntityName && k.ownerEntityName !== data.parentEntityName ? ` · ${t('정의 : {0} (상속)', k.ownerEntityName)}` : k.keyType === 'ALTERNATE' ? ` · ${t('자체 정의')}` : ''}
                 </option>
               ))}
             </select>
@@ -149,6 +150,9 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
       )}
       {selectedKey?.keyType === 'ALTERNATE' && (
         <p className="gh-muted">{t('보조 식별자를 참조하는 짝은 그 식별자의 속성 전체를 식별자 순서대로 이어야 합니다. 물리 FK 는 부모 테이블의 같은 순서 UNIQUE 를 참조하는 미승인 사용자 관계로 만듭니다.')}</p>
+      )}
+      {keys.length > 0 && !readOnly && (
+        <p className="gh-muted">{t('부모 엔터티가 직접 정의한 보조 식별자만 참조할 수 있습니다. 상속받은 보조 식별자는 그 식별자를 정의한 엔터티를 부모로 지정해야 합니다.')}</p>
       )}
       {(selectedKey?.attributeIds.length ?? 0) === 0 ? (
         <div className="ai-dict-callout is-warn" role="status">{t('부모 엔터티에 주 식별자가 없어 속성 짝을 지정할 수 없습니다. 먼저 주 식별자를 정해주세요.')}</div>

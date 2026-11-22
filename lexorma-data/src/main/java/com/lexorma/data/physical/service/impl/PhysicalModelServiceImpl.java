@@ -809,6 +809,38 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 : columnInfoRepository.findAllByTableInfo_IdInAndIsPkTrue(targetIds).stream()
                     .collect(Collectors.groupingBy(c -> c.getTableInfo().getId()));
 
+        // 역방향 중복 방지 (M7-INH D-INH-12, docs/completed/inheritance-reference-key-m7.md 6장) : 새로 만들거나 대상 키가 바뀌는 REF_COLUMN 관계와 같은 컬럼 쌍
+        // (자식 컬럼 1개 → 같은 부모 PK 컬럼)의 다른 관계(USER 등)가 이미 있으면 만들지 않고 거절한다 — 기존 관계를 지우거나 바꾸지 않는다. 대상이 그대로인 관계(이름만 따라가는 경우)는
+        // 보지 않는다 (예전 중복 데이터가 이름 변경을 막지 않게). 참조 테이블명을 쓰는 경로(컬럼 등록·일괄 저장·엑셀·이름 변경·생성·가져오기)와 관계를 만드는 경로(관계 등록·FK 보정·
+        // 상속 FK 보정)는 모두 자식 테이블 행을 먼저 잠그므로 이 검사와 반대쪽 검사(buildRelation 의 참조 테이블명 컬럼 거절)가 서로 직렬화된다
+        Map<Long, ColumnInfo> newTargets = new LinkedHashMap<>();
+        for (ColumnInfo column : candidates.values()) {
+            TableRelation relation = existing.get(column.getId());
+            ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());
+            if (targetPk == null) continue;
+            boolean sameTarget = relation != null && relation.getColumns().get(0).getTargetColumn() != null
+                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId());
+            if (!sameTarget) newTargets.put(column.getId(), targetPk);
+        }
+        if (!newTargets.isEmpty()) {
+            Set<Long> sourceTables = candidates.values().stream().filter(c -> newTargets.containsKey(c.getId())).map(c -> c.getTableInfo().getId()).collect(Collectors.toSet());
+            for (TableRelation other : entityManager.createQuery("select distinct r from TableRelation r join fetch r.columns where r.projectId = :projectId and r.sourceTable.id in :tables"
+                            + " and r.relationType = :fk and r.relationSource <> :ref", TableRelation.class)
+                    .setParameter("projectId", projectId).setParameter("tables", sourceTables).setParameter("fk", TableRelation.Type.FK)
+                    .setParameter("ref", TableRelation.Source.REF_COLUMN).getResultList()) {
+                if (other.getColumns().size() != 1) continue;
+                TableRelationColumn pair = other.getColumns().get(0);
+                if (pair.getSourceColumn() == null || pair.getTargetColumn() == null) continue;
+                ColumnInfo wanted = newTargets.get(pair.getSourceColumn().getId());
+                if (wanted != null && wanted.getId().equals(pair.getTargetColumn().getId())) {
+                    ColumnInfo column = candidates.get(pair.getSourceColumn().getId());
+                    throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 쌍의 FK {0} 이(가) 이미 있어 참조 테이블명으로 FK 를 다시 만들지 않습니다. 참조 테이블명을 비우거나 기존 FK 를 먼저 삭제해주세요. ({1}.{2} → {3}.{4})",
+                            Objects.requireNonNullElse(other.getRelationName(), "-"), column.getTableInfo().getTableName(), column.getColumnName(),
+                            wanted.getTableInfo().getTableName(), wanted.getColumnName());
+                }
+            }
+        }
+
         for (ColumnInfo column : candidates.values()) {
             TableRelation relation = existing.get(column.getId());
             ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());

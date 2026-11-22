@@ -13,6 +13,7 @@ import { StructureView, structureCodeLabel } from './structureDetail';
 import { SubtypeStructureView } from './subtypeKeys';
 import { CORRECTION_MAX, CorrectionDetail, CorrectionLabel, correctionResultMessage, ForeignKeyPreview, type CorrectionItem } from './foreignKeyCorrection';
 import { UNIQUE_CORRECTION_MAX, UniqueDetail, UniqueLabel, UniquePreview, uniqueResultMessage, type UniqueItem } from './uniqueCorrection';
+import { INHERITANCE_CORRECTION_MAX, InheritanceDetail, InheritanceLabel, InheritancePreview, inheritanceResultMessage, type InheritanceItem } from './inheritanceFkCorrection';
 
 /** 진단 유형별 논리 측 값 / 물리 측 값의 이름 */
 const VALUE_LABELS: Record<CheckType, [string, string]> = {
@@ -90,25 +91,42 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   const [picks, setPicks] = useState<Set<number>>(new Set());
   const [pageRows, setPageRows] = useState<Row[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
-  /** 보정 범위 : [관계] = 누락 FK 보정 (M7-FK-01), [보조 식별자] = 누락 UNIQUE 보정 (M7-AK-02). 고르기는 범위마다 따로 (범위를 바꾸면 비운다) */
+  /**
+   * 보정 범위 : [관계] = 누락 FK 보정 (M7-FK-01), [보조 식별자] = 누락 UNIQUE 보정 (M7-AK-02), [상속 구조] = 누락 상속 FK 보정 (M7-INH-03 — 대상 = 서브타입 엔터티 ID).
+   * 고르기는 범위마다 따로 (범위를 바꾸면 비운다 — 서로 다른 ID 공간을 한 선택에 섞지 않는다)
+   */
   const uniqueView = group === 'ALTERNATE_KEY';
-  const relationshipView = group === 'RELATIONSHIP' || uniqueView;
+  const inheritanceView = group === 'INHERITANCE';
+  const relationshipView = group === 'RELATIONSHIP' || uniqueView || inheritanceView;
   const missingCode = uniqueView ? 'UNIQUE_MISSING' : 'FK_MISSING';
-  const pickMax = uniqueView ? UNIQUE_CORRECTION_MAX : CORRECTION_MAX;
+  const pickMax = uniqueView ? UNIQUE_CORRECTION_MAX : inheritanceView ? INHERITANCE_CORRECTION_MAX : CORRECTION_MAX;
   useEffect(() => { setPicks(new Set()); setNotice(null); }, [modelId, group]);
-  /** 이 쪽의 누락 행 : 보정 가능 여부를 한 번에 묻는다 (행마다 부르지 않는다) */
-  const missingIds = useMemo(() => pageRows.map((r) => (r as QualityRow).structure)
-    .filter((st) => st?.kind === (uniqueView ? 'ALTERNATE_KEY' : 'RELATIONSHIP') && st.code === missingCode && st.logicalId != null).map((st) => st!.logicalId as number),
-  [pageRows, uniqueView, missingCode]);
+  /** 상속 구조 행 (서브타입 엔터티 단위 — 상속 PK 매핑 행은 제외) */
+  const subtypeRow = (row: Row) => (row as QualityRow).type === 'INHERITANCE' && (row as QualityRow).attributeId == null ? (row as QualityRow) : null;
+  /** 행 → 보정 대상 ID (상속 구조 = 서브타입 엔터티 ID, 그 밖 = 구조의 논리 ID). 보정 범위의 대상 행이 아니면 null */
+  const targetId = (row: Row): number | null => {
+    if (inheritanceView) return subtypeRow(row)?.entityId ?? null;
+    const st = (row as QualityRow).structure;
+    return st?.code === missingCode && st.logicalId != null ? st.logicalId : null;
+  };
+  /** 이 쪽의 누락 행 : 보정 가능 여부를 한 번에 묻는다 (행마다 부르지 않는다). 상속 구조는 일치하지 않는 서브타입 행만 */
+  const missingIds = useMemo(() => (inheritanceView
+    ? pageRows.filter((r) => subtypeRow(r) && (r as QualityRow).status !== 'MATCH').map((r) => (r as QualityRow).entityId)
+    : pageRows.map((r) => (r as QualityRow).structure)
+      .filter((st) => st?.kind === (uniqueView ? 'ALTERNATE_KEY' : 'RELATIONSHIP') && st.code === missingCode && st.logicalId != null).map((st) => st!.logicalId as number)),
+  [pageRows, uniqueView, inheritanceView, missingCode]); // eslint-disable-line react-hooks/exhaustive-deps -- subtypeRow 는 순수 함수
   const correction = useQuery({
-    queryKey: [uniqueView ? 'uk-correction-status' : 'fk-correction-status', modelId, missingIds],
-    queryFn: async (): Promise<(CorrectionItem | UniqueItem)[]> => (uniqueView
+    queryKey: [uniqueView ? 'uk-correction-status' : inheritanceView ? 'inh-correction-status' : 'fk-correction-status', modelId, missingIds],
+    queryFn: async (): Promise<(CorrectionItem | UniqueItem | InheritanceItem)[]> => (uniqueView
       ? api<UniqueItem[]>(`/api/modelMapping/quality/unique/status?modelId=${modelId}&${missingIds.map((id) => `identifierIds=${id}`).join('&')}`, { silent: true })
-      : api<CorrectionItem[]>(`/api/modelMapping/quality/foreignKey/status?modelId=${modelId}&${missingIds.map((id) => `relationshipIds=${id}`).join('&')}`, { silent: true })),
+      : inheritanceView
+        ? api<InheritanceItem[]>(`/api/modelMapping/quality/inheritanceFk/status?modelId=${modelId}&${missingIds.map((id) => `entityIds=${id}`).join('&')}`, { silent: true })
+        : api<CorrectionItem[]>(`/api/modelMapping/quality/foreignKey/status?modelId=${modelId}&${missingIds.map((id) => `relationshipIds=${id}`).join('&')}`, { silent: true })),
     enabled: relationshipView && missingIds.length > 0,
     staleTime: 0,
   });
-  const correctionById = useMemo(() => new Map((correction.data ?? []).map((i) => ['identifierId' in i ? i.identifierId : i.relationshipId, i] as const)), [correction.data]);
+  const correctionById = useMemo(() => new Map((correction.data ?? []).map((i) => [
+    'identifierId' in i ? i.identifierId : 'subtypeEntityId' in i ? i.subtypeEntityId : i.relationshipId, i] as const)), [correction.data]);
   const summary = useQuery({
     queryKey: ['mapping-quality-summary', modelId],
     queryFn: () => api<QualitySummary>(`/api/modelMapping/quality/summary?modelId=${modelId}`, { silent: true }),
@@ -131,8 +149,8 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   };
 
   const correctable = (row: Row) => {
-    const st = (row as QualityRow).structure;
-    return st?.logicalId != null && st.code === missingCode && correctionById.get(st.logicalId)?.correctable === true ? st.logicalId : null;
+    const id = targetId(row);
+    return id != null && correctionById.get(id)?.correctable === true ? id : null;
   };
   const toggle = (row: Row) => {
     const id = correctable(row);
@@ -161,7 +179,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       return next;
     });
   };
-  const pageIds = pageRows.map((r) => (r as QualityRow).structure?.logicalId).filter((id): id is number => id != null);
+  const pageIds = pageRows.map(targetId).filter((id): id is number => id != null);
   const hiddenPicks = [...picks].filter((id) => !pageIds.includes(id)).length;
   const pageSelectable = pageRows.filter((row) => correctable(row) != null).length;
   /** 적용 뒤·409 뒤 : 목록·요약·ERD·테이블 화면 캐시를 새로 읽는다 */
@@ -170,6 +188,8 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
     void queryClient.invalidateQueries({ queryKey: ['mapping-quality-summary'] });
     void queryClient.invalidateQueries({ queryKey: ['fk-correction-status'] });
     void queryClient.invalidateQueries({ queryKey: ['uk-correction-status'] });
+    void queryClient.invalidateQueries({ queryKey: ['inh-correction-status'] });
+    void queryClient.invalidateQueries({ queryKey: ['mapping-subtype-keys'] });
     void queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === 'string' && /mapping|table|column|erd|relation/i.test(q.queryKey[0] as string) });
   };
   const openCorrection = () => {
@@ -177,11 +197,14 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
     setNotice(null);
     const onRemove = (ids: number[]) => setPicks((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
     dialog.popup({
-      title: uniqueView ? t('누락 UNIQUE 보정 미리보기') : t('누락 FK 보정 미리보기'),
+      title: uniqueView ? t('누락 UNIQUE 보정 미리보기') : inheritanceView ? t('누락 상속 FK 보정 미리보기') : t('누락 FK 보정 미리보기'),
       size: 'large',
       content: ({ close }: DialogControls) => (uniqueView
         ? <UniquePreview modelId={modelId} ids={[...picks]} onClose={close} onRemove={onRemove} onStale={refresh}
             onDone={(result) => { close(); setPicks(new Set()); refresh(); dialog.alert(uniqueResultMessage(result)); }} />
+        : inheritanceView
+          ? <InheritancePreview modelId={modelId} ids={[...picks]} onClose={close} onRemove={onRemove} onStale={refresh}
+              onDone={(result) => { close(); setPicks(new Set()); refresh(); dialog.alert(inheritanceResultMessage(result)); }} />
         : <ForeignKeyPreview modelId={modelId} ids={[...picks]} onClose={close} onRemove={onRemove} onStale={refresh}
             onDone={(result) => { close(); setPicks(new Set()); refresh(); dialog.alert(correctionResultMessage(result)); }} />),
     });
@@ -192,14 +215,14 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
     const widths: Record<string, string> = canEdit
       ? { select: '4%', entityName: '10%', attributeName: '14%', columnName: '12%', type: '7%', status: '10%', fkCorrection: '11%', logicalValue: '10%', physicalValue: '9%', reason: '13%' }
       : { entityName: '11%', attributeName: '15%', columnName: '13%', type: '8%', status: '11%', fkCorrection: '11%', logicalValue: '10%', physicalValue: '9%', reason: '12%' };
-    const fk: GridColumn = { columnName: uniqueView ? t('UNIQUE 보정') : t('FK 보정'), column: 'fkCorrection', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: widths.fkCorrection };
+    const fk: GridColumn = { columnName: uniqueView ? t('UNIQUE 보정') : inheritanceView ? t('상속 FK 보정') : t('FK 보정'), column: 'fkCorrection', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: widths.fkCorrection };
     const select: GridColumn = { columnName: t('고르기'), column: 'select', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: widths.select };
     const base = mappingQualityColumns.flatMap((c) => {
       const sized = { ...c, width: widths[c.column] ?? c.width };
       return c.column === 'status' ? [sized, fk] : [sized];
     });
     return canEdit ? [select, ...base] : base;
-  }, [relationshipView, uniqueView, canEdit]);
+  }, [relationshipView, uniqueView, inheritanceView, canEdit]);
 
   const openDetail = (row: Row) => {
     const issue = row as QualityRow;
@@ -272,21 +295,27 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       )}
 
       {relationshipView && canEdit && (
-        <div className="rename-bar" role="group" aria-label={uniqueView ? t('누락 UNIQUE 보정') : t('누락 FK 보정')}>
+        <div className="rename-bar" role="group" aria-label={uniqueView ? t('누락 UNIQUE 보정') : inheritanceView ? t('누락 상속 FK 보정') : t('누락 FK 보정')}>
           <span className="rename-count" role="status" aria-live="polite">
             {t('선택 {0} / 최대 {1}', picks.size, pickMax)}
             {hiddenPicks > 0 && <span className="gh-muted"> · {t('다른 쪽·검색 결과에서 고른 {0}개 포함', hiddenPicks)}</span>}
           </span>
-          <button type="button" className="btn btn-sm" disabled={pageSelectable === 0} onClick={pickPage}>{uniqueView ? t('이 쪽의 보정 가능 보조 식별자 선택') : t('이 쪽의 보정 가능 관계 선택')}</button>
+          <button type="button" className="btn btn-sm" disabled={pageSelectable === 0} onClick={pickPage}>{uniqueView ? t('이 쪽의 보정 가능 보조 식별자 선택')
+            : inheritanceView ? t('이 쪽의 보정 가능 서브타입 선택') : t('이 쪽의 보정 가능 관계 선택')}</button>
           <button type="button" className="btn btn-sm" disabled={picks.size === 0} onClick={() => { setNotice(null); setPicks(new Set()); }}>{t('선택 모두 비우기')}</button>
           <span className="rename-spacer" />
           {uniqueView
             ? <button type="button" id="btn-uk-correction-preview" className="btn btn-sm btn-primary" disabled={picks.size === 0} onClick={openCorrection}>{t('UNIQUE 보정 미리보기')}</button>
+            : inheritanceView
+              ? <button type="button" id="btn-inh-correction-preview" className="btn btn-sm btn-primary" disabled={picks.size === 0} onClick={openCorrection}>{t('상속 FK 보정 미리보기')}</button>
             : <button type="button" id="btn-fk-correction-preview" className="btn btn-sm btn-primary" disabled={picks.size === 0} onClick={openCorrection}>{t('FK 보정 미리보기')}</button>}
         </div>
       )}
       {relationshipView && notice && <p className="mapping-focus-note" role="status">{notice}</p>}
-      {relationshipView && !uniqueView && (
+      {inheritanceView && (
+        <p className="form-help">{t('상속 FK 보정은 상속 PK 구성·매핑·타입·상위 경로가 모두 맞고 직계 상위 테이블을 참조하는 상속 FK 만 없는 서브타입이 대상입니다. 단일·복합 모두 미승인 사용자 관계로 만들며 기존 테이블·컬럼·FK 는 바꾸지 않습니다. 다단계 상속은 위 단계부터 한 단계씩 보정합니다. 진단 결과가 불일치라도 모두 보정할 수 있는 것은 아닙니다.')}</p>
+      )}
+      {relationshipView && !uniqueView && !inheritanceView && (
         <p className="form-help">{t('FK 보정은 진단이 [대응 FK 없음]인 관계만 대상이며 기존 FK 는 고치거나 지우지 않습니다. 부모 PK 를 참조하는 자기 참조가 아닌 단일 FK 는 승인 정책 충돌로 보류합니다 (컬럼 관리의 참조 테이블로 지정할 수 있습니다). 보조 식별자를 참조하는 FK 는 단일도 미승인 사용자 관계로 만들며, 부모 UNIQUE 가 먼저 일치해야 합니다.')}</p>
       )}
       {uniqueView && (
@@ -318,24 +347,26 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
         onRowClick={openDetail}
         renderCell={(field, row) => {
           if (field === 'select') {
+            const target = targetId(row);
+            if (target == null || (inheritanceView && (row as QualityRow).status === 'MATCH')) return null;
             const st = (row as QualityRow).structure;
             const id = correctable(row);
-            const label = st?.logicalName ?? (row as QualityRow).logicalValue ?? '';
-            if (st?.code !== missingCode) return null;
+            const label = inheritanceView ? (row as QualityRow).entityName ?? '' : st?.logicalName ?? (row as QualityRow).logicalValue ?? '';
             return (
               <input type="checkbox" className="rename-check" checked={id != null && picks.has(id)} disabled={id == null}
-                aria-label={id != null ? (uniqueView ? t('{0} UNIQUE 보정 대상으로 선택', label) : t('{0} FK 보정 대상으로 선택', label)) : t('{0} 은(는) 고를 수 없습니다', label)}
-                title={id == null ? correctionById.get(st.logicalId ?? -1)?.blockers.map((b) => b.reason).join('\n') : undefined}
+                aria-label={id != null ? (uniqueView ? t('{0} UNIQUE 보정 대상으로 선택', label) : inheritanceView ? t('{0} 상속 FK 보정 대상으로 선택', label)
+                  : t('{0} FK 보정 대상으로 선택', label)) : t('{0} 은(는) 고를 수 없습니다', label)}
+                title={id == null ? correctionById.get(target)?.blockers.map((b) => b.reason).join('\n') : undefined}
                 onClick={(e) => e.stopPropagation()} onChange={() => toggle(row)} />
             );
           }
           if (field === 'fkCorrection') {
-            const st = (row as QualityRow).structure;
-            if (st?.code !== missingCode || st.logicalId == null) return <Muted>-</Muted>;
+            const target = targetId(row);
+            if (target == null || (inheritanceView && (row as QualityRow).status === 'MATCH')) return <Muted>-</Muted>;
             if (correction.isError) return <Muted>{t('확인하지 못함')}</Muted>;
-            const found = correctionById.get(st.logicalId);
+            const found = correctionById.get(target);
             if (!found) return <Muted>…</Muted>;
-            return 'identifierId' in found ? <UniqueLabel item={found} /> : <CorrectionLabel item={found} />;
+            return 'identifierId' in found ? <UniqueLabel item={found} /> : 'subtypeEntityId' in found ? <InheritanceLabel item={found} /> : <CorrectionLabel item={found} />;
           }
           if (field === 'type') return checkTypeLabel(row.type);
           if (field === 'status') return <QualityStatus row={row as QualityRow} />;
@@ -374,6 +405,14 @@ function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; 
     queryKey: ['uk-correction-status', row.modelId, [row.structure?.logicalId]],
     queryFn: () => api<UniqueItem[]>(`/api/modelMapping/quality/unique/status?modelId=${row.modelId}&identifierIds=${row.structure?.logicalId}`, { silent: true }),
     enabled: ukMissing,
+    gcTime: 0,
+  });
+  // 상속 구조 서브타입 행 (M7-INH-03) : 누락 상속 FK 보정 가능 여부를 상세를 열 때 묻는다 (일치하면 묻지 않는다)
+  const inhTarget = row.type === 'INHERITANCE' && row.attributeId == null && row.status !== 'MATCH';
+  const inheritanceCorrection = useQuery({
+    queryKey: ['inh-correction-status', row.modelId, [row.entityId]],
+    queryFn: () => api<InheritanceItem[]>(`/api/modelMapping/quality/inheritanceFk/status?modelId=${row.modelId}&entityIds=${row.entityId}`, { silent: true }),
+    enabled: inhTarget,
     gcTime: 0,
   });
   const structure = useQuery({
@@ -415,6 +454,8 @@ function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; 
         : <CorrectionDetail item={correction.data?.[0]} />)}
       {ukMissing && (uniqueCorrection.isError ? <p className="gh-muted" role="alert">{t('UNIQUE 보정 가능 여부를 확인하지 못했습니다.')}</p>
         : <UniqueDetail item={uniqueCorrection.data?.[0]} />)}
+      {inhTarget && (inheritanceCorrection.isError ? <p className="gh-muted" role="alert">{t('상속 FK 보정 가능 여부를 확인하지 못했습니다.')}</p>
+        : <InheritanceDetail item={inheritanceCorrection.data?.[0]} />)}
       {row.type === 'INHERITANCE' && (
         structure.isError ? <p role="alert">{t('상속 구조 상세를 불러오지 못했습니다.')}</p>
           : !structure.data ? <p className="gh-muted" role="status">{t('불러오는 중입니다.')}</p>

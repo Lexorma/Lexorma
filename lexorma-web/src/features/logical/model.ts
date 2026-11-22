@@ -95,7 +95,9 @@ export interface PairState {
   keyType?: 'PRIMARY' | 'ALTERNATE' | null; keyIdentifierId?: number | null; keyIdentifierName?: string | null;
 }
 /** 짝으로 참조할 수 있는 부모 식별자 (주 식별자 먼저, 보조 식별자는 식별자 ID 순 — 상속 구조에 참여하는 부모는 주 식별자만) */
-export interface ParentKey { identifierId: number | null; identifierName: string | null; keyType: 'PRIMARY' | 'ALTERNATE'; attributeIds: number[]; attributeNames: string[] }
+/** ownerEntityId·ownerEntityName : 식별자를 정의한 엔터티 (M7-INH-02 — 서브타입 부모의 주 식별자는 루트, 보조 식별자는 부모 자신) */
+export interface ParentKey { identifierId: number | null; identifierName: string | null; keyType: 'PRIMARY' | 'ALTERNATE'; attributeIds: number[]; attributeNames: string[];
+  ownerEntityId?: number | null; ownerEntityName?: string | null }
 export interface PairCandidate { attributeId: number; attributeName: string; primary: boolean; keyOrder: number | null; isRequired: boolean | null }
 /** GET·PUT /api/logical/relationship/{id}/attributes */
 export interface RelationshipPairs {

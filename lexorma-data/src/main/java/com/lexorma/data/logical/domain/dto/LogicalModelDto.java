@@ -180,9 +180,14 @@ public final class LogicalModelDto {
 
     /**
      * 짝이 참조할 수 있는 부모 식별자 (M7-AK-D09) : 주 식별자(상속 주 식별자 포함) · 부모 자체의 보조 식별자. attributeIds·attributeNames = 식별자 순서.
-     * 화면의 입력 보조용 (식별자 ID 는 저장하지 않는다 — 저장된 짝의 부모 속성 집합으로 다시 해석한다)
+     * 화면의 입력 보조용 (식별자 ID 는 저장하지 않는다 — 저장된 짝의 부모 속성 집합으로 다시 해석한다).
+     * ownerEntityId·ownerEntityName : 식별자를 정의한 엔터티 (M7-INH-02 — 서브타입 부모의 주 식별자는 루트, 보조 식별자는 부모 자신). 상속받은 보조 식별자는 후보에 없다 (D-INH-05)
      */
-    public record ParentKey(Long identifierId, String identifierName, String keyType, List<Long> attributeIds, List<String> attributeNames) {
+    public record ParentKey(Long identifierId, String identifierName, String keyType, List<Long> attributeIds, List<String> attributeNames, Long ownerEntityId,
+                            String ownerEntityName) {
+        public ParentKey(Long identifierId, String identifierName, String keyType, List<Long> attributeIds, List<String> attributeNames) {
+            this(identifierId, identifierName, keyType, attributeIds, attributeNames, null, null);
+        }
     }
 
     /**

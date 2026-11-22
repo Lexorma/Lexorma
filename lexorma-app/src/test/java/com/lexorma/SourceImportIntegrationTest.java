@@ -157,6 +157,31 @@ class SourceImportIntegrationTest {
     }
 
     @Test
+    @DisplayName("M7-U06 : 원본의 새 컬럼이 모델 이름으로 바꾸면 같은 TABLE 의 모델 컬럼과 확장 대문자로만 같을 때(strasse → STRASSE ↔ STRAßE) COLUMN_NAME_TAKEN 으로 막는다 — 원본 식별자 비교·짝짓기는 그대로")
+    void unicodeColumnNameTaken() {
+        Env e = env("m7u06-src");
+        mapping.setBase(e.manager, new SourceMappingDto.BaseRequest(e.connection, null));
+        Map<String, List<SourceCollectionSpec.Table>> schemas = new LinkedHashMap<>();
+        schemas.put("public", List.of(new SourceCollectionSpec.Table(new SourceCatalogSpec.Table(Name.of("uni_tbl"), SourceTableType.TABLE, null),
+                List.of(col("id", 1, "integer", null, null, null, false, null, null), col("strasse", 2, "bigint", null, null, null, true, null, null),
+                        col("memo", 3, "text", null, null, null, true, null, null)),
+                List.of(), List.of(), List.of())));
+        collect(e, schemas);
+        tx.executeWithoutResult(s -> {
+            TableInfo table = table(e, "UNI_TBL", false);
+            column(table, "ID", "INTEGER", null, null, null, false, false, null, 1, false, null);
+            column(table, "STRAßE", "VARCHAR", 10, null, null, true, false, null, 2, false, null);
+        });
+        Long publicSchema = mapping.overview(e.manager).schemas().getFirst().sourceSchemaId();
+        mapping.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(publicSchema, e.schema.getId()));
+        mapping.mapTable(e.manager, new SourceMappingDto.TableRequest(e.sourceTableId("uni_tbl"), e.tables.get("UNI_TBL").getId()));
+        Map<String, Item> items = items(service.candidates(e.manager, null, null, key(e, "uni_tbl")));
+        assertThat(items.get("COLUMN:strasse:ADD").reason()).as(String.valueOf(items.keySet())).isEqualTo(Reason.COLUMN_NAME_TAKEN);
+        assertThat(items.get("COLUMN:strasse:ADD").selectable()).isFalse();
+        assertThat(items.get("COLUMN:memo:ADD").selectable()).isTrue();
+    }
+
+    @Test
     @DisplayName("계획 : 읽기 전용, 의존 항목이 빠지면 적용할 수 없고, 막힌 항목·없는 항목도 이유가 보인다. 계획만으로는 아무것도 바뀌지 않는다")
     void planIsReadOnly() {
         Env e = prepared("m4e-plan");

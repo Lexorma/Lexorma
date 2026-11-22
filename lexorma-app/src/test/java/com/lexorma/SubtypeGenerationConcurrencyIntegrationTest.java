@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M-7 3차 동시성 (M7-D39, docs/ongoing/subtype-physical-transformation.md 30장) : 서로 다른 DB 연결의 두 트랜잭션이 실제로 겹치게 한다 —
+ * M-7 3차 동시성 (M7-D39, docs/completed/subtype-physical-transformation.md 30장) : 서로 다른 DB 연결의 두 트랜잭션이 실제로 겹치게 한다 —
  * 먼저 시작한 쪽은 작업을 마치고 커밋 전에 잠금을 쥔 채 멈추고(latch), 그 사이 둘째 요청을 보낸다. 둘째가 기다리는지(잠금 대기) 바로 거절되는지(NOWAIT → 409),
  * 첫째가 커밋한 뒤 둘째의 최종 결과와 DB 상태를 본다. 결과는 성공 또는 업무 오류(CustomException)뿐이다 — 교착·무한 대기·500 이 없다.
  * PostgreSQL 실행이 기준이다 (H2 는 같은 불변식을 확인할 뿐 프로젝트 행 잠금 동작이 다르다 — CLAUDE.md M-4c 메모).

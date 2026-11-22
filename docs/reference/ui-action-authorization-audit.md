@@ -127,6 +127,7 @@
 | 논리 모델·논리 ERD | 엔터티·관계 승인 | USER + 승인 | 승인 권한 | 승인 권한(USER 이상) |
 | 논리·물리 매핑 | 조회·정합성·추천 | VIEWER | 일치 | — |
 | 논리·물리 매핑 | 매핑·테이블 변경·해제 | USER | `model-mapping-edit` | — |
+| 논리·물리 매핑 | 물리명 추천 일괄 적용 미리보기·적용 (`POST /api/modelMapping/recommendation/rename/preview`, `POST …/recommendation/rename`, M-7 2차 API · 3차 화면 2026-11-21) | USER | 화면 없음 (2차) | `model-mapping-edit` : 고르기 칸·선택 막대·[일괄 적용 미리보기] (3차, VIEWER 에는 없음 — Chromium 확인) |
 | 표준화 품질 진단 | 조회 | VIEWER | 일치 | — |
 
 **ERD 의 버튼 밖 동작** : 두 ERD 모두 `deleteKeyCode={null}`(Delete·Backspace 로 지워지지 않음), `elementsSelectable={false}`, 연결점은 편집 모드에서만(`nodesConnectable={editing}`), 우클릭 메뉴 없음. 편집 모드 버튼은 액션 권한이 없으면 나오지 않는다. 더블클릭(논리 ERD)은 상세를 열 뿐이고 상세는 조회 모드에서 읽기 전용이다.

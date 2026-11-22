@@ -83,7 +83,7 @@ public final class ModelMappingDto {
         }
     }
 
-    // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차, docs/ongoing/subtype-physical-transformation.md 30장)
+    // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차, docs/completed/subtype-physical-transformation.md 30장)
 
     /** 상속 PK 매핑 저장. mappingId = 서브타입의 엔터티 ↔ 테이블 매핑, attributeId = 루트 주 식별자 속성(원본). 변경(id 있음)은 columnId 만 바꾼다 */
     public record SubtypeKeyMapping(Long id, Long mappingId, Long attributeId, Long columnId) {

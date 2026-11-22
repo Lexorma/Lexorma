@@ -859,7 +859,42 @@ class SmokeTest {
         assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=999999999", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
         assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=" + modelId + "&status=UNKNOWN", true).statusCode()).isEqualTo(400);
         assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=" + modelId + "&type=UNKNOWN", true).statusCode()).isEqualTo(400);
+
+        // 구조 정합성 (M-7) : 진단 범위(group) 바인딩, 범위별 목록 건수 = 구조 요약, 예전 목록에는 구조 행이 없다, 잘못된 범위 400
+        var structure = summary.path("structure");
+        for (var entry : Map.of("RELATIONSHIP", "relationship", "ALTERNATE_KEY", "alternateKey", "PHYSICAL_ONLY", "physicalOnly").entrySet()) {
+            var page = mapper.readTree(get("/api/modelMapping/quality/data?page=0&size=1&modelId=" + modelId + "&group=" + entry.getKey(), true).body());
+            assertThat(page.path("recordsTotal").asLong()).as(entry.getKey()).isEqualTo(structure.path(entry.getValue()).path("total").asLong());
+        }
+        assertThat(structure.path("relationship").path("total").asLong()).as("예제 논리 관계").isPositive();
+        var relationshipRow = mapper.readTree(get("/api/modelMapping/quality/data?page=0&size=1&modelId=" + modelId + "&group=RELATIONSHIP&status=MATCH", true).body()).path("data").get(0);
+        assertThat(relationshipRow.path("type").asString()).isEqualTo("RELATIONSHIP");
+        assertThat(relationshipRow.path("structure").path("code").asString()).isEqualTo("FK_MATCH");
+        assertThat(relationshipRow.path("structure").path("columns").size()).isPositive();
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=500&modelId=" + modelId, true).body()).doesNotContain("\"type\":\"RELATIONSHIP\"");
+        assertThat(get("/api/modelMapping/quality/data?page=0&size=5&modelId=" + modelId + "&group=UNKNOWN", true).statusCode()).isEqualTo(400);
         assertThat(get("/api/auth/me", true).body()).contains("\"model-mapping\":true", "\"model-mapping-edit\":true");
+
+        // 자동 매핑 후보·ERD 매핑 표시 (M-7) : HTTP 바인딩(쉼표 ID 목록·경로 변수), 예제는 모두 매핑되어 후보를 내지 않는다, 필수 조건 400
+        long mappingId = mapper.readTree(get("/api/modelMapping/entity/lookup?entityId=" + entityId, true).body()).path("mappingId").asLong();
+        long tableId = mapper.readTree(get("/api/modelMapping/entity/lookup?entityId=" + entityId, true).body()).path("tableId").asLong();
+        var tableSuggestions = mapper.readTree(get("/api/modelMapping/entity/suggestions?entityId=" + entityId, true).body());
+        assertThat(tableSuggestions.path("mapped").asBoolean()).isTrue();
+        assertThat(tableSuggestions.path("unavailableReason").asString()).isEqualTo("ALREADY_MAPPED");
+        var attributeSuggestions = mapper.readTree(get("/api/modelMapping/entity/" + mappingId + "/suggestions", true).body());
+        assertThat(attributeSuggestions.path("attributes").size()).isPositive();
+        attributeSuggestions.path("attributes").forEach(a -> assertThat(a.path("mapped").asBoolean()).isTrue());
+        var entityOverlays = mapper.readTree(get("/api/modelMapping/erd/entities?modelId=" + modelId + "&entityIds=" + entityId + ",999999999", true).body());
+        assertThat(entityOverlays.size()).isEqualTo(1);
+        assertThat(entityOverlays.get(0).path("mapped").asBoolean()).isTrue();
+        assertThat(entityOverlays.get(0).path("tableId").asLong()).isEqualTo(tableId);
+        var tableOverlays = mapper.readTree(get("/api/modelMapping/erd/tables?tableIds=" + tableId, true).body());
+        assertThat(tableOverlays.get(0).path("entityId").asLong()).isEqualTo(entityId);
+        assertThat(tableOverlays.get(0).path("columns").size()).isPositive();
+        assertThat(get("/api/modelMapping/erd/tables", true).body()).as("ID 없음 = 빈 목록").isEqualTo("[]");
+        assertThat(get("/api/modelMapping/entity/suggestions", true).statusCode()).as("entityId 없음").isEqualTo(400);
+        assertThat(get("/api/modelMapping/erd/entities?entityIds=" + entityId, true).statusCode()).as("modelId 없음").isEqualTo(400);
+        assertThat(get("/api/modelMapping/erd/tables?tableIds=abc", true).statusCode()).isEqualTo(400);
     }
 
     @Test
@@ -905,6 +940,28 @@ class SmokeTest {
         assertThat(get(tables + "/data?page=0&size=5", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
         assertThat(get(columns + "/data?page=0&size=5&modelId=999999999", true).body()).contains("LOGICAL_MODEL_IS_NOT_DEFINED");
         assertThat(get(columns + "/data?page=0&size=5&modelId=" + modelId + "&status=UNKNOWN", true).statusCode()).isEqualTo(400);
+
+        // 일괄 적용 (M-7 물리명 추천 일괄 적용 2차) HTTP 바인딩 : 예제는 모두 추천명과 같아 NO_CHANGE 로 막힌다 — 이름을 바꾸지 않는다
+        String rename = "/api/modelMapping/recommendation/rename";
+        long columnId = row.path("physicalColumnId").asLong();
+        String name = row.path("recommendedPhysicalName").asString();
+        var preview = postJson(rename + "/preview", "{\"items\":[{\"type\":\"COLUMN\",\"id\":" + columnId + ",\"recommendedName\":\"" + name + "\"}]}");
+        assertThat(preview.statusCode()).as(preview.body()).isEqualTo(200);
+        var plan = mapper.readTree(preview.body());
+        assertThat(plan.path("applicable").asBoolean()).isFalse();
+        assertThat(plan.path("items").get(0).path("applicability").path("blockers").get(0).path("code").asString()).isEqualTo("NO_CHANGE");
+        assertThat(plan.path("planToken").asString()).hasSize(64);
+        String modifiedAt = plan.path("items").get(0).path("modifiedAt").asString();
+        // 미리보기가 준 기준값·토큰을 그대로 돌려보내면 바인딩·토큰·기준값 검사를 지나 '적용할 수 없는 항목' 400 이 된다
+        var blocked = postJson(rename, "{\"planToken\":\"" + plan.path("planToken").asString() + "\",\"items\":[{\"type\":\"COLUMN\",\"id\":" + columnId
+                + ",\"recommendedName\":\"" + name + "\",\"baseModifiedAt\":\"" + modifiedAt + "\"}]}");
+        assertThat(blocked.statusCode()).as(blocked.body()).isEqualTo(400);
+        assertThat(blocked.body()).contains("INVALID_PHYSICAL_MODEL");
+        assertThat(postJson(rename, "{\"planToken\":\"x\",\"items\":[{\"type\":\"COLUMN\",\"id\":" + columnId + ",\"recommendedName\":\"" + name + "\"}]}").body())
+                .contains("MODEL_BASE_REQUIRED");
+        assertThat(postJson(rename + "/preview", "{\"items\":[]}").statusCode()).isEqualTo(400);
+        assertThat(postJson(rename + "/preview", "{\"items\":[{\"type\":\"VIEW\",\"id\":1,\"recommendedName\":\"X\"}]}").statusCode()).isEqualTo(400);
+        assertThat(get(columns + "/data?page=0&size=1&modelId=" + modelId, true).body()).contains("\"currentPhysicalName\":\"" + row.path("currentPhysicalName").asString() + "\"");
     }
 
     /** V1 예제 논리 모델(LEXORMA)의 ID */

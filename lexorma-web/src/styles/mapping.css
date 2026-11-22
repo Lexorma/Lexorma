@@ -89,3 +89,51 @@ ul.mapping-chips { padding: 0; list-style: none; }
 .gen-table { margin-bottom: 8px; }
 .gen-table > summary { cursor: pointer; padding: 4px 0; overflow-wrap: anywhere; }
 .gen-table > table { margin-top: 4px; }
+
+/* 물리명 추천 일괄 적용 (M-7 3차) : 선택 막대 · 미리보기 */
+.rename-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 8px 0; font-size: 13px; }
+.rename-bar .rename-count { font-variant-numeric: tabular-nums; }
+.rename-bar .rename-spacer { flex: 1 1 auto; }
+.rename-check { width: 16px; height: 16px; margin: 0; vertical-align: middle; }
+.rename-preview-scroll { max-height: min(55vh, 520px); overflow: auto; border: 1px solid var(--gh-border); border-radius: 6px; }
+.rename-preview-table { min-width: 640px; }
+.rename-preview-table thead th { position: sticky; top: 0; background: var(--gh-canvas); z-index: 1; }
+.rename-issues { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; }
+.rename-issues .gh-label { margin-right: 4px; }
+.rename-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; max-width: 100%; }
+.rename-cell-code { font-size: 12px; color: var(--gh-fg-muted); overflow-wrap: anywhere; }
+
+/* 구조 정합성 (M-7) : 복합 키 자리별 비교 */
+.structure-detail { margin-top: 12px; }
+.structure-table { margin: 6px 0; }
+.structure-table tr.structure-diff td { background: var(--gh-danger-subtle); }
+.structure-candidates { margin: 0 0 6px; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
+.structure-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+/* 정합성 진단 상세 : 좁은 화면에서 긴 항목 이름(max-content)이 값 칸을 밀어내지 않게 이름 칸 폭을 제한하고 줄바꿈한다 */
+@media (max-width: 600px) {
+  dialog .quality-detail .dict-detail { grid-template-columns: minmax(0, 38%) minmax(0, 1fr); }
+  dialog .quality-detail .dict-detail dt { overflow-wrap: anywhere; }
+  .structure-table { table-layout: auto; }
+  .structure-detail .term-relink-table { font-size: 12px; }
+}
+
+/* 매핑 후보 추천 (M-7 자동 매핑 후보) : 근거를 글자로 보이고, 고르기만 한다 (저장은 기존 버튼) */
+.mapping-suggestions { margin: 8px 0 12px; }
+.mapping-reasons { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.mapping-reason { padding: 0 6px; border: 1px solid var(--gh-border); border-radius: 2em; font-size: 12px; line-height: 18px; color: var(--gh-fg-muted); }
+.mapping-suggestion-attrs, .mapping-suggestion-columns { margin: 0; padding: 0; list-style: none; }
+.mapping-suggestion-attrs > li { padding: 6px 0; border-top: 1px solid var(--gh-border-muted); }
+.mapping-suggestion-attrs > li:first-child { border-top: 0; }
+.mapping-suggestion-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.mapping-suggestion-head .form-help { margin: 0; }
+.mapping-suggestion-columns > li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0 12px; padding: 4px 8px; border-radius: 6px; }
+.mapping-suggestion-columns > li.is-picked { outline: 2px solid var(--gh-accent-emphasis, var(--gh-accent)); }
+.mapping-suggestion-conflict { margin: 4px 0 0; color: var(--gh-attention); font-size: 12px; }
+.mapping-suggestion-diff { color: var(--gh-danger); }
+.mapping-suggestion-columns > li .btn { margin-left: auto; }
+@media (max-width: 600px) {
+  .mapping-suggestion-columns > li { margin-left: 0; }
+  .mapping-suggestion-columns > li .btn { margin-left: 0; }
+}
+/* 매핑 저장 충돌 안내 (M7-F01 — 오류 내용은 공통 알림, 여기서는 다시 고르라는 안내만) */
+.mapping-conflict { color: var(--gh-attention); }

@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   getCoreRowModel,
@@ -104,6 +104,8 @@ export interface GridProps {
    * 옆 칸과 겹친다. 주면 그 폭 아래에서는 줄이지 않고 표 영역을 가로 스크롤한다 (주지 않은 그리드는 그대로)
    */
   minWidth?: number;
+  /** 지금 보이는 쪽의 행이 바뀔 때마다 (조회·페이지 이동·검색). 화면이 그리드 밖에서 선택을 관리할 때 쓴다 (물리명 추천 일괄 적용) */
+  onPageData?: (rows: Row[]) => void;
 }
 
 interface PageData {
@@ -112,7 +114,7 @@ interface PageData {
 }
 
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) {
-  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch, emptyText, minWidth } = props;
+  const { id, dataUrl, columns, crudActions = '', extraActions, onAction, onRowClick, onCellButton, renderCell, rowClassName, defaultSort, params, searchFilters, initialSearch, emptyText, minWidth, onPageData } = props;
   const { approvalAvailable } = useAuth();
   const dialog = useDialog();
 
@@ -181,6 +183,13 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(props, ref) 
   useEffect(() => {
     clearRowState();
   }, [dataQuery.data, clearRowState]);
+
+  // 바깥에 지금 쪽의 행을 알린다 (넘기는 함수가 바뀌어도 데이터가 같으면 다시 알리지 않는다)
+  const pageDataListener = useRef(onPageData);
+  pageDataListener.current = onPageData;
+  useEffect(() => {
+    if (dataQuery.data) pageDataListener.current?.(rows);
+  }, [dataQuery.data, rows]);
 
   // 조회 조건(params)이 바뀌면 첫 페이지부터
   useEffect(() => {

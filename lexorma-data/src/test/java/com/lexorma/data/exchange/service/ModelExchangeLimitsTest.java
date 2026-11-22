@@ -144,4 +144,67 @@ class ModelExchangeLimitsTest {
         rejected(withAk.apply(List.of(3L)), "같은 엔터티의 속성");      // 형제 엔터티 속성
         rejected(withAk.apply(List.of(99L)), "같은 엔터티의 속성");     // 파일에 없는 속성
     }
+
+    /**
+     * 상속 PK 매핑을 담은 형식 6 파일 (M-7 5차) : 모델 1 + 루트 엔터티 1 + 루트 속성 1 + 주 식별자 1 + 그룹 1 + 구성원 행 n + 서브타입 엔터티 n + TABLE n + 컬럼 n + 엔터티 매핑 n
+     * + 상속 PK 매핑 n (같은 루트 속성을 n 개 서브타입이 각자 다른 컬럼으로) + 빈 엔터티 filler = 5 + 6n + filler. keys false 면 상속 PK 매핑을 뺀다
+     */
+    private static ModelExchangeDto.Document subtypeKeyFile(int subtypes, int filler, boolean keys) {
+        Map<String, List<Item>> model = new LinkedHashMap<>();
+        model.put("LOGICAL_MODEL", List.of(new Item(MODEL, "모델", Map.of("modelName", "모델"))));
+        List<Item> entities = new ArrayList<>();
+        entities.add(new Item(1000L, "루트", Map.of("modelId", MODEL, "entityName", "루트")));
+        List<Item> tables = new ArrayList<>();
+        List<Item> columns = new ArrayList<>();
+        List<Item> mappings = new ArrayList<>();
+        List<Item> keyItems = new ArrayList<>();
+        List<Map<String, Object>> members = new ArrayList<>();
+        for (int i = 0; i < subtypes; i++) {
+            long entity = 1001L + i;
+            entities.add(new Item(entity, "S" + i, Map.of("modelId", MODEL, "entityName", "S" + i)));
+            members.add(Map.of("subtypeEntityId", entity, "sortOrder", i + 1));
+            tables.add(new Item(200_000L + i, "T" + i, Map.of("tableName", "T" + i)));
+            columns.add(new Item(300_000L + i, "K", Map.of("tableInfoId", 200_000L + i, "columnName", "K")));
+            mappings.add(new Item(400_000L + i, "M" + i, Map.of("entityId", entity, "tableId", 200_000L + i)));
+            keyItems.add(new Item(500_000L + i, "K" + i, Map.of("mappingId", 400_000L + i, "attributeId", 1L, "columnId", 300_000L + i)));
+        }
+        for (int i = 0; i < filler; i++) entities.add(new Item(900_000L + i, "F" + i, Map.of("modelId", MODEL, "entityName", "F" + i)));
+        model.put("LOGICAL_ENTITY", entities);
+        model.put("LOGICAL_ATTRIBUTE", List.of(new Item(1L, "루트 번호", Map.of("entityId", 1000L, "attributeName", "루트 번호"))));
+        Map<String, Object> identifier = new HashMap<>(Map.of("entityId", 1000L, "identifierName", "주", "isPrimary", true));
+        identifier.put("attributes", List.of(Map.of("attributeId", 1L, "sortOrder", 1)));
+        model.put("LOGICAL_IDENTIFIER", List.of(new Item(2L, "주", identifier)));
+        Map<String, Object> group = new HashMap<>(Map.of("modelId", MODEL, "supertypeEntityId", 1000L, "groupName", "그룹", "overlapping", true, "total", false));
+        group.put("subtypes", members);
+        model.put("SUBTYPE_GROUP", List.of(new Item(3L, "그룹", group)));
+        model.put("PHYSICAL_TABLE", tables);
+        model.put("PHYSICAL_COLUMN", columns);
+        model.put("TABLE_MAPPING", mappings);
+        if (keys) model.put("SUBTYPE_KEY_MAPPING", keyItems);
+        return new ModelExchangeDto.Document(ModelExchangeDto.FORMAT, 6, null, null, null, model, null);
+    }
+
+    @Test
+    @DisplayName("상속 PK 매핑도 객체 수(50,000)에 들어간다 (M-7 5차) : 종류별 수의 합 + 그룹 구성원 행 = 전체. 49,999·50,000 통과, 50,001 거절, 상속 PK 매핑을 빼면 이내인 파일도 넣으면 초과해 거절. "
+            + "같은 루트 속성을 8,000개 넘는 서브타입이 각자 쓴다")
+    void subtypeKeysCountTowardObjectLimit() {
+        int n = 8_332; // 5 + 6n = 49,997
+        for (int[] c : new int[][]{{2, 49_999}, {3, 50_000}}) {
+            ModelExchangeDto.Document file = subtypeKeyFile(n, c[0], true);
+            assertThat(objects(file)).isEqualTo(c[1]);
+            assertThatCode(() -> ModelExchangeService.validate(file)).as(c[1] + " 개").doesNotThrowAnyException();
+        }
+        ModelExchangeDto.Document over = subtypeKeyFile(n, 4, true);
+        assertThat(objects(over)).isEqualTo(ModelExchangeService.MAX_OBJECTS + 1);
+        rejected(over, "객체가 너무 많습니다");
+        // 상속 PK 매핑을 빼면 이내 (41,669) — 넣으면 초과 (위 over)
+        ModelExchangeDto.Document withoutKeys = subtypeKeyFile(n, 4, false);
+        assertThat(objects(withoutKeys)).isEqualTo(ModelExchangeService.MAX_OBJECTS + 1 - n);
+        assertThatCode(() -> ModelExchangeService.validate(withoutKeys)).doesNotThrowAnyException();
+        // 객체 수 초과는 참조 검사보다 먼저 (상속 PK 매핑이 없는 컬럼을 가리켜도 수로 먼저 거절)
+        ModelExchangeDto.Document overBroken = subtypeKeyFile(n, 4, true);
+        overBroken.model().put("SUBTYPE_KEY_MAPPING", overBroken.model().get("SUBTYPE_KEY_MAPPING").stream()
+                .map(k -> new Item(k.id(), k.name(), Map.of("mappingId", 400_000L, "attributeId", 1L, "columnId", 1L))).toList());
+        rejected(overBroken, "객체가 너무 많습니다");
+    }
 }

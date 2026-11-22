@@ -5,6 +5,7 @@ import com.lexorma.data.column.domain.dto.TermResolveDto;
 import com.lexorma.data.column.domain.dto.ColumnBulkSaveDto;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.service.ColumnManageService;
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.data.column.domain.dto.ColumnInfoDto;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.physical.service.PhysicalModelService;
@@ -98,22 +99,28 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     public void insertColumn(AccountDto accountDto, ColumnInfoDto columnInfoDto) {
         Long projectId = accountDto.getProjectId();
 
-        TableInfo tableInfo = tableInfoRepository.findByIdAndProjectId(columnInfoDto.getTableInfoId(), projectId);
+        // 테이블 행을 먼저 잠그고 읽는다 (기다림) : 같은 테이블의 컬럼 구성을 바꾸는 쓰기의 공통 잠금이다 — 컬럼 일괄 저장·엑셀 업로드·컬럼 삭제·PK 변경,
+        // 물리명 추천 일괄 적용(프로젝트 배타 뒤 이 행을 NOWAIT), 논리 → 물리 생성(M7-D39). 아래 이름 중복 검사는 이 잠금 뒤의 최신 상태로 한다 —
+        // 같은 테이블에 같은 이름을 동시에 등록하거나, 그 이름으로 다른 컬럼의 이름을 바꾸는 적용과 함께 커밋되지 않는다 (M-7 물리명 일괄 적용 2차 후속, 2026-11-21).
+        // 예전에는 새 PK 컬럼일 때만 잠갔다 (PK 가 아닌 등록은 업무 설명 직접 편집처럼 테이블 행을 쥔 짧은 작업을 이제 기다린다)
+        TableInfo tableInfo = columnInfoDto.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(columnInfoDto.getTableInfoId(), projectId).orElse(null);
         StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
 
         // 테이블/표준용어를 선택하지 않았거나 다른 프로젝트의 정보면 등록할 수 없다.
         if(tableInfo == null){
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
-        // PK 구성을 바꾸는 쓰기(새 PK 컬럼)는 테이블 행을 먼저 잠근다 : 그 테이블을 부모로 쓰는 논리 → 물리 생성(M-7 3차, M7-D39)이 기다리지 않고 잠가 확인한다.
-        // PK 가 아닌 컬럼은 부모 키를 바꾸지 않으므로 잠그지 않는다 (업무 설명 직접 편집 등 테이블 행을 쥔 다른 작업을 기다리지 않는다 — AI-5 계약 그대로)
-        if ("Y".equalsIgnoreCase(columnInfoDto.getIsPk())) tableInfoRepository.findForUpdate(tableInfo.getId(), projectId);
         if(standardTerm == null){
             throw new CustomException(ErrorCode.NOT_FOUND_TERM_DATA);
         }
+        // 컬럼명 필수 (M7-U05) : null·빈 문자열·공백류만인 이름은 입력 오류 (중복 오류가 아니다). DB 도 NOT NULL·CK_COL_01 로 막는다
+        if (ColumnNameKey.isBlankName(columnInfoDto.getColumnName())) {
+            throw CustomException.withMessage(ErrorCode.INVALID_PHYSICAL_MODEL, "컬럼명을 입력해주세요."); // 코드·400 은 그대로, 안내는 이 상황 문구만
+        }
 
         // 같은 테이블 안에서만 컬럼명 중복을 막는다. (다른 테이블에는 같은 표준 컬럼을 쓸 수 있다)
-        List<ColumnInfo> duplicates = columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(projectId, tableInfo.getId(), columnInfoDto.getColumnName());
+        // 비교 : 앞뒤 공백을 지우고 대문자로 (M7-U01 — CUST_NO 가 있으면 cust_no·" CUST_NO " 도 같은 이름이다). 저장하는 이름은 입력 그대로다
+        List<ColumnInfo> duplicates = columnInfoRepository.findSameName(projectId, tableInfo.getId(), columnInfoDto.getColumnName());
 
         if(!duplicates.isEmpty()){
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName() + "." + columnInfoDto.getColumnName());
@@ -138,6 +145,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         columnInfoRepository.save(columnInfo);
         tableInfo.getColumns().add(columnInfo);
         standardTerm.getColumnInfos().add(columnInfo);
+        // DB UNIQUE(UX_COL_01) 최종 방어 : 위 검사와 같은 기준이라 보통은 걸리지 않는다. 걸리면 같은 중복 오류로 (트랜잭션은 롤백)
+        ColumnNameKey.flush(entityManager, () -> new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName() + "." + columnInfoDto.getColumnName()));
         // 참조 테이블명 → 관계, 새 PK 로 다른 테이블의 참조가 확정될 수도 있다
         physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
     }
@@ -158,7 +167,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     @Override
     @Transactional(readOnly = true) // DTO 가 소속 테이블·스키마(지연 로딩)를 읽는다
     public List<ColumnInfoDto> selectDuplicateColumns(AccountDto accountDto, Long tableInfoId, String columnName) {
-        return columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(accountDto.getProjectId(), tableInfoId, columnName).stream()
+        // 등록과 같은 비교 기준 (앞뒤 공백 제거 + 대문자, M7-U01)
+        return columnInfoRepository.findSameName(accountDto.getProjectId(), tableInfoId, columnName).stream()
                 .map(ColumnInfoDto::fromEntity)
                 .toList();
     }
@@ -256,7 +266,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 "bizDescription"
         );
 
-        // 파일 안 중복 확인용 : "테이블ID|컬럼명"
+        // 파일 안 중복 확인용 : "테이블ID|비교 값" (앞뒤 공백 제거 + 대문자, M7-U01 — 컬럼명은 적은 그대로 저장한다)
         Set<String> uploadedColumns = new HashSet<>();
 
         // 업로드 중에는 테이블/표준용어가 바뀌지 않으므로 조회 결과(ID)를 캐시한다. (없으면 null 로 기록)
@@ -265,11 +275,32 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Set<String> ambiguousTableNames = new HashSet<>();
         Map<String, Long> termIdByAbbreviation = new HashMap<>();
 
+        // 잠금 순서 (M7-U07) : 업로드 전체가 한 트랜잭션이라 청크마다 ID 순으로 잠가도 청크 사이에서 순서가 뒤집혀 교착이 날 수 있었다
+        // (업로드 A 청크 1 = T1 → 청크 2 = T2, 업로드 B 청크 1 = T2 → 청크 2 = T1 — PostgreSQL 40P01 재현). 파일을 한 번 먼저 읽어 대상 테이블명만 모으고
+        // (행은 메모리에 두지 않는다), 그 테이블 행을 모두 ID 순으로 잠근 뒤 청크 처리를 시작한다. 청크·저장·전체 롤백은 그대로다
+        Set<String> writtenTables = new HashSet<>();
+        // 첫 열(테이블명)만 값으로 만든다 (나머지 칸은 읽고 버린다 — 할당을 줄인다)
+        ExcelUtils.readExcelRows(file, 0, List.of(tableExcelHeaders.get(0)), FIRST_ROW, row -> {
+            String written = row.get("tableName");
+            if (written != null && !written.isEmpty()) writtenTables.add(written.toUpperCase());
+        });
+        resolveUploadTables(projectId, writtenTables, tableIdByName, tableNameById, ambiguousTableNames);
+        Set<Long> lockedTables = new HashSet<>();
+        writtenTables.stream().map(tableIdByName::get).filter(Objects::nonNull).distinct().sorted().forEach(id -> {
+            tableInfoRepository.findForUpdate(id, projectId);
+            lockedTables.add(id);
+        });
+
         // 청크(500행) 단위 : 테이블/용어/중복은 청크당 IN 조회 한 번씩, 저장은 JDBC 배치, 저장 후 영속성 컨텍스트 비우기
         ExcelUtils.readExcelRowsInChunks(file, 0, tableExcelHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
             List<Map<String, String>> columnRows = rows.stream().filter(map -> !map.get("tableName").isEmpty()).toList();
 
             loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdByAbbreviation);
+            // 이 청크가 컬럼을 더할 테이블 행은 위에서 업로드 전체 기준으로 이미 ID 순으로 잠갔다 (단건 등록과 같은 공통 잠금 — 그 뒤에 이미 있는 컬럼을 읽는다).
+            // 먼저 읽은 테이블 집합에 없는 테이블은 없어야 하지만, 있으면 여기서 잠근다
+            columnRows.stream().map(map -> tableIdByName.get(map.get("tableName").toUpperCase())).filter(java.util.Objects::nonNull).distinct().sorted()
+                    .filter(id -> !lockedTables.contains(id))
+                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
             Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
 
             List<ColumnInfo> columnInfos = new ArrayList<>();
@@ -307,8 +338,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 }
                 String tableName = tableNameById.get(tableInfoId);
 
-                // 표준용어 : 영문약어(대문자) 우선, 없으면 입력값 그대로
+                // 컬럼명 필수 (M7-U05) : 빈 칸·공백류만은 입력 오류 — 업로드 전체 취소 (예전에는 용어 없음 오류로 끝났다)
                 String columnName = map.get("columnName");
+                if (ColumnNameKey.isBlankName(columnName)) {
+                    throw CustomException.withMessage(ErrorCode.INVALID_PHYSICAL_MODEL, "{0} : 컬럼명이 비어 있는 행이 있습니다.", tableName);
+                }
+                // 표준용어 : 영문약어(대문자) 우선, 없으면 입력값 그대로
                 Long termId = termIdByAbbreviation.get(columnName.toUpperCase());
                 if (termId == null) {
                     termId = termIdByAbbreviation.get(columnName);
@@ -321,7 +356,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 chunkTableIds.add(tableInfoId);
 
                 // 같은 테이블 안에서만 컬럼명 중복을 막는다. (화면 등록과 같은 기준) - 하나라도 있으면 업로드 전체 취소
-                String columnKey = tableInfoId + "|" + columnName;
+                String columnKey = tableInfoId + "|" + ColumnNameKey.of(columnName);
 
                 if (!uploadedColumns.add(columnKey)) {
                     throw new CustomException(ErrorCode.COLUMN_DUPLICATE_IN_FILE, tableName + "." + columnName);
@@ -368,11 +403,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                         .build());
             }
 
-            // PK 컬럼을 더하는 테이블 행만 ID 순으로 잠근다 (부모 키를 바꾸는 쓰기의 공통 잠금 — M-7 3차, M7-D39. PK 가 아닌 컬럼만 올리면 기다리지 않는다 — AI-5 계약 그대로)
-            columnInfos.stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(c -> c.getTableInfo().getId()).distinct().sorted()
-                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
+            // 테이블 행 잠금은 위(이미 있는 컬럼을 읽기 전)에서 이 청크의 모든 테이블에 걸었다 (PK 컬럼을 더하는 테이블 포함 — M-7 3차 M7-D39 의 잠금을 넓힌 것)
             columnInfoRepository.saveAll(columnInfos);
-            // 참조 테이블명 → 관계 (청크의 테이블 기준, 조회 전에 자동 flush 되어 저장한 행을 DB 에서 다시 읽는다)
+            // DB UNIQUE(UX_COL_01) 최종 방어 : 걸리면 같은 중복 오류로 업로드 전체를 취소한다 (기존처럼 하나라도 중복이면 전체 취소)
+            ColumnNameKey.flush(entityManager, () -> new CustomException(ErrorCode.SAVED_DATA_EXISTS,
+                    chunkTableIds.stream().sorted().map(tableNameById::get).collect(Collectors.joining(", "))));
+            // 참조 테이블명 → 관계 (청크의 테이블 기준, 저장한 행을 DB 에서 다시 읽는다)
             physicalModelService.syncReferenceRelations(projectId, chunkTableIds);
             entityManager.flush();
             entityManager.clear();
@@ -407,21 +443,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
      */
     private void loadColumnUploadReferences(Long projectId, List<Map<String, String>> columnRows, Map<String, Long> tableIdByName,
                                             Map<Long, String> tableNameById, Set<String> ambiguousTableNames, Map<String, Long> termIdByAbbreviation) {
-        Set<String> writtenNames = columnRows.stream()
-                .map(map -> map.get("tableName").toUpperCase())
-                .filter(name -> !tableIdByName.containsKey(name))
-                .collect(Collectors.toSet());
-
-        if (!writtenNames.isEmpty()) {
-            List<TableInfo> candidates = tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId,
-                    writtenNames.stream().map(TableNameResolver::tableNameOf).collect(Collectors.toSet()));
-            for (String written : writtenNames) {
-                TableNameResolver.Result target = TableNameResolver.resolve(written, null, candidates, null);
-                tableIdByName.put(written, target.status() == TableNameResolver.Status.FOUND ? target.table().getId() : null);
-                if (target.status() == TableNameResolver.Status.FOUND) tableNameById.put(target.table().getId(), target.table().getTableName());
-                if (target.status() == TableNameResolver.Status.AMBIGUOUS) ambiguousTableNames.add(written);
-            }
-        }
+        resolveUploadTables(projectId, columnRows.stream().map(map -> map.get("tableName").toUpperCase()).collect(Collectors.toSet()),
+                tableIdByName, tableNameById, ambiguousTableNames);
 
         Set<String> abbreviations = columnRows.stream()
                 .flatMap(map -> Stream.of(map.get("columnName").toUpperCase(), map.get("columnName")))
@@ -439,22 +462,41 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         }
     }
 
+    /** 엑셀에 적은 테이블명(대문자) → 테이블 ID (아직 찾지 않은 이름만 한 번에 조회, 없으면 null · 여러 스키마면 ambiguous 에 기록) */
+    private void resolveUploadTables(Long projectId, Set<String> names, Map<String, Long> tableIdByName, Map<Long, String> tableNameById,
+                                     Set<String> ambiguousTableNames) {
+        Set<String> writtenNames = names.stream()
+                .filter(name -> !tableIdByName.containsKey(name))
+                .collect(Collectors.toSet());
+
+        if (!writtenNames.isEmpty()) {
+            List<TableInfo> candidates = tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId,
+                    writtenNames.stream().map(TableNameResolver::tableNameOf).collect(Collectors.toSet()));
+            for (String written : writtenNames) {
+                TableNameResolver.Result target = TableNameResolver.resolve(written, null, candidates, null);
+                tableIdByName.put(written, target.status() == TableNameResolver.Status.FOUND ? target.table().getId() : null);
+                if (target.status() == TableNameResolver.Status.FOUND) tableNameById.put(target.table().getId(), target.table().getTableName());
+                if (target.status() == TableNameResolver.Status.AMBIGUOUS) ambiguousTableNames.add(written);
+            }
+        }
+    }
+
     /**
-     * 청크의 (테이블, 컬럼명) 중 이미 등록된 조합 → "테이블ID|컬럼명"
+     * 청크의 (테이블, 컬럼명) 중 이미 등록된 조합 → "테이블ID|비교 값" (비교 값이 같으면 이미 있는 이름이다, M7-U01)
      */
     private Set<String> findExistingColumns(Long projectId, List<Map<String, String>> columnRows, Map<String, Long> tableIdByName) {
         Set<Long> tableIds = columnRows.stream()
                 .map(map -> tableIdByName.get(map.get("tableName").toUpperCase()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Set<String> columnNames = columnRows.stream().map(map -> map.get("columnName")).collect(Collectors.toSet());
+        Set<String> columnNames = columnRows.stream().map(map -> ColumnNameKey.of(map.get("columnName"))).collect(Collectors.toSet());
 
         if (tableIds.isEmpty() || columnNames.isEmpty()) {
             return Set.of();
         }
 
         return columnInfoRepository.findTableColumnKeys(projectId, tableIds, columnNames).stream()
-                .map(key -> key[0] + "|" + key[1])
+                .map(key -> key[0] + "|" + ColumnNameKey.of((String) key[1]))
                 .collect(Collectors.toSet());
     }
 
@@ -574,10 +616,10 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
         }
 
-        // 남는 기존 컬럼명 (중복 확인용)
+        // 남는 기존 컬럼명의 비교 값 (중복 확인용 — 앞뒤 공백 제거 + 대문자, M7-U01). 이 저장에서 지우는 컬럼의 이름은 새 컬럼이 쓸 수 있다
         Set<String> columnNames = existing.values().stream()
                 .filter(column -> !deletedIds.contains(column.getId()))
-                .map(ColumnInfo::getColumnName)
+                .map(column -> ColumnNameKey.of(column.getColumnName()))
                 .collect(Collectors.toCollection(HashSet::new));
 
         // 2) 행 검증 : 기존 컬럼(수정) / 새 컬럼(추가)
@@ -626,7 +668,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
 
             String columnName = term.getCommonStandardTermAbbreviation();
-            if (!columnNames.add(columnName)) {
+            // 컬럼명 = 용어 약어 : 비어 있으면 입력 오류 (M7-U05, 중복 오류가 아니다)
+            if (ColumnNameKey.isBlankName(columnName)) {
+                errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("표준용어 {0} 에 영문약어가 없어 컬럼명을 만들 수 없습니다.", term.getCommonStandardTermName())));
+                continue;
+            }
+            if (!columnNames.add(ColumnNameKey.of(columnName))) {
                 errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 이 테이블에 이미 같은 컬럼명이 있습니다.", columnName)));
                 continue;
             }
@@ -654,6 +701,12 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             tableInfo.getColumns().remove(column);
             if (term != null && term.getColumnInfos() != null) term.getColumnInfos().remove(column);
             columnInfoRepository.delete(column);
+        }
+        // 지운 컬럼의 이름을 새 컬럼이 다시 쓰는 저장(X 삭제 + X 추가)은 예전처럼 허용한다. Hibernate 는 커밋 때 INSERT 를 DELETE 보다 먼저 보내므로
+        // UNIQUE(UX_COL_01) 에 걸리지 않게 삭제를 먼저 내보낸다 — 삭제가 있고 새 컬럼도 있을 때 한 번만. 삭제 가능 여부(승인·관계·인덱스·제약조건)는 위에서 이미 확인했고
+        // 이 뒤의 등록이 실패하면 삭제도 함께 롤백된다 (한 트랜잭션)
+        if (!deletedIds.isEmpty() && rows.stream().anyMatch(row -> row.getId() == null)) {
+            entityManager.flush();
         }
 
         boolean isApprovalAvailable = AuthUtil.isApprovalAvailable();
@@ -699,6 +752,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             created++;
         }
 
+        // DB UNIQUE(UX_COL_01) 최종 방어 (위 검사와 같은 기준이라 보통은 걸리지 않는다) : 걸리면 같은 중복 오류, 저장 전체 롤백
+        ColumnNameKey.flush(entityManager, () -> new CustomException(ErrorCode.SAVED_DATA_EXISTS, tableInfo.getTableName()));
         physicalModelService.syncReferenceRelations(projectId, List.of(tableInfo.getId()));
         return new ColumnBulkSaveDto.Result(true, created, updated, deletedIds.size(), List.of());
     }

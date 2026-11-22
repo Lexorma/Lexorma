@@ -464,3 +464,84 @@ M-5 7차가 표준 용어 영문약어의 조회·수정 기준을 DB 저장값(
 - 전체 : H2 `./gradlew build --rerun-tasks -PfrontendPrebuilt=true` 1,042건 실패 0 · 건너뜀 45, PostgreSQL 18.6(빈 임시 DB) 1,042건 실패 0 · 건너뜀 30 (M-5 8차 1,036 + 6). `npm run typecheck`·`npm run build` 통과.
 - 미검증 : 실제 Oracle·MySQL·MariaDB, Linux CI. 오래된 생성 계획의 안내는 공통 `MODEL_CONFLICT` 문구(“…다시 불러와 확인한 뒤 저장하세요 [충돌한 객체 : 생성 계획]”) 그대로다.
 
+## 18. 후속 (2026-11-21) : 표준 용어 기반 자동 매핑 후보 · ERD 매핑 표시 · 논리 ↔ 물리 ERD 상호 이동
+
+> M-7 '모델링 기능 후속' 의 남은 세 항목. 새 테이블·마이그레이션·외부 서비스·LLM 없음. 추천·표시는 모두 조회 전용이고, 저장은 기존 매핑 저장 API 만 쓴다.
+
+### 18.1 기존 구조 확인
+
+- 매핑 저장 : `POST /api/modelMapping/entity`(엔터티 ↔ 테이블), `POST /api/modelMapping/attribute`(속성 ↔ 컬럼), 상속 PK 매핑 `POST …/subtypeKey`. 저장은 논리 모델 행 → 테이블 행을 잠그고 1:1·소속·상속 PK 교차 중복을 다시 검사하며, 충돌은 400 `SAVED_DATA_EXISTS`(엔터티·속성·컬럼이 이미 다른 매핑에 쓰임)다 — 409 가 아니다. 이 계약을 그대로 쓴다.
+- 후보 조회 : `GET …/table/data`(매핑하지 않은 테이블, 스키마·이름 검색, 페이징), 매핑 상세 `GET …/entity/{id}` 의 `unmappedColumns`(속성 매핑·상속 PK 매핑에 쓰이지 않은 컬럼). 근거·우선순위는 없었다.
+- 표준 용어 : 논리 속성 `TB_LGCL_ATRB.STD_TRM_SN`, 물리 컬럼 `TB_COL.STD_TRM_SN`(1개), 용어 승인 `APRV_YN`. 같은 프로젝트의 용어만 참조한다.
+- ERD : 논리 ERD `?modelId=&entityId=`(범위 밖이면 그 엔터티 이웃을 불러와 선택·가운데), 물리 ERD `?schemaId=&tableId=`(한 번 쓰고 지움). 노드는 `features/erd/TableNode.tsx`·`features/logical/erdNodes.tsx` 를 버전 비교 ERD 와 함께 쓴다. 매핑 표시는 없었고, 논리 모델 상세만 `GET …/entity/lookup` 으로 매핑 1건을 보였다.
+
+### 18.2 자동 매핑 후보 (정책 M7-R01~R07)
+
+- **조회 전용** (R01) : `MappingSuggestionService` 는 읽기 전용 트랜잭션·투영 질의(`MappingSuggestionQueryRepository`)만 쓴다. 후보가 하나여도 저장하지 않는다 (R03).
+- **근거와 수준** (R02, R07) : 점수·확률 없이 규칙으로 근거(reasons)와 수준(level)만 정한다. `STANDARD` = 표준 용어 ID 근거, `REFERENCE` = 이름·명명 규칙·미승인 용어 같은 참고 근거.
+  - 테이블 후보 (`GET /api/modelMapping/entity/suggestions?entityId=&schemaId=`) : `KEY_TERMS`(엔터티 주 식별자 속성의 용어 = 테이블 PK 컬럼의 용어, 개수까지 같고 용어 없는 키가 없을 때만 — STANDARD) · `TABLE_NAME`(표준 단어로 만든 테이블명과 같음 — 물리명 추천과 같은 `generateTableNames`) · `TABLE_COMMENT`(테이블 코멘트 = 엔터티명, 공백·`_` 무시). 매핑하지 않은 테이블만, 스키마 범위, 최대 20개, 순서 = 가장 앞선 근거 → 근거 수 → 이름. `matchedTerms/termAttributes`(속성 용어가 테이블 컬럼에 있는 수)는 보여만 준다. 근거 없는 테이블은 기존 일반 검색에 그대로 남는다.
+  - 컬럼 후보 (`GET /api/modelMapping/entity/{mappingId}/suggestions`) : 속성마다 `STANDARD_TERM`(같은 용어 ID + 승인 — STANDARD) · `STANDARD_TERM_UNAPPROVED`(같은 용어지만 미승인 — REFERENCE, note `TERM_NOT_APPROVED`) · `COLUMN_NAME`(컬럼명 = 용어 영문약어, `StandardNames.sameColumnName`) · `LOGICAL_NAME`(속성명 = 컬럼 논리명 `COL_EXPLN`, 공백·`_` 무시) 순. 용어 없는 속성은 note `NO_TERM`.
+- **충돌** (R04, 지시 8) : 같은 용어 후보 여럿 `MULTIPLE_STANDARD`, 근거마다 다른 컬럼 `REASONS_DIFFER`, 첫 후보를 다른 속성도 첫 후보로 가짐 `SHARED`(후보마다 `sharedWith`). 모두 보이고 고르지 않는다.
+- **구조 차이** : 후보마다 "이 짝을 매핑했다면" 정합성 비교의 기존 판정(`ModelMappingQualityService.diagnose`)을 그대로 돌려 불일치 항목(`differences` — 타입·길이·필수·식별자·용어·이름)을 보인다. 판정 규칙을 새로 만들지 않았고, 후보 근거와 섞지 않는다.
+- **기존 매핑 보호** (R05) : 매핑된 엔터티·속성은 `ALREADY_MAPPED`(후보 없음), 매핑된 테이블·컬럼(상속 PK 매핑 포함)은 후보에서 빠진다. 변경·해제는 기존 흐름.
+- **범위** (R06) : 엔터티·매핑·용어·테이블 모두 로그인 프로젝트로 거른다. 다른 프로젝트 엔터티·매핑 ID 는 400.
+- **저장** (지시 9·10) : 엔터티 대화상자에서 추천 후보를 고르면 일반 검색과 같은 `selected` 가 되어 같은 [매핑 저장] → `POST …/entity`. 속성 대화상자의 [후보 선택] 은 표의 컬럼 선택만 채우고 표의 [매핑] → `POST …/attribute`. 서버는 저장 때 다시 검사하며, 조회 뒤 다른 사용자가 같은 컬럼·테이블을 가져갔으면 기존 계약(400 `SAVED_DATA_EXISTS`)으로 거절되고 다른 후보로 바꾸지 않는다. 저장 뒤 추천을 다시 받는다.
+
+### 18.3 ERD 매핑 표시 (M7-E01~E04)
+
+- API : `GET /api/modelMapping/erd/entities?modelId=&entityIds=1,2,…`, `GET /api/modelMapping/erd/tables?tableIds=…` (VIEWER, ID 최대 300 = ERD 범위 상한, 넘으면 400, 다른 모델·프로젝트 ID 는 결과에서 빠짐). 화면에 보이는 객체를 한 번에 보내고, 종류별 일괄 질의(엔터티·속성·상속 PK·테이블·컬럼) + 모델마다 정합성 판정 1번 — 노드마다 호출하지 않는다 (E04).
+- 상태 (E02, **18.7 의 M7-F02 로 화면 표시가 바뀜**) : 정합성 비교 행(예전 목록 + 구조 진단, `ModelMappingQualityService.modelRows`)을 모아 MISMATCH > NOT_COMPARABLE > MAPPED, 매핑 없음 = UNMAPPED (응답의 예전 `status` 필드 — 뜻 그대로 남아 있다). 매핑된 객체 안의 미매핑 행(미매핑 속성·대응 FK 없음)은 상태를 바꾸지 않고 수로 보인다. 속성·컬럼은 그 속성의 진단 행, 상속 PK 매핑은 그 서브타입의 상속 구조 행으로 판정한다. 정합성 비교와 같은 판정이라 길이·정밀도가 정의되지 않은 도메인의 속성은 "비교 불가" 로 보인다.
+- 화면 (E01, E03) : 논리·물리 ERD 상태 줄의 [매핑 표시] 체크박스(기본 꺼짐 — 끄면 조회하지 않고 노드도 예전 그대로). 켜면 노드 헤더 둘째 줄 오른쪽에 기호 + 글자 표시(✓ 매핑됨 · – 미매핑 · ≠ 정합성 불일치 · ? 비교 불가, 설명은 title), 행 이름 앞에 같은 기호(상속 PK 매핑은 ⇡), 범례. 노드 크기·배치·드래그·배치 저장은 그대로다. 노드는 React 문맥(`features/mapping/erdOverlay.tsx` `MappingOverlayContext`)만 읽어 버전 비교 ERD 에는 나타나지 않는다.
+
+### 18.4 논리 ↔ 물리 ERD 상호 이동
+
+- 상세 패널에 [물리 매핑]·[논리 매핑] 영역 (선택한 객체 1건을 기존 `entity/lookup` 으로 조회 — 표시 토글과 무관). 매핑되어 있으면 [물리 ERD에서 보기] → `/physicalErd?schemaId=&tableId=&mapping=1`, [논리 ERD에서 보기] → `/logicalErd?modelId=&entityId=&mapping=1`. 기존 URL 계약에 `mapping=1` 만 더했다(표시를 켠 채 열고, 다른 파라미터와 함께 지운다). 대상은 각 ERD 의 기존 깊은 링크 처리로 선택·가운데 이동된다. 저장하지 않은 배치가 있으면 기존 확인을 거친다.
+- 매핑이 없으면 이동 버튼을 내지 않고 "대응하는 물리 테이블(논리 엔터티)이 없습니다" 만 보인다. 이름이 비슷한 객체로 이동하지 않는다. 지워진 엔터티 ID 로 들어오면 기존 처리(이웃 0개)로 오류 없이 끝난다.
+
+### 18.5 검증
+
+**자동 테스트 (2026-11-21, 실제 실행)**
+
+- `MappingSuggestionServiceTest` 5 (순수 판정 : 근거 순서·수준, 미승인 용어, 매핑된 속성·용어 없음·SHARED, 키 용어 비교, 테이블 후보 순서, ERD 표시 상태).
+- `MappingSuggestionIntegrationTest` 6 (논리 → 물리 생성 후 매핑을 지운 모델, H2·PostgreSQL 같은 결과) : 테이블 후보(KEY_TERMS·TABLE_NAME·TABLE_COMMENT, 코멘트만 같은 테이블 = REFERENCE, 후보 둘 = ambiguous, 스키마 범위, 매핑된 엔터티 `ALREADY_MAPPED`·매핑된 테이블 제외, 승인된 객체도 후보) / 컬럼 후보(같은 승인 용어 STANDARD, 다른 용어 = 이름 근거만 + 예상 불일치 TERM, 미승인 용어 REFERENCE, 용어 없음 `NO_TERM`·`NO_CANDIDATE`, 같은 용어 둘 `MULTIPLE_STANDARD`·`sharedWith`, 예상 불일치 DATA_TYPE, 저장 뒤 매핑된 속성·컬럼 제외) / 조회·저장 사이 동시 변경(속성·엔터티 모두 기존 `SAVED_DATA_EXISTS`, 다른 후보로 저장하지 않음) / 프로젝트 격리(다른 프로젝트 테이블은 후보·표시에 없음, 다른 프로젝트 엔터티·매핑·모델 거절, 301개 거절) / ERD 표시(엔터티·테이블·속성·컬럼, 미매핑, 컬럼 타입 변경 → 속성·엔터티·테이블 MISMATCH, 매핑 해제 뒤 미매핑, 없는 엔터티 제외) / 상속 PK 매핑(INHERITED_KEY 로 구분, 슈퍼타입 테이블은 DIRECT 만). 추천·표시 전후 매핑·승인·`MDFCN_DT`·모델 변경 이력이 같음(조회 전용)을 함께 확인.
+- `SmokeTest.modelMappingQuality` : 새 API 4개의 HTTP 바인딩(쉼표 ID 목록·경로 변수), 예제는 모두 매핑되어 `ALREADY_MAPPED`, ID 없음 = 빈 목록, 필수 조건·잘못된 ID 400.
+- 전체 : H2 `./gradlew build --continue --rerun` 1,243 — 성공 1,185 · 실패 0 · 건너뜀 58 (이전 1,231 + 새 12, 건너뜀 +1 은 성능 테스트). PostgreSQL 18.6 빈 임시 DB(기존 컨테이너, 격리 복사본 — `lexorma/volume` 제외, 끝나고 삭제) 1,243 — 성공 1,205 · 실패 0 · 건너뜀 38 (`MappingSuggestionIntegrationTest` 6건 실행 확인). `tsc -b`·`vite build`(bootJar 에 포함) 통과.
+
+**Chromium E2E (Playwright, 이번 단일 JAR 로 띄운 격리 앱 9981 · 임시 H2 데이터) — 34건 모두 통과**. 준비 = 테스트 계정 + 앱 API 로 모델 "E2E 구조"(계정·역할·프로젝트 회원) 생성 → SQL 로 계정 매핑 삭제·역할 속성 매핑 삭제·회원 컬럼 타입 변경.
+확인 : 논리 ERD 표시 기본 꺼짐 → 키보드로 켬 → 3개 배지(미매핑·불일치·비교 불가/매핑, 기호+글자)·행 기호 → 미매핑 엔터티·테이블은 안내만(이동 버튼 없음) → 매핑 화면 [매핑] 대화상자의 추천 후보 E2E.TB_ACNT(표준 용어 근거·근거 3개·속성 용어 3/3)·일반 검색과 구분·미리 고르지 않음 → 추천 선택 후 기존 [매핑 저장] → 속성 추천(계정 번호 → ACNT_SN 등, 근거 표시) → [후보 선택] 은 표만 채움 → 표 [매핑] 저장·추천 갱신 → Esc 뒤 포커스 복귀 → 논리 ERD [물리 ERD에서 보기] → 물리 ERD 에서 TB_ACNT 선택·강조·표시 켜짐 → 물리 표시(배지·컬럼 기호) → [논리 ERD에서 보기] → 계정 선택 → 없는 엔터티 URL 오류 없음. VIEWER : [매핑] 없음, 추천 조회 가능·[후보 선택] 없음, ERD 표시 가능. 한·영 × 라이트·다크 × 1440·375 : 추천 대화상자·ERD 배지 문구 언어, 화면 안, 가로 넘침 0, JS 오류 0.
+E2E 중 고친 것 : 추천 후보와 일반 검색의 라디오 이름이 같아 같은 테이블이 두 목록에 있으면 선택이 풀리던 문제(이름 분리), 노드 배지가 블록 스타일을 받아 두 줄로 노드 아래쪽에 겹치던 문제(헤더 둘째 줄 오른쪽 고정), 영어에서 버튼 [선택] 이 기존 번역 "optional" 로 나오던 문제(새 문구 [후보 선택]).
+
+**성능 (`MappingSuggestionPerformanceTest`, `LEXORMA_PERF=true`)** : 엔터티 N(속성 10, 관계·짝, 보조 식별자)을 생성한 모델, 5회 중앙값 ms (Hibernate 준비 문장 수).
+
+| DB · 엔터티 | 테이블 후보 | 컬럼 후보 | 논리 ERD 표시 (엔터티 N) | 물리 ERD 표시 (테이블 N) |
+|---|---|---|---|---|
+| H2 100 | 4 (11) | 2 (6) | 24 (20) | 16 (19) |
+| H2 300 | 1 (11) | 0 (6) | 40 (20) | 39 (19) |
+| PostgreSQL 100 | 21 (11) | 6 (6) | 51 (20) | 52 (19) |
+| PostgreSQL 300 | 5 (11) | 3 (6) | 91 (20) | 130 (19) |
+
+문장 수가 규모와 무관하다(N+1 없음). ERD 표시 시간의 대부분은 모델 단위 정합성 판정(목록·요약과 같은 계산)이다. 1회 측정, 개발 PC, HTTP 제외.
+
+**미검증** : Chromium 외 브라우저, 엔터티 수천 개 모델의 ERD 표시(모델 단위 판정 — [M-MAPPING-PERF] 와 같은 한계), 여러 사용자의 실제 동시 클릭(동시 변경은 서비스 순서로 재현).
+
+### 18.6 남은 것 · 정책 검토
+
+- 충돌 응답·비교 불가 표시는 18.7 에서 정했다 (M7-F01 · M7-F02).
+- 엔터티 ↔ 테이블 추천의 `KEY_TERMS` 는 같은 키 용어를 PK 로 쓰는 테이블이 여럿이면 모두 STANDARD 후보가 된다 (자동 선택은 없다).
+- 상속 A·C 전략, 컬럼명 UNIQUE, 동시성·DBMS 별 검증 과제는 이번 범위가 아니다 (pending-work [M-7]).
+
+### 18.7 후속 보완 (2026-11-21) : M7-F01 매핑 저장 충돌 계약 유지 · M7-F02 ERD 매핑 상태와 정합성 상태 분리
+
+**M7-F01 — 400 `SAVED_DATA_EXISTS` 유지 (서버 변경 없음).** 실제 코드 확인 결과 충돌은 모두 같은 코드다 : 엔터티가 이미 매핑됨 · 테이블이 다른 엔터티에 매핑됨(`saveEntityMapping`), 속성이 이미 매핑됨 · 컬럼이 다른 속성에 매핑됨 · 컬럼이 상속 PK 매핑에 쓰임(`saveAttributeMapping` + `rejectInheritedKeyColumn`), 같은 속성의 상속 PK 매핑 중복 · 컬럼이 속성 매핑 또는 다른 상속 PK 매핑에 쓰임(`saveSubtypeKeyMapping`), DB UNIQUE 최종 방어(`DataIntegrityViolationException` → 같은 코드). 모두 400 `SAVED_DATA_EXISTS` 이고 문구만 상황별이다. 충돌이 아닌 거절(다른 엔터티의 속성·다른 테이블의 컬럼 = 400 `INVALID_MODEL_MAPPING`, 속성 매핑이 있는 매핑의 테이블 변경 = `INVALID_MODEL_MAPPING`, 해제 거절 = `RELATION_EXISTS`)은 원래 다른 코드이며 통일하지 않았다. 409 로 바꾸지 않았다.
+- 화면 (`mappingDialogs.tsx`) : 오류 내용은 기존 공통 알림(서버 문구 그대로 — 예 "컬럼 ROLE_SN 은(는) 이미 속성 역할 명 에 매핑되어 있습니다.")이 보인다. 엔터티·속성 매핑 저장이 `SAVED_DATA_EXISTS` 로 거절되면 대화상자는 그대로 두고 **충돌한 선택만 비운 뒤**(엔터티 : 고른 테이블, 속성 : 그 속성의 고른 컬럼 — 다른 속성에 골라 둔 값·검색어·스키마는 그대로) 최신 매핑 상태·후보·추천을 다시 읽고 "다시 골라주세요" 안내를 보인다. 다른 후보로 바꾸거나 다시 저장하지 않으며, 사용자가 다시 골라야 저장된다. 다른 오류는 예전처럼 공통 처리. 상속 PK 매핑 영역은 이미 실패 시 상태를 다시 읽고 있어 바꾸지 않았다.
+
+**M7-F02 — 매핑 상태와 정합성 상태 분리.** 매핑 여부는 저장된 매핑으로만, 정합성은 기존 판정 그대로 — 비교 불가를 일치로 바꾸지 않는다.
+- 서버 : `GET …/erd/entities`·`…/erd/tables` 응답에 필드만 더했다 (예전 필드 `mapped`·`status`·건수는 이름·뜻 그대로). 엔터티·테이블·속성 링크마다 `mappingStatus`(MAPPED · UNMAPPED — 저장된 매핑), `qualityStatus`(MATCH · MISMATCH · NOT_COMPARABLE · UNMAPPED — 정합성 비교의 `CheckStatus` 그대로), `issues`(불일치·비교 불가 진단 행의 유형·상태·사유 — 사유는 기존 판정 문구 그대로, 없으면 null). 판정 묶기 : 매핑된 객체는 그 진단 행의 MISMATCH > NOT_COMPARABLE > MATCH (미매핑 행 — 매핑된 엔터티 안의 미매핑 속성·대응 FK 없음 — 은 그 객체 자신의 판정이 아니라 수로만 본다), 매핑이 없으면 UNMAPPED/UNMAPPED. 속성·컬럼 링크는 있는 매핑만 오므로 언제나 MAPPED, 상속 PK 링크는 MAPPED + 그 서브타입 상속 구조 판정. 엔터티 `issues` 는 속성에 붙지 않은 행(관계·보조 식별자·상속 구조 등)만 (50건까지). 지원 조합 : MAPPED+MATCH · MAPPED+MISMATCH · MAPPED+NOT_COMPARABLE · UNMAPPED+UNMAPPED — 다른 조합은 만들어지지 않는다 (매핑 없는 객체는 판정하지 않음).
+- 화면 (`erdOverlay.tsx`) : 노드 헤더 = 매핑 여부(✓ 매핑됨 · – 미매핑) + 불일치가 있으면 `≠ 건수`(진단 행 수 `mismatches` — 계산되는 값만), 비교 불가는 헤더에 내지 않는다. 행 = 매핑 기호(✓ 일반 · ⇡ 상속 PK · – 미매핑) + 불일치면 `≠`, 비교 불가는 기호를 바꾸지 않는다. 설명(title)은 "매핑 상태 / 대응 컬럼(속성·테이블·엔터티) / 정합성 / 사유" 를 줄을 나눠 적는다. 상세 패널은 매핑 상태와 정합성을 따로 보이고 [정합성 상세] 를 펼치면 판정 사유 목록. 이동 버튼은 매핑 여부(`entity/lookup`)만 보므로 비교 불가·불일치여도 매핑이 있으면 이동한다. 배지는 헤더 둘째 줄 오른쪽(노드 크기·배치 그대로), 범례 갱신, 토글·버전 비교 ERD 정책 그대로.
+
+**검증 (2026-11-21, 실제 실행)**
+- `MappingSuggestionIntegrationTest` 7 (+1 `statusSeparation` : 매핑됨+일치 · 매핑됨+불일치(타입) · **매핑됨+비교 불가(길이 없는 BIGINT 도메인 — 실제 생성 데이터)** · 미매핑 엔터티·테이블 · 일부 속성/컬럼 미매핑 · 같은 프로젝트 다른 모델 엔터티 제외 · 사유는 판정 문구 그대로 · 정합성 비교 목록의 같은 행은 여전히 NOT_COMPARABLE; 동시 변경 테스트에 400 `SAVED_DATA_EXISTS`·먼저 저장된 매핑 보존·다른 후보로 저장하지 않음, 상속 테스트에 상속 PK 매핑 충돌 2가지 `SAVED_DATA_EXISTS` 추가), `MappingSuggestionServiceTest` 6 (+1 상태 분리).
+- H2 `./gradlew build --continue --rerun` 1,245 — 성공 1,187 · 실패 0 · 건너뜀 58 (이전 1,243 + 새 2). PostgreSQL 18.6 빈 임시 DB(격리 복사본, `lexorma/volume` 제외, 끝나고 삭제) : 1회차 1,245 — 실패 1(`RequestLogStatusHttpTest` 초기화 : 관리자 비밀번호 변경 요청이 200 이 아님 — 이번 변경과 무관한 인증 테스트, 단독 재실행 통과), **새 빈 DB 2회차 1,245 — 성공 1,207 · 실패 0 · 건너뜀 38**. 1회차 실패는 공유 DB 의 테스트 순서에 따른 간헐 실패로 보이며 원인은 확정하지 못했다 (후속 확인 필요). `tsc -b`·`vite build`(bootJar 포함) 통과.
+- Chromium E2E (이번 단일 JAR 격리 앱 9981, 모델에 상속 사용자 → 관리자·사용자 설정 추가) **44건 모두 통과** : 표시 기본 꺼짐 → 키보드로 켬 → 엔터티 6개 헤더가 매핑 여부(✓ 5 · – 1) → 모든 행 기호가 ✓·⇡·– 뿐(? 없음) → 매핑됨+불일치(행 ✓ + ≠ 1개, 헤더 `≠ 1`) → **매핑됨+비교 불가(✓ 유지, 설명에 "매핑 상태 : 매핑됨 (일반 매핑) / 대응 컬럼 : PRJ_MBR_SN / 정합성 : 비교 불가 / 사유 : 길이·정밀도 · 비교 불가 : 표준 도메인에 길이·정밀도가 정의되지 않았습니다.")** → 상속 PK ⇡(논리·물리) → 미매핑 객체 이동 버튼 없음 → 추천·저장 흐름(이전 E2E 그대로) → 정합성 비교 불가인 계정에서 [물리 ERD에서 보기]·[논리 ERD에서 보기] 이동 → 상세의 매핑 상태·정합성 분리 → 표시 끄기 → 배치 저장 → **충돌 : [후보 선택] 뒤 다른 사용자가 ROLE_SN 을 먼저 매핑 → 공통 알림 "저장된 데이터가 존재합니다. [컬럼 ROLE_SN 은(는) 이미 속성 역할 명 에 매핑되어 있습니다.]" → 다시 고르라는 안내, 그 선택만 비움, 저장된 매핑은 역할 명 = ROLE_SN 그대로·역할 번호는 미매핑(다른 후보로 저장하지 않음)** → VIEWER → 한·영 × 라이트·다크 × 1440·375(배지가 헤더 안 오른쪽, 넘침 0, JS 오류 0). E2E 중 고친 것 : 배지 묶음이 헤더 `span` 규칙(설명 줄 여백)을 받아 왼쪽으로 밀리던 문제 (div 로).
+- 성능 (PostgreSQL `MappingSuggestionPerformanceTest`, 5회 중앙값 ms(문장 수)) : 엔터티 100 — 논리 표시 56(20) · 물리 표시 55(19), 300 — 67(20) · 103(19). 보완 전 51/52 · 91/130 과 같은 수준이고 문장 수는 그대로다 (필드 추가만 — 같은 판정 행을 다시 묶을 뿐 재계산 없음). 후보 조회 5(11) · 3(6) 그대로. 1회 측정, 개발 PC.
+

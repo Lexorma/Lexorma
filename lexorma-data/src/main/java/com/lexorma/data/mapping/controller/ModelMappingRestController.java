@@ -21,7 +21,7 @@ import java.util.Map;
 
 /**
  * 논리·물리 모델 매핑 API (M-7). 조회는 VIEWER, 변경은 USER (논리·물리 모델 API 와 같다). 매핑에는 승인 절차가 없다.
- * 저장(POST)은 id 가 없으면 등록, 있으면 변경이다. 정합성 비교(/quality)와 물리명 추천(/recommendation)은 조회 전용이다.
+ * 저장(POST)은 id 가 없으면 등록, 있으면 변경이다. 정합성 비교(/quality)와 물리명 추천 목록(/recommendation/column·table 의 data, summary)은 조회 전용이다. 물리명 추천 일괄 적용(/recommendation/rename/**)은 미리보기 → planToken → 적용이다.
  */
 @RestController
 @RequestMapping("/api/modelMapping")
@@ -33,8 +33,10 @@ public class ModelMappingRestController {
 
     private final ModelMappingService modelMappingService;
     private final ModelMappingQualityService modelMappingQualityService;
+    private final com.lexorma.data.mapping.service.MappingSuggestionService suggestionService;
     private final PhysicalNameRecommendationService recommendationService;
     private final com.lexorma.data.mapping.service.PhysicalGenerationService generationService;
+    private final com.lexorma.data.mapping.service.PhysicalNameRenameService renameService;
 
     @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK 계획과 막는 문제·경고, 논리 관계별 FK 미생성 사유(relations), DBMS 식별자 진단(identifiers), planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
     @PreAuthorize("hasRole('USER')")
@@ -181,7 +183,7 @@ public class ModelMappingRestController {
         return ResponseEntity.ok(modelMappingQualityService.selectSummary(accountDto, modelId));
     }
 
-    @Operation(summary = "정합성 진단 목록", description = "매핑된 속성 ↔ 컬럼의 진단 유형별 결과와 매핑하지 않은 엔터티·속성. 조건 : modelId(필수), entityId, type, status, 검색 : entityName / attributeName / columnName")
+    @Operation(summary = "정합성 진단 목록", description = "매핑된 속성 ↔ 컬럼의 진단 유형별 결과와 매핑하지 않은 엔터티·속성. 조건 : modelId(필수), entityId, type, status, group(진단 범위 — ATTRIBUTE·INHERITANCE·RELATIONSHIP·ALTERNATE_KEY·PHYSICAL_ONLY·ALL, 없으면 예전 목록), 검색 : entityName / attributeName / columnName. 구조 진단 행(관계·보조 식별자·물리 전용)은 structure 에 순서대로의 컬럼 구성이 있다")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/quality/data")
     public ResponseEntity<Map<String, Object>> selectQualityRows(@AuthenticationPrincipal AccountDto accountDto,
@@ -193,10 +195,49 @@ public class ModelMappingRestController {
                                                                  @RequestParam(value = "modelId") Long modelId,
                                                                  @RequestParam(value = "entityId", required = false) Long entityId,
                                                                  @RequestParam(value = "type", required = false) ModelMappingQualityDto.CheckType type,
-                                                                 @RequestParam(value = "status", required = false) ModelMappingQualityDto.CheckStatus status) {
+                                                                 @RequestParam(value = "status", required = false) ModelMappingQualityDto.CheckStatus status,
+                                                                 @RequestParam(value = "group", required = false) ModelMappingQualityDto.CheckGroup group) {
         return PageableUtil.getGridPageableMap(modelMappingQualityService.selectRows(accountDto,
-                new ModelMappingQualityDto.Search(modelId, entityId, type, status, searchColumn, searchQuery),
+                new ModelMappingQualityDto.Search(modelId, entityId, type, status, searchColumn, searchQuery, group),
                 PageableUtil.getGridPageable(page, size, sort, ModelMappingQualityService.SORT_FIELDS)));
+    }
+
+    @Operation(summary = "테이블 매핑 후보 (M-7 자동 매핑 후보)", description = "매핑하지 않은 엔터티 1개의 테이블 후보와 근거 : KEY_TERMS(주 식별자 표준 용어 = PK 컬럼 용어, STANDARD) · "
+            + "TABLE_NAME(표준 단어 테이블명과 같음) · TABLE_COMMENT(테이블 코멘트 = 엔터티명). 매핑하지 않은 테이블만, 최대 20개, schemaId 로 스키마 범위. 조회 전용 — 저장은 POST /api/modelMapping/entity")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/suggestions")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.MappingSuggestionDto.TableSuggestions> selectTableSuggestions(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                         @RequestParam(value = "entityId") Long entityId,
+                                                                                                                         @RequestParam(value = "schemaId", required = false) Long schemaId) {
+        return ResponseEntity.ok(suggestionService.tableSuggestions(accountDto, entityId, schemaId));
+    }
+
+    @Operation(summary = "컬럼 매핑 후보 (M-7 자동 매핑 후보)", description = "엔터티 매핑 1건의 속성마다 아직 매핑하지 않은 컬럼 후보와 근거 : STANDARD_TERM(승인된 같은 표준 용어, STANDARD) · "
+            + "STANDARD_TERM_UNAPPROVED · COLUMN_NAME(컬럼명 = 용어 영문약어) · LOGICAL_NAME(속성명 = 컬럼 논리명), 충돌(conflicts), 매핑했을 때 정합성 비교 불일치 항목. 조회 전용 — 저장은 POST /api/modelMapping/attribute")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/suggestions")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.MappingSuggestionDto.AttributeSuggestions> selectAttributeSuggestions(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                                 @PathVariable(name = "mappingId") Long mappingId) {
+        return ResponseEntity.ok(suggestionService.attributeSuggestions(accountDto, mappingId));
+    }
+
+    @Operation(summary = "논리 ERD 매핑 표시 (M-7 ERD 연계)", description = "논리 모델의 엔터티(entityIds, 최대 300개 — ERD 에 보이는 것)마다 매핑된 테이블, 속성 ↔ 컬럼, 상속 PK 매핑과 "
+            + "정합성 비교 상태(MAPPED · UNMAPPED · MISMATCH · NOT_COMPARABLE). 다른 모델·프로젝트의 ID 는 결과에서 빠진다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/erd/entities")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.MappingSuggestionDto.EntityOverlay>> selectEntityOverlays(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                          @RequestParam(value = "modelId") Long modelId,
+                                                                                                                          @RequestParam(value = "entityIds", required = false) List<Long> entityIds) {
+        return ResponseEntity.ok(suggestionService.entityOverlays(accountDto, modelId, entityIds));
+    }
+
+    @Operation(summary = "물리 ERD 매핑 표시 (M-7 ERD 연계)", description = "테이블(tableIds, 최대 300개 — ERD 에 보이는 것)마다 매핑된 논리 엔터티, 컬럼 ↔ 속성(직접·상속 PK)과 정합성 비교 상태. "
+            + "다른 프로젝트의 ID 는 결과에서 빠진다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/erd/tables")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.MappingSuggestionDto.TableOverlay>> selectTableOverlays(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                        @RequestParam(value = "tableIds", required = false) List<Long> tableIds) {
+        return ResponseEntity.ok(suggestionService.tableOverlays(accountDto, tableIds));
     }
 
     @Operation(summary = "컬럼명 추천 요약", description = "논리 모델 1개의 속성 수와 추천 상태별 건수 : 추천 가능·일치·추천 불가·충돌")
@@ -239,5 +280,23 @@ public class ModelMappingRestController {
         return PageableUtil.getGridPageableMap(recommendationService.selectTableRows(accountDto,
                 new PhysicalNameRecommendationDto.TableSearch(modelId, entityId, searchColumn, searchQuery),
                 PageableUtil.getGridPageable(page, size, sort, PhysicalNameRecommendationService.TABLE_SORT_FIELDS)));
+    }
+
+    @Operation(summary = "물리명 추천 일괄 적용 미리보기 (M-7)", description = "고른 물리 테이블·컬럼(ID, 합쳐 500개까지)의 지금 이름·서버가 다시 계산한 추천명·적용 가능 여부·차단 사유·경고(원본 매핑)와 planToken. "
+            + "추천끼리 충돌은 이 선택 집합 기준. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/recommendation/rename/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Plan> renamePreview(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Request request,
+                                                                                                        @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(renameService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "물리명 추천 일괄 적용 (M-7)", description = "미리보기의 planToken 과 대상별 기준값(baseModifiedAt = 미리보기의 modifiedAt)이 지금과 같고 모든 대상을 적용할 수 있을 때만, "
+            + "직전 모델 버전(RENAME-요청 ID)을 남긴 뒤 물리 테이블명·컬럼명만 바꾼다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 대상이 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/recommendation/rename")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Result> rename(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Request request,
+                                                                                                  @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(renameService.apply(accountDto, request));
     }
 }

@@ -1,5 +1,6 @@
 package com.lexorma.data.sourcemapping.service;
 
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.execution.ExecutionContext;
@@ -756,7 +757,8 @@ public class SourceImportService {
                 Converted converted = convert(column);
                 String name = modelName(column.name(), column.compareName(), NameKind.COLUMN);
                 Reason reason = object.status() == CompareStatus.RENAME_CANDIDATE ? Reason.RENAME_CANDIDATE : object.status() == CompareStatus.CONFLICT ? Reason.CONFLICT
-                        : name == null ? Reason.QUOTED_NAME : !OBJECT_NAME.matcher(name).matches() ? Reason.INVALID_NAME : converted.type == null ? Reason.TYPE_NOT_REPRESENTABLE
+                        : name == null ? Reason.QUOTED_NAME : !OBJECT_NAME.matcher(name).matches() ? Reason.INVALID_NAME
+                        : columnNameTaken(column, name) ? Reason.COLUMN_NAME_TAKEN : converted.type == null ? Reason.TYPE_NOT_REPRESENTABLE
                         : !converted.excluded.isEmpty() ? Reason.UNSUPPORTED_ATTRIBUTE : null;
                 put(item(prefix + "ADD", ObjectKind.COLUMN, column.name(), name, Action.ADD, null, describe(column), null,
                         converted.type == null ? null : converted.describe(column.nullable()), reason, converted.excluded, createDependency()));
@@ -1014,6 +1016,17 @@ public class SourceImportService {
                 dependencies.add("COLUMN:" + (column == null ? compareName : column.name()) + ":ADD");
             }
             return List.copyOf(dependencies);
+        }
+
+        /**
+         * 새로 만들 모델 컬럼명이 모델 컬럼명 유일성(M7-U01 : 앞뒤 공백 제거 + 대문자, DB UX_COL_01)에 걸리는가 — 같은 모델 테이블의 다른 컬럼, 또는 같은 이름이 되는 다른 원본 컬럼.
+         * 원본 비교(DBMS 별 접은 비교 이름·따옴표 식별자 판정)는 그대로다 : 그 비교로 짝이 없는 원본 컬럼이 모델 이름으로는 겹칠 때만 막는다 (한쪽을 고르지 않는다)
+         */
+        boolean columnNameTaken(SourceCatalogReader.Column column, String name) {
+            String key = ColumnNameKey.of(name);
+            if (model != null && model.columns().stream().anyMatch(c -> Objects.equals(ColumnNameKey.of(c.name()), key))) return true;
+            return detail.columns().stream().filter(other -> !Objects.equals(other.compareName(), column.compareName()))
+                    .map(other -> modelName(other.name(), other.compareName(), NameKind.COLUMN)).anyMatch(other -> other != null && Objects.equals(ColumnNameKey.of(other), key));
         }
 
         CompareModel.Column modelColumn(String compareName) {

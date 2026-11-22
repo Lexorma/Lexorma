@@ -8,6 +8,9 @@
 **/dist
 **/*.tsbuildinfo
 docker/volume
+lexorma/volume
+# 개발용 PostgreSQL 데이터 (lexorma/docker-compose.yml 의 ./volume) : 빌드 컨텍스트에 넣지 않는다
+/lexorma/volume/
 data
 # 로컬 비밀 설정 (암호화 키) : 이미지에 넣지 않는다
 **/.env

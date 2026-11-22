@@ -11,7 +11,11 @@ import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Attribut
 import com.lexorma.data.dictionary.service.StandardizationQualityService;
 import com.lexorma.data.dictionary.service.StandardizationQualityService.DomainComparison;
 import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
+import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.CheckGroup;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.CheckStatus;
+import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Counts;
+import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Structure;
+import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.StructureSummary;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.CheckType;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.InheritanceSummary;
 import com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping;
@@ -21,6 +25,7 @@ import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Search;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Source;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.Summary;
 import com.lexorma.data.mapping.repository.ModelMappingQueryRepository;
+import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository;
 import com.lexorma.data.table.ddl.TableDdlGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -73,29 +78,86 @@ public class ModelMappingQualityService {
     private final com.lexorma.data.logical.service.LogicalSubtypeService subtypeService;
     private final SubtypePlanContexts subtypeContexts;
     private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyRepository;
+    private final ModelStructureQualityQueryRepository structureRepository;
 
     public Summary selectSummary(AccountDto accountDto, Long modelId) {
         // 엔터티·속성 수는 매핑 현황과 같은 집계를 쓴다 (없는 모델·다른 프로젝트의 모델은 여기서 거절된다)
         ModelMappingDto.Status status = status(accountDto, modelId);
         Computed computed = compute(accountDto.getProjectId(), new Search(modelId, null, null, null, null, null));
         List<Row> rows = computed.rows();
+        // 구조 진단 (M-7 구조 정합성) 은 따로 센다 : 위 네 건수(속성·컬럼 + 상속 구조)의 뜻을 바꾸지 않는다
+        List<Row> structure = structureRows(accountDto.getProjectId(), modelId, status.modelName());
         return new Summary(status.modelId(), status.modelName(), status.totalEntities(), status.mappedEntities(), status.unmappedEntities(),
                 status.totalAttributes(), status.mappedAttributes(), status.unmappedAttributes(),
                 count(rows, CheckStatus.MATCH), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE), count(rows, CheckStatus.UNMAPPED),
-                computed.participants(), computed.inheritance());
+                computed.participants(), computed.inheritance(),
+                new StructureSummary(counts(structure, CheckGroup.RELATIONSHIP), counts(structure, CheckGroup.ALTERNATE_KEY), counts(structure, CheckGroup.PHYSICAL_ONLY),
+                        structure.stream().filter(r -> r.type() == CheckType.PHYSICAL_FK).count(), structure.stream().filter(r -> r.type() == CheckType.PHYSICAL_UNIQUE).count()));
+    }
+
+    private static Counts counts(List<Row> rows, CheckGroup group) {
+        List<Row> in = rows.stream().filter(r -> group.includes(r.type())).toList();
+        return new Counts(in.size(), count(in, CheckStatus.MATCH), count(in, CheckStatus.MISMATCH), count(in, CheckStatus.NOT_COMPARABLE), count(in, CheckStatus.UNMAPPED));
+    }
+
+    /**
+     * 구조 진단 행 (M-7 구조 정합성 — 논리 관계 ↔ FK, 보조 식별자 ↔ UNIQUE, 물리 기준 역방향). 모델 단위로 종류별 한 번씩 읽어({@link ModelStructureQualityQueryRepository})
+     * 순수 판정({@link ModelStructureQualityJudge})에 넘긴다. 상속 FK 판단용 계층은 상속 구조 진단과 같은 것을 쓴다
+     */
+    private List<Row> structureRows(Long projectId, Long modelId, String modelName) {
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId);
+        return ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(modelId, modelName,
+                structureRepository.entities(projectId, modelId), structureRepository.relationships(projectId, modelId), structureRepository.pairs(projectId, modelId),
+                structureRepository.identifiers(projectId, modelId), structureRepository.attributeColumns(projectId, modelId), structureRepository.inheritedKeys(projectId, modelId),
+                structureRepository.foreignKeys(projectId, modelId), structureRepository.uniqueConstraints(projectId, modelId), structureRepository.uniqueColumns(projectId, modelId),
+                structureRepository.primaryKeyColumns(projectId, modelId), hierarchy::parent, hierarchy::root, hierarchy.participants()));
+    }
+
+    /** 구조 진단 행의 엔터티·이름 조건 (목록 조회의 엔터티 ID · 검색 조건과 같은 뜻) */
+    private static boolean matches(Row row, Search search) {
+        if (search.entityId() != null && !search.entityId().equals(row.entityId())) return false;
+        if (search.searchQuery() == null || search.searchQuery().isBlank()) return true;
+        String keyword = search.searchQuery().trim().toLowerCase(java.util.Locale.ROOT);
+        Structure s = row.structure();
+        return switch (search.searchColumn() == null ? "" : search.searchColumn()) {
+            case "attributeName" -> contains(s.logicalName(), keyword) || s.columns().stream()
+                    .anyMatch(c -> contains(c.logicalAttributeName(), keyword) || contains(c.parentAttributeName(), keyword));
+            case "columnName" -> contains(s.physicalName(), keyword) || s.columns().stream()
+                    .anyMatch(c -> contains(c.physicalColumnName(), keyword) || contains(c.physicalParentColumnName(), keyword) || contains(c.expectedColumnName(), keyword));
+            default -> contains(row.entityName(), keyword);
+        };
     }
 
     public Page<Row> selectRows(AccountDto accountDto, Search search, Pageable pageable) {
-        status(accountDto, search.modelId());
+        ModelMappingDto.Status model = status(accountDto, search.modelId());
         // shortcut: 모델 1개의 속성을 (모델·엔터티·이름 조건은 DB 에서 걸러) 한 번에 읽어 메모리에서 진단·상태 조건·정렬·페이징한다
         // (타입 매핑이 자바 코드라 SQL 로 걸러낼 수 없다). 프로젝트 전체가 아니라 모델 단위이며, 모델 하나의 속성이 수만 건이 되면 진단 결과 저장을 검토한다
-        List<Row> rows = rows(accountDto.getProjectId(), search).stream()
+        // 진단 범위(group) : 없으면 예전 목록(속성·컬럼 + 상속 구조). 구조 진단은 범위나 유형으로 고를 때만 계산한다 (M-7 구조 정합성)
+        CheckGroup group = search.group();
+        boolean legacy = group == null ? search.type() == null || !search.type().structure()
+                : group == CheckGroup.ATTRIBUTE || group == CheckGroup.INHERITANCE || group == CheckGroup.ALL;
+        List<Row> all = new ArrayList<>(legacy ? rows(accountDto.getProjectId(), search) : List.of());
+        if (search.wantsStructure()) {
+            structureRows(accountDto.getProjectId(), search.modelId(), model.modelName()).stream().filter(row -> matches(row, search)).forEach(all::add);
+        }
+        List<Row> rows = all.stream()
+                .filter(row -> group == null || group.includes(row.type()))
                 .filter(row -> search.type() == null || row.type() == search.type())
                 .filter(row -> search.status() == null || row.status() == search.status())
                 .sorted(order(pageable.getSort()))
                 .toList();
         int from = (int) Math.min(pageable.getOffset(), rows.size());
         return new PageImpl<>(rows.subList(from, Math.min(from + pageable.getPageSize(), rows.size())), pageable, rows.size());
+    }
+
+    /**
+     * 모델 전체의 정합성 행 (예전 목록 + 구조 진단, 조건 없음) — ERD 매핑 표시(M-7 ERD 연계)가 엔터티·속성별로 모은다. 목록·요약과 같은 판정이다.
+     * 모델이 프로젝트에 있는지는 호출하는 쪽이 확인한다
+     */
+    List<Row> modelRows(Long projectId, Long modelId, String modelName) {
+        List<Row> all = new ArrayList<>(rows(projectId, new Search(modelId, null, null, null, null, null)));
+        all.addAll(structureRows(projectId, modelId, modelName));
+        return all;
     }
 
     private ModelMappingDto.Status status(AccountDto accountDto, Long modelId) {

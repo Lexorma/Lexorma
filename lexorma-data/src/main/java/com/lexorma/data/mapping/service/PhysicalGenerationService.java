@@ -1,5 +1,6 @@
 package com.lexorma.data.mapping.service;
 
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.common.i18n.Messages;
@@ -86,7 +87,7 @@ import java.util.regex.Pattern;
  *   <li>식별자 진단 : 만들 테이블·컬럼 이름, DDL 이 만들 PK 제약조건명(대상 스키마의 기존 이름과의 충돌 포함), 대상 스키마 이름을 프로젝트 DBMS 기준으로 판정한다
  *       ({@link DbIdentifierCheck}). 경고만 하고 생성 가능 여부(creatable)는 바꾸지 않는다. 미승인 엔터티·관계도 만들되 경고한다 (P15)</li>
  *   <li>막는 문제 : 이름을 만들 수 없음, 옮길 스키마에 같은 이름의 테이블·VIEW, 계획 안의 테이블명·컬럼명 중복, 용어 없음, 도메인 타입 없음. 이미 매핑된 엔터티는 건너뛴다(덮어쓰지 않는다)</li>
- *   <li>슈퍼타입·서브타입 (M-7 2차 계획, 3차 반영 — docs/ongoing/subtype-physical-transformation.md 29·30장) : 상속 구조에 참여하는 엔터티는 B형(엔터티마다 테이블)으로 만든다.
+ *   <li>슈퍼타입·서브타입 (M-7 2차 계획, 3차 반영 — docs/completed/subtype-physical-transformation.md 29·30장) : 상속 구조에 참여하는 엔터티는 B형(엔터티마다 테이블)으로 만든다.
  *       서브타입 = 상속 PK 컬럼(루트 주 식별자, 순서 그대로, PK·NOT NULL) + 직접 속성, 직계 슈퍼타입 테이블 PK 전체로의 상속 FK(단일 = 참조 테이블명, 복합 = FK 하나),
  *       상속 PK 컬럼은 상속 PK 매핑(TB_SBTYP_IDNTFR_COL_MPNG)으로 잇는다 (직접 속성 매핑이 아니다). 조상은 이번에 만들거나 유효하게 매핑되어 있어야 하고(자동으로 넣지 않는다),
  *       필수 상속 FK 를 만들 수 없는 서브타입은 ERROR 다 (M7-D42). 기존 조상·부모 테이블은 고치지 않고, 반영은 그 테이블 행을 기다리지 않고 잠근다 (M7-D39)</li>
@@ -434,6 +435,7 @@ public class PhysicalGenerationService {
             canonical.append("x").append(excluded.stream().sorted().toList());
 
             List<PhysicalGenerationDto.ColumnPlan> columnPlans = new ArrayList<>();
+            // 계획 안 컬럼명 중복 : 비교 값(앞뒤 공백 제거 + 대문자, M7-U01 — DB 는 UX_COL_01)으로 본다. 새 테이블에만 만들므로 기존 컬럼과는 겹치지 않는다
             Set<String> columnNames = new HashSet<>();
             List<String> inheritanceReasons = new ArrayList<>();
             if (subtype) {
@@ -474,7 +476,7 @@ public class PhysicalGenerationService {
                         errors.add(spec.error());
                         continue;
                     }
-                    if (!columnNames.add(spec.columnName())) {
+                    if (!columnNames.add(ColumnNameKey.of(spec.columnName()))) {
                         errors.add(Messages.get("같은 컬럼명({0})이 되는 속성이 둘 이상입니다.", spec.columnName()));
                         continue;
                     }
@@ -494,7 +496,7 @@ public class PhysicalGenerationService {
                     errors.add(spec.error());
                     continue;
                 }
-                if (!columnNames.add(spec.columnName())) {
+                if (!columnNames.add(ColumnNameKey.of(spec.columnName()))) {
                     errors.add(Messages.get("같은 컬럼명({0})이 되는 속성이 둘 이상입니다.", spec.columnName()));
                     continue;
                 }

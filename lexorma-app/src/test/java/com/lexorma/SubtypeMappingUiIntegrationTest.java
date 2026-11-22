@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * M-7 4차 : 상속 PK 매핑 화면과 정합성 비교가 쓰는 서버 응답 (docs/ongoing/subtype-physical-transformation.md 31장).
+ * M-7 4차 : 상속 PK 매핑 화면과 정합성 비교가 쓰는 서버 응답 (docs/completed/subtype-physical-transformation.md 31장).
  * 목록의 상속 역할·상속 PK 현황, 상속 PK 매핑 상세의 구조 점검(기존 부모 재사용 판정과 같은 결과), 정합성 비교의 상속 구조 행·현황, 생성 미리보기의 조상 쓰임,
  * 조회 수가 행 수에 비례하지 않는지, 역할별 권한. 판정은 서버가 하고 화면은 다시 계산하지 않으므로 서버 응답끼리 서로 어긋나지 않는지를 본다.
  */

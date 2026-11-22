@@ -383,6 +383,47 @@ class ModelExchangeIntegrationTest {
         assertThat(jdbc.queryForObject("select VER_NO from TB_ERD_LYT where PRJ_SN = ?", Long.class, source)).isEqualTo(3L);
     }
 
+    @Test
+    @DisplayName("M7-U01 : 파일 안 한 TABLE 의 컬럼명이 대소문자·앞뒤 공백만 다르면 그 TABLE 은 EXCLUDED·INVALID (가져오지 않는다) — 다른 TABLE 의 같은 이름은 그대로")
+    void columnNameKeyInFile() throws Exception {
+        AccountDto admin = admin(0L);
+        ModelExchangeDto.Document document = exchange.export(admin);
+        Item table = document.model().get("PHYSICAL_TABLE").stream().filter(t -> "TB_COL".equals(t.state().get("tableName"))).findFirst().orElseThrow();
+        ModelExchangeDto.Document dup = mutate(document, model -> {
+            Item column = model.get("PHYSICAL_COLUMN").stream().filter(c -> table.id().equals(((Number) c.state().get("tableInfoId")).longValue())
+                    && "COL_NM".equals(c.state().get("columnName"))).findFirst().orElseThrow();
+            Map<String, Object> state = new LinkedHashMap<>(column.state());
+            state.put("columnName", " col_nm ");
+            long id = model.values().stream().flatMap(List::stream).mapToLong(Item::id).max().orElse(0) + 1;
+            model.get("PHYSICAL_COLUMN").add(new Item(id, " col_nm ", state));
+        });
+        Long target = project("exchange-colkey");
+        ModelExchangeDto.Plan plan = exchange.plan(admin, new ModelExchangeDto.PlanRequest(target, dup, null));
+        assertThat(plan.items()).filteredOn(i -> i.kind().equals("TABLE") && "TB_COL".equals(i.name())).singleElement()
+                .extracting(ModelExchangeDto.PlanItem::status, ModelExchangeDto.PlanItem::reason).containsExactly(Status.EXCLUDED, Reason.INVALID);
+        assertThat(plan.items()).filteredOn(i -> i.kind().equals("TABLE") && "TB_TBL".equals(i.name())).singleElement()
+                .extracting(ModelExchangeDto.PlanItem::status).isEqualTo(Status.NEW);
+
+        // M7-U06 : 확장 대문자로만 같은 두 컬럼(STRAßE_X · strasse_x)이 한 TABLE 에 있으면 그 TABLE 은 INVALID, 다른 TABLE 에 나뉘면 그대로 (모델 복사 = 같은 가져오기)
+        Item tbl = document.model().get("PHYSICAL_TABLE").stream().filter(t -> "TB_TBL".equals(t.state().get("tableName"))).findFirst().orElseThrow();
+        ModelExchangeDto.Document unicode = mutate(document, model -> {
+            Item colNm = model.get("PHYSICAL_COLUMN").stream().filter(c -> table.id().equals(((Number) c.state().get("tableInfoId")).longValue())
+                    && "COL_NM".equals(c.state().get("columnName"))).findFirst().orElseThrow();
+            long id = model.values().stream().flatMap(List::stream).mapToLong(Item::id).max().orElse(0) + 1;
+            for (Object[] add : new Object[][]{{table.id(), "STRAßE_X"}, {table.id(), "strasse_x"}, {tbl.id(), "STRAßE_X"}}) {
+                Map<String, Object> state = new LinkedHashMap<>(colNm.state());
+                state.put("columnName", add[1]);
+                state.put("tableInfoId", add[0]);
+                model.get("PHYSICAL_COLUMN").add(new Item(id++, (String) add[1], state));
+            }
+        });
+        ModelExchangeDto.Plan unicodePlan = exchange.plan(admin, new ModelExchangeDto.PlanRequest(project("exchange-colkey-u"), unicode, null));
+        assertThat(unicodePlan.items()).filteredOn(i -> i.kind().equals("TABLE") && "TB_COL".equals(i.name())).singleElement()
+                .extracting(ModelExchangeDto.PlanItem::status, ModelExchangeDto.PlanItem::reason).containsExactly(Status.EXCLUDED, Reason.INVALID);
+        assertThat(unicodePlan.items()).filteredOn(i -> i.kind().equals("TABLE") && "TB_TBL".equals(i.name())).singleElement()
+                .extracting(ModelExchangeDto.PlanItem::status).isEqualTo(Status.NEW);
+    }
+
     private void view(long id, long projectId, long schemaId, String name, String definition) {
         jdbc.update("insert into TB_VIEW(VIEW_SN, PRJ_SN, SCHM_SN, VIEW_NM, VIEW_DFN_CN, APRV_YN) values (?, ?, ?, ?, ?, true)", id, projectId, schemaId, name, definition);
     }

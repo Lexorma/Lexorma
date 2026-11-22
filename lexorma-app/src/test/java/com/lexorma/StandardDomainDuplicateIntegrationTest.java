@@ -98,9 +98,13 @@ class StandardDomainDuplicateIntegrationTest {
         insertRaw(b, "DUP", true);
         insertRaw(b, "dup", true); // 다른 프로젝트의 묶음은 A 진단에 나오지 않는다
         long term = insertTerm(a, same1);
-        // 용어를 쓰는 컬럼 하나 (테이블 없이 — 진단은 프로젝트·용어로만 센다)
-        jdbc.update("insert into TB_COL(COL_SN, PRJ_SN, COL_NM, STD_TRM_SN, APRV_YN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
-                + " values (?, ?, 'DUP_COL', ?, false, 1, current_timestamp, current_timestamp, 'test', 'test')", IDS.incrementAndGet(), a.projectId, term);
+        // 용어를 쓰는 컬럼 하나 (진단은 프로젝트·용어로만 센다). V6 부터 컬럼에는 부모 테이블이 필수라 빈 테이블 하나를 둔다 (M7-U05)
+        long schema = IDS.incrementAndGet();
+        long table = IDS.incrementAndGet();
+        jdbc.update("insert into TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, BSC_YN) values (?, ?, 'DUP_SCHM', false)", schema, a.projectId);
+        jdbc.update("insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, APRV_YN) values (?, ?, ?, 'DUP_TBL', false)", table, a.projectId, schema);
+        jdbc.update("insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, COL_NM, STD_TRM_SN, APRV_YN, SORT_ORD, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, ?, 'DUP_COL', ?, false, 1, current_timestamp, current_timestamp, 'test', 'test')", IDS.incrementAndGet(), a.projectId, table, term);
         String before = snapshot(a);
 
         List<DuplicateGroup> groups = domains.findDuplicateGroups(a.projectId);

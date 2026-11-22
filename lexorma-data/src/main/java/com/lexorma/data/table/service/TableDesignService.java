@@ -41,6 +41,20 @@ public interface TableDesignService {
 
     void updateTable(TableInfoDto tableInfoDto, AccountDto accountDto);
 
+    /**
+     * 이 테이블을 이름으로 가리키는 다른 컬럼 (참조 테이블명이 이 테이블로 해석되는 컬럼 — {@link #updateTable} 이 이름을 바꿀 때 고치는 대상과 같다).
+     * 물리명 추천 일괄 적용(M-7)이 이름을 바꾸기 전에 읽어 행을 잠근다
+     */
+    List<ColumnInfo> columnsReferencingTable(Long projectId, TableInfo table);
+
+    /**
+     * 잠근 테이블의 물리 테이블명만 바꾼다 (물리명 추천 일괄 적용 전용 내부 경로 — 검증·잠금·기준값은 부르는 쪽).
+     * {@link #updateTable} 의 이름 변경과 같은 동기화를 한다 : 소속 컬럼의 테이블명 사본, referencing(바꾸기 전에 {@link #columnsReferencingTable} 로 읽은 것)의 참조 테이블명
+     * (승인된 컬럼도 — 기존 동작, P-11 : 참조 이름 사본만 바꾸고 다른 속성은 건드리지 않는다). 한글명·설명·스키마·승인 상태는 그대로다 (P-02).
+     * 참조 관계 동기화({@code PhysicalModelService.syncReferenceRelations})는 부르는 쪽이 바꾼 테이블 전체로 한 번 부른다
+     */
+    void renameLockedTable(TableInfo table, String newName, List<ColumnInfo> referencing);
+
     void updateTableIsApproval(boolean isApproval, AccountDto accountDto, List<TableInfoDto> tableInfoDtos);
 
     void deleteTable(List<TableInfoDto> tableInfoDtos, AccountDto accountDto);

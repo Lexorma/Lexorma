@@ -1,21 +1,29 @@
 import { useState, type FormEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { useSchemas } from '../schema/schemas';
 import type { ColumnCandidate, MappingAttribute, MappingDetail, MappingRow, TableCandidate } from './model';
 import { InheritanceRoleLabel, needsSubtypeKeys, SubtypeKeySection } from './subtypeKeys';
+import { AttributeSuggestionSection, TableSuggestionList } from './suggestions';
 
 const CANDIDATE_PAGE_SIZE = 10;
 
 /**
+ * 매핑 저장 충돌 (M7-F01) : 조회 뒤 다른 사용자가 같은 테이블·컬럼을 먼저 매핑하면 서버는 기존 계약 그대로 400 SAVED_DATA_EXISTS 를 준다.
+ * 오류 내용은 공통 알림(서버 문구)이 보이므로 여기서는 다시 띄우지 않고, 최신 상태를 다시 읽고 충돌한 선택만 비운다 — 다른 후보로 바꿔 저장하거나 다시 시도하지 않는다
+ */
+const isMappingConflict = (error: unknown) => error instanceof ApiError && error.code === 'SAVED_DATA_EXISTS';
+
+/**
  * 엔터티 ↔ 테이블 매핑 등록·변경 : 아직 매핑하지 않은 물리 테이블(현재 프로젝트)을 스키마·이름으로 찾아 고른다.
  * 후보는 서버에서 페이징한다. 1:1 과 속성 매핑이 있는 매핑의 테이블 변경 차단은 서버가 검사하고, 오류는 공통 알림으로 보여 준다.
+ * M-7 자동 매핑 후보 : 새 매핑이면 근거가 있는 추천 후보를 일반 검색 결과 위에 따로 보인다. 추천을 골라도 같은 [매핑 저장] 으로 저장한다 (자동 저장 없음)
  */
 export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: () => void }) {
   const dialog = useDialog();
@@ -26,6 +34,8 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<TableCandidate | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const queryClient = useQueryClient();
 
   const candidates = useQuery({
     queryKey: ['mapping-table-candidates', schemaId, keyword, page],
@@ -49,7 +59,17 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
     e.preventDefault();
     if (!selected) return dialog.alert(t('매핑할 물리 테이블을 선택해주세요.'));
     dialog.confirm(t('{0} 엔터티를 {1} 테이블에 매핑하시겠습니까?', row.entityName, selected.tableName), async () => {
-      await api('/api/modelMapping/entity', { method: 'POST', body: { id: row.mappingId, entityId: row.entityId, tableId: selected.tableId } });
+      try {
+        await api('/api/modelMapping/entity', { method: 'POST', body: { id: row.mappingId, entityId: row.entityId, tableId: selected.tableId } });
+      } catch (error) {
+        if (!isMappingConflict(error)) throw error;
+        // 충돌한 테이블 선택만 비우고 후보·추천을 다시 읽는다 (스키마·검색어는 그대로) — 사용자가 다시 골라야 저장된다
+        setSelected(null);
+        setConflict(true);
+        void candidates.refetch();
+        void queryClient.invalidateQueries({ queryKey: ['mapping-table-suggestions', row.entityId] });
+        return;
+      }
       onSaved();
       toast.success(t('정상적으로 저장되었습니다.'));
     });
@@ -64,9 +84,15 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
         <dd className={row.tableName ? 'gh-mono' : 'gh-muted'}>{row.tableName ? `${row.schemaName}.${row.tableName}` : t('미매핑')}</dd>
       </dl>
       {row.mappingId != null && <p className="form-help">{t('속성 매핑이 있는 엔터티 매핑은 테이블을 바꿀 수 없습니다. 속성 매핑을 먼저 해제해주세요.')}</p>}
+      {conflict && (
+        <p className="form-help mapping-conflict" role="status">
+          {t('저장하는 사이에 다른 매핑이 먼저 저장되었습니다. 최신 후보를 다시 불러왔습니다. 후보를 확인하고 다시 골라주세요.')}
+        </p>
+      )}
+      {row.mappingId == null && <TableSuggestionList entityId={row.entityId} schemaId={schemaId} selectedId={selected?.tableId ?? null} onSelect={setSelected} />}
 
       <div className="form-group">
-        <label htmlFor="mappingTableKeyword">{t('물리 테이블 검색')}</label>
+        <label htmlFor="mappingTableKeyword">{row.mappingId == null ? t('일반 검색') : t('물리 테이블 검색')}</label>
         <div className="mapping-search">
           <select className="form-control" aria-label={t('물리 스키마')} value={schemaId} onChange={(e) => { setSchemaId(e.target.value); setPage(0); }}>
             <option value="">{t('전체 스키마')}</option>
@@ -144,6 +170,9 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
   // 속성 ID → 고른 컬럼 ID (저장 전)
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [keyword, setKeyword] = useState('');
+  // 매핑이 바뀔 때마다 추천 후보를 다시 받는다 (추천 당시 상태를 믿지 않는다 — 저장은 서버가 다시 검사한다)
+  const [version, setVersion] = useState(0);
+  const [conflict, setConflict] = useState<string | null>(null);
 
   if (detail.isError) return <p role="alert">{t('매핑 정보를 불러오지 못했습니다.')} {detail.error.message}</p>;
   if (!detail.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
@@ -157,13 +186,27 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
 
   const changed = () => {
     setDrafts({});
+    setVersion((v) => v + 1);
     void detail.refetch();
     onChanged();
   };
 
   const save = async (attribute: MappingAttribute) => {
     const columnId = Number(drafts[attribute.attributeId]);
-    await api('/api/modelMapping/attribute', { method: 'POST', body: { id: attribute.mappingId, mappingId, attributeId: attribute.attributeId, columnId } });
+    try {
+      await api('/api/modelMapping/attribute', { method: 'POST', body: { id: attribute.mappingId, mappingId, attributeId: attribute.attributeId, columnId } });
+    } catch (error) {
+      if (!isMappingConflict(error)) throw error;
+      // 충돌한 속성의 선택만 비우고(다른 속성의 고른 값은 그대로) 매핑 상태·추천을 다시 읽는다 — 사용자가 다시 골라야 저장된다
+      const rest = { ...drafts };
+      delete rest[attribute.attributeId];
+      setDrafts(rest);
+      setConflict(attribute.attributeName);
+      void detail.refetch();
+      setVersion((v) => v + 1);
+      return;
+    }
+    setConflict(null);
     changed();
   };
 
@@ -202,6 +245,16 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
             value={keyword} onChange={(e) => setKeyword(e.target.value)} />
           <span className="gh-muted">{t('매핑하지 않은 컬럼 {0}개 중 {1}개 표시', unmappedColumns.length, visibleCandidates.length)}</span>
         </div>
+      )}
+
+      {conflict && (
+        <p className="form-help mapping-conflict" role="status">
+          {t('{0} 속성을 저장하는 사이에 그 컬럼이 다른 매핑에 먼저 쓰였습니다. 최신 매핑 상태와 추천을 다시 불러왔습니다. 컬럼을 다시 골라주세요.', conflict)}
+        </p>
+      )}
+      {attributes.some((a) => a.mappingId == null) && (
+        <AttributeSuggestionSection mappingId={mappingId} canEdit={canEdit} picked={drafts} version={version}
+          onPick={(attributeId, columnId) => setDrafts({ ...drafts, [attributeId]: String(columnId) })} />
       )}
 
       {attributes.length === 0 ? (

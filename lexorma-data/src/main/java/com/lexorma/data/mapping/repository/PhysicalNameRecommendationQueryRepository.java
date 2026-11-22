@@ -10,15 +10,25 @@ import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnS
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.Status;
 import com.lexorma.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
+import com.lexorma.data.physical.domain.entity.QTableConstraint;
+import com.lexorma.data.physical.domain.entity.QTableConstraintColumn;
+import com.lexorma.data.physical.domain.entity.QTableIndex;
+import com.lexorma.data.physical.domain.entity.QTableIndexColumn;
+import com.lexorma.data.physical.domain.entity.TableConstraint;
+import com.lexorma.data.view.domain.entity.QPhysicalView;
+import com.lexorma.data.view.domain.entity.QPhysicalViewReference;
+import com.lexorma.data.view.domain.entity.QViewChangeRequest;
+import com.lexorma.data.view.domain.entity.ViewChangeRequest;
 import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
+import com.lexorma.data.column.repository.ColumnNameKeySql;
 import com.querydsl.core.types.dsl.ComparableExpressionBase;
 import com.querydsl.core.types.dsl.StringExpression;
-import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -51,9 +61,6 @@ public class PhysicalNameRecommendationQueryRepository {
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
     private static final QColumnInfo column = QColumnInfo.columnInfo;
     private static final QStandardTerm term = QStandardTerm.standardTerm;
-    private static final QColumnInfo otherColumn = new QColumnInfo("otherColumn");
-    private static final QAttributeColumnMapping otherMapping = new QAttributeColumnMapping("otherMapping");
-    private static final QLogicalAttribute otherAttribute = new QLogicalAttribute("otherAttribute");
     private static final QEntityTableMapping tableMapping = new QEntityTableMapping("tableMapping");
     private static final QLogicalEntity mappedEntity = new QLogicalEntity("mappedEntity");
 
@@ -65,12 +72,12 @@ public class PhysicalNameRecommendationQueryRepository {
             .or(term.commonStandardTermAbbreviation.isNull())
             .or(term.commonStandardTermAbbreviation.trim().isEmpty());
     private static final BooleanExpression MATCHED = column.id.isNotNull().and(CURRENT.eq(RECOMMENDED));
-    /** 매핑된 테이블에서 이 속성의 컬럼이 아닌 다른 컬럼이 추천명을 쓰고 있다 */
-    private static final BooleanExpression CONFLICT = table.id.isNotNull().and(JPAExpressions.selectOne().from(otherColumn)
-            .where(otherColumn.tableInfo.id.eq(table.id),
-                    otherColumn.columnName.coalesce("").trim().upper().eq(RECOMMENDED),
-                    column.id.isNull().or(otherColumn.id.ne(column.id)))
-            .exists());
+    /**
+     * 매핑된 테이블에서 이 속성의 컬럼이 아닌 다른 컬럼이 추천명을 쓰고 있다 — 컬럼명 유일성 기준 (M7-U10 : DB 가 계산한 COL_NM_CMPR_VL 과 추천명의 비교 값을
+     * 그 DB 의 식으로 비교, UX_COL_01 인덱스. {@code ColumnNameKeySql} 이 등록한 HQL 함수). 일치(MATCHED) 판정은 표준화 규칙 그대로다
+     */
+    private static final BooleanExpression CONFLICT = table.id.isNotNull().and(Expressions.numberTemplate(Integer.class,
+            ColumnNameKeySql.TAKEN_FUNCTION + "({0}, {1}, {2})", table.id, term.commonStandardTermAbbreviation, column.id).eq(1));
 
     /** 그리드 정렬 필드 → 조회 컬럼 (목록에 없는 필드는 무시한다) */
     private static final Map<String, ComparableExpressionBase<?>> COLUMN_SORTS = Map.of(
@@ -91,7 +98,7 @@ public class PhysicalNameRecommendationQueryRepository {
                         model.id, model.modelName, entity.id, entity.entityName, mapping.id,
                         schema.id, schema.schemaName, table.id, table.tableName,
                         attribute.id, attribute.attributeName, term.id, term.commonStandardTermName, term.commonStandardTermAbbreviation,
-                        attributeMapping.id, column.id, column.columnName)))
+                        attributeMapping.id, column.id, column.columnName, column.standardTerms.id, column.isApproval, table.isApproval)))
                 .where(where)
                 .orderBy(orders(pageable.getSort(), entity.entityName.asc(), entity.id.asc(), attribute.sortOrder.asc().nullsLast(), attribute.id.asc()))
                 .offset(pageable.getOffset())
@@ -149,21 +156,8 @@ public class PhysicalNameRecommendationQueryRepository {
     }
 
     /** 테이블에서 그 이름을 쓰는 컬럼 (충돌 사유 표시용, 한 쪽 분량을 한 번에) */
-    public record NamedColumn(Long tableId, Long columnId, String columnName, String mappedAttributeName) {
-    }
 
-    /** upperNames : 대문자로 바꾼 추천 컬럼명 */
-    public List<NamedColumn> findColumnsByName(Collection<Long> tableIds, Collection<String> upperNames) {
-        if (tableIds.isEmpty() || upperNames.isEmpty()) return List.of();
-        return query.select(Projections.constructor(NamedColumn.class, otherColumn.tableInfo.id, otherColumn.id, otherColumn.columnName, otherAttribute.attributeName))
-                .from(otherColumn)
-                .leftJoin(otherMapping).on(otherMapping.column.eq(otherColumn))
-                .leftJoin(otherMapping.attribute, otherAttribute)
-                .where(otherColumn.tableInfo.id.in(tableIds), otherColumn.columnName.coalesce("").trim().upper().in(upperNames))
-                .fetch();
-    }
-
-    /** 프로젝트에서 그 이름을 쓰는 테이블 (테이블명은 프로젝트 안에서 유일해야 한다 — 테이블 등록·수정의 중복 기준) */
+    /** 프로젝트에서 그 이름을 쓰는 테이블 (충돌은 같은 스키마만 — 서비스가 스키마 ID 로 거른다. 테이블·VIEW 이름 공간은 스키마 단위, M-15) */
     public record NamedTable(Long tableId, Long schemaId, String tableName, String mappedEntityName) {
     }
 
@@ -187,5 +181,134 @@ public class PhysicalNameRecommendationQueryRepository {
         }
         orders.addAll(List.of(defaults));
         return orders.toArray(OrderSpecifier[]::new);
+    }
+
+    // ------------------------------------------------------------------ 일괄 적용 판정 (M-7 물리명 추천 일괄 적용 1차, 읽기 전용)
+
+    private static final QPhysicalView view = QPhysicalView.physicalView;
+    private static final QPhysicalViewReference viewReference = QPhysicalViewReference.physicalViewReference;
+    private static final QViewChangeRequest viewRequest = QViewChangeRequest.viewChangeRequest;
+    private static final QTableConstraint constraint = QTableConstraint.tableConstraint;
+    private static final QTableConstraintColumn constraintColumn = QTableConstraintColumn.tableConstraintColumn;
+    private static final QTableIndex index = QTableIndex.tableIndex;
+    private static final QTableIndexColumn indexColumn = QTableIndexColumn.tableIndexColumn;
+    private static final QAttributeColumnMapping candidateMapping = new QAttributeColumnMapping("candidateMapping");
+    private static final QColumnInfo candidateColumn = new QColumnInfo("candidateColumn");
+    private static final QLogicalAttribute candidateAttribute = new QLogicalAttribute("candidateAttribute");
+    private static final QStandardTerm candidateTerm = new QStandardTerm("candidateTerm");
+    private static final QEntityTableMapping candidateTableMapping = new QEntityTableMapping("candidateTableMapping");
+    private static final QTableInfo candidateTable = new QTableInfo("candidateTable");
+    private static final QLogicalEntity candidateEntity = new QLogicalEntity("candidateEntity");
+
+    /** 프로젝트에서 그 이름(대문자 비교)을 쓰는 VIEW — 테이블과 VIEW 는 같은 스키마에서 이름을 나눠 쓴다 (ObjectNamespace) */
+    public record NamedView(Long viewId, Long schemaId, String viewName) {
+    }
+
+    public List<NamedView> findViewsByName(Long projectId, Collection<String> upperNames) {
+        if (upperNames.isEmpty()) return List.of();
+        return query.select(Projections.constructor(NamedView.class, view.id, view.schema.id, view.viewName))
+                .from(view)
+                .where(view.projectId.eq(projectId), view.viewName.coalesce("").trim().upper().in(upperNames))
+                .fetch();
+    }
+
+    /** 속성 매핑된 컬럼 1개와 그 속성의 표준 용어 영문약어 (추천끼리 충돌 판정의 후보 — 페이지와 관계없이 그 테이블 전체) */
+    public record MappedColumn(Long tableId, Long columnId, String columnName, String termAbbreviation) {
+    }
+
+    public List<MappedColumn> findMappedColumns(Collection<Long> tableIds) {
+        if (tableIds.isEmpty()) return List.of();
+        return query.select(Projections.constructor(MappedColumn.class, candidateColumn.tableInfo.id, candidateColumn.id, candidateColumn.columnName,
+                        candidateTerm.commonStandardTermAbbreviation))
+                .from(candidateMapping)
+                .join(candidateMapping.column, candidateColumn)
+                .join(candidateMapping.attribute, candidateAttribute)
+                .leftJoin(candidateAttribute.standardTerm, candidateTerm)
+                .where(candidateColumn.tableInfo.id.in(tableIds))
+                .fetch();
+    }
+
+    /** 엔터티에 매핑된 테이블 1개 (추천끼리 테이블명 충돌 판정의 후보 — 같은 스키마의 매핑 전체) */
+    public record MappedTable(Long entityId, String entityName, Long tableId, String tableName, Long schemaId) {
+    }
+
+    public List<MappedTable> findMappedTables(Long projectId, Collection<Long> schemaIds) {
+        if (schemaIds.isEmpty()) return List.of();
+        return query.select(Projections.constructor(MappedTable.class, candidateEntity.id, candidateEntity.entityName, candidateTable.id, candidateTable.tableName,
+                        candidateTable.schema.id))
+                .from(candidateTableMapping)
+                .join(candidateTableMapping.entity, candidateEntity)
+                .join(candidateTableMapping.table, candidateTable)
+                .where(candidateTable.projectId.eq(projectId), candidateTable.schema.id.in(schemaIds))
+                .fetch();
+    }
+
+    /** 프로젝트의 모델 VIEW 정의 (스키마와 관계없이 — VIEW 는 다른 스키마의 테이블도 참조한다) */
+    public record ViewDefinition(Long viewId, String viewName, String definition) {
+    }
+
+    public List<ViewDefinition> findViewDefinitions(Long projectId) {
+        return query.select(Projections.constructor(ViewDefinition.class, view.id, view.viewName, view.definition))
+                .from(view).where(view.projectId.eq(projectId)).fetch();
+    }
+
+    /** VIEW 참조 객체 메타데이터 (내부 참조만 : 테이블 ID 또는 VIEW ID) */
+    public record ViewLink(Long viewId, Long tableId, Long referencedViewId) {
+    }
+
+    public List<ViewLink> findViewLinks(Long projectId) {
+        return query.select(Projections.constructor(ViewLink.class, viewReference.view.id, viewReference.referencedTable.id, viewReference.referencedView.id))
+                .from(viewReference)
+                .where(viewReference.view.projectId.eq(projectId), viewReference.referencedTable.isNotNull().or(viewReference.referencedView.isNotNull()))
+                .fetch();
+    }
+
+    /** 처리 전(REQUESTED) VIEW 변경 요청의 변경 후 데이터 (JSON — 승인하면 그 정의가 반영된다) */
+    public record PendingViewRequest(Long viewId, String afterData) {
+    }
+
+    public List<PendingViewRequest> findPendingViewRequests(Long projectId) {
+        return query.select(Projections.constructor(PendingViewRequest.class, viewRequest.view.id, viewRequest.afterData))
+                .from(viewRequest)
+                .where(viewRequest.projectId.eq(projectId), viewRequest.status.eq(ViewChangeRequest.Status.REQUESTED))
+                .fetch();
+    }
+
+    /** 테이블의 CHECK 제약조건 식 */
+    public record CheckExpression(Long constraintId, Long tableId, String constraintName, String expression) {
+    }
+
+    public List<CheckExpression> findCheckExpressions(Collection<Long> tableIds) {
+        if (tableIds.isEmpty()) return List.of();
+        return query.select(Projections.constructor(CheckExpression.class, constraint.id, constraint.tableInfo.id, constraint.constraintName, constraint.checkExpression))
+                .from(constraint)
+                .where(constraint.tableInfo.id.in(tableIds), constraint.constraintType.eq(TableConstraint.Type.CHECK))
+                .fetch();
+    }
+
+    /** CHECK 제약조건의 구성 컬럼 (constraintId, columnId) */
+    public List<com.querydsl.core.Tuple> findCheckColumns(Collection<Long> tableIds) {
+        if (tableIds.isEmpty()) return List.of();
+        return query.select(constraintColumn.tableConstraint.id, constraintColumn.column.id)
+                .from(constraintColumn)
+                .where(constraintColumn.tableConstraint.tableInfo.id.in(tableIds), constraintColumn.tableConstraint.constraintType.eq(TableConstraint.Type.CHECK))
+                .fetch();
+    }
+
+    /** 인덱스의 조건(부분 인덱스) 또는 식 컬럼 1건 — 텍스트가 있는 것만 */
+    public record IndexExpression(Long indexId, Long tableId, String indexName, String text) {
+    }
+
+    public List<IndexExpression> findIndexExpressions(Collection<Long> tableIds) {
+        if (tableIds.isEmpty()) return List.of();
+        List<IndexExpression> result = new ArrayList<>(query.select(Projections.constructor(IndexExpression.class, index.id, index.tableInfo.id, index.indexName, index.condition))
+                .from(index)
+                .where(index.tableInfo.id.in(tableIds), index.condition.isNotNull())
+                .fetch());
+        result.addAll(query.select(Projections.constructor(IndexExpression.class, index.id, index.tableInfo.id, index.indexName, indexColumn.expression))
+                .from(indexColumn).join(indexColumn.tableIndex, index)
+                .where(index.tableInfo.id.in(tableIds), indexColumn.expression.isNotNull())
+                .fetch());
+        return result;
     }
 }

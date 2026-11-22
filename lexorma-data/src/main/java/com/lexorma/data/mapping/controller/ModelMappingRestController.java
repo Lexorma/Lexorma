@@ -38,6 +38,7 @@ public class ModelMappingRestController {
     private final com.lexorma.data.mapping.service.PhysicalGenerationService generationService;
     private final com.lexorma.data.mapping.service.PhysicalNameRenameService renameService;
     private final com.lexorma.data.mapping.service.ForeignKeyCorrectionService foreignKeyCorrectionService;
+    private final com.lexorma.data.mapping.service.UniqueCorrectionService uniqueCorrectionService;
 
     @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK 계획과 막는 문제·경고, 논리 관계별 FK 미생성 사유(relations), DBMS 식별자 진단(identifiers), planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
     @PreAuthorize("hasRole('USER')")
@@ -324,5 +325,31 @@ public class ModelMappingRestController {
     public ResponseEntity<com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Result> foreignKeyApply(@RequestBody com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Request request,
                                                                                                              @AuthenticationPrincipal AccountDto accountDto) {
         return ResponseEntity.ok(foreignKeyCorrectionService.apply(accountDto, request));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 가능 여부 (M7-AK-02)", description = "정합성 비교의 보조 식별자(identifierIds, 같은 모델, 최대 100개 — 목록 한 쪽)마다 UNIQUE 를 만들 수 있는지와 막는 사유·경고. 조회 전용 (계획 토큰 없음)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/quality/unique/status")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Item>> uniqueStatus(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                          @RequestParam(value = "modelId") Long modelId,
+                                                                                                          @RequestParam(value = "identifierIds") List<Long> identifierIds) {
+        return ResponseEntity.ok(uniqueCorrectionService.status(accountDto, modelId, identifierIds));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 미리보기 (M7-AK-02)", description = "고른 보조 식별자(UNIQUE 누락)의 만들 UNIQUE 구성(테이블, 컬럼·순서, 이름, 미승인)과 보정 가능 여부·사유·NULL 경고, planToken. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/unique/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Plan> uniquePreview(@RequestBody com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Request request,
+                                                                                                     @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(uniqueCorrectionService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 적용 (M7-AK-02)", description = "미리보기의 planToken 과 같은 계획이고 고른 보조 식별자를 모두 보정할 수 있을 때만, 직전 모델 버전(UKFIX-요청 ID)을 남긴 뒤 미승인 UNIQUE 제약조건을 만든다. "
+            + "기존 UNIQUE·고유 인덱스·컬럼은 바꾸지 않고 원본 DB 도 바꾸지 않는다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 식별자가 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/unique/apply")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Result> uniqueApply(@RequestBody com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Request request,
+                                                                                                     @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(uniqueCorrectionService.apply(accountDto, request));
     }
 }

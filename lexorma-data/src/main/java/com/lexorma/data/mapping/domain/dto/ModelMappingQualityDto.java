@@ -73,7 +73,14 @@ public final class ModelMappingQualityDto {
      */
     public record Structure(CheckType kind, String code, Long logicalId, String logicalName, Long parentEntityId, String parentEntityName,
                             Long parentTableId, String parentTableName, Long physicalId, String physicalName, java.util.List<StructureColumn> columns,
-                            java.util.List<String> candidates) {
+                            java.util.List<String> candidates, String referenceKey, Long referenceKeyId, String referenceKeyName) {
+        /** referenceKey (관계 행만, M7-AK-D09) : 짝이 가리키는 부모 식별자 PRIMARY · ALTERNATE (해석되지 않으면 null), referenceKeyId·Name : 그 식별자 */
+        public Structure(CheckType kind, String code, Long logicalId, String logicalName, Long parentEntityId, String parentEntityName,
+                         Long parentTableId, String parentTableName, Long physicalId, String physicalName, java.util.List<StructureColumn> columns,
+                         java.util.List<String> candidates) {
+            this(kind, code, logicalId, logicalName, parentEntityId, parentEntityName, parentTableId, parentTableName, physicalId, physicalName, columns, candidates,
+                    null, null, null);
+        }
     }
 
     /**

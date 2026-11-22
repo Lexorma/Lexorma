@@ -110,7 +110,8 @@ public class ModelMappingQualityService {
                 structureRepository.entities(projectId, modelId), structureRepository.relationships(projectId, modelId), structureRepository.pairs(projectId, modelId),
                 structureRepository.identifiers(projectId, modelId), structureRepository.attributeColumns(projectId, modelId), structureRepository.inheritedKeys(projectId, modelId),
                 structureRepository.foreignKeys(projectId, modelId), structureRepository.uniqueConstraints(projectId, modelId), structureRepository.uniqueColumns(projectId, modelId),
-                structureRepository.primaryKeyColumns(projectId, modelId), hierarchy::parent, hierarchy::root, hierarchy.participants()));
+                structureRepository.primaryKeyColumns(projectId, modelId), hierarchy::parent, hierarchy::root, hierarchy.participants(),
+                structureRepository.uniqueIndexes(projectId, modelId)));
     }
 
     /** 구조 진단 행의 엔터티·이름 조건 (목록 조회의 엔터티 ID · 검색 조건과 같은 뜻) */

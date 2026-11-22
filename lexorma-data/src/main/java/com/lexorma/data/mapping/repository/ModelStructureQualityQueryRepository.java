@@ -12,6 +12,9 @@ import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
 import com.lexorma.data.mapping.domain.entity.QSubtypeIdentifierColumnMapping;
 import com.lexorma.data.physical.domain.entity.QTableConstraint;
 import com.lexorma.data.physical.domain.entity.QTableConstraintColumn;
+import com.lexorma.data.physical.domain.entity.QTableIndex;
+import com.lexorma.data.physical.domain.entity.QTableIndexColumn;
+import com.lexorma.data.physical.domain.entity.TableIndexColumn;
 import com.lexorma.data.physical.domain.entity.QTableRelation;
 import com.lexorma.data.physical.domain.entity.QTableRelationColumn;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
@@ -56,6 +59,8 @@ public class ModelStructureQualityQueryRepository {
     private static final QTableRelationColumn relationColumn = QTableRelationColumn.tableRelationColumn;
     private static final QTableConstraint constraint = QTableConstraint.tableConstraint;
     private static final QTableConstraintColumn constraintColumn = QTableConstraintColumn.tableConstraintColumn;
+    private static final QTableIndex index = QTableIndex.tableIndex;
+    private static final QTableIndexColumn indexColumn = QTableIndexColumn.tableIndexColumn;
 
     private final JPAQueryFactory query;
 
@@ -204,6 +209,24 @@ public class ModelStructureQualityQueryRepository {
                 .from(column).join(column.tableInfo, table)
                 .where(column.projectId.eq(projectId), column.isPk.isTrue(), mappedTable(table.id, projectId, modelId))
                 .orderBy(table.id.asc(), column.sortOrder.asc().nullsLast(), column.id.asc())
+                .fetch();
+    }
+
+    /**
+     * FK 가 참조할 수 있는 고유 인덱스의 검색 키 1개 (M7-AK-D12 — 사후 무효 FK 판정이 DDL {@code TableDdlGenerator.referencesKey} 와 같은 키 범위를 보게 한다).
+     * 고유 · 조건 없음 인덱스의 INCLUDE 가 아닌 구성 (표현식 요소는 columnId 가 null — 그런 인덱스는 판정에서 뺀다). 보조 식별자 진단은 고유 인덱스를 UNIQUE 로 보지 않는다
+     */
+    public record UniqueIndexRow(Long indexId, Long tableId, Integer columnOrder, Long columnId) {
+    }
+
+    public List<UniqueIndexRow> uniqueIndexes(Long projectId, Long modelId) {
+        return query.select(Projections.constructor(UniqueIndexRow.class, index.id, index.tableInfo.id, indexColumn.columnOrder, column.id))
+                .from(indexColumn)
+                .join(indexColumn.tableIndex, index)
+                .leftJoin(indexColumn.column, column)
+                .where(index.projectId.eq(projectId), index.isUnique.isTrue(), index.condition.isNull(),
+                        indexColumn.sort.isNull().or(indexColumn.sort.ne(TableIndexColumn.INCLUDE)), mappedTable(index.tableInfo.id, projectId, modelId))
+                .orderBy(index.id.asc(), indexColumn.columnOrder.asc())
                 .fetch();
     }
 }

@@ -72,7 +72,16 @@ public final class PhysicalGenerationDto {
      */
     public record Plan(List<TablePlan> tables, boolean creatable, String planToken, String dbType, List<IdentifierIssue> identifiers, List<RelationPlan> relations,
                        boolean executable, String executionBlockedReason, List<InheritanceForeignKeyPlan> inheritanceForeignKeys,
-                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors) {
+                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors, List<UniquePlan> uniques) {
+    }
+
+    /**
+     * 보조 식별자 → UNIQUE 계획 (M7-AK-01, docs/completed/alternate-key-unique-m7.md) : 새로 만드는 테이블의 보조 식별자마다 1행 (식별자 ID 순).
+     * status : CREATE(명시적 UNIQUE 제약조건 — 단일·복합 모두, 식별자 순서, 미승인) · SKIP(만들지 않음 — 사유 PRIMARY_KEY_DUPLICATE · DUPLICATE_ALTERNATE_KEY · COLUMN_UNAVAILABLE).
+     * duplicateOfIdentifierId : 같은 컬럼 집합의 대표 식별자 (식별자 ID 가 가장 작은 것). warnings : NULLABLE_COLUMNS (막지 않는다 — M7-AK-D03)
+     */
+    public record UniquePlan(Long entityId, String entityName, Long identifierId, String identifierName, String tableName, String constraintName, List<String> columns,
+                             String status, String reason, Long duplicateOfIdentifierId, String duplicateOfIdentifierName, List<String> warnings, String message) {
     }
 
     /**
@@ -122,13 +131,15 @@ public final class PhysicalGenerationDto {
      * reasons : READY 가 아니면 첫 항목이 그 사유 (ATTRIBUTE_PAIRS_MISSING · ATTRIBUTE_PAIRS_INCOMPLETE · ATTRIBUTE_PAIRS_INVALID · PARENT_TABLE_MISSING · COLUMN_UNAVAILABLE ·
      * PARENT_KEY_NOT_TABLE_KEY · SELF_KEY_ONLY · TYPE_INCOMPATIBLE · CHILD_COLUMN_IN_USE), 그 뒤 참고 : SELF_REFERENCE · MULTIPLE_RELATIONSHIPS · COMPOSITE_PARENT_KEY · PARENT_KEY_MISSING.
      * pairStatus·pairWarnings·pairs : 논리 관계 속성 짝 판정 (P4·P5 경고 포함). parentTableId : 이미 있는(매핑된) 부모 테이블 (새로 만들면 null).
-     * constraintName : DDL 의 FK 이름 (SINGLE 은 DDL 이 만드는 FK_자식_컬럼), refTableName : SINGLE 일 때 자식 컬럼에 넣을 값. columns : 짝 순서의 컬럼 쌍. approved false 면 승인 전 관계
+     * constraintName : DDL 의 FK 이름 (SINGLE 은 DDL 이 만드는 FK_자식_컬럼), refTableName : SINGLE 일 때 자식 컬럼에 넣을 값. columns : 짝 순서의 컬럼 쌍. approved false 면 승인 전 관계.
+     * keyType : 짝이 가리키는 부모 식별자 PRIMARY · ALTERNATE (M7-AK-D09). ALTERNATE 는 단일이어도 참조 테이블명이 아니라 미승인 사용자 관계(TableRelation)로 만든다 (M7-AK-D11 — 부모 PK 가 아닌
+     * UNIQUE 를 참조하므로 REF_COLUMN 으로 표현할 수 없다), 추가 사유 : PARENT_UNIQUE_MISSING(기존 부모에 그 순서의 UNIQUE 없음) · UNIQUE_ORDER_DIFFERS(짝 순서 ≠ UNIQUE 순서)
      */
     public record RelationPlan(Long relationshipId, String relationshipName, Long parentEntityId, String parentEntityName, Long childEntityId, String childEntityName,
                                boolean fkCreated, List<String> reasons, String message, Boolean approved, String pairStatus, List<String> pairWarnings,
                                List<com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributePair> pairs,
                                String fkStatus, String fkType, String parentTableName, Long parentTableId, String childTableName, String constraintName, String refTableName,
-                               List<FkColumn> columns) {
+                               List<FkColumn> columns, String keyType, String keyIdentifierName) {
     }
 
     /** FK 컬럼 쌍 1개 (짝 순서) : 부모 컬럼 ← 자식 컬럼 */
@@ -139,9 +150,10 @@ public final class PhysicalGenerationDto {
      * versionId·versionName : 반영 직전에 남긴 모델 버전 (P11, 이름 GENERATE-요청 ID). foreignKeys : 만든 논리 관계 FK 수 (단일 FK 는 참조 테이블명으로 — 반영 안에서 관계로 맞춘다).
      * inheritanceForeignKeys : 만든 상속 FK 수, inheritedKeyMappings : 저장한 상속 PK 매핑 수 (M-7 3차)
      */
-    public record Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys, int inheritanceForeignKeys, int inheritedKeyMappings) {
+    public record Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys, int inheritanceForeignKeys, int inheritedKeyMappings,
+                         int uniques) {
         public Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys) {
-            this(tables, columns, tableIds, versionId, versionName, foreignKeys, 0, 0);
+            this(tables, columns, tableIds, versionId, versionName, foreignKeys, 0, 0, 0);
         }
     }
 }

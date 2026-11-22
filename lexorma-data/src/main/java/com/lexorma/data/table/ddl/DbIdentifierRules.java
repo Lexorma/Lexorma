@@ -80,6 +80,11 @@ public final class DbIdentifierRules {
         return "UK_" + tableName + "_" + columnName;
     }
 
+    /** UNIQUE 제약조건 등록의 기본 이름 (UK_테이블_컬럼1_컬럼2…, 구성 순서) — 컬럼 하나면 {@link #uniqueName(String, String)} 과 같다 */
+    public static String uniqueName(String tableName, java.util.List<String> columnNames) {
+        return "UK_" + tableName + "_" + String.join("_", columnNames);
+    }
+
     /** DDL 이 참조 테이블명(단일 FK 약식 입력) 컬럼마다 만드는 FK 제약조건명 */
     public static String foreignKeyName(String tableName, String columnName) {
         return "FK_" + tableName + "_" + columnName;

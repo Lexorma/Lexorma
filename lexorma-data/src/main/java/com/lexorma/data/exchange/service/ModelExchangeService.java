@@ -377,7 +377,9 @@ public class ModelExchangeService {
     }
 
     /**
-     * 논리 관계 속성 짝 (형식 3, M-7 보강 3차) : 부모 속성은 관계 원본 엔터티의 주 식별자 속성, 자식 속성은 대상 엔터티의 속성, 부모·자식·순서 각각 중복 없음 (파일 안의 번호로 확인).
+     * 논리 관계 속성 짝 (형식 3, M-7 보강 3차) : 부모 속성은 관계 원본 엔터티의 주 식별자 속성(일부 허용 — 저장 경로와 같다) 또는 원본 엔터티 자체의 보조 식별자 하나 전체
+     * (M7-AK-D09 — 상속 구조에 참여하는 원본은 보조 식별자 참조 보류, D16, 판정 {@link com.lexorma.data.logical.service.ReferenceKeys}), 자식 속성은 대상 엔터티의 속성,
+     * 부모·자식·순서 각각 중복 없음 (파일 안의 번호로 확인). 교환 형식은 그대로다 (짝 구조가 같다 — M7-AK-D17).
      * 어기면 파일 전체를 거절한다 (가져오지 않은 것을 조용히 빼지 않는다). 형식 1·2 파일에는 속성 짝이 있을 수 없다
      */
     private static void validatePairs(ModelExchangeDto.Document document, Map<Long, Long> supertypes) {
@@ -387,11 +389,18 @@ public class ModelExchangeService {
         Map<Long, Long> attributeEntity = new HashMap<>();
         for (Item a : listOf(document, "LOGICAL_ATTRIBUTE")) attributeEntity.put(a.id(), ref(a, "entity"));
         Map<Long, Set<Long>> primaryKeys = new HashMap<>();
+        Map<Long, List<com.lexorma.data.logical.service.ReferenceKeys.Key>> alternates = new HashMap<>();
         for (Item i : listOf(document, "LOGICAL_IDENTIFIER")) {
-            if (!Boolean.TRUE.equals(bool(i, "isPrimary"))) continue;
+            if (!Boolean.TRUE.equals(bool(i, "isPrimary"))) {
+                List<Long> members = children(i, "attributes").stream().map(member -> longValue(member.get("attributeId"))).toList();
+                alternates.computeIfAbsent(ref(i, "entity"), id -> new ArrayList<>()).add(new com.lexorma.data.logical.service.ReferenceKeys.Key(i.id(), null, false, members));
+                continue;
+            }
             Set<Long> key = primaryKeys.computeIfAbsent(ref(i, "entity"), id -> new HashSet<>());
             children(i, "attributes").forEach(member -> key.add(longValue(member.get("attributeId"))));
         }
+        Set<Long> participants = new HashSet<>(supertypes.keySet());
+        participants.addAll(supertypes.values());
         for (Item r : relationships) {
             List<Map<String, Object>> pairs = children(r, "attributes");
             if (pairs.isEmpty()) continue;
@@ -402,15 +411,25 @@ public class ModelExchangeService {
             Set<Long> parents = new HashSet<>();
             Set<Long> childs = new HashSet<>();
             Set<Integer> orders = new HashSet<>();
+            List<com.lexorma.data.logical.service.ReferenceKeys.Key> sourceAlternates = participants.contains(source) ? List.of() : alternates.getOrDefault(source, List.of());
+            Set<Long> alternateAttributes = new HashSet<>();
+            sourceAlternates.forEach(k -> alternateAttributes.addAll(k.attributeIds()));
+            List<Long> orderedParents = new ArrayList<>();
             for (Map<String, Object> pair : pairs) {
                 Long parent = longValue(pair.get("parentAttributeId"));
                 Long child = longValue(pair.get("childAttributeId"));
                 Integer order = intValue(pair.get("sortOrder"));
-                boolean ok = parent != null && child != null && order != null
-                        && Objects.equals(attributeEntity.get(parent), keyOwner) && primaryKeys.getOrDefault(keyOwner, Set.of()).contains(parent)
+                boolean parentOk = parent != null && ((Objects.equals(attributeEntity.get(parent), keyOwner) && primaryKeys.getOrDefault(keyOwner, Set.of()).contains(parent))
+                        || (Objects.equals(attributeEntity.get(parent), source) && alternateAttributes.contains(parent)));
+                boolean ok = parentOk && child != null && order != null
                         && Objects.equals(attributeEntity.get(child), target)
                         && parents.add(parent) && childs.add(child) && orders.add(order);
                 if (!ok) throw invalid("논리 관계 {0} 의 속성 짝이 올바르지 않습니다 (부모 주 식별자 속성 · 자식 엔터티 속성 · 중복 없는 순서).", String.valueOf(r.id()));
+                orderedParents.add(parent);
+            }
+            var key = com.lexorma.data.logical.service.ReferenceKeys.resolve(orderedParents, null, null, new ArrayList<>(primaryKeys.getOrDefault(keyOwner, Set.of())), sourceAlternates);
+            if (!key.complete() && !"PARTIAL".equals(key.status())) {
+                throw invalid("논리 관계 {0} 의 속성 짝이 부모의 식별자 하나와 맞지 않습니다 (보조 식별자는 구성 속성 전체, 서로 다른 식별자의 속성을 섞지 않는다).", String.valueOf(r.id()));
             }
         }
     }

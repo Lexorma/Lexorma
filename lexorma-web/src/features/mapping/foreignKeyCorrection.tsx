@@ -14,7 +14,8 @@ import '../../styles/ai-dictionary.css';
 /** ForeignKeyCorrectionDto.Code */
 export type CorrectionCode =
   | 'NOT_MISSING' | 'INHERITANCE_LINK' | 'SINGLE_FK_HELD' | 'CHILD_TABLE_APPROVED' | 'CHILD_COLUMN_APPROVED' | 'REF_COLUMN_CONFLICT'
-  | 'RELATION_EXISTS' | 'PARENT_KEY_INVALID' | 'TYPE_INCOMPATIBLE' | 'DUPLICATE_COLUMN' | 'SHARED_STRUCTURE' | 'NAME_CONFLICT';
+  | 'RELATION_EXISTS' | 'PARENT_KEY_INVALID' | 'TYPE_INCOMPATIBLE' | 'DUPLICATE_COLUMN' | 'SHARED_STRUCTURE' | 'NAME_CONFLICT'
+  | 'PARENT_UNIQUE_MISSING' | 'PARENT_UNIQUE_ORDER';
 
 export interface CorrectionIssue { code: CorrectionCode; reason: string }
 
@@ -31,6 +32,8 @@ export interface CorrectionItem {
   childTableId: number | null; childSchemaName: string | null; childTableName: string | null;
   diagnosisCode: string; representation: 'USER_RELATION' | 'REF_COLUMN' | null; selfReference: boolean; relationName: string | null; approved: boolean;
   pairs: CorrectionPair[]; correctable: boolean; blockers: CorrectionIssue[];
+  /** 참조 키 (M7-AK-03) : PRIMARY = 부모 PK, ALTERNATE = 부모 보조 식별자의 UNIQUE */
+  referenceKey: 'PRIMARY' | 'ALTERNATE' | null; referenceKeyName: string | null;
 }
 
 export interface CorrectionPlan { modelId: number; items: CorrectionItem[]; total: number; correctable: number; blocked: number; applicable: boolean; planToken: string }
@@ -52,6 +55,8 @@ export const CORRECTION_CODE_LABELS: Record<CorrectionCode, string> = {
   DUPLICATE_COLUMN: t('중복 컬럼'),
   SHARED_STRUCTURE: t('다른 관계와 같은 구성'),
   NAME_CONFLICT: t('FK 이름 충돌'),
+  PARENT_UNIQUE_MISSING: t('부모 UNIQUE 없음'),
+  PARENT_UNIQUE_ORDER: t('부모 UNIQUE 순서 다름'),
 };
 
 const issueText = (issues: CorrectionIssue[]) => issues.map((i) => i.reason).join('\n');
@@ -203,7 +208,8 @@ export function ForeignKeyPreview({ modelId, ids, onRemove, onStale, onDone, onC
                   <tr key={item.relationshipId}>
                     <td>{item.logicalValue ?? item.relationshipName ?? item.relationshipId}</td>
                     <td><Mono>{tablePath(item.childSchemaName, item.childTableName)}</Mono> → <Mono>{tablePath(item.parentSchemaName, item.parentTableName)}</Mono>
-                      {item.selfReference && <div className="gh-muted">{t('자기 참조')}</div>}</td>
+                      {item.selfReference && <div className="gh-muted">{t('자기 참조')}</div>}
+                      {item.referenceKey === 'ALTERNATE' && <div className="gh-muted">{t('보조 식별자 {0} 의 UNIQUE 참조', item.referenceKeyName ?? '-')}</div>}</td>
                     <td>
                       {item.pairs.length === 0 ? <span className="gh-muted">-</span> : (
                         <ol className="fk-pairs">

@@ -9,6 +9,7 @@ import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.StructureColum
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.AttributeColumnRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.ColumnFlagRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.EntityRow;
+import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.UniqueIndexRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.ForeignKeyRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.IdentifierRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.InheritedKeyRow;
@@ -53,7 +54,15 @@ public final class ModelStructureQualityJudge {
                         List<ForeignKeyRow> foreignKeys, List<UniqueRow> uniqueConstraints, List<ColumnFlagRow> uniqueColumns, List<ColumnFlagRow> primaryKeyColumns,
                         /* 엔터티 → 직계 슈퍼타입 (없으면 null) */ Function<Long, Long> supertypeOf,
                         /* 엔터티 → 상속 루트 (참여하지 않으면 자기 자신) */ Function<Long, Long> rootOf,
-                        Set<Long> participants) {
+                        Set<Long> participants, List<UniqueIndexRow> uniqueIndexes) {
+        /** 고유 인덱스 없이 (예전 호출 — 사후 무효 FK 판정의 키 범위에서 고유 인덱스만 빠진다) */
+        public Input(Long modelId, String modelName, List<EntityRow> entities, List<RelationshipRow> relationships, List<PairRow> pairs,
+                     List<IdentifierRow> identifiers, List<AttributeColumnRow> attributeColumns, List<InheritedKeyRow> inheritedKeys,
+                     List<ForeignKeyRow> foreignKeys, List<UniqueRow> uniqueConstraints, List<ColumnFlagRow> uniqueColumns, List<ColumnFlagRow> primaryKeyColumns,
+                     Function<Long, Long> supertypeOf, Function<Long, Long> rootOf, Set<Long> participants) {
+            this(modelId, modelName, entities, relationships, pairs, identifiers, attributeColumns, inheritedKeys, foreignKeys, uniqueConstraints, uniqueColumns,
+                    primaryKeyColumns, supertypeOf, rootOf, participants, List.of());
+        }
     }
 
     private record Col(Long id, String name) {
@@ -106,6 +115,10 @@ public final class ModelStructureQualityJudge {
         final Map<String, InheritedKeyRow> inheritedKey = new HashMap<>();
         final Map<Long, String> attributeOfColumn = new HashMap<>();
         final Map<Long, List<Long>> primaryKey = new HashMap<>();
+        final Map<Long, Long[]> primaryIdentifier = new HashMap<>(); // 엔터티 → [식별자 ID]
+        final Map<Long, String> primaryIdentifierName = new HashMap<>();
+        final Map<Long, List<com.lexorma.data.logical.service.ReferenceKeys.Key>> alternateKeys = new HashMap<>(); // 엔터티 → 보조 식별자 (식별자 ID 순)
+        final Map<Long, List<Set<Long>>> uniqueIndexKeys = new HashMap<>(); // 테이블 → FK 가 참조할 수 있는 고유 인덱스 컬럼 집합
         final Map<Long, Fk> foreignKeys = new LinkedHashMap<>();
         final Map<Long, List<Fk>> foreignKeysByChildTable = new HashMap<>();
         final Map<String, Uq> uniques = new LinkedHashMap<>();
@@ -132,8 +145,22 @@ public final class ModelStructureQualityJudge {
             });
             in.attributeColumns().forEach(a -> attributeOfColumn.put(a.columnId(), attributeName.getOrDefault(a.attributeId(), String.valueOf(a.attributeId()))));
             in.inheritedKeys().forEach(k -> attributeOfColumn.putIfAbsent(k.columnId(), attributeName.getOrDefault(k.attributeId(), String.valueOf(k.attributeId()))));
-            in.identifiers().stream().filter(i -> Boolean.TRUE.equals(i.primary()))
-                    .forEach(i -> primaryKey.computeIfAbsent(i.entityId(), k -> new ArrayList<>()).add(i.attributeId()));
+            in.identifiers().stream().filter(i -> Boolean.TRUE.equals(i.primary())).forEach(i -> {
+                primaryKey.computeIfAbsent(i.entityId(), k -> new ArrayList<>()).add(i.attributeId());
+                primaryIdentifier.putIfAbsent(i.entityId(), new Long[]{i.identifierId()});
+                primaryIdentifierName.putIfAbsent(i.entityId(), i.identifierName());
+            });
+            // 보조 식별자 (조회 순서 = 식별자 ID → 식별자 속성 순서) : 짝 해석의 후보 — 같은 구성이면 식별자 ID 가 가장 작은 것이 대표 (ReferenceKeys)
+            Map<Long, List<IdentifierRow>> byAlternate = in.identifiers().stream().filter(i -> !Boolean.TRUE.equals(i.primary()))
+                    .collect(Collectors.groupingBy(IdentifierRow::identifierId, LinkedHashMap::new, Collectors.toList()));
+            byAlternate.values().forEach(rows -> alternateKeys.computeIfAbsent(rows.get(0).entityId(), k -> new ArrayList<>())
+                    .add(new com.lexorma.data.logical.service.ReferenceKeys.Key(rows.get(0).identifierId(), rows.get(0).identifierName(), false,
+                            rows.stream().map(IdentifierRow::attributeId).toList())));
+            Map<Long, List<UniqueIndexRow>> byIndex = in.uniqueIndexes().stream().collect(Collectors.groupingBy(UniqueIndexRow::indexId, LinkedHashMap::new, Collectors.toList()));
+            byIndex.values().forEach(rows -> {
+                if (rows.stream().anyMatch(r -> r.columnId() == null)) return; // 표현식 요소가 있는 인덱스는 FK 가 참조할 키가 아니다
+                uniqueIndexKeys.computeIfAbsent(rows.get(0).tableId(), k -> new ArrayList<>()).add(rows.stream().map(UniqueIndexRow::columnId).collect(Collectors.toSet()));
+            });
             for (ForeignKeyRow r : in.foreignKeys()) {
                 Fk fk = foreignKeys.computeIfAbsent(r.relationId(), id -> new Fk(id, r.relationName(), r.childTableId(), r.childTableName(), r.parentTableId(),
                         r.parentTableName(), new ArrayList<>()));
@@ -191,7 +218,12 @@ public final class ModelStructureQualityJudge {
                         .findFirst().orElse(null);
                 if (exact != null) {
                     claimedForeignKeys.add(exact.id());
-                    result.put(rel.r.relationshipId(), relationshipRow(rel, x, CheckStatus.MATCH, "FK_MATCH", exact, List.of(), null));
+                    // 사후 무효 (DEC-09 · M7-AK-D12) : FK 가 참조하는 부모 컬럼이 지금 PK·UNIQUE·고유 인덱스가 아니면 일치로 두지 않는다 (FK 는 지우지 않는다)
+                    Set<Long> parentColumns = x.columns.stream().map(p -> p[1].id()).collect(Collectors.toSet());
+                    result.put(rel.r.relationshipId(), referenceableKey(x.parent.tableId(), parentColumns)
+                            ? relationshipRow(rel, x, CheckStatus.MATCH, "FK_MATCH", exact, List.of(), null)
+                            : relationshipRow(rel, x, CheckStatus.MISMATCH, "FK_KEY_INVALID", exact, List.of(),
+                            Messages.get("FK 가 참조하는 부모 컬럼이 지금 부모 테이블의 PK·UNIQUE 가 아닙니다 (참조 키가 나중에 바뀌었습니다 — FK 는 지우지 않으며 DDL 은 이 FK 를 만들지 않습니다).")));
                 }
             }
             // 2단계 : 나머지
@@ -207,6 +239,7 @@ public final class ModelStructureQualityJudge {
             EntityRow child;
             EntityRow parent;
             String pairState;
+            com.lexorma.data.logical.service.ReferenceKeys.Resolution key;
             List<Col[]> columns; // [자식, 부모], 모두 정해졌을 때만
             final List<Col[]> partial = new ArrayList<>();
         }
@@ -215,10 +248,13 @@ public final class ModelStructureQualityJudge {
             Expected x = new Expected();
             x.child = entityById.get(rel.r.childEntityId());
             x.parent = entityById.get(rel.r.parentEntityId());
-            List<Long> key = primaryKey.getOrDefault(in.rootOf().apply(rel.r.parentEntityId()), List.of());
+            // 짝 해석 (LogicalRelationshipPairs 와 같은 규칙 — ReferenceKeys) : 유효 주 식별자 = 루트의 주 식별자, 보조 식별자 = 상속 구조에 참여하지 않는 부모 자체의 것 (M7-AK-D16)
+            Long root = in.rootOf().apply(rel.r.parentEntityId());
             List<Long> parents = rel.pairs.stream().map(PairRow::parentAttributeId).toList();
-            x.pairState = rel.pairs.isEmpty() ? "NONE" : key.isEmpty() ? "PARENT_KEY_MISSING" : !key.containsAll(parents) ? "PARENT_KEY_MISMATCH"
-                    : parents.size() == key.size() ? "COMPLETE" : "PARTIAL";
+            Long[] primaryId = primaryIdentifier.get(root);
+            x.key = com.lexorma.data.logical.service.ReferenceKeys.resolve(parents, primaryId == null ? null : primaryId[0], primaryIdentifierName.get(root),
+                    primaryKey.getOrDefault(root, List.of()), in.participants().contains(rel.r.parentEntityId()) ? List.of() : alternateKeys.getOrDefault(rel.r.parentEntityId(), List.of()));
+            x.pairState = x.key.status();
             boolean all = x.child != null && x.parent != null && x.child.tableId() != null && x.parent.tableId() != null;
             for (PairRow p : rel.pairs) {
                 Col childCol = x.child == null ? null : columnFor(x.child.entityId(), p.childAttributeId());
@@ -310,13 +346,23 @@ public final class ModelStructureQualityJudge {
             boolean selfKeyOnly = Objects.equals(rel.r.parentEntityId(), rel.r.childEntityId())
                     && rel.pairs.stream().allMatch(p -> p.parentAttributeId().equals(p.childAttributeId()));
             Set<Long> pk = pkByTable.getOrDefault(x.parent.tableId(), Set.of());
-            if (selfKeyOnly || pk.isEmpty() || !pk.equals(parentColumns)) {
+            // 보조 식별자 참조 (M7-AK-D10) : 짝이 보조 식별자 전체를 가리키면 FK 가 없는 것을 누락으로 본다 — 부모 UNIQUE 가 있는지는 FK 보정이 따로 본다 (없으면 'UNIQUE 를 먼저 보정')
+            boolean alternate = x.key != null && x.key.alternate();
+            if (selfKeyOnly || (!alternate && (pk.isEmpty() || !pk.equals(parentColumns)))) {
                 return relationshipRow(rel, x, CheckStatus.NOT_COMPARABLE, "FK_NOT_EXPECTED", null, List.of(), selfKeyOnly
                         ? Messages.get("자기 참조 관계의 자식 속성이 부모 키 속성 자신이라 물리 FK 를 만들 대상이 아닙니다.")
                         : Messages.get("관계 속성 짝의 부모 컬럼이 부모 테이블의 PK 와 같지 않아 물리 FK 를 만들 대상이 아닙니다 (FK 가 없는 것을 오류로 보지 않습니다)."));
             }
             return relationshipRow(rel, x, CheckStatus.UNMAPPED, "FK_MISSING", null, List.of(),
                     Messages.get("관계 속성 짝에 대응하는 물리 FK 가 없습니다. 논리 → 물리 생성이나 물리 모델에서 FK 를 만들 수 있습니다 (자동으로 만들지 않습니다)."));
+        }
+
+        /** FK 가 참조할 수 있는 키인가 (DDL {@code TableDdlGenerator.referencesKey} 와 같은 범위) : PK 전체 · UNIQUE 제약조건 · 컬럼 단위 고유값 · 고유 인덱스 (컬럼 집합) */
+        boolean referenceableKey(Long tableId, Set<Long> columns) {
+            Set<Long> pk = pkByTable.getOrDefault(tableId, Set.of());
+            if (!pk.isEmpty() && pk.equals(columns)) return true;
+            if (uniquesByTable.getOrDefault(tableId, List.of()).stream().anyMatch(u -> new HashSet<>(u.ids()).equals(columns))) return true;
+            return uniqueIndexKeys.getOrDefault(tableId, List.of()).stream().anyMatch(columns::equals);
         }
 
         Row relationshipRow(Rel rel, Expected x, CheckStatus status, String code, Fk fk, List<Fk> candidates, String reason) {
@@ -340,9 +386,11 @@ public final class ModelStructureQualityJudge {
             String name = Objects.requireNonNullElse(rel.r.relationshipName(), "");
             String logical = entityName(rel.r.parentEntityId()) + " → " + entityName(rel.r.childEntityId()) + (name.isEmpty() ? "" : " : " + name)
                     + (rel.pairs.isEmpty() ? "" : " (" + rel.pairs.stream().map(p -> p.parentAttributeName() + " → " + p.childAttributeName()).collect(Collectors.joining(", ")) + ")");
+            var key = x.key == null ? null : x.key.key();
             Structure structure = new Structure(CheckType.RELATIONSHIP, code, rel.r.relationshipId(), name.isEmpty() ? null : name,
                     parent == null ? null : parent.entityId(), parent == null ? null : parent.entityName(), parent == null ? null : parent.tableId(), parent == null ? null : parent.tableName(),
-                    fk == null ? null : fk.id(), fk == null ? null : fk.name(), columns, candidates.stream().map(Fk::text).toList());
+                    fk == null ? null : fk.id(), fk == null ? null : fk.name(), columns, candidates.stream().map(Fk::text).toList(),
+                    x.key == null || x.key.type() == null ? null : x.key.type().name(), key == null ? null : key.identifierId(), key == null ? null : key.identifierName());
             return row(child, "R" + rel.r.relationshipId(), CheckType.RELATIONSHIP, status, logical, fk == null ? (candidates.isEmpty() ? "-" : String.join(" / ", candidates.stream().map(Fk::text).toList())) : fk.text(),
                     reason, inheritance(rel.r.parentEntityId(), rel.r.childEntityId()), structure);
         }

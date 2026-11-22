@@ -37,13 +37,16 @@ export interface GenerationResult {
   tables: number; columns: number; tableIds: number[]; versionId: number | null; versionName: string | null; foreignKeys: number;
   /** M-7 3차 : 만든 상속 FK 수, 저장한 상속 PK 매핑 수 */
   inheritanceForeignKeys?: number; inheritedKeyMappings?: number;
+  /** M7-AK-01 : 만든 보조 식별자 UNIQUE 수 */
+  uniques?: number;
 }
 type IdentifierCode = 'IDENTIFIER_LENGTH_EXCEEDED' | 'IDENTIFIER_INVALID_CHARACTER' | 'IDENTIFIER_NOT_RECOMMENDED' | 'CONSTRAINT_NAME_TRUNCATED' | 'CONSTRAINT_NAME_COLLISION';
 interface IdentifierIssue {
   entityId: number | null; attributeId: number | null; code: IdentifierCode; severity: 'ERROR' | 'WARNING'; kind: string; name: string; ddlName: string | null;
   length: number | null; maxLength: number | null; basis: string; message: string; guide: string; related: string[];
 }
-type RelationReason = 'ATTRIBUTE_PAIRS_MISSING' | 'ATTRIBUTE_PAIRS_INCOMPLETE' | 'ATTRIBUTE_PAIRS_INVALID' | 'COLUMN_UNAVAILABLE' | 'PARENT_KEY_NOT_TABLE_KEY' | 'SELF_KEY_ONLY' | 'TYPE_INCOMPATIBLE' | 'CHILD_COLUMN_IN_USE' | 'SELF_REFERENCE' | 'MULTIPLE_RELATIONSHIPS' | 'COMPOSITE_PARENT_KEY' | 'PARENT_KEY_MISSING' | 'PARENT_TABLE_MISSING' | 'INHERITED_KEY_MAPPING_MISSING';
+type RelationReason = 'ATTRIBUTE_PAIRS_MISSING' | 'ATTRIBUTE_PAIRS_INCOMPLETE' | 'ATTRIBUTE_PAIRS_INVALID' | 'COLUMN_UNAVAILABLE' | 'PARENT_KEY_NOT_TABLE_KEY' | 'SELF_KEY_ONLY' | 'TYPE_INCOMPATIBLE' | 'CHILD_COLUMN_IN_USE' | 'SELF_REFERENCE' | 'MULTIPLE_RELATIONSHIPS' | 'COMPOSITE_PARENT_KEY' | 'PARENT_KEY_MISSING' | 'PARENT_TABLE_MISSING' | 'INHERITED_KEY_MAPPING_MISSING'
+  | 'UNIQUE_ORDER_DIFFERS' | 'PARENT_UNIQUE_MISSING';
 interface RelationPlan {
   relationshipId: number; relationshipName: string | null; parentEntityId: number; parentEntityName: string; childEntityId: number; childEntityName: string;
   fkCreated: boolean; reasons: RelationReason[]; message: string; approved: boolean | null;
@@ -52,6 +55,14 @@ interface RelationPlan {
   /** FK 생성 계획 (M-7 보강 4차) */
   fkStatus: FkStatus; fkType: FkType | null; parentTableName: string | null; parentTableId: number | null; childTableName: string | null;
   constraintName: string | null; refTableName: string | null; columns: FkColumn[];
+  /** 짝이 가리키는 부모 식별자 (M7-AK-03) : PRIMARY · ALTERNATE (보조 식별자 UNIQUE 참조 — 단일도 미승인 사용자 관계) */
+  keyType?: 'PRIMARY' | 'ALTERNATE' | null; keyIdentifierName?: string | null;
+}
+/** 보조 식별자 → UNIQUE 계획 (M7-AK-01) : CREATE 만 만든다. SKIP 사유 PRIMARY_KEY_DUPLICATE · DUPLICATE_ALTERNATE_KEY · COLUMN_UNAVAILABLE, 경고 NULLABLE_COLUMNS */
+interface UniquePlan {
+  entityId: number; entityName: string; identifierId: number; identifierName: string; tableName: string | null; constraintName: string | null; columns: string[];
+  status: 'CREATE' | 'SKIP'; reason: 'PRIMARY_KEY_DUPLICATE' | 'DUPLICATE_ALTERNATE_KEY' | 'COLUMN_UNAVAILABLE' | null;
+  duplicateOfIdentifierId: number | null; duplicateOfIdentifierName: string | null; warnings: string[]; message: string;
 }
 type FkStatus = 'READY' | 'NO_PAIRS' | 'PARTIAL_PAIRS' | 'IDENTIFIER_MISMATCH' | 'PARENT_TABLE_UNAVAILABLE' | 'COLUMN_UNAVAILABLE' | 'UNSUPPORTED' | 'CONFLICT';
 type FkType = 'SINGLE' | 'SELF_SINGLE' | 'COMPOSITE' | 'SELF_COMPOSITE';
@@ -68,6 +79,7 @@ interface Plan {
   /** 지금 반영할 수 있는지 (M-7 2차) — 상속 구조 엔터티를 만드는 계획은 유효해도 반영하지 않는다 */
   executable?: boolean; executionBlockedReason?: string | null;
   inheritanceForeignKeys?: InheritanceForeignKeyPlan[]; requiredAncestors?: RequiredAncestor[]; constraintWarnings?: ConstraintWarning[];
+  uniques?: UniquePlan[];
   ancestors?: AncestorUse[];
 }
 
@@ -91,6 +103,8 @@ const RELATION_REASONS: Record<RelationReason, string> = {
   MULTIPLE_RELATIONSHIPS: t('같은 부모의 관계 여러 개'),
   COMPOSITE_PARENT_KEY: t('부모 복합 식별자'),
   PARENT_KEY_MISSING: t('부모 주 식별자 없음'),
+  UNIQUE_ORDER_DIFFERS: t('보조 식별자 순서와 다름'),
+  PARENT_UNIQUE_MISSING: t('기존 부모 UNIQUE 없음'),
   PARENT_TABLE_MISSING: t('부모 테이블 없음'),
   INHERITED_KEY_MAPPING_MISSING: t('부모 상속 PK 매핑 없음'),
 };
@@ -397,6 +411,23 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
               </ul>
             </section>
           )}
+          {(plan.uniques?.length ?? 0) > 0 && (
+            <section className="gen-section" aria-label={t('보조 식별자 UNIQUE')}>
+              <h4>{t('보조 식별자 UNIQUE')}</h4>
+              <p className="gh-muted">{t('새로 만드는 테이블에만 보조 식별자마다 명시적 UNIQUE 제약조건을 식별자 속성 순서대로 미승인으로 만듭니다. 주 식별자와 같은 구성, 같은 구성의 다른 보조 식별자는 하나만 만듭니다. NULL 허용 컬럼은 경고만 합니다.')}</p>
+              <ul className="gen-issues">
+                {plan.uniques!.map((u) => (
+                  <li key={u.identifierId}>
+                    <Label variant={u.status === 'CREATE' ? 'success' : 'attention'}>{u.status === 'CREATE' ? t('UNIQUE 생성') : t('만들지 않음')}</Label>{' '}
+                    <strong>{u.entityName}</strong> · {u.identifierName}
+                    {u.status === 'CREATE' && <div className="gen-fk"><span className="gh-mono">{u.constraintName} ({u.columns.join(', ')})</span></div>}
+                    <div className="gh-muted">{u.message}</div>
+                    {u.warnings.includes('NULLABLE_COLUMNS') && <div className="gh-muted">{t('NULL 허용 컬럼이 있습니다. NULL 값은 UNIQUE 로 중복을 막지 못하며 필수 여부는 바꾸지 않습니다.')}</div>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {plan.relations.length > 0 && (
             <section className="gen-section" aria-label={t('논리 관계 FK')}>
               <h4>{t('논리 관계 FK')}</h4>
@@ -406,13 +437,15 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
                   <li key={r.relationshipId}>
                     <Label variant={r.fkCreated ? 'success' : 'attention'}>{r.fkCreated ? FK_STATUS.READY : t('FK 미생성')}</Label>{' '}
                     {r.fkType && <><Label>{FK_TYPES[r.fkType]}</Label>{' '}</>}
+                    {r.keyType === 'ALTERNATE' && <><Label variant="accent">{t('보조 식별자 참조')}</Label>{' '}</>}
                     <strong>{r.parentEntityName}</strong> → <strong>{r.childEntityName}</strong>{r.relationshipName && <span className="gh-muted"> ({r.relationshipName})</span>}
                     {r.approved === false && <> <Label variant="attention">{t('승인 전')}</Label></>}
                     {!r.fkCreated && <div className="gh-muted">{FK_STATUS[r.fkStatus] ?? r.fkStatus} · {r.message}</div>}
                     {r.fkCreated && (
                       <div className="gen-fk">
                         <span className="gh-mono">{r.childTableName} ({r.columns.map((c) => c.childColumnName).join(', ')}) → {r.parentTableName} ({r.columns.map((c) => c.parentColumnName).join(', ')})</span>
-                        <div className="gh-muted">{t('제약조건명')} <span className="gh-mono">{r.constraintName}</span>{r.parentTableId != null && <> · {t('기존 부모 테이블')}</>}</div>
+                        <div className="gh-muted">{t('제약조건명')} <span className="gh-mono">{r.constraintName}</span>{r.parentTableId != null && <> · {t('기존 부모 테이블')}</>}
+                          {r.keyType === 'ALTERNATE' && <> · {t('보조 식별자 {0} 의 UNIQUE 참조 · 미승인 사용자 관계', r.keyIdentifierName ?? '-')}</>}</div>
                       </div>
                     )}
                     <div className="gen-reasons">{r.reasons.map((reason) => <Label key={reason}>{RELATION_REASONS[reason] ?? reason}</Label>)}</div>

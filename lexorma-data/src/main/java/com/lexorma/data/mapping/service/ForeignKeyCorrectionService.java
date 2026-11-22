@@ -79,7 +79,8 @@ public class ForeignKeyCorrectionService {
 
     static final String VERSION_PREFIX = "FKFIX-";
     /** 계획 해시 형식 (판정 규칙·정규화 형식이 바뀌면 올린다) */
-    static final String TOKEN_VERSION = "fk-correction/1";
+    /** 2 : 보조 식별자 참조(참조 키 유형·부모 UNIQUE 판정)가 계획에 들어간다 (M7-AK-03 — 1 의 토큰은 새 계획과 맞지 않는다) */
+    static final String TOKEN_VERSION = "fk-correction/2";
 
     private final ModelMappingQualityService qualityService;
     private final LogicalSubtypeService subtypeService;
@@ -175,10 +176,12 @@ public class ForeignKeyCorrectionService {
     }
 
     private Map<Long, Row> relationshipRows(Long projectId, Long modelId, String modelName) {
+        return rowsOf(qualityService.structureRows(projectId, modelId, modelName), CheckType.RELATIONSHIP);
+    }
+
+    private static Map<Long, Row> rowsOf(List<Row> structure, CheckType type) {
         Map<Long, Row> rows = new LinkedHashMap<>();
-        qualityService.structureRows(projectId, modelId, modelName).stream()
-                .filter(r -> r.type() == CheckType.RELATIONSHIP && r.structure() != null)
-                .forEach(r -> rows.put(r.structure().logicalId(), r));
+        structure.stream().filter(r -> r.type() == type && r.structure() != null).forEach(r -> rows.put(r.structure().logicalId(), r));
         return rows;
     }
 
@@ -186,7 +189,9 @@ public class ForeignKeyCorrectionService {
         String modelName = entityManager.createQuery("select m.modelName from LogicalModel m where m.id = :id and m.projectId = :projectId", String.class)
                 .setParameter("id", modelId).setParameter("projectId", projectId).getResultStream().findFirst()
                 .orElseThrow(() -> new CustomException(ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED, "{0}을(를) 찾을 수 없습니다.", Messages.get("논리 모델")));
-        Map<Long, Row> rows = relationshipRows(projectId, modelId, modelName);
+        List<Row> structure = qualityService.structureRows(projectId, modelId, modelName);
+        Map<Long, Row> rows = rowsOf(structure, CheckType.RELATIONSHIP);
+        Map<Long, Row> alternateKeys = rowsOf(structure, CheckType.ALTERNATE_KEY); // 보조 식별자 ID → 그 UNIQUE 진단 (M7-AK-D10)
         for (Long id : ids) {
             if (!rows.containsKey(id)) {
                 throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "이 논리 모델의 관계가 아닙니다. (관계 ID {0})", id);
@@ -238,7 +243,7 @@ public class ForeignKeyCorrectionService {
         Map<String, List<Long>> plannedNames = new HashMap<>();
         for (Long id : ids) {
             Row row = rows.get(id);
-            Item item = item(row, expected.get(id), columns, relationsByChild, usedNames, byStructure, hierarchy, db, rows);
+            Item item = item(row, expected.get(id), columns, relationsByChild, usedNames, byStructure, hierarchy, db, rows, alternateKeys);
             items.add(item);
             if (item.relationName() != null && item.childTableId() != null) {
                 String schema = columns.get(item.pairs().get(0).childColumnId()).getTableInfo().getSchema().getId().toString();
@@ -264,8 +269,9 @@ public class ForeignKeyCorrectionService {
     }
 
     private Item item(Row row, List<Long[]> pairs, Map<Long, ColumnInfo> columns, Map<Long, List<TableRelation>> relationsByChild, Set<String> usedNames,
-                      Map<String, List<Long>> byStructure, LogicalHierarchy hierarchy, DbType db, Map<Long, Row> rows) {
+                      Map<String, List<Long>> byStructure, LogicalHierarchy hierarchy, DbType db, Map<Long, Row> rows, Map<Long, Row> alternateKeys) {
         var s = row.structure();
+        boolean alternate = "ALTERNATE".equals(s.referenceKey());
         Long id = s.logicalId();
         List<Issue> blockers = new ArrayList<>();
         String code = s.code();
@@ -273,7 +279,8 @@ public class ForeignKeyCorrectionService {
         if (!"FK_MISSING".equals(code)) {
             blockers.add(new Issue(Code.NOT_MISSING, Messages.get("진단 결과가 FK 누락이 아닙니다 ({0}). 기존 FK 는 고치거나 지우지 않습니다.", code)));
             return new Item(id, s.logicalName(), row.logicalValue(), s.parentEntityId(), s.parentEntityName(), row.entityId(), row.entityName(),
-                    s.parentTableId(), null, s.parentTableName(), row.tableId(), row.schemaName(), row.tableName(), code, null, self, null, false, List.of(), false, blockers);
+                    s.parentTableId(), null, s.parentTableName(), row.tableId(), row.schemaName(), row.tableName(), code, null, self, null, false, List.of(), false, blockers,
+                    s.referenceKey(), s.referenceKeyName());
         }
         List<ColumnInfo> childColumns = new ArrayList<>();
         List<ColumnInfo> parentColumns = new ArrayList<>();
@@ -294,7 +301,8 @@ public class ForeignKeyCorrectionService {
         TableInfo childTable = loaded ? childColumns.get(0).getTableInfo() : null;
         TableInfo parentTable = loaded ? parentColumns.get(0).getTableInfo() : null;
         boolean single = out.size() == 1;
-        Representation representation = single && !self ? Representation.REF_COLUMN : Representation.USER_RELATION;
+        // 보조 식별자 참조는 단일도 사용자 관계 (M7-AK-D11) — 일반 단일 PK 참조만 참조 테이블명(보류 대상)
+        Representation representation = single && !self && !alternate ? Representation.REF_COLUMN : Representation.USER_RELATION;
         String name = loaded ? DbIdentifierRules.foreignKeyName(childTable.getTableName(), childColumns.get(0).getColumnName()) : null;
 
         // 상속 FK : 서브타입 → 직계 슈퍼타입 (상속 구조 진단이 본다)
@@ -321,7 +329,17 @@ public class ForeignKeyCorrectionService {
             if (childIds.size() != childColumns.size() || parentIds.size() != parentColumns.size()) {
                 blockers.add(new Issue(Code.DUPLICATE_COLUMN, Messages.get("관계 속성 짝에 같은 컬럼이 두 번 쓰였습니다.")));
             }
-            if (parentColumns.stream().anyMatch(c -> !Boolean.TRUE.equals(c.getIsPk()))) {
+            if (alternate) {
+                // 부모 UNIQUE (M7-AK-D10) : 참조하는 보조 식별자의 UNIQUE 진단이 일치(구성·순서)이고, 그 순서 = 만들 FK 컬럼 순서. 부모 UNIQUE 는 이 요청에서 만들지 않는다 (먼저 UNIQUE 보정)
+                Row key = s.referenceKeyId() == null ? null : alternateKeys.get(s.referenceKeyId());
+                List<Long> uniqueOrder = key == null ? List.of() : key.structure().columns().stream().map(StructureColumn::expectedColumnId).toList();
+                if (key == null || key.status() != CheckStatus.MATCH) {
+                    blockers.add(new Issue(Code.PARENT_UNIQUE_MISSING, Messages.get("부모 보조 식별자 {0} 에 대응하는 UNIQUE 가 부모 테이블 {1} 에 없거나 일치하지 않습니다. 정합성 비교 [보조 식별자·UNIQUE]에서 UNIQUE 를 먼저 보정해주세요.",
+                            Objects.requireNonNullElse(s.referenceKeyName(), "-"), parentTable.getTableName())));
+                } else if (!uniqueOrder.equals(parentColumns.stream().map(ColumnInfo::getId).toList())) {
+                    blockers.add(new Issue(Code.PARENT_UNIQUE_ORDER, Messages.get("부모 UNIQUE 의 컬럼 순서가 관계 속성 짝 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서). 관계 속성 짝의 순서를 보조 식별자 순서로 맞춰주세요.")));
+                }
+            } else if (parentColumns.stream().anyMatch(c -> !Boolean.TRUE.equals(c.getIsPk()))) {
                 blockers.add(new Issue(Code.PARENT_KEY_INVALID, Messages.get("부모 컬럼이 부모 테이블 {0} 의 PK 가 아닙니다.", parentTable.getTableName())));
             }
             for (int i = 0; i < childColumns.size(); i++) {
@@ -350,13 +368,14 @@ public class ForeignKeyCorrectionService {
         }
         return new Item(id, s.logicalName(), row.logicalValue(), s.parentEntityId(), s.parentEntityName(), row.entityId(), row.entityName(),
                 s.parentTableId(), parentTable == null ? null : parentTable.getSchema().getSchemaName(), s.parentTableName(),
-                row.tableId(), row.schemaName(), row.tableName(), code, representation, self, name, false, out, blockers.isEmpty(), blockers);
+                row.tableId(), row.schemaName(), row.tableName(), code, representation, self, name, false, out, blockers.isEmpty(), blockers,
+                s.referenceKey(), s.referenceKeyName());
     }
 
     private static Item withBlockers(Item i, List<Issue> blockers) {
         return new Item(i.relationshipId(), i.relationshipName(), i.logicalValue(), i.parentEntityId(), i.parentEntityName(), i.childEntityId(), i.childEntityName(),
                 i.parentTableId(), i.parentSchemaName(), i.parentTableName(), i.childTableId(), i.childSchemaName(), i.childTableName(), i.diagnosisCode(), i.representation(),
-                i.selfReference(), i.relationName(), i.approved(), i.pairs(), blockers.isEmpty(), blockers);
+                i.selfReference(), i.relationName(), i.approved(), i.pairs(), blockers.isEmpty(), blockers, i.referenceKey(), i.referenceKeyName());
     }
 
     private static String structureKey(Row row, List<Long[]> pairs) {
@@ -368,7 +387,8 @@ public class ForeignKeyCorrectionService {
         StringBuilder b = new StringBuilder(TOKEN_VERSION).append('|').append(projectId).append('|').append(modelId).append('|').append(db);
         items.stream().sorted(java.util.Comparator.comparing(Item::relationshipId)).forEach(i -> {
             b.append("\n").append(i.relationshipId()).append('|').append(i.diagnosisCode()).append('|').append(i.childTableId()).append('|').append(i.childTableName())
-                    .append('|').append(i.parentTableId()).append('|').append(i.parentTableName()).append('|').append(i.representation()).append('|').append(i.relationName());
+                    .append('|').append(i.parentTableId()).append('|').append(i.parentTableName()).append('|').append(i.representation()).append('|').append(i.relationName())
+                    .append('|').append(i.referenceKey()).append('|').append(i.referenceKeyName());
             i.pairs().forEach(p -> b.append('|').append(p.childColumnId()).append(':').append(p.childColumnName()).append(':').append(p.childDataType())
                     .append('>').append(p.parentColumnId()).append(':').append(p.parentColumnName()).append(':').append(p.parentDataType()));
             i.blockers().forEach(x -> b.append("|!").append(x.code()));

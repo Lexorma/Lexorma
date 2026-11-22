@@ -604,7 +604,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Transactional
     public PhysicalModelDto.Constraint saveConstraint(AccountDto accountDto, PhysicalModelDto.Constraint request) {
         Long projectId = accountDto.getProjectId();
-        TableInfo table = requireTable(projectId, request.tableId());
+        // 테이블 행을 먼저 잠그고 같은 구성·이름을 본다 (M7-AK-D15) : 누락 UNIQUE 보정(같은 행을 NOWAIT 로 잡고 같은 UNIQUE 를 만든다)이 다시 계획한 뒤 커밋하기 전에
+        // 같은 UNIQUE 를 넣거나, 같은 테이블의 등록 둘이 동시에 같은 구성을 만들면 중복이 생겼다. 보정이 끝나면 그 UNIQUE 를 보고 중복으로 거절한다
+        TableInfo table = lockTable(projectId, request.tableId());
         TableConstraint.Type type = parse(TableConstraint.Type.class, request.constraintType(), null);
         if (type == null) throw invalid("제약조건 유형은 UNIQUE 또는 CHECK 입니다. (PK 는 컬럼의 PK 여부, FK 는 관계로 정의)");
 
@@ -615,15 +617,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
         if (type == TableConstraint.Type.UNIQUE) {
             columns = tableColumns(projectId, table, refIds(request.columns()));
-            rejectSameAsColumnKeys(table, columns, true);
-            Set<Long> columnSet = new HashSet<>(ids(columns));
-            boolean duplicated = existing.stream().anyMatch(c -> c.getConstraintType() == TableConstraint.Type.UNIQUE
-                    && new HashSet<>(ids(c.getColumns().stream().map(TableConstraintColumn::getColumn).toList())).equals(columnSet))
-                    || indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()).stream()
-                    .anyMatch(i -> Boolean.TRUE.equals(i.getIsUnique())
-                            && new HashSet<>(ids(i.getColumns().stream().map(TableIndexColumn::getColumn).toList())).equals(columnSet));
-            if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 구성의 UNIQUE");
-            defaultName = "UK_" + table.getTableName() + "_" + joinNames(columns);
+            rejectDuplicateUnique(projectId, table, columns, existing);
+            defaultName = com.lexorma.data.table.ddl.DbIdentifierRules.uniqueName(table.getTableName(), columns.stream().map(ColumnInfo::getColumnName).toList());
         } else {
             checkExpression = request.checkExpression() == null ? "" : request.checkExpression().trim();
             if (checkExpression.isEmpty()) throw invalid("CHECK 조건식을 입력해주세요.");
@@ -647,6 +642,33 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             constraint.getColumns().add(TableConstraintColumn.builder().tableConstraint(constraint).column(columns.get(i)).columnOrder(i + 1).build());
         }
         return PhysicalModelDto.Constraint.fromEntity(constraintRepository.save(constraint));
+    }
+
+    @Override
+    public TableConstraint createGeneratedUnique(Long projectId, TableInfo table, List<ColumnInfo> columns, String name) {
+        if (columns.isEmpty()) throw invalid("UNIQUE 컬럼을 1개 이상 지정해주세요.");
+        List<TableConstraint> existing = constraintRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId());
+        rejectDuplicateUnique(projectId, table, columns, existing);
+        String constraintName = objectName(name, com.lexorma.data.table.ddl.DbIdentifierRules.uniqueName(table.getTableName(), columns.stream().map(ColumnInfo::getColumnName).toList()));
+        if (existing.stream().anyMatch(c -> c.getConstraintName().equalsIgnoreCase(constraintName))) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, constraintName);
+        TableConstraint constraint = TableConstraint.builder().projectId(projectId).tableInfo(table).constraintName(constraintName)
+                .constraintType(TableConstraint.Type.UNIQUE).isApproval(false).build();
+        for (int i = 0; i < columns.size(); i++) {
+            constraint.getColumns().add(TableConstraintColumn.builder().tableConstraint(constraint).column(columns.get(i)).columnOrder(i + 1).build());
+        }
+        return constraintRepository.save(constraint);
+    }
+
+    /** UNIQUE 중복 (등록·생성·보정 공통) : PK·고유값 컬럼과 같은 구성, 같은 컬럼 <b>집합</b>(순서 무시 — M7-AK-D04)의 UNIQUE 제약조건·고유 인덱스 */
+    private void rejectDuplicateUnique(Long projectId, TableInfo table, List<ColumnInfo> columns, List<TableConstraint> existing) {
+        rejectSameAsColumnKeys(table, columns, true);
+        Set<Long> columnSet = new HashSet<>(ids(columns));
+        boolean duplicated = existing.stream().anyMatch(c -> c.getConstraintType() == TableConstraint.Type.UNIQUE
+                && new HashSet<>(ids(c.getColumns().stream().map(TableConstraintColumn::getColumn).toList())).equals(columnSet))
+                || indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()).stream()
+                .anyMatch(i -> Boolean.TRUE.equals(i.getIsUnique())
+                        && new HashSet<>(ids(i.getColumns().stream().map(TableIndexColumn::getColumn).toList())).equals(columnSet));
+        if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 구성의 UNIQUE");
     }
 
     // ------------------------------------------------------------------ 삭제 / 승인
@@ -673,6 +695,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             }
             case CONSTRAINT -> {
                 TableConstraint constraint = constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+                // 테이블 행을 먼저 잠근다 (M7-AK-D15) : 그 UNIQUE 를 참조하는 FK 를 만드는 보정·생성(테이블 행 NOWAIT)과 엇갈려 만드는 시점에 무효인 FK 가 생기지 않게
+                lockTable(projectId, constraint.getTableInfo().getId());
+                entityManager.refresh(constraint);
                 rejectApproved(constraint.getIsApproval());
                 constraintRepository.delete(constraint);
             }

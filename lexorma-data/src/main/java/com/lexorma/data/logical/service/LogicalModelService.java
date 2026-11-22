@@ -210,23 +210,55 @@ public class LogicalModelService {
             ends.add(r.getSourceEntity().getId());
             ends.add(r.getTargetEntity().getId());
         });
-        return withPairs(relationships, effectiveKeys(subtypeService.hierarchy(relationships.getFirst().getModel().getId()), ends));
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(relationships.getFirst().getModel().getId());
+        return withPairs(relationships, keyLookup(hierarchy, ends));
     }
 
     /**
-     * 엔터티 → 유효 주 식별자 속성 ID (M-6 후속 5차) : 서브타입이면 루트 슈퍼타입의 주 식별자 (원본 속성 ID 그대로, 식별자 순서), 아니면 자기 주 식별자.
-     * 고른 엔터티들의 루트 식별자를 한 번에 읽는다
+     * 짝 판정 조회 (M7-AK-D09) : 고른 엔터티들(과 그 루트)의 식별자를 한 번에 읽는다 — 유효 주 식별자 = 루트의 주 식별자, 참조할 수 있는 보조 식별자 = 상속 구조에
+     * 참여하지 않는 엔터티 자체의 보조 식별자 (상속 계층을 부모로 하는 보조 식별자 참조는 보류 — M7-AK-D16)
      */
-    private java.util.function.Function<LogicalEntity, List<Long>> effectiveKeys(LogicalHierarchy hierarchy, Set<Long> entityIds) {
-        Set<Long> owners = new HashSet<>();
+    private LogicalRelationshipPairs.KeyLookup keyLookup(LogicalHierarchy hierarchy, Set<Long> entityIds) {
+        Set<Long> owners = new HashSet<>(entityIds);
         entityIds.forEach(id -> owners.add(hierarchy.root(id)));
-        Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>();
-        if (!owners.isEmpty()) {
-            for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(owners)) {
-                if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryKeys.put(identifier.getEntity().getId(), keyAttributeIds(identifier));
-            }
+        return keyLookup(owners.isEmpty() ? List.of() : identifierRepository.findAllByEntityIds(owners), hierarchy);
+    }
+
+    /** 이미 읽은 식별자로 만든 짝 판정 조회 (엔터티마다 식별자를 다시 읽지 않는다) */
+    static LogicalRelationshipPairs.KeyLookup keyLookup(Iterable<LogicalIdentifier> identifiers, LogicalHierarchy hierarchy) {
+        Map<Long, LogicalIdentifier> primary = new java.util.HashMap<>();
+        Map<Long, List<ReferenceKeys.Key>> alternates = new java.util.HashMap<>();
+        for (LogicalIdentifier identifier : identifiers) {
+            Long entityId = identifier.getEntity().getId();
+            if (Boolean.TRUE.equals(identifier.getIsPrimary())) primary.put(entityId, identifier);
+            else alternates.computeIfAbsent(entityId, k -> new java.util.ArrayList<>()).add(new ReferenceKeys.Key(identifier.getId(), identifier.getIdentifierName(), false,
+                    keyAttributeIds(identifier)));
         }
-        return e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of());
+        alternates.values().forEach(list -> list.sort(java.util.Comparator.comparing(ReferenceKeys.Key::identifierId)));
+        return new LogicalRelationshipPairs.KeyLookup() {
+            @Override
+            public List<Long> primary(LogicalEntity entity) {
+                LogicalIdentifier key = primary.get(hierarchy.root(entity.getId()));
+                return key == null ? List.of() : keyAttributeIds(key);
+            }
+
+            @Override
+            public List<ReferenceKeys.Key> alternates(LogicalEntity entity) {
+                return hierarchy.participates(entity.getId()) ? List.of() : alternates.getOrDefault(entity.getId(), List.of());
+            }
+
+            @Override
+            public Long primaryIdentifierId(LogicalEntity entity) {
+                LogicalIdentifier key = primary.get(hierarchy.root(entity.getId()));
+                return key == null ? null : key.getId();
+            }
+
+            @Override
+            public String primaryIdentifierName(LogicalEntity entity) {
+                LogicalIdentifier key = primary.get(hierarchy.root(entity.getId()));
+                return key == null ? null : key.getIdentifierName();
+            }
+        };
     }
 
     /** 유효 주 식별자를 가진 엔터티 (서브타입이면 루트 슈퍼타입). 계층은 호출한 쪽이 이미 읽은 것을 쓴다 (한 요청에서 계층을 다시 읽지 않는다) */
@@ -470,18 +502,18 @@ public class LogicalModelService {
     @Transactional(readOnly = true)
     public List<LogicalModelDto.Relationship> selectRelationships(AccountDto accountDto, Long modelId) {
         model(accountDto.getProjectId(), modelId);
-        return withPairs(relationshipRepository.findAllByModelId(modelId), LogicalRelationshipPairs::primaryKeyIds);
+        return withEndKeys(relationshipRepository.findAllByModelId(modelId));
     }
 
     /** 관계 목록 + 관계마다 속성 짝과 판정 (짝은 한 번에 읽는다) */
-    private List<LogicalModelDto.Relationship> withPairs(List<LogicalRelationship> relationships, Function<LogicalEntity, List<Long>> primaryKeys) {
+    private List<LogicalModelDto.Relationship> withPairs(List<LogicalRelationship> relationships, LogicalRelationshipPairs.KeyLookup keys) {
         Map<Long, List<LogicalRelationshipAttribute>> pairs = new LinkedHashMap<>();
         if (!relationships.isEmpty()) {
             pairRepository.findAllByRelationshipIds(relationships.stream().map(LogicalRelationship::getId).toList())
                     .forEach(p -> pairs.computeIfAbsent(p.getRelationship().getId(), id -> new java.util.ArrayList<>()).add(p));
         }
         return relationships.stream()
-                .map(r -> LogicalModelDto.Relationship.fromEntity(r, LogicalRelationshipPairs.evaluate(r, pairs.getOrDefault(r.getId(), List.of()), primaryKeys))).toList();
+                .map(r -> LogicalModelDto.Relationship.fromEntity(r, LogicalRelationshipPairs.evaluate(r, pairs.getOrDefault(r.getId(), List.of()), keys))).toList();
     }
 
     // ------------------------------------------------------------------ 관계 속성 짝 (M-7 보강 3차, P1)
@@ -516,11 +548,21 @@ public class LogicalModelService {
         LogicalHierarchy hierarchy = subtypeService.hierarchy(relationship.getModel().getId()); // 모델 잠금 뒤 — 짝 저장은 계층을 바꾸지 않아 응답에도 그대로 쓴다
         LogicalEntity keyOwner = keyOwner(parent, hierarchy);
         List<LogicalAttribute> parentKey = LogicalRelationshipPairs.primaryKey(keyOwner);
-        if (!inputs.isEmpty() && parentKey.isEmpty()) {
+        // 보조 식별자 참조 (M7-AK-D09) : 부모 자체의 보조 식별자 전체. 상속 구조에 참여하는 부모의 보조 식별자는 보류 (M7-AK-D16)
+        boolean alternatesAllowed = !hierarchy.participates(parent.getId());
+        List<LogicalIdentifier> alternates = alternatesAllowed
+                ? parent.getIdentifiers().stream().filter(i -> !Boolean.TRUE.equals(i.getIsPrimary())).sorted(java.util.Comparator.comparing(LogicalIdentifier::getId)).toList()
+                : List.of();
+        if (!inputs.isEmpty() && parentKey.isEmpty() && alternates.isEmpty()) {
             if (keyOwner != parent) throw invalid("부모 엔터티 {0} 의 루트 슈퍼타입 {1} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName(), keyOwner.getEntityName());
             throw invalid("부모 엔터티 {0} 에 주 식별자가 없어 속성 짝을 지정할 수 없습니다.", parent.getEntityName());
         }
-        Map<Long, LogicalAttribute> parentKeyById = parentKey.stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
+        Map<Long, LogicalAttribute> parentKeyById = new java.util.LinkedHashMap<>();
+        parentKey.forEach(a -> parentKeyById.put(a.getId(), a));
+        alternates.forEach(i -> LogicalRelationshipPairs.orderedAttributes(i).forEach(a -> parentKeyById.putIfAbsent(a.getId(), a)));
+        Set<Long> heldAlternateAttributes = new HashSet<>();
+        if (!alternatesAllowed) parent.getIdentifiers().stream().filter(i -> !Boolean.TRUE.equals(i.getIsPrimary()))
+                .forEach(i -> i.getAttributes().forEach(a -> heldAlternateAttributes.add(a.getAttribute().getId())));
         Map<Long, LogicalAttribute> childById = child.getAttributes().stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
         Set<Long> parentAttributes = new HashSet<>();
         Set<Long> childAttributes = new HashSet<>();
@@ -528,12 +570,25 @@ public class LogicalModelService {
         for (LogicalModelDto.PairInput input : inputs) {
             if (input == null || input.parentAttributeId() == null || input.childAttributeId() == null) throw invalid("속성 짝의 부모 속성과 자식 속성을 모두 골라주세요.");
             LogicalAttribute parentAttribute = parentKeyById.get(input.parentAttributeId());
-            if (parentAttribute == null) throw invalid("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 속성이어야 합니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
+            if (parentAttribute == null && heldAlternateAttributes.contains(input.parentAttributeId())) {
+                throw invalid("상속 구조(슈퍼타입·서브타입)에 참여하는 부모 엔터티 {0} 의 보조 식별자를 참조하는 관계는 아직 지원하지 않습니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
+            }
+            if (parentAttribute == null) throw invalid("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 또는 보조 식별자 속성이어야 합니다. (ID {1})", parent.getEntityName(), input.parentAttributeId());
             LogicalAttribute childAttribute = childById.get(input.childAttributeId());
             if (childAttribute == null) throw invalid("자식 속성은 자식 엔터티 {0} 의 속성이어야 합니다. (ID {1})", child.getEntityName(), input.childAttributeId());
             if (!parentAttributes.add(parentAttribute.getId())) throw invalid("같은 부모 속성 {0} 을(를) 두 번 지정할 수 없습니다.", parentAttribute.getAttributeName());
             if (!childAttributes.add(childAttribute.getId())) throw invalid("같은 자식 속성 {0} 을(를) 두 번 지정할 수 없습니다.", childAttribute.getAttributeName());
             resolved.add(new LogicalAttribute[]{parentAttribute, childAttribute});
+        }
+        if (!resolved.isEmpty()) {
+            // 짝이 가리키는 식별자 : 주 식별자 전체·일부(기존 계약 — 일부는 PARTIAL 로 저장) 또는 보조 식별자 하나 전체. 보조 식별자의 일부·여러 식별자의 혼합은 받지 않는다
+            ReferenceKeys.Resolution key = ReferenceKeys.resolve(resolved.stream().map(p -> p[0].getId()).toList(), null, null,
+                    parentKey.stream().map(LogicalAttribute::getId).toList(), alternates.stream()
+                            .map(i -> new ReferenceKeys.Key(i.getId(), i.getIdentifierName(), false, keyAttributeIds(i))).toList());
+            if (!key.complete() && !"PARTIAL".equals(key.status())) {
+                throw invalid("속성 짝의 부모 속성이 부모 엔터티 {0} 의 식별자 하나와 맞지 않습니다. 보조 식별자는 구성 속성 전체를 지정해야 하고, 서로 다른 식별자의 속성을 섞을 수 없습니다.",
+                        parent.getEntityName());
+            }
         }
 
         List<LogicalRelationshipAttribute> current = pairRepository.findAllByRelationshipIds(List.of(relationshipId));
@@ -565,17 +620,36 @@ public class LogicalModelService {
         LogicalEntity parent = relationship.getSourceEntity();
         LogicalEntity child = relationship.getTargetEntity();
         // 유효 주 식별자 : 서브타입이면 루트의 주 식별자 (부모 후보는 상속 주 식별자 속성 — M-6 후속 5차)
-        java.util.function.Function<LogicalEntity, List<Long>> keys = effectiveKeys(hierarchy, new HashSet<>(List.of(parent.getId(), child.getId()))); // 자기 참조면 같은 ID
-        List<Long> parentKey = keys.apply(parent);
-        List<Long> childKey = keys.apply(child);
-        List<LogicalModelDto.PairCandidate> parentCandidates = LogicalRelationshipPairs.primaryKey(keyOwner(parent, hierarchy)).stream()
-                .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), true, parentKey.indexOf(a.getId()) + 1, a.getIsRequired())).toList();
+        LogicalRelationshipPairs.KeyLookup keys = keyLookup(hierarchy, new HashSet<>(List.of(parent.getId(), child.getId()))); // 자기 참조면 같은 ID
+        List<Long> parentKey = keys.primary(parent);
+        List<Long> childKey = keys.primary(child);
+        // 부모 후보 : (상속 포함) 주 식별자 속성(순서대로) → 부모 자체 보조 식별자 속성 (M7-AK-D09)
+        List<LogicalAttribute> keyAttributes = LogicalRelationshipPairs.primaryKey(keyOwner(parent, hierarchy));
+        List<LogicalModelDto.PairCandidate> parentCandidates = new java.util.ArrayList<>(keyAttributes.stream()
+                .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), true, parentKey.indexOf(a.getId()) + 1, a.getIsRequired())).toList());
+        Map<Long, LogicalAttribute> parentAttributes = new java.util.HashMap<>();
+        keyAttributes.forEach(a -> parentAttributes.put(a.getId(), a));
+        parent.getAttributes().forEach(a -> parentAttributes.put(a.getId(), a));
+        List<LogicalModelDto.ParentKey> parentKeys = new java.util.ArrayList<>();
+        if (!parentKey.isEmpty()) {
+            parentKeys.add(new LogicalModelDto.ParentKey(keys.primaryIdentifierId(parent), keys.primaryIdentifierName(parent), ReferenceKeys.KeyType.PRIMARY.name(), parentKey,
+                    parentKey.stream().map(id -> parentAttributes.containsKey(id) ? parentAttributes.get(id).getAttributeName() : String.valueOf(id)).toList()));
+        }
+        Set<Long> listed = new HashSet<>(parentKey);
+        for (ReferenceKeys.Key alternate : keys.alternates(parent)) {
+            parentKeys.add(new LogicalModelDto.ParentKey(alternate.identifierId(), alternate.identifierName(), ReferenceKeys.KeyType.ALTERNATE.name(), alternate.attributeIds(),
+                    alternate.attributeIds().stream().map(id -> parentAttributes.containsKey(id) ? parentAttributes.get(id).getAttributeName() : String.valueOf(id)).toList()));
+            for (Long id : alternate.attributeIds()) {
+                LogicalAttribute a = parentAttributes.get(id);
+                if (a != null && listed.add(id)) parentCandidates.add(new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), false, null, a.getIsRequired()));
+            }
+        }
         List<LogicalModelDto.PairCandidate> childCandidates = child.getAttributes().stream()
                 .map(a -> new LogicalModelDto.PairCandidate(a.getId(), a.getAttributeName(), childKey.contains(a.getId()),
                         childKey.contains(a.getId()) ? childKey.indexOf(a.getId()) + 1 : null, a.getIsRequired())).toList();
         LogicalModelDto.PairState state = LogicalRelationshipPairs.evaluate(relationship, pairRepository.findAllByRelationshipIds(List.of(relationship.getId())), keys);
         return new LogicalModelDto.RelationshipPairs(relationship.getId(), relationship.modifiedAt(), parent.getId(), parent.getEntityName(), child.getId(),
-                child.getEntityName(), relationship.getIsIdentifying(), state, parentCandidates, childCandidates);
+                child.getEntityName(), relationship.getIsIdentifying(), state, parentCandidates, childCandidates, parentKeys);
     }
 
     @Transactional
@@ -636,7 +710,8 @@ public class LogicalModelService {
         Set<Long> identifierAttributes = new HashSet<>();
         Set<Long> primaryAttributes = new HashSet<>();
         Map<Long, List<Long>> primaryKeys = new java.util.HashMap<>(); // 엔터티 → 주 식별자 속성 (식별자 순서) : 관계 속성 짝 판정
-        for (LogicalIdentifier identifier : identifierRepository.findAllByModelId(modelId)) {
+        List<LogicalIdentifier> modelIdentifiers = identifierRepository.findAllByModelId(modelId);
+        for (LogicalIdentifier identifier : modelIdentifiers) {
             for (LogicalIdentifierAttribute attribute : identifier.getAttributes()) {
                 identifierAttributes.add(attribute.getAttribute().getId());
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
@@ -648,7 +723,7 @@ public class LogicalModelService {
         LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId); // 서브타입이 부모인 관계는 루트의 주 식별자로 짝을 판정한다 (M-6 후속 5차)
         return new LogicalModelDto.Graph(model.getId(), model.getModelName(),
                 entityRepository.findGraph(modelId).stream().map(e -> LogicalModelDto.GraphEntity.of(e, identifierAttributes, primaryAttributes)).toList(),
-                withPairs(relationshipRepository.findAllByModelId(modelId), e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of())));
+                withPairs(relationshipRepository.findAllByModelId(modelId), keyLookup(modelIdentifiers, hierarchy)));
     }
 
     // ------------------------------------------------------------------ 논리 ERD 부분 조회 (M-6 후속 1차)
@@ -760,7 +835,8 @@ public class LogicalModelService {
         Map<Long, LogicalIdentifier> primaryIdentifiers = new java.util.HashMap<>();
         Set<Long> keyed = new java.util.LinkedHashSet<>(ids);
         ids.forEach(id -> keyed.add(hierarchy.root(id)));
-        for (LogicalIdentifier identifier : identifierRepository.findAllByEntityIds(keyed)) {
+        List<LogicalIdentifier> scopedIdentifiers = identifierRepository.findAllByEntityIds(keyed);
+        for (LogicalIdentifier identifier : scopedIdentifiers) {
             for (LogicalIdentifierAttribute attribute : identifier.getAttributes()) {
                 identifierAttributes.add(attribute.getAttribute().getId());
                 if (Boolean.TRUE.equals(identifier.getIsPrimary())) primaryAttributes.add(attribute.getAttribute().getId());
@@ -808,7 +884,7 @@ public class LogicalModelService {
             }).toList();
         }
         return new LogicalModelDto.GraphPart(modelId, model.getModelName(), entities,
-                withPairs(within.isEmpty() ? List.of() : relationshipRepository.findWithEntities(within), e -> primaryKeys.getOrDefault(hierarchy.root(e.getId()), List.of())),
+                withPairs(within.isEmpty() ? List.of() : relationshipRepository.findWithEntities(within), keyLookup(scopedIdentifiers, hierarchy)),
                 total, truncated, modelEntityCount, outside, subtypeService.graphGroups(hierarchy, scope), LogicalSubtypeService.outsideLinks(hierarchy, scope));
     }
 

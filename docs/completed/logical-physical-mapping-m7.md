@@ -546,3 +546,7 @@ E2E 중 고친 것 : 추천 후보와 일반 검색의 라디오 이름이 같�
 - 성능 (PostgreSQL `MappingSuggestionPerformanceTest`, 5회 중앙값 ms(문장 수)) : 엔터티 100 — 논리 표시 56(20) · 물리 표시 55(19), 300 — 67(20) · 103(19). 보완 전 51/52 · 91/130 과 같은 수준이고 문장 수는 그대로다 (필드 추가만 — 같은 판정 행을 다시 묶을 뿐 재계산 없음). 후보 조회 5(11) · 3(6) 그대로. 1회 측정, 개발 PC.
 
 > **2026-11-22 후속** : 생성이 건너뛴 기존 테이블의 FK 는 이제 정합성 비교에서 사용자가 고른 관계만 보정할 수 있다 (자동 추론·자동 생성 없음 — P1-a 그대로). 복합·자기 참조 FK 는 이 장의 `createGeneratedForeignKey` 경로를 그대로 쓰고, 자기 참조가 아닌 단일 FK(참조 테이블명 표현)는 승인 정책 충돌로 보류했다 — [physical-fk-correction-m7.md](physical-fk-correction-m7.md). 보류는 후속 마무리에서 확정하고 REF_COLUMN 승인 구조와 함께 pending-work [M-8] 로 옮겼다 (M7-FK-D10, [physical-fk-correction-m7.md 14.2](physical-fk-correction-m7.md)). 생성의 FK 경로·잠금은 바뀌지 않았다.
+
+## 후속 : 보조 식별자 UNIQUE 생성·참조 FK (2026-11-22, M7-AK-01·03)
+
+15장의 짝 규칙을 넓혔다 : 짝은 부모 주 식별자 또는 부모 자체 보조 식별자 하나의 속성 전체 (`logical/service/ReferenceKeys`). 생성은 새 테이블에 보조 식별자 UNIQUE 를 만들고(계획 `uniques`), 보조 식별자 참조 FK 는 단일도 미승인 USER 관계로 만든다. planToken v8 — [alternate-key-unique-m7.md](alternate-key-unique-m7.md).

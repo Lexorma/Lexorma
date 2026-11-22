@@ -521,3 +521,7 @@ M7-FK-D01~D08 은 그대로다. 이번에 확정한 정책 :
 - H2 는 KEY SHARE 를 구분하지 않아 교착 시나리오 13건은 PostgreSQL 에서만 돈다 (H2 에서는 분류·409 계약·업무 오류·판정 재검증 3건).
 - `RequestLogStatusHttpTest` 는 이번 PostgreSQL 전체 실행에서 통과했지만 간헐 실패가 해결됐다고 보지 않는다.
 - 미검증 : `Dockerfile-h2`, Chromium 외 브라우저, 운영 규모 데이터, 메모리 사용량.
+
+## 후속 : 보조 식별자 참조 FK 보정 (2026-11-22, M7-AK-03)
+
+부모 보조 식별자를 참조하는 관계는 단일 FK 도 `SINGLE_FK_HELD` 없이 미승인 USER 관계로 보정한다 (부모 UNIQUE 가 순서까지 일치해야 — `PARENT_UNIQUE_MISSING`·`PARENT_UNIQUE_ORDER`). 토큰 형식 `fk-correction/2`. 일반 단일 PK FK 보류(D10)는 그대로 — [alternate-key-unique-m7.md](alternate-key-unique-m7.md). 같은 작업에서 UNIQUE 등록(`saveConstraint`)·제약조건 삭제가 테이블 행을 먼저 잡도록 바뀌었다 (그 문서 6장).

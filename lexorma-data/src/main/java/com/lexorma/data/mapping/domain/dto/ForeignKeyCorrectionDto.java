@@ -14,7 +14,10 @@ public final class ForeignKeyCorrectionDto {
     /** 한 번에 고를 수 있는 논리 관계 수 (정합성 목록 한 쪽 최대 크기와 같다) */
     public static final int MAX_RELATIONSHIPS = 100;
 
-    /** 만들 관계의 표현 (기존 P2 규칙) : 복합·자기 참조 = 미승인 사용자 관계, 자기 참조가 아닌 단일 = 자식 컬럼의 참조 테이블명(REF_COLUMN) */
+    /**
+     * 만들 관계의 표현 (기존 P2 규칙) : 복합·자기 참조 = 미승인 사용자 관계, 자기 참조가 아닌 단일 = 자식 컬럼의 참조 테이블명(REF_COLUMN).
+     * 보조 식별자 참조(M7-AK-D11)는 단일도 미승인 사용자 관계다 (REF_COLUMN 은 부모 PK 만 가리킨다 — 승인된 P2 예외)
+     */
     public enum Representation { USER_RELATION, REF_COLUMN }
 
     /** 보정할 수 없는 사유 */
@@ -36,7 +39,11 @@ public final class ForeignKeyCorrectionDto {
         DUPLICATE_COLUMN,
         /** 같은 구성의 FK 를 기대하는 다른 논리 관계가 있다 — 만들면 공유 FK(FK_SHARED)가 된다 */
         SHARED_STRUCTURE,
-        NAME_CONFLICT
+        NAME_CONFLICT,
+        /** 보조 식별자 참조 (M7-AK-D10) : 부모 보조 식별자의 UNIQUE 가 정합성 기준(구성·순서 일치)을 충족하지 않는다 — 먼저 UNIQUE 보정 */
+        PARENT_UNIQUE_MISSING,
+        /** 보조 식별자 참조 : 부모 UNIQUE 는 있지만 그 구성 순서가 관계 속성 짝(= 만들 FK 컬럼) 순서와 다르다 */
+        PARENT_UNIQUE_ORDER
     }
 
     public record Issue(Code code, String reason) {
@@ -49,7 +56,7 @@ public final class ForeignKeyCorrectionDto {
     public record Item(Long relationshipId, String relationshipName, String logicalValue, Long parentEntityId, String parentEntityName, Long childEntityId, String childEntityName,
                        Long parentTableId, String parentSchemaName, String parentTableName, Long childTableId, String childSchemaName, String childTableName,
                        String diagnosisCode, Representation representation, boolean selfReference, String relationName, boolean approved,
-                       List<Pair> pairs, boolean correctable, List<Issue> blockers) {
+                       List<Pair> pairs, boolean correctable, List<Issue> blockers, String referenceKey, String referenceKeyName) {
     }
 
     /** relationshipIds : 고른 논리 관계 (같은 논리 모델). planToken : 적용 때만 */

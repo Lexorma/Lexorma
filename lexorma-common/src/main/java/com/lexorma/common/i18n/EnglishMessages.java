@@ -732,6 +732,44 @@ final class EnglishMessages {
         add("주 식별자 속성인데 컬럼이 PK 가 아닙니다.", "The attribute belongs to the primary identifier but the column is not part of the PK.");
         add("PK 컬럼인데 속성이 주 식별자가 아닙니다.", "The column is part of the PK but the attribute does not belong to the primary identifier.");
 
+        // ---------------------------------------------------------------- 보조 식별자 UNIQUE · 참조 FK (M7-AK-01~03)
+        add("FK 가 참조하는 부모 컬럼이 지금 부모 테이블의 PK·UNIQUE 가 아닙니다 (참조 키가 나중에 바뀌었습니다 — FK 는 지우지 않으며 DDL 은 이 FK 를 만들지 않습니다).", "The parent columns this foreign key references are no longer the parent table's primary key or a UNIQUE key (the referenced key changed later — the foreign key is not deleted, and the DDL does not create it).");
+        add("UNIQUE 보정 계획", "UNIQUE correction plan");
+        add("UNIQUE 컬럼을 1개 이상 지정해주세요.", "Specify at least one UNIQUE column.");
+        add("같은 구성의 보조 식별자 {0} 이(가) 있습니다. 같은 컬럼 집합에는 UNIQUE 하나만 만들며 {0} 을(를) 기준으로 합니다.", "Alternate identifier {0} has the same composition. Only one UNIQUE is created for the same set of columns, based on {0}.");
+        add("같은 보조 식별자가 두 번 들어 있습니다. (식별자 ID {0})", "The same alternate identifier is included twice. (identifier ID {0})");
+        add("같은 컬럼 구성(순서 무관)의 UNIQUE 제약조건이 이미 있습니다. 기존 UNIQUE 는 고치지 않습니다.", "A UNIQUE constraint with the same columns (in any order) already exists. Existing UNIQUE constraints are not changed.");
+        add("같은 컬럼 구성의 고유(UNIQUE) 인덱스가 이미 있습니다. 같은 유일성을 UNIQUE 제약조건으로 다시 만들지 않습니다.", "A unique index with the same columns already exists. The same uniqueness is not created again as a UNIQUE constraint.");
+        add("관계 {0} → {1} : 기존 부모 테이블에 보조 식별자({2})와 같은 순서의 UNIQUE 가 없어 FK 를 만들지 않습니다 (기존 테이블은 고치지 않습니다 — 정합성 비교에서 UNIQUE 를 먼저 보정하세요).", "Relationship {0} → {1}: the existing parent table has no UNIQUE in the order of alternate identifier ({2}), so no foreign key is created (existing tables are not changed — correct the UNIQUE first in the consistency check).");
+        add("관계 {0} → {1} : 보조 식별자 {3} 의 UNIQUE 를 참조하는 FK 를 미승인 사용자 관계로 만듭니다 ({2}).", "Relationship {0} → {1}: creates a foreign key referencing the UNIQUE of alternate identifier {3} as an unapproved user relation ({2}).");
+        add("관계 {0} → {1} : 속성 짝 순서가 부모 보조 식별자({2})의 속성 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서).", "Relationship {0} → {1}: the attribute pair order differs from the attribute order of the parent alternate identifier ({2}), so no foreign key is created (foreign key column order = UNIQUE order).");
+        add("구성 컬럼 {0} 이(가) 승인되어 있어 UNIQUE 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "Column {0} is approved, so a UNIQUE cannot be added. Revoke the approval and try again.");
+        add("구성 컬럼이 매핑 테이블 {0} 의 서로 다른 컬럼이 아닙니다.", "The columns are not distinct columns of the mapped table {0}.");
+        add("구성 컬럼이 테이블 PK 와 같아 UNIQUE 를 따로 만들지 않습니다.", "The columns are the table's primary key, so no separate UNIQUE is created.");
+        add("논리 관계 {0} 의 속성 짝이 부모의 식별자 하나와 맞지 않습니다 (보조 식별자는 구성 속성 전체, 서로 다른 식별자의 속성을 섞지 않는다).", "The attribute pairs of logical relationship {0} do not match one identifier of the parent (an alternate identifier needs all of its attributes, and attributes of different identifiers cannot be mixed).");
+        add("누락 UNIQUE 보정 직전 상태 (보조 식별자 {0}개, 요청 {1})", "State just before the missing UNIQUE correction ({0} alternate identifiers, request {1})");
+        add("만들 UNIQUE 이름 {0} 이(가) 같은 이름 공간의 다른 제약조건·인덱스와 같습니다. 기존 이름은 바꾸지 않습니다.", "The UNIQUE name {0} is the same as another constraint or index in the same namespace. Existing names are not changed.");
+        add("보정한 UNIQUE 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected UNIQUE does not match in the consistency check. ({0} : {1})");
+        add("보정할 보조 식별자를 고르세요.", "Select the alternate identifiers to correct.");
+        add("보정할 수 없는 보조 식별자가 있습니다. 미리보기의 사유를 확인하고 그 식별자를 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some alternate identifiers cannot be corrected. Check the reasons in the preview, remove them and preview again. ({0} : {1})");
+        add("보조 식별자 ID 가 비어 있습니다.", "An alternate identifier ID is empty.");
+        add("보조 식별자 {0} 을(를) UNIQUE 로 만듭니다 (미승인).", "Creates alternate identifier {0} as a UNIQUE (unapproved).");
+        add("보조 식별자 {0} 의 구성 컬럼을 만들 수 없어 UNIQUE 를 만들지 않습니다 (테이블의 오류를 먼저 고쳐주세요).", "The columns of alternate identifier {0} cannot be created, so no UNIQUE is created (fix the table errors first).");
+        add("보조 식별자 {0} 의 구성이 보조 식별자 {1} 과(와) 같아 UNIQUE 하나만 만듭니다 ({1} 기준).", "Alternate identifier {0} has the same composition as alternate identifier {1}, so only one UNIQUE is created (based on {1}).");
+        add("보조 식별자 {0} 의 구성이 주 식별자(PK)와 같아 UNIQUE 를 따로 만들지 않습니다.", "Alternate identifier {0} has the same composition as the primary identifier (primary key), so no separate UNIQUE is created.");
+        add("보조 식별자 속성 {0} 은(는) 제외할 수 없어 포함했습니다 (UNIQUE 구성 컬럼).", "Alternate identifier attribute {0} cannot be excluded, so it was included (UNIQUE column).");
+        add("보조 식별자의 엔터티·구성 속성이 물리 테이블·컬럼에 매핑되지 않았습니다.", "The entity or attributes of the alternate identifier are not mapped to a physical table and columns.");
+        add("부모 UNIQUE 의 컬럼 순서가 관계 속성 짝 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서). 관계 속성 짝의 순서를 보조 식별자 순서로 맞춰주세요.", "The column order of the parent UNIQUE differs from the attribute pair order, so no foreign key is created (foreign key column order = UNIQUE order). Put the attribute pairs in the order of the alternate identifier.");
+        add("부모 보조 식별자 {0} 에 대응하는 UNIQUE 가 부모 테이블 {1} 에 없거나 일치하지 않습니다. 정합성 비교 [보조 식별자·UNIQUE]에서 UNIQUE 를 먼저 보정해주세요.", "Parent table {1} has no matching UNIQUE for parent alternate identifier {0}. Correct the UNIQUE first under [Alternate identifiers · UNIQUE] in the consistency check.");
+        add("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 또는 보조 식별자 속성이어야 합니다. (ID {1})", "The parent attribute must be a primary identifier (including inherited) or alternate identifier attribute of parent entity {0}. (ID {1})");
+        add("상속 구조(슈퍼타입·서브타입)에 참여하는 부모 엔터티 {0} 의 보조 식별자를 참조하는 관계는 아직 지원하지 않습니다. (ID {1})", "Relationships referencing an alternate identifier of parent entity {0}, which takes part in an inheritance structure (supertype/subtype), are not supported yet. (ID {1})");
+        add("속성 짝의 부모 속성이 부모 엔터티 {0} 의 식별자 하나와 맞지 않습니다. 보조 식별자는 구성 속성 전체를 지정해야 하고, 서로 다른 식별자의 속성을 섞을 수 없습니다.", "The parent attributes of the pairs do not match one identifier of parent entity {0}. An alternate identifier needs all of its attributes, and attributes of different identifiers cannot be mixed.");
+        add("이 논리 모델의 보조 식별자가 아닙니다. (식별자 ID {0})", "This is not an alternate identifier of this logical model. (identifier ID {0})");
+        add("진단 결과가 UNIQUE 누락이 아닙니다 ({0}). 기존 UNIQUE 는 고치거나 지우지 않습니다.", "The diagnosis is not a missing UNIQUE ({0}). Existing UNIQUE constraints are not changed or deleted.");
+        add("컬럼 {0} 이(가) 이미 고유값(UNIQUE)입니다.", "Column {0} is already unique (UNIQUE).");
+        add("테이블 {0} 이(가) 승인되어 있어 UNIQUE 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "Table {0} is approved, so a UNIQUE cannot be added. Revoke the approval and try again.");
+        add("함께 고른 다른 보조 식별자도 같은 이름의 UNIQUE {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected alternate identifier also creates the UNIQUE {0}. Select only one.");
+
         // ---------------------------------------------------------------- 물리명 추천
         add("현재 컬럼명이 표준 용어의 영문약어와 같습니다.", "The current column name equals the abbreviation of the standard term.");
         add("같은 테이블에서 속성 {0} 에 매핑된 컬럼이 추천 컬럼명을 이미 쓰고 있습니다.", "The recommended column name is already used in the same table by the column mapped to attribute {0}.");

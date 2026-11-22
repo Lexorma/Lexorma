@@ -132,7 +132,7 @@ The Java base package is `com.lexorma`.
 |---|---|
 | Java (JDK) | 21 or later |
 | Node.js | 20.19 or later — needed to build the frontend, not at runtime |
-| PostgreSQL | 18 recommended; not required with the H2 profile |
+| PostgreSQL | 18 recommended (verified: 18.6, the official `postgres:18.6` image); the build must include ICU (the official image does — the column-name compare key uses the `und-x-icu` collation, independent of the database default locale). Not required with the H2 profile |
 | Docker | Optional (Docker Compose v2.23.1 or later for the bundled Compose file) |
 | Ports | Application `9940`, local PostgreSQL `15439` |
 

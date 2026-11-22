@@ -98,7 +98,7 @@ class ColumnManageServiceImplTest {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
             when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table())); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
-            when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 10L, "USER_NM")).thenReturn(List.of(column(1L, true)));
+            when(columnInfoRepository.findSameName(1L, 10L, "USER_NM")).thenReturn(List.of(column(1L, true)));
 
             assertThatThrownBy(() -> service.insertColumn(login, newColumn()))
                     .isInstanceOf(CustomException.class)
@@ -113,7 +113,7 @@ class ColumnManageServiceImplTest {
             TableInfo table = table();
             when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
-            when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 10L, "USER_NM")).thenReturn(List.of());
+            when(columnInfoRepository.findSameName(1L, 10L, "USER_NM")).thenReturn(List.of());
 
             service.insertColumn(login, newColumn());
 
@@ -262,8 +262,8 @@ class ColumnManageServiceImplTest {
     void duplicateColumns() {
         ColumnInfo existing = column(1L, true);
         existing.setTableName("TB_USER");
-        when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 10L, "USER_NM")).thenReturn(List.of(existing));
-        when(columnInfoRepository.findAllByProjectIdAndTableInfo_IdAndColumnName(1L, 11L, "USER_NM")).thenReturn(List.of());
+        when(columnInfoRepository.findSameName(1L, 10L, "USER_NM")).thenReturn(List.of(existing));
+        when(columnInfoRepository.findSameName(1L, 11L, "USER_NM")).thenReturn(List.of());
 
         AccountDto login = AccountDto.builder().projectId(1L).build();
 
@@ -377,7 +377,8 @@ class ColumnManageServiceImplTest {
             // 테이블/용어는 조회 없이 ID 참조로 연결한다
             verify(entityManager).getReference(TableInfo.class, 10L);
             verify(entityManager).getReference(TableInfo.class, 11L);
-            verify(entityManager).flush();
+            // 청크마다 두 번 : 저장 직후 컬럼명 UNIQUE(UX_COL_01) 최종 방어 확인 (M7-U01), 관계 동기화 뒤 비우기 전
+            verify(entityManager, org.mockito.Mockito.times(2)).flush();
             verify(entityManager).clear();
             // 테이블의 컬럼 목록 컬렉션은 건드리지 않는다 (FK 기준)
             assertThat(order.getColumns()).isEmpty();

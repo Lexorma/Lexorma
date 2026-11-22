@@ -19,7 +19,7 @@ type Action = 'CREATE' | 'ADD' | 'UPDATE' | 'CLEAR' | 'REPLACE';
 type Reason = 'NOT_MAPPED' | 'MAPPING_CANDIDATE' | 'SCHEMA_UNMAPPED' | 'EXCLUDED' | 'NAME_TAKEN' | 'VIEW_NAME_TAKEN' | 'RECHECK' | 'MAPPING_CONFLICT' | 'SOURCE_REMOVED' | 'MODEL_DELETED'
   | 'SAME' | 'UNKNOWN' | 'RENAME_CANDIDATE' | 'CONFLICT' | 'REPLACE_REQUIRED' | 'MODEL_ONLY' | 'UNSUPPORTED_ATTRIBUTE' | 'APPROVED' | 'TYPE_NOT_REPRESENTABLE' | 'DEFAULT_NOT_REPRESENTABLE'
   | 'INVALID_NAME' | 'QUOTED_NAME' | 'PK_NOT_NULL' | 'PK_EXISTS' | 'PK_ORDER' | 'ORDER_NOT_SUPPORTED' | 'NO_FIELD' | 'EMPTY_COMMENT' | 'UNSUPPORTED_INDEX_TYPE'
-  | 'MISSING_DEPENDENCY' | 'UNRESOLVED_TARGET' | 'TARGET_NOT_KEY' | 'NOT_FOUND' | 'UNSUPPORTED_DBMS' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'REMOVED_IN_SOURCE' | 'REFERENCED';
+  | 'MISSING_DEPENDENCY' | 'UNRESOLVED_TARGET' | 'TARGET_NOT_KEY' | 'NOT_FOUND' | 'UNSUPPORTED_DBMS' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'REMOVED_IN_SOURCE' | 'REFERENCED' | 'COLUMN_NAME_TAKEN';
 type Judgement = 'SOURCE_CHANGED' | 'MODEL_EDITED' | 'BOTH_CHANGED' | 'NO_BASELINE';
 
 interface Item {
@@ -87,6 +87,7 @@ const REASON: Record<Reason, string> = {
   MODEL_EDITED: t('원본은 마지막 가져오기 그대로인데 모델에서 바꿨습니다. 모델 값을 되돌리지 않습니다'),
   BOTH_CHANGED: t('마지막 가져오기 뒤 원본과 모델이 모두 바뀌었습니다. 자동으로 반영하지 않습니다 (모델 관리에서 직접 정하세요)'),
   REMOVED_IN_SOURCE: t('원본에서 삭제되었습니다. 모델 객체는 자동으로 지우지 않습니다 (원본 매핑 관리의 원본 삭제 반영에서 고를 수 있습니다)'),
+  COLUMN_NAME_TAKEN: t('같은 TABLE 에 이름이 같은 모델 컬럼이 이미 있거나 같은 이름이 되는 원본 컬럼이 있습니다 (대소문자·앞뒤 공백 무시)'),
 };
 const JUDGEMENT: Record<Judgement, { label: string; variant: LabelVariant; help: string }> = {
   SOURCE_CHANGED: { label: t('원본 변경'), variant: 'accent', help: t('마지막으로 가져온 뒤 원본만 바뀌었습니다') },

@@ -1,5 +1,6 @@
 package com.lexorma.data.mapping.service;
 
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.common.i18n.Messages;
@@ -434,6 +435,7 @@ public class PhysicalGenerationService {
             canonical.append("x").append(excluded.stream().sorted().toList());
 
             List<PhysicalGenerationDto.ColumnPlan> columnPlans = new ArrayList<>();
+            // 계획 안 컬럼명 중복 : 비교 값(앞뒤 공백 제거 + 대문자, M7-U01 — DB 는 UX_COL_01)으로 본다. 새 테이블에만 만들므로 기존 컬럼과는 겹치지 않는다
             Set<String> columnNames = new HashSet<>();
             List<String> inheritanceReasons = new ArrayList<>();
             if (subtype) {
@@ -474,7 +476,7 @@ public class PhysicalGenerationService {
                         errors.add(spec.error());
                         continue;
                     }
-                    if (!columnNames.add(spec.columnName())) {
+                    if (!columnNames.add(ColumnNameKey.of(spec.columnName()))) {
                         errors.add(Messages.get("같은 컬럼명({0})이 되는 속성이 둘 이상입니다.", spec.columnName()));
                         continue;
                     }
@@ -494,7 +496,7 @@ public class PhysicalGenerationService {
                     errors.add(spec.error());
                     continue;
                 }
-                if (!columnNames.add(spec.columnName())) {
+                if (!columnNames.add(ColumnNameKey.of(spec.columnName()))) {
                     errors.add(Messages.get("같은 컬럼명({0})이 되는 속성이 둘 이상입니다.", spec.columnName()));
                     continue;
                 }

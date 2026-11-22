@@ -242,6 +242,8 @@ export function ColumnForm({ onSaved }: { onSaved: () => void }) {
     if (pending.current.table || pending.current.term || pending.current.dup) return dialog.alert(t('조회 중입니다. 잠시 후 다시 시도해주세요.'));
     if (!table) return dialog.alert(t('테이블을 선택해주세요.'));
     if (!term) return dialog.alert(t('컬럼명으로 사용할 표준용어를 선택해주세요.'));
+    // 컬럼명 = 용어 약어 : 비어 있거나 공백류만이면 서버도 거절한다 (M7-U05) — 저장 전에 알린다
+    if (!/[^ \t\n\v\f\r]/.test(term.commonStandardTermAbbreviation ?? '')) return dialog.alert(t('선택한 표준용어에 영문약어가 없어 컬럼명을 만들 수 없습니다.'));
     if (duplicate.duplicated) return dialog.alert(t('선택한 테이블에 이미 같은 컬럼명이 등록되어 있습니다.'));
     if (!fields.dataType.trim()) return dialog.alert(t('데이터 타입을 선택해주세요.'));
     if (!fields.columnDesc.trim()) return dialog.alert(t('컬럼 설명을 입력해주세요.'));

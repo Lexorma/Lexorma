@@ -26,17 +26,19 @@ public class ColumnRenameService {
     /** 잠근 컬럼의 이름을 newName(대문자)으로 바꾼다. 이름이 같으면 아무것도 하지 않는다. 부르는 쪽의 쓰기 트랜잭션 안에서만 부른다 (관리되는 엔티티를 바꾸고 커밋 때 반영된다) */
     @Transactional(propagation = Propagation.MANDATORY)
     public void renameLockedColumn(Long projectId, ColumnInfo column, String newName) {
-        String name = newName == null ? "" : newName.trim().toUpperCase(Locale.ROOT);
-        if (name.isEmpty()) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "바꿀 컬럼명이 비어 있습니다.");
+        // 빈 이름 (M7-U05 — DB CK_COL_01 과 같은 기준) 은 입력 오류
+        if (ColumnNameKey.isBlankName(newName)) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "바꿀 컬럼명이 비어 있습니다.");
+        String name = newName.trim().toUpperCase(Locale.ROOT);
         if (!Objects.equals(projectId, column.getProjectId()) || column.getTableInfo() == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
         if (name.equals(column.getColumnName())) return;
         // 승인된 컬럼·승인된 테이블의 컬럼은 수정할 수 없다 (기존 승인 정책 — P-04·P-10)
         if (Boolean.TRUE.equals(column.getIsApproval()) || Boolean.TRUE.equals(column.getTableInfo().getIsApproval())) {
             throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         }
-        // 같은 테이블 안에서만 컬럼명이 하나다 (컬럼 등록과 같은 기준, 대소문자 무시로 더 넓게 본다)
+        // 같은 테이블 안에서만 컬럼명이 하나다 (컬럼 등록과 같은 기준 M7-U01 : 앞뒤 공백 제거 + 대문자 — DB 는 UX_COL_01). 자기 자신은 빼므로 대소문자만 바꾸는 것은 된다.
+        // 이름 맞바꾸기·연쇄 변경(A → B, B → A)은 대상 이름을 지금 다른 컬럼이 쓰므로 여기서도 거절된다 (지원하지 않는다 — RenameSafety)
         boolean duplicated = column.getTableInfo().getColumns().stream()
-                .anyMatch(other -> !other.getId().equals(column.getId()) && other.getColumnName() != null && other.getColumnName().trim().equalsIgnoreCase(name));
+                .anyMatch(other -> !other.getId().equals(column.getId()) && ColumnNameKey.same(other.getColumnName(), name));
         if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, column.getTableInfo().getTableName() + "." + name);
         column.setColumnName(name);
     }

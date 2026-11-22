@@ -1,5 +1,6 @@
 package com.lexorma.data.exchange.service;
 
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.project.domain.entity.Project;
@@ -1360,7 +1361,8 @@ public class ModelExchangeService {
             Set<String> seen = new HashSet<>();
             for (Item column : tableColumns) {
                 String name = string(column, "columnName");
-                if (!name(name) || !seen.add(lower(name)) || !name(string(column, "dataType"))) return false;
+                // 같은 테이블 안 컬럼명은 비교 값(앞뒤 공백 제거 + 대문자, M7-U01)으로 하나 — 대소문자만 다른 두 컬럼이 있는 파일은 거절한다 (예전에는 소문자로 비교)
+                if (!name(name) || !seen.add(ColumnNameKey.of(name)) || !name(string(column, "dataType"))) return false;
                 if (!texts(column, "columnDesc", "sourceComment", "bizDescription", "example", "refTableName")) return false;
                 Object identity = column.state().get("identity");
                 if (identity != null && java.util.Arrays.stream(ColumnInfo.Identity.values()).noneMatch(value -> value.name().equals(identity))) return false;

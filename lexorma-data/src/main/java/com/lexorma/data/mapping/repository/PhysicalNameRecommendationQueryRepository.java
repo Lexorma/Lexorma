@@ -25,9 +25,10 @@ import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
+import com.lexorma.data.column.repository.ColumnNameKeySql;
 import com.querydsl.core.types.dsl.ComparableExpressionBase;
 import com.querydsl.core.types.dsl.StringExpression;
-import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -60,9 +61,6 @@ public class PhysicalNameRecommendationQueryRepository {
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
     private static final QColumnInfo column = QColumnInfo.columnInfo;
     private static final QStandardTerm term = QStandardTerm.standardTerm;
-    private static final QColumnInfo otherColumn = new QColumnInfo("otherColumn");
-    private static final QAttributeColumnMapping otherMapping = new QAttributeColumnMapping("otherMapping");
-    private static final QLogicalAttribute otherAttribute = new QLogicalAttribute("otherAttribute");
     private static final QEntityTableMapping tableMapping = new QEntityTableMapping("tableMapping");
     private static final QLogicalEntity mappedEntity = new QLogicalEntity("mappedEntity");
 
@@ -74,12 +72,12 @@ public class PhysicalNameRecommendationQueryRepository {
             .or(term.commonStandardTermAbbreviation.isNull())
             .or(term.commonStandardTermAbbreviation.trim().isEmpty());
     private static final BooleanExpression MATCHED = column.id.isNotNull().and(CURRENT.eq(RECOMMENDED));
-    /** 매핑된 테이블에서 이 속성의 컬럼이 아닌 다른 컬럼이 추천명을 쓰고 있다 */
-    private static final BooleanExpression CONFLICT = table.id.isNotNull().and(JPAExpressions.selectOne().from(otherColumn)
-            .where(otherColumn.tableInfo.id.eq(table.id),
-                    otherColumn.columnName.coalesce("").trim().upper().eq(RECOMMENDED),
-                    column.id.isNull().or(otherColumn.id.ne(column.id)))
-            .exists());
+    /**
+     * 매핑된 테이블에서 이 속성의 컬럼이 아닌 다른 컬럼이 추천명을 쓰고 있다 — 컬럼명 유일성 기준 (M7-U10 : DB 가 계산한 COL_NM_CMPR_VL 과 추천명의 비교 값을
+     * 그 DB 의 식으로 비교, UX_COL_01 인덱스. {@code ColumnNameKeySql} 이 등록한 HQL 함수). 일치(MATCHED) 판정은 표준화 규칙 그대로다
+     */
+    private static final BooleanExpression CONFLICT = table.id.isNotNull().and(Expressions.numberTemplate(Integer.class,
+            ColumnNameKeySql.TAKEN_FUNCTION + "({0}, {1}, {2})", table.id, term.commonStandardTermAbbreviation, column.id).eq(1));
 
     /** 그리드 정렬 필드 → 조회 컬럼 (목록에 없는 필드는 무시한다) */
     private static final Map<String, ComparableExpressionBase<?>> COLUMN_SORTS = Map.of(
@@ -158,19 +156,6 @@ public class PhysicalNameRecommendationQueryRepository {
     }
 
     /** 테이블에서 그 이름을 쓰는 컬럼 (충돌 사유 표시용, 한 쪽 분량을 한 번에) */
-    public record NamedColumn(Long tableId, Long columnId, String columnName, String mappedAttributeName) {
-    }
-
-    /** upperNames : 대문자로 바꾼 추천 컬럼명 */
-    public List<NamedColumn> findColumnsByName(Collection<Long> tableIds, Collection<String> upperNames) {
-        if (tableIds.isEmpty() || upperNames.isEmpty()) return List.of();
-        return query.select(Projections.constructor(NamedColumn.class, otherColumn.tableInfo.id, otherColumn.id, otherColumn.columnName, otherAttribute.attributeName))
-                .from(otherColumn)
-                .leftJoin(otherMapping).on(otherMapping.column.eq(otherColumn))
-                .leftJoin(otherMapping.attribute, otherAttribute)
-                .where(otherColumn.tableInfo.id.in(tableIds), otherColumn.columnName.coalesce("").trim().upper().in(upperNames))
-                .fetch();
-    }
 
     /** 프로젝트에서 그 이름을 쓰는 테이블 (충돌은 같은 스키마만 — 서비스가 스키마 ID 로 거른다. 테이블·VIEW 이름 공간은 스키마 단위, M-15) */
     public record NamedTable(Long tableId, Long schemaId, String tableName, String mappedEntityName) {

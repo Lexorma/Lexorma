@@ -42,7 +42,7 @@ public class ColumnInfo extends BaseEntity {
     private String tableName;
 
     /** 컬럼명: email */
-    @Column(name = "COL_NM")
+    @Column(name = "COL_NM", nullable = false)
     private String columnName;
 
     /** 컬럼 설명: 이메일 */
@@ -163,7 +163,7 @@ public class ColumnInfo extends BaseEntity {
     private StandardTerm standardTerms;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "TBL_SN")
+    @JoinColumn(name = "TBL_SN", nullable = false)
     private TableInfo tableInfo;
 
     /** 등록·수정 정보 (AI 근거 검증의 버전 : 마지막 수정 일시. bean getter 가 아니라 JSON 프로퍼티가 되지 않는다) */

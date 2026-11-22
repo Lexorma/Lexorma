@@ -47,7 +47,9 @@ public final class SourceImportDto {
         EMPTY_COMMENT, UNSUPPORTED_INDEX_TYPE,
         MISSING_DEPENDENCY, UNRESOLVED_TARGET, TARGET_NOT_KEY,
         NOT_FOUND, UNSUPPORTED_DBMS, REFERENCED,
-        MODEL_EDITED, BOTH_CHANGED, REMOVED_IN_SOURCE
+        MODEL_EDITED, BOTH_CHANGED, REMOVED_IN_SOURCE,
+        /** 새 컬럼의 모델 이름이 같은 테이블의 다른 컬럼과 같다 (앞뒤 공백 제거 + 대문자 비교, M7-U01) */
+        COLUMN_NAME_TAKEN
     }
 
     /**

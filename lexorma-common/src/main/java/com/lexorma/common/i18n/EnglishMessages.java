@@ -1070,6 +1070,9 @@ final class EnglishMessages {
         add("대상 종류(TABLE·COLUMN)가 비어 있습니다.", "The target type (TABLE or COLUMN) is empty.");
         add("물리명 추천 일괄 적용 직전 상태 (테이블 {0}개, 컬럼 {1}개, 요청 {2})", "State before applying recommended physical names ({0} tables, {1} columns, request {2})");
         add("바꿀 컬럼명이 비어 있습니다.", "The new column name is empty.");
+        add("컬럼명을 입력해주세요.", "Enter the column name.");
+        add("{0} : 컬럼명이 비어 있는 행이 있습니다.", "{0} : a row has an empty column name.");
+        add("표준용어 {0} 에 영문약어가 없어 컬럼명을 만들 수 없습니다.", "The standard term {0} has no English abbreviation, so no column name can be made.");
         add("엔터티명을 승인된 표준 단어로 나눌 수 없어 추천 테이블명이 없습니다.", "There is no recommended table name because the entity name cannot be split into approved standard words.");
         add("원본 DB 와 매핑된 테이블의 컬럼입니다. 이름을 바꾸면 원본 DB 의 컬럼명과 달라지고, 확정 컬럼 매핑이 없으면 원본 비교에서 원본 전용·모델 전용 컬럼으로 나올 수 있습니다. 원본 DB 는 바꾸지 않습니다.", "This column belongs to a table mapped to a source database. After renaming, it differs from the source column name and, without a confirmed column mapping, may appear as source-only and model-only columns in the source comparison. The source database is not changed.");
         add("원본 DB 와 매핑된 테이블입니다. 이름을 바꾸면 원본 DB 의 이름과 달라지고, 원본 비교에서 이름이 다르게 보이거나 원본 전용·모델 전용 항목으로 나올 수 있습니다. 원본 DB 는 바꾸지 않습니다.", "This table is mapped to a source database. After renaming, it differs from the source name and may show a different name or appear as source-only and model-only items in the source comparison. The source database is not changed.");

@@ -318,4 +318,242 @@ class ColumnInsertConcurrencyIntegrationTest {
         assertThat(second.second()).isEqualTo("SAVED_DATA_EXISTS");
         assertThat(named(b.cust(), "CUST_NM")).isOne();
     }
+
+    // ------------------------------------------------------------------ M-7 컬럼명 UNIQUE (M7-U01) : 대소문자·공백만 다른 이름의 경쟁
+
+    /** 두 작업을 각자 스레드·트랜잭션에서 같은 순간에 시작한다 (시작 신호 하나 — 순서를 sleep 으로 정하지 않는다). 결과 = OK 또는 오류 코드 (15초 제한 — 교착이면 실패) */
+    private List<String> together(Supplier<Object> a, Supplier<Object> b) throws Exception {
+        SecurityContext login = SecurityContextHolder.getContext();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<CompletableFuture<String>> runs = new ArrayList<>();
+        for (Supplier<Object> work : List.of(a, b)) {
+            runs.add(CompletableFuture.supplyAsync(() -> {
+                SecurityContextHolder.setContext(login);
+                try {
+                    ready.countDown();
+                    start.await(15, TimeUnit.SECONDS);
+                    work.get();
+                    return "OK";
+                } catch (CustomException e) {
+                    return e.getErrorCode().name();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return "INTERRUPTED";
+                } catch (RuntimeException e) {
+                    return e.toString();
+                } finally {
+                    SecurityContextHolder.clearContext();
+                }
+            }));
+        }
+        assertThat(ready.await(15, TimeUnit.SECONDS)).isTrue();
+        start.countDown();
+        List<String> results = new ArrayList<>();
+        for (CompletableFuture<String> run : runs) results.add(run.get(15, TimeUnit.SECONDS));
+        return results;
+    }
+
+    private int sameKey(long table, String name) {
+        return jdbc.queryForObject("select count(*) from TB_COL where TBL_SN = ? and COL_NM_CMPR_VL = ?", Integer.class, table,
+                com.lexorma.data.column.service.ColumnNameKey.of(name));
+    }
+
+    @Test
+    @DisplayName("U-01 같은 테이블에 CUSTOMER_ID · customer_id 를 같은 순간에 등록 : 하나만 성공, 다른 하나는 SAVED_DATA_EXISTS — DB 에는 하나 (5회 반복)")
+    void caseVariantsAtOnce() throws Exception {
+        Fx x = fixture("u01");
+        long term = x.f().term("CUSTOMER_ID", "VARCHAR", 20);
+        for (int i = 0; i < 5; i++) {
+            String upper = "CUSTOMER_ID" + i;
+            String lower = " customer_id" + i;
+            List<String> results = together(() -> insert(x, x.cust(), upper, term), () -> insert(x, x.cust(), lower, term));
+            assertThat(results).as("반복 " + i).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+            assertThat(sameKey(x.cust(), upper)).isOne();
+        }
+    }
+
+    @Test
+    @DisplayName("U-02 먼저 등록이 테이블 행을 쥐면 대소문자만 다른 등록은 기다린 뒤 거절, 다른 이름은 기다린 뒤 저장, 다른 테이블의 같은 이름은 기다리지 않고 저장")
+    void orderedCaseVariants() throws Exception {
+        Fx x = fixture("u02");
+        long term = x.f().term("CUST_ADDR", "VARCHAR", 20);
+        Outcome dup = ordered(() -> insert(x, x.cust(), "CUST_ADDR", term), () -> insert(x, x.cust(), "cust_addr", term));
+        assertThat(dup.first()).isEqualTo("OK");
+        assertThat(dup.secondWaited()).isTrue();
+        assertThat(dup.second()).isEqualTo("SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_ADDR")).isOne();
+
+        Outcome other = ordered(() -> insert(x, x.cust(), "CUST_ADDR2", term), () -> insert(x, x.cust(), "CUST_ADDR3", term));
+        assertThat(other.secondWaited()).as("같은 테이블은 이름이 달라도 차례로").isTrue();
+        assertThat(List.of(other.first(), other.second())).containsExactly("OK", "OK");
+
+        Outcome tables = ordered(() -> insert(x, x.cust(), "CUST_TEL", term), () -> insert(x, x.ord(), "cust_tel", term));
+        assertThat(tables.secondWaited()).isFalse();
+        assertThat(List.of(tables.first(), tables.second())).containsExactly("OK", "OK");
+    }
+
+    @Test
+    @DisplayName("U-03 물리명 일괄 적용 ↔ 대소문자만 다른 등록 : 적용이 먼저면 등록은 기다린 뒤 거절, 등록이 먼저면 적용은 기다리지 않고 409 — 이름은 하나, 거절된 쪽은 아무것도 남기지 않는다")
+    void renameAndCaseVariant() throws Exception {
+        Fx a = fixture("u03a");
+        Plan planA = renamePlan(a);
+        int before = columnsOf(a.cust());
+        Outcome renameFirst = ordered(() -> apply(a, planA), () -> insert(a, a.cust(), "cust_nm", a.custNmTerm()));
+        assertThat(renameFirst.first()).isEqualTo("OK");
+        assertThat(renameFirst.secondWaited()).isTrue();
+        assertThat(renameFirst.second()).isEqualTo("SAVED_DATA_EXISTS");
+        assertThat(sameKey(a.cust(), "CUST_NM")).isOne();
+        assertThat(columnsOf(a.cust())).isEqualTo(before);
+
+        Fx b = fixture("u03b");
+        Plan planB = renamePlan(b);
+        int versions = b.f().versions();
+        Outcome insertFirst = ordered(() -> insert(b, b.cust(), " cust_nm ", b.custNmTerm()), () -> apply(b, planB));
+        assertThat(insertFirst.first()).isEqualTo("OK");
+        assertThat(insertFirst.secondWaited()).isFalse();
+        assertThat(insertFirst.second()).isEqualTo("MODEL_CONFLICT");
+        assertThat(sameKey(b.cust(), "CUST_NM")).isOne();
+        assertThat(jdbc.queryForObject("select COL_NM from TB_COL where COL_SN = ?", String.class, b.custNm())).isEqualTo("O_CUST_NM");
+        assertThat(b.f().versions()).as("거절된 적용은 모델 버전을 남기지 않는다").isEqualTo(versions);
+        assertThat(rename.preview(b.f().user, new Request(List.of(new Item(TargetType.COLUMN, b.custNm(), "CUST_NM", null)), null)).items().get(0)
+                .applicability().blockers()).extracting(ApplyIssue::code).containsExactly(ApplyCode.NAME_CONFLICT);
+    }
+
+    private Object bulkAdd(Fx x, long term) {
+        com.lexorma.data.column.domain.dto.ColumnBulkSaveDto request = new com.lexorma.data.column.domain.dto.ColumnBulkSaveDto();
+        request.setTableInfoId(x.cust());
+        com.lexorma.data.column.domain.dto.ColumnBulkSaveDto.Row row = new com.lexorma.data.column.domain.dto.ColumnBulkSaveDto.Row();
+        row.setKey("r1");
+        row.setTermId(term);
+        row.setColumnDesc("설명");
+        row.setDataType("VARCHAR");
+        row.setMaxLength(20);
+        for (java.util.function.Consumer<String> flag : List.<java.util.function.Consumer<String>>of(row::setIsPk, row::setIsRequired, row::setIsUnique, row::setIsIndex,
+                row::setIsMasterData, row::setIsSensitive, row::setIsEncrypted)) flag.accept("N");
+        row.setIsNullable("Y");
+        request.setRows(new ArrayList<>(List.of(row)));
+        com.lexorma.data.column.domain.dto.ColumnBulkSaveDto.Result result = columns.saveColumnsBulk(x.f().user, request);
+        if (!result.result()) throw new CustomException(com.lexorma.common.exception.domain.ErrorCode.SAVED_DATA_EXISTS, String.valueOf(result.errors()));
+        return null;
+    }
+
+    @Test
+    @DisplayName("U-04 일괄 저장 ↔ 단건 등록 (같은 테이블, 대소문자만 다른 이름) : 둘째는 테이블 행을 기다린 뒤 최신 상태로 거절 — 어느 쪽이 먼저든 이름은 하나")
+    void bulkAndInsert() throws Exception {
+        Fx x = fixture("u04");
+        jdbc.update("update TB_TBL set APRV_YN = true where TBL_SN = ?", x.cust());
+        long upper = x.f().term("CUST_MEMO", "VARCHAR", 20);
+        Outcome bulkFirst = ordered(() -> bulkAdd(x, upper), () -> insert(x, x.cust(), "cust_memo", upper));
+        assertThat(bulkFirst.first()).isEqualTo("OK");
+        assertThat(bulkFirst.secondWaited()).isTrue();
+        assertThat(bulkFirst.second()).isEqualTo("SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_MEMO")).isOne();
+
+        long lower = x.f().term("cust_note", "VARCHAR", 20);
+        Outcome insertFirst = ordered(() -> insert(x, x.cust(), "CUST_NOTE", lower), () -> bulkAdd(x, lower));
+        assertThat(insertFirst.first()).isEqualTo("OK");
+        assertThat(insertFirst.secondWaited()).isTrue();
+        assertThat(insertFirst.second()).as("일괄 저장은 행 오류로 아무것도 저장하지 않는다").isEqualTo("SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_NOTE")).isOne();
+    }
+
+    private Object uploadRows(Fx x, String[]... rows) {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet();
+            sheet.createRow(0).createCell(0).setCellValue("header");
+            int r = 1;
+            for (String[] v : rows) {
+                List<String> values = List.of(v[0], v[1], "설명 " + v[1], "VARCHAR", "20", "0", "0", "Y", "", "9", "N", "", "N", "N", "N", "N", "N", "N");
+                Row row = sheet.createRow(r++);
+                for (int c = 0; c < values.size(); c++) row.createCell(c).setCellValue(values.get(c));
+            }
+            workbook.write(out);
+            columns.uploadColumnExcelFile(new MockMultipartFile("file", "upload.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray()),
+                    x.f().user);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return null;
+    }
+
+    @Test
+    @DisplayName("U-05 두 테이블에 걸친 엑셀 업로드 둘을 반대 행 순서로 동시에 : 테이블 행을 ID 순으로 잠가 교착 없이 둘 다 끝나고, 같은 비교 이름이 겹치면 하나만 성공 (단건 등록과 경쟁해도 같다)")
+    void uploadsAcrossTables() throws Exception {
+        Fx x = fixture("u05");
+        // 엑셀은 컬럼명 = 표준 용어 약어로 용어를 찾는다
+        for (String abbreviation : List.of("CUST_ETC", "ORD_ETC", "CUST_ETC2", "ORD_ETC2", "CUST_X", "ORD_X", "ORD_Y", "CUST_Z")) x.f().term(abbreviation, "VARCHAR", 20);
+        List<String> distinct = together(() -> uploadRows(x, new String[]{"O_ORD", "ORD_ETC"}, new String[]{"O_CUST", "CUST_ETC"}),
+                () -> uploadRows(x, new String[]{"O_CUST", "CUST_ETC2"}, new String[]{"O_ORD", "ORD_ETC2"}));
+        assertThat(distinct).containsExactly("OK", "OK");
+        List<String> clash = together(() -> uploadRows(x, new String[]{"O_ORD", "ORD_X"}, new String[]{"O_CUST", "CUST_X"}),
+                () -> uploadRows(x, new String[]{"O_CUST", "cust_x"}, new String[]{"O_ORD", "ORD_Y"}));
+        assertThat(clash).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_X")).isOne();
+        assertThat(sameKey(x.ord(), "ORD_X") + sameKey(x.ord(), "ORD_Y")).as("실패한 업로드는 다른 테이블 행도 남기지 않는다").isOne();
+        List<String> withInsert = together(() -> uploadRows(x, new String[]{"O_CUST", "CUST_Z"}), () -> insert(x, x.cust(), "cust_z", x.custNmTerm()));
+        assertThat(withInsert).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_Z")).isOne();
+    }
+
+    @Test
+    @DisplayName("U-07 (M7-U06) 확장 대문자로만 같은 이름을 같은 순간에 : A STRAßE ↔ STRASSE · B ﬁ ↔ FI 는 같은 테이블에서 하나만 성공(SAVED_DATA_EXISTS), C 다른 테이블은 둘 다 성공, "
+            + "D 엑셀 업로드 ↔ 단건 등록도 하나만 성공하고 실패한 업로드는 아무것도 남기지 않는다 (각 3회)")
+    void unicodeVariantsAtOnce() throws Exception {
+        Fx x = fixture("u07");
+        long term = x.f().term("UNI_NM", "VARCHAR", 20);
+        for (int i = 0; i < 3; i++) {
+            String n = String.valueOf(i);
+            assertThat(together(() -> insert(x, x.cust(), "STRAßE" + n, term), () -> insert(x, x.cust(), "STRASSE" + n, term)))
+                    .as("A " + i).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+            assertThat(sameKey(x.cust(), "STRASSE" + n)).isOne();
+            assertThat(together(() -> insert(x, x.cust(), "ﬁ_" + n, term), () -> insert(x, x.cust(), "FI_" + n, term)))
+                    .as("B " + i).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+            assertThat(sameKey(x.cust(), "FI_" + n)).isOne();
+            assertThat(together(() -> insert(x, x.cust(), "STRAßE_T" + n, term), () -> insert(x, x.ord(), "strasse_t" + n, term)))
+                    .as("C " + i).containsExactly("OK", "OK");
+        }
+        for (int i = 0; i < 3; i++) {
+            String sharp = "STRAßE_E" + i;
+            String n = String.valueOf(i);
+            x.f().term(sharp, "VARCHAR", 20);
+            x.f().term("ORD_UNI" + i, "VARCHAR", 20);
+            int ordBefore = columnsOf(x.ord());
+            List<String> d = together(() -> uploadRows(x, new String[]{"O_ORD", "ORD_UNI" + n}, new String[]{"O_CUST", sharp}),
+                    () -> insert(x, x.cust(), "strasse_e" + n, term));
+            assertThat(d).as("D " + i).containsExactlyInAnyOrder("OK", "SAVED_DATA_EXISTS");
+            assertThat(sameKey(x.cust(), sharp)).isOne();
+            if (d.get(0).equals("SAVED_DATA_EXISTS")) assertThat(columnsOf(x.ord())).as("실패한 업로드는 다른 테이블 행도 남기지 않는다").isEqualTo(ordBefore);
+        }
+    }
+
+    @Test
+    @DisplayName("U-06 (M7-U07) 엑셀 업로드 ↔ 일괄 저장·컬럼 삭제 : 업로드가 테이블 행을 쥔 동안 둘째는 기다린다 — 일괄 저장은 최신 상태로 대소문자만 다른 이름을 거절, 삭제는 끝난 뒤 성공")
+    void uploadAndBulkOrDelete() throws Exception {
+        Fx x = fixture("u06");
+        jdbc.update("update TB_TBL set APRV_YN = true where TBL_SN = ?", x.cust());
+        long term = x.f().term("CUST_Q", "VARCHAR", 20);
+        long lower = x.f().term("cust_q", "VARCHAR", 20);
+        Outcome bulk = ordered(() -> uploadRows(x, new String[]{"O_CUST", "CUST_Q"}), () -> bulkAdd(x, lower));
+        assertThat(bulk.first()).isEqualTo("OK");
+        assertThat(bulk.secondWaited()).isTrue();
+        assertThat(bulk.second()).isEqualTo("SAVED_DATA_EXISTS");
+        assertThat(sameKey(x.cust(), "CUST_Q")).isOne();
+
+        x.f().term("CUST_R", "VARCHAR", 20);
+        long victim = jdbc.queryForObject("select COL_SN from TB_COL where TBL_SN = ? and COL_NM = 'CUST_Q'", Long.class, x.cust());
+        jdbc.update("update TB_COL set APRV_YN = false where COL_SN = ?", victim);
+        com.lexorma.data.column.domain.dto.ColumnInfoDto target = new com.lexorma.data.column.domain.dto.ColumnInfoDto();
+        target.setId(victim);
+        Outcome delete = ordered(() -> uploadRows(x, new String[]{"O_CUST", "CUST_R"}), () -> {
+            columns.deleteColumn(x.f().user, List.of(target));
+            return null;
+        });
+        assertThat(delete.first()).isEqualTo("OK");
+        assertThat(delete.secondWaited()).as("삭제는 테이블 행을 기다린다").isTrue();
+        assertThat(delete.second()).isEqualTo("OK");
+        assertThat(sameKey(x.cust(), "CUST_Q")).isZero();
+        assertThat(sameKey(x.cust(), "CUST_R")).isOne();
+        assertThat(term).isPositive();
+    }
 }

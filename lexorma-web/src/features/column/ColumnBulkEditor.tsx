@@ -12,6 +12,7 @@ import { applyRecommendation } from './recommend';
 import { searchTerms, termLabel, type Term, type TermSearchType } from './terms';
 import { t, tc } from '../../lib/i18n';
 import { BIZ_DESCRIPTION_MAX, BizLength } from '../dictionary/ai/BizDescriptionInfo';
+import { columnNameKey } from './columnNameKey';
 
 /**
  * 컬럼 일괄 편집 (테이블 관리 > 테이블 상세 > 컬럼 편집)
@@ -334,7 +335,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     setScrollTarget(null);
   }, [scrollTarget]);
 
-  const usedColumnNames = useMemo(() => new Set(rows.filter((r) => !r.deleted).map((r) => r.columnName)), [rows]);
+  const usedColumnNames = useMemo(() => new Set(rows.filter((r) => !r.deleted).map((r) => columnNameKey(r.columnName))), [rows]);
 
   // ---------------------------------------------------------------- 표준용어 검색
   useEffect(() => {
@@ -352,7 +353,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   }, [keyword, searchType]);
 
   // 이미 추가된 용어는 체크 해제
-  const selectableIds = results.filter((t) => !usedColumnNames.has(t.commonStandardTermAbbreviation)).map((t) => t.id);
+  const selectableIds = results.filter((t) => !usedColumnNames.has(columnNameKey(t.commonStandardTermAbbreviation))).map((t) => t.id);
   const checkedCount = selectableIds.filter((id) => checkedIds.has(id)).length;
 
   /**
@@ -362,12 +363,12 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
    */
   const pushRows = (items: { row: BulkRow; term?: Term }[]) => {
     const current = rowsRef.current;
-    const used = new Set(current.filter((r) => !r.deleted).map((r) => r.columnName));
+    const used = new Set(current.filter((r) => !r.deleted).map((r) => columnNameKey(r.columnName)));
     const next = current.slice();
     let added = 0;
     items.forEach(({ row, term }) => {
-      if (!row.columnName || used.has(row.columnName)) return;
-      used.add(row.columnName);
+      if (!row.columnName || used.has(columnNameKey(row.columnName))) return;
+      used.add(columnNameKey(row.columnName));
       if (term && recommend) {
         const remaining = next.filter((r) => !r.deleted);
         row.recommended = applyRecommendation(term, row.fields, {
@@ -387,7 +388,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   const addTerms = (terms: Term[]) => pushRows(terms.map((term) => ({ row: fromTerm(term, nextKey()), term })));
 
   const addChecked = () => {
-    const terms = results.filter((t) => checkedIds.has(t.id) && !usedColumnNames.has(t.commonStandardTermAbbreviation));
+    const terms = results.filter((t) => checkedIds.has(t.id) && !usedColumnNames.has(columnNameKey(t.commonStandardTermAbbreviation)));
     addTerms(terms);
     setCheckedIds(new Set());
   };
@@ -434,8 +435,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       return;
     }
     const missing = items.filter((item) => !item.term).length;
-    const used = new Set(rowsRef.current.filter((r) => !r.deleted).map((r) => r.columnName));
-    const skipped = items.filter((item) => item.term && used.has(item.term.commonStandardTermAbbreviation)).length;
+    const used = new Set(rowsRef.current.filter((r) => !r.deleted).map((r) => columnNameKey(r.columnName)));
+    const skipped = items.filter((item) => item.term && used.has(columnNameKey(item.term.commonStandardTermAbbreviation))).length;
     const added = pushRows(items.filter((item) => item.term).map((item) => ({ row: fromCommonColumn(item, nextKey()) })));
 
     const notes = [t('공통 컬럼 {0}개를 추가했습니다.', added)];
@@ -485,7 +486,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     setCopyColumns((response.columnInfos || []).slice().sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER)));
   };
 
-  const copyCheckable = copyColumns.filter((col) => col.standardTerms?.id && !usedColumnNames.has(col.columnName)).map((col) => col.id);
+  const copyCheckable = copyColumns.filter((col) => col.standardTerms?.id && !usedColumnNames.has(columnNameKey(col.columnName))).map((col) => col.id);
   const copyCheckedCount = copyCheckable.filter((id) => copyChecked.has(id)).length;
 
   const addCopied = () => {
@@ -514,9 +515,9 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     return pasteItems.map((item) => {
       const term = selectedTerm(item);
       const abbr = term?.commonStandardTermAbbreviation;
-      const already = !!abbr && usedColumnNames.has(abbr);
-      const duplicated = !!abbr && !already && seen.has(abbr);
-      if (abbr) seen.add(abbr);
+      const already = !!abbr && usedColumnNames.has(columnNameKey(abbr));
+      const duplicated = !!abbr && !already && seen.has(columnNameKey(abbr));
+      if (abbr) seen.add(columnNameKey(abbr));
       const blocked = !term || already || duplicated;
       return { item, term, already, duplicated, blocked, checked: item.checked && !blocked };
     });
@@ -598,7 +599,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
   };
 
   const restoreRow = (row: BulkRow) => {
-    if (usedColumnNames.has(row.columnName)) {
+    if (usedColumnNames.has(columnNameKey(row.columnName))) {
       dialog.alert(t('같은 컬럼명({0})이 이미 추가되어 있어 되돌릴 수 없습니다.', row.columnName));
       return;
     }
@@ -746,7 +747,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                 <p className="table-name-error">{t('조건에 맞는 표준용어가 없습니다. [+ 새 표준용어 등록]으로 바로 등록할 수 있습니다.')}</p>
               ) : null}
               {keyword.trim() && results.map((term) => {
-                const already = usedColumnNames.has(term.commonStandardTermAbbreviation);
+                const already = usedColumnNames.has(columnNameKey(term.commonStandardTermAbbreviation));
                 return (
                   <label key={term.id} className={`col-bulk-result${already ? ' is-disabled' : ''}`}>
                     <input type="checkbox" className="form-check-input" disabled={already} checked={!already && checkedIds.has(term.id)}
@@ -855,7 +856,7 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
               {copyTable && copyColumns.length === 0 && <p className="form-help">{t('{0} 에 등록된 컬럼이 없습니다.', copyTable.tableName)}</p>}
               {copyTable && copyColumns.map((col) => {
                 const noTerm = !col.standardTerms?.id;
-                const already = usedColumnNames.has(col.columnName);
+                const already = usedColumnNames.has(columnNameKey(col.columnName));
                 const disabled = noTerm || already;
                 return (
                   <label key={col.id} className={`col-bulk-result${disabled ? ' is-disabled' : ''}`}>

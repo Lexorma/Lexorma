@@ -72,7 +72,7 @@ class SubtypeIdentifierColumnMappingMigrationTest {
             int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
             int exampleIndexes = jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class);
 
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).load();
+            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("4")).load();
             assertThat(latest.migrate().migrationsExecuted).isOne();
             assertThat(latest.validateWithResult().validationSuccessful).isTrue();
             assertThat(jdbc.queryForList("select \"version\", \"checksum\" from " + s + "\"flyway_schema_history\" where \"version\" is not null and \"version\" <> '4' order by \"installed_rank\""))

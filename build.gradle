@@ -55,7 +55,7 @@ subprojects {
         filter.failOnNoMatchingTests = false
         // 테스트 JVM 힙 (Gradle 기본 512MB) : 구성이 다른 Spring 테스트 컨텍스트를 캐시해 두고 H2 메모리 DB 의 데이터도 힙에 있어,
         // 원본 PostgreSQL 테스트까지 함께 돌리는 H2 전체 실행에서 512MB 가 부족했다 (Java heap space)
-        maxHeapSize = '1g'
+        maxHeapSize = '2g'
     }
 }
 

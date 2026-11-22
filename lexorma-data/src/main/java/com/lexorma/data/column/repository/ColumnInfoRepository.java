@@ -1,6 +1,7 @@
 package com.lexorma.data.column.repository;
 
 import com.lexorma.data.column.domain.entity.ColumnInfo;
+import com.lexorma.data.column.service.ColumnNameKey;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,6 +26,20 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     /** 같은 테이블 안의 같은 컬럼명 (컬럼 등록 중복 기준) */
     List<ColumnInfo> findAllByProjectIdAndTableInfo_IdAndColumnName(Long projectId, Long tableInfoId, String columnName);
 
+    /**
+     * 같은 테이블 안에서 이름이 같은 컬럼 (컬럼명 유일성 기준 M7-U01·U06 : DB 가 계산한 비교 값 COL_NM_CMPR_VL 이 {@code ColumnNameKey.of(columnName)} 와 같다 —
+     * UX_COL_01 인덱스로 찾는다. DB 의 upper() 를 쓰지 않아 DB 기본 로캘(터키어 등)과 무관하다). 컬럼 등록·중복 확인이 쓴다 (테이블 행 잠금 뒤에 부른다)
+     */
+    default List<ColumnInfo> findSameName(Long projectId, Long tableInfoId, String columnName) {
+        String key = ColumnNameKey.of(columnName);
+        if (key == null) return List.of();
+        List<Long> ids = findSameNameIds(projectId, tableInfoId, key);
+        return ids.isEmpty() ? List.of() : findAllById(ids);
+    }
+
+    @Query(value = "select c.COL_SN from TB_COL c where c.PRJ_SN = :projectId and c.TBL_SN = :tableInfoId and c.COL_NM_CMPR_VL = :columnKey", nativeQuery = true)
+    List<Long> findSameNameIds(@Param("projectId") Long projectId, @Param("tableInfoId") Long tableInfoId, @Param("columnKey") String columnKey);
+
     Page<ColumnInfo> findAllByProjectIdAndTableNameLike(Long projectId, String tableName, Pageable pageable);
     Page<ColumnInfo> findAllByProjectIdAndColumnNameLikeIgnoreCase(Long projectId, String columnName, Pageable pageable);
 
@@ -41,12 +56,14 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     /** 스키마명 변경 : 참조 테이블명을 "스키마명.테이블명" 으로 적은 컬럼 (대문자 접두어) */
     List<ColumnInfo> findAllByProjectIdAndRefTableNameStartingWith(Long projectId, String prefix);
 
-    /** 엑셀 업로드 : 청크에서 이미 등록된 (테이블 ID, 컬럼명) 조합을 한 번에 조회 → [tableInfoId, columnName] */
-    @Query("select c.tableInfo.id, c.columnName from ColumnInfo c " +
-           "where c.projectId = :projectId and c.tableInfo.id in :tableInfoIds and c.columnName in :columnNames")
+    /**
+     * 엑셀 업로드 : 청크의 테이블들에 이미 있는 컬럼 중 DB 비교 값(COL_NM_CMPR_VL, M7-U01·U06)이 columnKeys 중 하나인 것 → [tableInfoId, columnName].
+     * columnKeys 는 {@code ColumnNameKey.of} 로 만든 값이다 (UX_COL_01 인덱스로 찾는다)
+     */
+    @Query(value = "select c.TBL_SN, c.COL_NM from TB_COL c where c.PRJ_SN = :projectId and c.TBL_SN in (:tableInfoIds) and c.COL_NM_CMPR_VL in (:columnKeys)", nativeQuery = true)
     List<Object[]> findTableColumnKeys(@Param("projectId") Long projectId,
                                        @Param("tableInfoIds") Collection<Long> tableInfoIds,
-                                       @Param("columnNames") Collection<String> columnNames);
+                                       @Param("columnKeys") Collection<String> columnKeys);
 
     /** 관계 동기화 : 테이블들의 컬럼 */
     List<ColumnInfo> findAllByTableInfo_IdIn(Collection<Long> tableInfoIds);

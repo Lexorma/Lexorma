@@ -25,7 +25,7 @@ import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.TableRo
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.TableSearch;
 import com.lexorma.data.mapping.repository.ModelMappingQueryRepository;
 import com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository;
-import com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.NamedColumn;
+import com.lexorma.data.column.repository.ColumnNameDbKeys;
 import com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.NamedTable;
 import com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.NamedView;
 import com.lexorma.data.table.ddl.DbIdentifierRules;
@@ -77,6 +77,7 @@ public class PhysicalNameRecommendationService {
 
 
     private final PhysicalNameRecommendationQueryRepository queryRepository;
+    private final ColumnNameDbKeys dbKeys;
     private final ModelMappingQueryRepository mappingQueryRepository;
     private final LogicalModelRepository modelRepository;
     private final TableDesignService tableDesignService;
@@ -139,9 +140,10 @@ public class PhysicalNameRecommendationService {
         // 충돌 사유 : 이 쪽의 추천명을 쓰는 컬럼을 한 번에 읽는다 (행마다 조회하지 않는다)
         List<ColumnSource> named = sources.getContent().stream()
                 .filter(source -> source.tableId() != null && recommendColumnName(source.termId(), source.termAbbreviation()).available()).toList();
-        List<NamedColumn> columns = queryRepository.findColumnsByName(
+        // 이름 충돌 : DB 의 컬럼명 유일성 기준 (저장된 COL_NM_CMPR_VL ↔ 추천명의 DB 비교 값, M7-U10) — 목록 SQL 의 상태·필터와 같은 기준, 한 번에 조회
+        List<ColumnNameDbKeys.Taken> columns = dbKeys.taken(
                 named.stream().map(ColumnSource::tableId).collect(Collectors.toSet()),
-                named.stream().map(source -> upper(source.termAbbreviation())).collect(Collectors.toSet()));
+                named.stream().map(source -> recommendColumnName(source.termId(), source.termAbbreviation()).name()).collect(Collectors.toSet()));
         List<ColumnRow> rows = sources.getContent().stream().map(source -> columnRow(source, columns, null)).toList();
         Map<Long, Applicability> applicability = assessColumns(projectId, sources.getContent(), rows);
         Map<Long, ColumnRow> byAttribute = new HashMap<>();
@@ -150,7 +152,7 @@ public class PhysicalNameRecommendationService {
     }
 
     /** 상태 판정은 PhysicalNameRecommendationQueryRepository 의 조건식과 같다 : 추천 불가 → 일치 → 충돌 → 추천 가능 */
-    static ColumnRow columnRow(ColumnSource s, List<NamedColumn> columnsByName, Applicability applicability) {
+    static ColumnRow columnRow(ColumnSource s, List<ColumnNameDbKeys.Taken> columnsByName, Applicability applicability) {
         ColumnName recommended = recommendColumnName(s.termId(), s.termAbbreviation());
         Status status;
         String reason;
@@ -161,8 +163,8 @@ public class PhysicalNameRecommendationService {
             status = Status.ALREADY_MATCHED;
             reason = Messages.get("현재 컬럼명이 표준 용어의 영문약어와 같습니다.");
         } else {
-            NamedColumn other = columnsByName.stream()
-                    .filter(column -> column.tableId().equals(s.tableId()) && !column.columnId().equals(s.columnId()) && sameName(column.columnName(), recommended.name()))
+            ColumnNameDbKeys.Taken other = columnsByName.stream()
+                    .filter(column -> column.tableId().equals(s.tableId()) && !column.columnId().equals(s.columnId()) && column.candidate().equals(recommended.name()))
                     .findFirst().orElse(null);
             if (other != null) {
                 status = Status.CONFLICT;
@@ -206,10 +208,13 @@ public class PhysicalNameRecommendationService {
         // 추천끼리 충돌 : 그 테이블들의 매핑된 컬럼 전체 중 추천명이 현재 이름과 다른 것
         List<RenameSafety.Candidate> candidates = new ArrayList<>();
         Map<Long, String> columnNames = new HashMap<>();
-        for (PhysicalNameRecommendationQueryRepository.MappedColumn mapped : queryRepository.findMappedColumns(tableIds)) {
+        List<PhysicalNameRecommendationQueryRepository.MappedColumn> mappedColumns = queryRepository.findMappedColumns(tableIds);
+        // 추천끼리 겹침도 그 DB 의 컬럼명 비교 값으로 본다 (M7-U10 — 미리보기·적용과 같은 기준)
+        Map<String, String> keys = dbKeys.keys(mappedColumns.stream().map(m -> StandardNames.expectedColumnName(m.termAbbreviation())).filter(Objects::nonNull).toList());
+        for (PhysicalNameRecommendationQueryRepository.MappedColumn mapped : mappedColumns) {
             columnNames.put(mapped.columnId(), mapped.columnName());
             String name = StandardNames.expectedColumnName(mapped.termAbbreviation());
-            if (name != null && !sameName(mapped.columnName(), name)) candidates.add(new RenameSafety.Candidate(mapped.columnId(), mapped.tableId(), name));
+            if (name != null && !sameName(mapped.columnName(), name)) candidates.add(new RenameSafety.Candidate(mapped.columnId(), mapped.tableId(), keys.getOrDefault(name, name)));
         }
         Map<Long, List<Long>> duplicates = RenameSafety.duplicates(candidates);
         RenameSafety safety = safety(projectId, db, tableIds);

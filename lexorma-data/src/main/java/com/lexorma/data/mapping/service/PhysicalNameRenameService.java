@@ -1,5 +1,7 @@
 package com.lexorma.data.mapping.service;
 
+import com.lexorma.data.column.repository.ColumnNameDbKeys;
+import com.lexorma.data.column.service.ColumnNameKey;
 import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.common.i18n.Messages;
@@ -94,6 +96,7 @@ public class PhysicalNameRenameService {
 
     private final PhysicalNameRenameQueryRepository targets;
     private final PhysicalNameRecommendationQueryRepository names;
+    private final ColumnNameDbKeys dbKeys;
     private final PhysicalNameRecommendationService recommendation;
     private final TableDesignService tableDesignService;
     private final ColumnRenameService columnRenameService;
@@ -212,7 +215,8 @@ public class PhysicalNameRenameService {
             columnRenameService.renameLockedColumn(projectId, columnEntities.get(columnId), computed.newColumnNames().get(columnId));
         }
         if (!tableIds.isEmpty()) physicalModelService.syncReferenceRelations(projectId, tableIds);
-        entityManager.flush();
+        // DB UNIQUE(UX_COL_01) 최종 방어 : 위 판정·renameLockedColumn 과 같은 기준이라 보통은 걸리지 않는다. 걸리면 같은 중복 오류로 전체 롤백 (모델 버전도 남지 않는다)
+        ColumnNameKey.flush(entityManager, () -> new CustomException(ErrorCode.SAVED_DATA_EXISTS, Messages.get("이름 변경 계획")));
 
         List<Warning> warnings = computed.plan().items().stream().filter(i -> !i.applicability().warnings().isEmpty())
                 .map(i -> new Warning(i.type(), i.id(), i.currentName(), i.applicability().warnings())).toList();
@@ -282,19 +286,21 @@ public class PhysicalNameRenameService {
                     .ifPresent(v -> w.issues.add(new ApplyIssue(ApplyCode.NAME_CONFLICT,
                             Messages.get("같은 스키마에 추천 테이블명과 이름이 같은 VIEW {0} 이(가) 있습니다. 테이블과 VIEW 는 같은 이름을 쓸 수 없습니다.", v.viewName()), List.of(v.viewName()))));
         }
-        Map<Long, List<PhysicalNameRenameQueryRepository.TableColumn>> columnsByTable = targets.findTableColumns(
-                columnRenames.stream().map(w -> w.tableId).collect(Collectors.toSet())).stream()
-                .collect(Collectors.groupingBy(PhysicalNameRenameQueryRepository.TableColumn::tableId));
+        // 컬럼 : DB 의 컬럼명 유일성 기준 (저장된 COL_NM_CMPR_VL ↔ 추천명의 DB 비교 값, M7-U10) — 추천 목록의 상태와 같은 기준, 한 번에 조회
+        List<ColumnNameDbKeys.Taken> takenColumns = dbKeys.taken(columnRenames.stream().map(w -> w.tableId).collect(Collectors.toSet()),
+                columnRenames.stream().map(w -> w.recommended).collect(Collectors.toSet()));
         for (Work w : columnRenames) {
-            columnsByTable.getOrDefault(w.tableId, List.of()).stream()
-                    .filter(c -> !c.columnId().equals(w.item.id()) && same(c.columnName(), w.recommended)).findFirst()
+            takenColumns.stream()
+                    .filter(c -> c.tableId().equals(w.tableId) && !c.columnId().equals(w.item.id()) && c.candidate().equals(w.recommended)).findFirst()
                     .ifPresent(c -> w.issues.add(new ApplyIssue(ApplyCode.NAME_CONFLICT,
                             Messages.get("같은 테이블에 추천 컬럼명과 이름이 같은 컬럼 {0} 이(가) 이미 있습니다.", c.columnName()), List.of(c.columnName()))));
         }
 
         // 추천끼리 충돌 : 이 요청의 선택 집합 기준 (P-12) — 고르지 않은 후보는 보지 않는다
-        duplicates(tableRenames, w -> w.schemaId, "같은 스키마에서 함께 고른 다른 테이블도 같은 이름을 받습니다 : {0}. 추천끼리 겹치는 이름은 함께 적용할 수 없습니다.");
-        duplicates(columnRenames, w -> w.tableId, "같은 테이블에서 함께 고른 다른 컬럼도 같은 이름을 받습니다 : {0}. 추천끼리 겹치는 이름은 함께 적용할 수 없습니다.");
+        duplicates(tableRenames, w -> w.schemaId, w -> w.recommended, "같은 스키마에서 함께 고른 다른 테이블도 같은 이름을 받습니다 : {0}. 추천끼리 겹치는 이름은 함께 적용할 수 없습니다.");
+        Map<String, String> columnKeys = dbKeys.keys(columnRenames.stream().map(w -> w.recommended).toList());
+        duplicates(columnRenames, w -> w.tableId, w -> columnKeys.getOrDefault(w.recommended, w.recommended),
+                "같은 테이블에서 함께 고른 다른 컬럼도 같은 이름을 받습니다 : {0}. 추천끼리 겹치는 이름은 함께 적용할 수 없습니다.");
 
         // 식별자 · 승인 · 용어
         for (Work w : tableRenames) {
@@ -416,10 +422,10 @@ public class PhysicalNameRenameService {
         }
     }
 
-    private static void duplicates(List<Work> works, java.util.function.Function<Work, Long> namespace, String message) {
+    private static void duplicates(List<Work> works, java.util.function.Function<Work, Long> namespace, java.util.function.Function<Work, String> compareName, String message) {
         Map<Long, Work> byId = new HashMap<>();
         works.forEach(w -> byId.put(w.item.id(), w));
-        Map<Long, List<Long>> duplicates = RenameSafety.duplicates(works.stream().map(w -> new RenameSafety.Candidate(w.item.id(), namespace.apply(w), w.recommended)).toList());
+        Map<Long, List<Long>> duplicates = RenameSafety.duplicates(works.stream().map(w -> new RenameSafety.Candidate(w.item.id(), namespace.apply(w), compareName.apply(w))).toList());
         duplicates.forEach((id, others) -> {
             List<String> otherNames = others.stream().map(o -> byId.get(o).current).toList();
             byId.get(id).issues.add(RenameSafety.issue(ApplyCode.RECOMMENDATION_DUPLICATE, Messages.get(message, RenameSafety.shown(otherNames)), otherNames));

@@ -5,6 +5,9 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnRow;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSearch;
+import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.Status;
+import com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto;
+import com.lexorma.data.mapping.service.PhysicalNameRenameService;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.TableRow;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.TableSearch;
 import com.lexorma.data.mapping.service.PhysicalGenerationService;
@@ -60,6 +63,7 @@ class PhysicalNameRecommendationPerformanceTest {
     @Autowired EntityManager entityManager;
     @Autowired TransactionTemplate tx;
     @Autowired JdbcTemplate jdbc;
+    @Autowired PhysicalNameRenameService renames;
 
     @AfterEach
     void tearDown() {
@@ -70,7 +74,8 @@ class PhysicalNameRecommendationPerformanceTest {
     @DisplayName("규모별 추천 목록 한 쪽(100행)의 시간과 SQL 수 (10×10, 100×20, 300×30)")
     void measure() throws IOException {
         List<String> lines = new ArrayList<>();
-        lines.add("size | tables | columns | views | column p1 ms (stmts) | column last ms (stmts) | column 1 row ms (stmts) | table p1 ms (stmts) | table last ms (stmts) | selectable col/tbl (p1)");
+        lines.add("size | tables | columns | views | column p1 ms (stmts) | column last ms (stmts) | column 1 row ms (stmts) | table p1 ms (stmts) | table last ms (stmts) | selectable col/tbl (p1)"
+                + " | conflict filter p1 ms (stmts) · total | available filter p1 ms (stmts) · total | column summary ms (stmts) | rename preview 100 ms (stmts)");
         for (int[] size : new int[][]{{10, 10}, {100, 20}, {300, 30}}) {
             lines.add(run(size[0], size[1]));
             System.out.println("PERF|" + lines.get(lines.size() - 1));
@@ -114,7 +119,11 @@ class PhysicalNameRecommendationPerformanceTest {
                 i++;
             }
         });
-        long columnCount = jdbc.queryForObject("select count(*) from TB_COL where PRJ_SN = ?", Long.class, projectId);
+        // 이름 충돌 데이터 (M7-U10) : 앞쪽 테이블 20개에 매핑 없는 소문자 c01 (추천 C01 과 충돌 — 충돌 필터·요약·미리보기가 DB 비교 값을 쓴다)
+        for (int i = 0; i < Math.min(20, tableIds.size()); i++) {
+            jdbc.update("insert into TB_COL(COL_SN, PRJ_SN, TBL_SN, TBL_NM, COL_NM, APRV_YN) values (?, ?, ?, 'T', 'c01', false)", GenerationFixture.nextId(), projectId, tableIds.get(i));
+        }
+        long columnCount = jdbc.queryForObject("select count(*) from TB_COL c join TB_ATRB_COL_MPNG m on m.COL_SN = c.COL_SN where c.PRJ_SN = ?", Long.class, projectId);
 
         Statistics stats = emf.unwrap(SessionFactory.class).getStatistics();
         stats.setStatisticsEnabled(true);
@@ -129,11 +138,19 @@ class PhysicalNameRecommendationPerformanceTest {
         Measured<ColumnRow> cOne = measure(stats, () -> recommendation.selectColumnRows(f.user, new ColumnSearch(null, null, oneAttribute, null, null, null, null), PageRequest.of(0, 100)));
         Measured<TableRow> t1 = measure(stats, () -> recommendation.selectTableRows(f.user, allTables, PageRequest.of(0, 100)));
         Measured<TableRow> tLast = measure(stats, () -> recommendation.selectTableRows(f.user, allTables, PageRequest.of(lastTablePage, 100)));
+        Measured<ColumnRow> conflict = measure(stats, () -> recommendation.selectColumnRows(f.user, new ColumnSearch(f.modelId, null, null, null, Status.CONFLICT, null, null), PageRequest.of(0, 100)));
+        Measured<ColumnRow> available = measure(stats, () -> recommendation.selectColumnRows(f.user, new ColumnSearch(f.modelId, null, null, null, Status.AVAILABLE, null, null), PageRequest.of(0, 100)));
+        Measured<Object> summary = measure(stats, () -> new org.springframework.data.domain.PageImpl<>(List.of((Object) recommendation.selectColumnSummary(f.user, f.modelId))));
+        List<PhysicalNameRenameDto.Item> items = c1.page.getContent().stream().filter(r -> r.physicalColumnId() != null)
+                .map(r -> new PhysicalNameRenameDto.Item(PhysicalNameRenameDto.TargetType.COLUMN, r.physicalColumnId(), r.recommendedPhysicalName(), null)).toList();
+        Measured<Object> preview = measure(stats, () -> new org.springframework.data.domain.PageImpl<>(List.of((Object) renames.preview(f.user, new PhysicalNameRenameDto.Request(items, null)))));
+        assertThat(conflict.page.getTotalElements()).as("충돌 행 = 소문자 c01 을 넣은 테이블 수").isEqualTo(Math.min(20, tableIds.size()));
         assertThat(c1.page.getContent()).allSatisfy(r -> assertThat(r.applicability()).isNotNull());
         long selectableColumns = c1.page.getContent().stream().filter(r -> r.applicability().selectable()).count();
         long selectableTables = t1.page.getContent().stream().filter(r -> r.applicability().selectable()).count();
         return entityCount + "x" + attributesPerEntity + " | " + tableIds.size() + " | " + columnCount + " | " + tableIds.size() + " | " + c1 + " | " + cLast + " | " + cOne
-                + " | " + t1 + " | " + tLast + " | " + selectableColumns + "/" + selectableTables;
+                + " | " + t1 + " | " + tLast + " | " + selectableColumns + "/" + selectableTables
+                + " | " + conflict + " · " + conflict.page.getTotalElements() + " | " + available + " · " + available.page.getTotalElements() + " | " + summary + " | " + preview;
     }
 
     private record Measured<T>(Page<T> page, long ms, long statements) {

@@ -87,12 +87,4 @@ public class PhysicalNameRenameQueryRepository {
     }
 
     /** 테이블들의 컬럼 이름 (같은 테이블 이름 충돌 판정 — 대상 컬럼의 테이블 전체) : (tableId, columnId, columnName) */
-    public record TableColumn(Long tableId, Long columnId, String columnName) {
-    }
-
-    public List<TableColumn> findTableColumns(Collection<Long> tableIds) {
-        if (tableIds.isEmpty()) return List.of();
-        return query.select(Projections.constructor(TableColumn.class, column.tableInfo.id, column.id, column.columnName))
-                .from(column).where(column.tableInfo.id.in(tableIds)).fetch();
-    }
 }

@@ -463,6 +463,7 @@ export const en = {
   '표준용어 {0} 이(가) 승인 대기 상태로 등록되어 컬럼으로 추가되었습니다.':
     'Standard term {0} was registered as pending approval and added as a column.',
   '테이블을 선택해주세요.': 'Select a table.',
+  '선택한 표준용어에 영문약어가 없어 컬럼명을 만들 수 없습니다.': 'The selected standard term has no English abbreviation, so no column name can be made.',
   '컬럼명으로 사용할 표준용어를 선택해주세요.': 'Select the standard term to use as the column name.',
   '선택한 테이블에 이미 같은 컬럼명이 등록되어 있습니다.': 'The selected table already has a column with the same name.',
   '데이터 타입을 선택해주세요.': 'Select a data type.',
@@ -2871,6 +2872,7 @@ export const en = {
   '교체 (기존 객체를 지우고 원본 구성으로)': 'Replace (delete the existing object and recreate it as in the source)',
   '다른 TABLE 의 관계가 이 TABLE 의 PK 를 참조해 교체할 수 없습니다': 'Cannot be replaced because a relation of another TABLE references the PK of this TABLE',
   '원본에서 삭제되었습니다. 모델 객체는 자동으로 지우지 않습니다 (원본 매핑 관리의 원본 삭제 반영에서 고를 수 있습니다)': 'Deleted in the source. The model object is not deleted automatically (you can choose it in Apply source deletions on the Source mapping page)',
+  '같은 TABLE 에 이름이 같은 모델 컬럼이 이미 있거나 같은 이름이 되는 원본 컬럼이 있습니다 (대소문자·앞뒤 공백 무시)': 'The TABLE already has a model column with the same name, or another source column gets the same name (case and leading/trailing spaces are ignored)',
   '지금 배치 그대로 ERD 전체를 PNG 이미지로 내려받습니다': 'Download the whole ERD, as currently arranged, as a PNG image',
   '지금 배치 그대로 ERD 전체를 SVG 이미지로 내려받습니다': 'Download the whole ERD, as currently arranged, as an SVG image',
   '새로 만듦': 'New',

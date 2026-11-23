@@ -67,6 +67,7 @@ public class LogicalModelService {
     private final EntityTableMappingRepository entityTableMappingRepository;
     private final AttributeColumnMappingRepository attributeColumnMappingRepository;
     private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeMappingRepository;
     private final LogicalRelationshipAttributeRepository pairRepository;
     private final LogicalModelQueryRepository queryRepository;
     private final LogicalSubjectAreaService subjectAreaService;
@@ -402,6 +403,10 @@ public class LogicalModelService {
         // 상속 PK 매핑의 원본 속성 (M-7 3차, M7-D40) : 서브타입 테이블의 상속 PK 컬럼 매핑을 말없이 지우지 않는다 (같은 논리 모델 행 잠금 안에서 본다)
         subtypeKeyMappingRepository.findFirstByAttribute_IdIn(List.of(attributeId)).ifPresent(m -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "서브타입 테이블 컬럼 {0} 의 상속 PK 매핑에서 사용 중인 속성입니다. 상속 PK 매핑을 먼저 해제해주세요.", m.getColumn().getColumnName());
+        });
+        // C형 상속 일반 속성 매핑의 원본 속성 (M-7 상속 C, D-AC-18)
+        subtypeAttributeMappingRepository.findFirstByAttribute_IdIn(List.of(attributeId)).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "말단 테이블 컬럼 {0} 의 상속 일반 속성 매핑에서 사용 중인 속성입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", m.getColumn().getColumnName());
         });
         // 관계 속성 짝(M-7 보강 3차)에서 쓰는 속성 : 다른 관계의 짝을 말없이 지우지 않는다 — 짝을 먼저 해제한다
         pairRepository.findFirstUsing(attributeId).ifPresent(p -> {

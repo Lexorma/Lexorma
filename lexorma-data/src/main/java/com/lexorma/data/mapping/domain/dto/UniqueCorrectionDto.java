@@ -18,6 +18,8 @@ public final class UniqueCorrectionDto {
     public enum Code {
         /** 진단이 UNIQUE 누락이 아니다 (일치·순서·구성 불일치·비교 불가·미매핑 — 기존 UNIQUE 는 고치지 않는다) */
         NOT_MISSING,
+        /** 상속 A·C형 계층에 영향을 주는 대상 (M-7 상속 A·C, D-AC-13 16.4) : 통합·분산·복제 구조를 이 보정이 다루지 않는다 */
+        STRATEGY_EXCLUDED,
         /** 엔터티·구성 속성의 물리 매핑이 없다 */
         MAPPING_MISSING,
         /** 구성 컬럼이 매핑 테이블의 컬럼이 아니거나 같은 컬럼이 두 번 쓰였다 */

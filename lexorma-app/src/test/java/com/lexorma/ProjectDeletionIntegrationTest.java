@@ -105,7 +105,7 @@ class ProjectDeletionIntegrationTest {
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
             "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
             "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY",
-            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP");
+            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP", "TB_SBTYP_GROUP_CNVR");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -375,6 +375,11 @@ class ProjectDeletionIntegrationTest {
         EntityMapping onlineMapping = mappings.saveEntityMapping(admin, new EntityMapping(null, onlineOrder.id(), code.getId()));
         jdbc.update("insert into TB_SBTYP_IDNTFR_COL_MPNG(SBTYP_IDNTFR_COL_MPNG_SN, ENTT_TBL_MPNG_SN, LGCL_ATRB_SN, COL_SN) values(?, ?, ?, ?)",
                 base - 1, onlineMapping.id(), orderNoAttribute.id(), grp.getId());
+        // 상속 A·C형 (M-7 상속 A·C, V2) : 그룹 변환 기록(C형 — 테이블·분류 컬럼 없음), 상속 일반 속성 매핑 (삭제 순서 : 둘 다 그룹·엔터티 매핑·속성·컬럼보다 먼저)
+        jdbc.update("insert into TB_SBTYP_GROUP_CNVR(SBTYP_GROUP_CNVR_SN, PRJ_SN, LGCL_SBTYP_GROUP_SN, CNVR_TYPE_CD, TBL_SN, CLSF_COL_SN) values(?, ?, ?, 'TABLE_PER_CONCRETE', null, null)",
+                base - 1, projectId, base - 1);
+        jdbc.update("insert into TB_SBTYP_ATRB_COL_MPNG(SBTYP_ATRB_COL_MPNG_SN, ENTT_TBL_MPNG_SN, LGCL_ATRB_SN, COL_SN) values(?, ?, ?, ?)",
+                base - 1, onlineMapping.id(), orderNoAttribute.id(), cd.getId());
 
         // ERD 배치 (사용자별)
         jdbc.update("insert into TB_ERD_LYT(ERD_LYT_SN, PRJ_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO) values(?, ?, ?, '{}', 0, 0, 1, 0)", base - 1, projectId, accountId);

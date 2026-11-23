@@ -1,5 +1,7 @@
 package com.lexorma.data.mapping.domain.dto;
 
+import java.util.List;
+
 import java.math.BigDecimal;
 
 /** 논리·물리 정합성 비교 (M-7 2차, 읽기 전용). 조회할 때 계산하고 저장하지 않는다 */
@@ -132,10 +134,29 @@ public final class ModelMappingQualityDto {
      * inheritance (M-6 후속 5차, D-48) : 엔터티가 슈퍼타입·서브타입 구조에 참여한다. 이 행의 판정은 직접 정의 속성 ↔ 매핑 컬럼만 본 것이고(판정은 그대로),
      * 상속 구조 전체(상속 속성·상속 주 식별자 ↔ 물리 PK·FK)의 물리 정합성은 검증하지 않았다는 뜻이다
      */
+    /**
+     * 진단 행. code (M-7 상속 A·C) : 상세 코드 (INHERITANCE_MERGED · INHERITANCE_DISTRIBUTED · STRATEGY_STRUCTURE_MISMATCH · INHERITED_ATTRIBUTE_MAPPING_MISSING … — 없으면 null),
+     * notEnforced : 구조는 기대와 같아도 DB 가 강제하지 않는 업무 제약 (CONDITIONAL_REQUIRED_NOT_ENFORCED · SUBTYPE_SCOPE_NOT_ENFORCED · GLOBAL_KEY_NOT_ENFORCED ·
+     * CLASSIFICATION_VALUE_NOT_ENFORCED) — MATCH 라도 이 목록이 비어 있지 않으면 업무 제약이 DB 에서 강제된다는 뜻이 아니다
+     */
     public record Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
                       Long attributeId, String attributeName,
                       Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
-                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance, Structure structure) {
+                      CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance, Structure structure,
+                      String code, List<String> notEnforced) {
+        public Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
+                   Long attributeId, String attributeName,
+                   Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
+                   CheckType type, CheckStatus status, String logicalValue, String physicalValue, String reason, boolean inheritance, Structure structure) {
+            this(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
+                    type, status, logicalValue, physicalValue, reason, inheritance, structure, null, List.of());
+        }
+
+        public Row withStrategy(CheckStatus newStatus, String newReason, String newCode, List<String> notes) {
+            return new Row(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
+                    type, newStatus, logicalValue, physicalValue, newReason, inheritance, structure, newCode, notes);
+        }
+
         public Row(String id, Long modelId, String modelName, Long mappingId, Long entityId, String entityName,
                    Long attributeId, String attributeName,
                    Long schemaId, String schemaName, Long tableId, String tableName, Long columnId, String columnName,
@@ -154,7 +175,7 @@ public final class ModelMappingQualityDto {
 
         public Row withInheritance(boolean value) {
             return new Row(id, modelId, modelName, mappingId, entityId, entityName, attributeId, attributeName, schemaId, schemaName, tableId, tableName, columnId, columnName,
-                    type, status, logicalValue, physicalValue, reason, value, structure);
+                    type, status, logicalValue, physicalValue, reason, value, structure, code, notEnforced);
         }
     }
 

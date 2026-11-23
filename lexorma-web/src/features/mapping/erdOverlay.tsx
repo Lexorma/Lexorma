@@ -16,10 +16,12 @@ import { checkTypeLabel, useMappingLookup, type CheckType } from './model';
 
 /** 예전 표시 상태 (서버 status — 뜻을 바꾸지 않고 두며 화면은 아래 두 상태를 쓴다) */
 export type OverlayStatus = 'MAPPED' | 'UNMAPPED' | 'MISMATCH' | 'NOT_COMPARABLE';
-export type MappingStatus = 'MAPPED' | 'UNMAPPED';
+/** MERGED·DISTRIBUTED (M-7 상속 A·C) : 자기 매핑 없이 A형 통합 테이블·C형 말단 테이블들에 유효하게 대응한다 */
+export type MappingStatus = 'MAPPED' | 'UNMAPPED' | 'MERGED' | 'DISTRIBUTED';
 /** 정합성 비교 상태 (ModelMappingQualityDto.CheckStatus) */
 export type QualityStatus = 'MATCH' | 'MISMATCH' | 'NOT_COMPARABLE' | 'UNMAPPED';
-export type LinkKind = 'DIRECT' | 'INHERITED_KEY';
+export type LinkKind = 'DIRECT' | 'INHERITED_KEY' | 'INHERITED_ATTRIBUTE';
+interface PhysicalTableRef { entityId: number; entityName: string | null; mappingId: number | null; schemaId: number | null; tableId: number | null; tableName: string | null }
 
 /** 정합성 판정 1건 (기존 진단 행의 사유 그대로 — 없으면 null) */
 export interface QualityIssue {
@@ -62,6 +64,8 @@ export interface EntityOverlay {
   inheritedKeys: AttributeLink[];
   /** 엔터티 단위 판정(관계·보조 식별자·상속 구조 등)의 불일치·비교 불가 */
   issues: QualityIssue[];
+  /** M-7 상속 A·C : 전략과 통합·분산 테이블 (분산은 말단 테이블마다) */
+  strategy?: string | null; physicalTables?: PhysicalTableRef[];
 }
 
 /** GET /api/modelMapping/erd/tables 의 1건 */
@@ -82,6 +86,8 @@ export interface TableOverlay {
   notComparable: number;
   columns: AttributeLink[];
   issues: QualityIssue[];
+  /** M-7 상속 A : 통합 테이블이면 전략과 통합된 엔터티 (노드에는 수만) */
+  strategy?: string | null; mergedEntities?: PhysicalTableRef[];
 }
 
 export interface MappingOverlay {
@@ -96,7 +102,8 @@ export interface MappingOverlay {
 export const MappingOverlayContext = createContext<MappingOverlay | null>(null);
 export const useMappingOverlay = () => useContext(MappingOverlayContext);
 
-export const mappingLabel = (status: MappingStatus) => (status === 'MAPPED' ? t('매핑됨') : t('미매핑'));
+export const mappingLabel = (status: MappingStatus) => (status === 'MAPPED' ? t('매핑됨') : status === 'MERGED' ? t('A형 통합') : status === 'DISTRIBUTED' ? t('C형 분산') : t('미매핑'));
+const MAPPING_SYMBOL: Record<MappingStatus, string> = { MAPPED: '✓', MERGED: '⊂', DISTRIBUTED: '⋔', UNMAPPED: '–' };
 export const qualityLabel = (status: QualityStatus) => ({
   MATCH: t('일치'),
   MISMATCH: t('불일치'),
@@ -170,23 +177,25 @@ const counts = (o: { mismatches: number; notComparable: number }) => [
 
 /** 노드 헤더 : 매핑 여부 표시 + 불일치가 있으면 불일치 건수만 덧붙인다 (비교 불가는 설명에서) */
 export function MappingBadge({ overlay, kind }: { overlay: EntityOverlay | TableOverlay; kind: 'entity' | 'table' }) {
-  const mapped = overlay.mappingStatus === 'MAPPED';
+  const mapped = overlay.mappingStatus !== 'UNMAPPED';
+  const context = kind === 'entity' ? (overlay as EntityOverlay).physicalTables ?? [] : [];
+  const merged = kind === 'table' ? (overlay as TableOverlay).mergedEntities ?? [] : [];
   const target = kind === 'entity'
-    ? (overlay as EntityOverlay).tableName ? `${(overlay as EntityOverlay).schemaName}.${(overlay as EntityOverlay).tableName}` : ''
-    : (overlay as TableOverlay).entityName ? `${(overlay as TableOverlay).modelName} · ${(overlay as TableOverlay).entityName}` : '';
+    ? (overlay as EntityOverlay).tableName ? `${(overlay as EntityOverlay).schemaName}.${(overlay as EntityOverlay).tableName}` : context.map((c) => c.tableName).filter(Boolean).join(', ')
+    : (overlay as TableOverlay).entityName ? `${(overlay as TableOverlay).modelName} · ${(overlay as TableOverlay).entityName}${merged.length ? ` ${t('외 통합 엔터티 {0}개', merged.length)}` : ''}` : '';
   const ratio = kind === 'entity'
     ? t('속성 {0} / {1} 매핑', (overlay as EntityOverlay).mappedAttributeCount, (overlay as EntityOverlay).attributeCount)
     : t('컬럼 {0} / {1} 매핑', (overlay as TableOverlay).mappedColumnCount, (overlay as TableOverlay).columnCount);
   const title = mapped
     ? tooltip(
-      [`${t('매핑 상태')} : ${mappingLabel('MAPPED')}`, `${kind === 'entity' ? t('대응 테이블') : t('대응 엔터티')} : ${target}`, ratio],
+      [`${t('매핑 상태')} : ${mappingLabel(overlay.mappingStatus)}`, `${kind === 'entity' ? t('대응 테이블') : t('대응 엔터티')} : ${target}`, ratio],
       [`${t('정합성')} : ${qualityLabel(overlay.qualityStatus)}${counts(overlay) ? ` (${counts(overlay)})` : ''}`])
     : tooltip([`${t('매핑 상태')} : ${mappingLabel('UNMAPPED')}`, kind === 'entity' ? t('대응하는 물리 테이블이 없습니다.') : t('대응하는 논리 엔터티가 없습니다.')], []);
   return (
     // div : 헤더의 span 규칙(블록·설명 줄 여백)을 받지 않게 한다
     <div className="erd-map-badges" title={title}>
       {mapped && overlay.mismatches > 0 && <em className="erd-map-issue" aria-label={t('불일치 {0}', overlay.mismatches)}><b aria-hidden>≠</b>{overlay.mismatches}</em>}
-      <em className={`erd-map-badge ${mapped ? 'is-mapped' : 'is-unmapped'}`}><b aria-hidden>{mapped ? '✓' : '–'}</b>{mappingLabel(overlay.mappingStatus)}</em>
+      <em className={`erd-map-badge ${mapped ? 'is-mapped' : 'is-unmapped'}`}><b aria-hidden>{MAPPING_SYMBOL[overlay.mappingStatus] ?? '–'}</b>{mappingLabel(overlay.mappingStatus)}{merged.length ? ` +${merged.length}` : ''}</em>
     </div>
   );
 }
@@ -199,9 +208,9 @@ export function MappingMark({ link, other }: { link?: AttributeLink; other: 'col
   if (!link) {
     return <i className="erd-map-mark is-unmapped" title={`${t('매핑 상태')} : ${mappingLabel('UNMAPPED')}`}>–</i>;
   }
-  const inherited = link.kind === 'INHERITED_KEY';
+  const inherited = link.kind === 'INHERITED_KEY' || link.kind === 'INHERITED_ATTRIBUTE';
   const title = tooltip(
-    [`${t('매핑 상태')} : ${mappingLabel('MAPPED')} (${inherited ? t('상속 PK 매핑') : t('일반 매핑')})`,
+    [`${t('매핑 상태')} : ${mappingLabel('MAPPED')} (${link.kind === 'INHERITED_KEY' ? t('상속 PK 매핑') : link.kind === 'INHERITED_ATTRIBUTE' ? t('상속 일반 속성 매핑') : t('일반 매핑')})`,
       `${other === 'column' ? t('대응 컬럼') : t('대응 속성')} : ${other === 'column' ? link.columnName : link.attributeName}`],
     [`${t('정합성')} : ${qualityLabel(link.qualityStatus)}`, ...link.issues.map((i) => `${t('사유')} : ${issueLine(i)}`)]);
   return (
@@ -230,7 +239,9 @@ export function MappingLegend() {
     <p className="erd-map-legend">
       <strong>{t('매핑 표시')}</strong>{' '}
       <span><i className="erd-map-mark is-mapped" aria-hidden>✓</i>{t('매핑됨')}</span>
-      <span><i className="erd-map-mark is-mapped is-inherited" aria-hidden>⇡</i>{t('상속 PK 매핑')}</span>
+      <span><i className="erd-map-mark is-mapped is-inherited" aria-hidden>⇡</i>{t('상속 PK·상속 일반 속성 매핑')}</span>
+      <span><i className="erd-map-mark is-mapped" aria-hidden>⊂</i>{t('A형 통합')}</span>
+      <span><i className="erd-map-mark is-mapped" aria-hidden>⋔</i>{t('C형 분산')}</span>
       <span><i className="erd-map-mark is-unmapped" aria-hidden>–</i>{t('미매핑')}</span>
       <span><i className="erd-map-issue-mark" aria-hidden>≠</i>{t('정합성 불일치')}</span>
       <span className="erd-muted">{t('비교 불가와 판정 사유는 기호의 설명과 상세 패널에서 확인합니다.')}</span>
@@ -247,7 +258,7 @@ function QualityDetail({ overlay, links }: { overlay: EntityOverlay | TableOverl
     ...overlay.issues.map((i) => ({ key: `e-${i.type}-${i.attributeName}-${i.columnName}-${i.reason}`, who: i.attributeName ?? '', text: issueLine(i) })),
     ...links.flatMap((l) => l.issues.map((i) => ({
       key: `${l.kind}-${l.attributeId}-${l.columnId}-${i.type}`,
-      who: `${l.attributeName} → ${l.columnName}${l.kind === 'INHERITED_KEY' ? ` (${t('상속 PK 매핑')})` : ''}`,
+      who: `${l.attributeName} → ${l.columnName}${l.kind === 'INHERITED_KEY' ? ` (${t('상속 PK 매핑')})` : l.kind === 'INHERITED_ATTRIBUTE' ? ` (${t('상속 일반 속성 매핑')})` : ''}`,
       text: issueLine(i),
     }))),
   ];
@@ -283,7 +294,19 @@ export function EntityMappingSection({ entityId, overlay, onLeave }: { entityId:
       <h4>{t('물리 매핑')}</h4>
       {lookup.isError ? <p role="alert">{t('매핑 정보를 불러오지 못했습니다.')}</p>
         : !row ? <p className="erd-muted" role="status">{lookup.isPending ? t('불러오는 중…') : t('엔터티를 찾을 수 없습니다.')}</p>
-        : row.mappingId == null || row.tableId == null || row.schemaId == null ? (
+        : (row.mappingId == null || row.tableId == null || row.schemaId == null) && row.physical?.valid && (row.physical.kind === 'MERGED' || row.physical.kind === 'DISTRIBUTED') ? (
+          // A형 통합·C형 분산 (M-7 상속 A·C) : 미매핑으로 보이지 않는다. 분산 엔터티는 말단 테이블마다 이동 버튼 (대표 하나를 고르지 않는다)
+          <>
+            <p><Label variant="done">{mappingLabel(row.physical.kind)}</Label> {row.physical.kind === 'MERGED'
+              ? t('루트 {0} 의 통합 테이블에 들어 있습니다.', row.physical.rootEntityName ?? '') : t('자기 테이블 없이 말단 테이블 {0}개에 분산되어 있습니다.', row.physical.tables.length)}</p>
+            {canView('physical-erd') && (
+              <div className="erd-toolbar erd-links">
+                {row.physical.tables.filter((p) => p.tableId != null).map((p) => p.schemaId == null ? <Mono key={p.entityId}>{p.tableName}</Mono>
+                  : <button key={p.entityId} type="button" className="btn btn-sm" onClick={() => onLeave(physicalErdPath(p.schemaId!, p.tableId!))}>{t('{0} 물리 ERD에서 보기', p.tableName ?? '')}</button>)}
+              </div>
+            )}
+          </>
+        ) : row.mappingId == null || row.tableId == null || row.schemaId == null ? (
           <p className="erd-muted"><Label variant="attention">{mappingLabel('UNMAPPED')}</Label> {t('대응하는 물리 테이블이 없습니다. 매핑 관리에서 매핑할 수 있습니다.')}</p>
         ) : (
           <>
@@ -323,7 +346,14 @@ export function TableMappingSection({ tableId, overlay, onLeave }: { tableId: nu
             <p className="erd-muted">
               {t('속성 {0} / {1} 매핑', row.mappedAttributeCount, row.attributeCount)}
               {overlay && overlay.columns.some((c) => c.kind === 'INHERITED_KEY') ? ` · ${t('상속 PK 매핑 {0}', overlay.columns.filter((c) => c.kind === 'INHERITED_KEY').length)}` : ''}
+              {overlay && overlay.columns.some((c) => c.kind === 'INHERITED_ATTRIBUTE') ? ` · ${t('상속 일반 속성 매핑 {0}', overlay.columns.filter((c) => c.kind === 'INHERITED_ATTRIBUTE').length)}` : ''}
             </p>
+            {(overlay?.mergedEntities?.length ?? 0) > 0 && (
+              <details className="erd-map-detail">
+                <summary>{t('A형 통합 테이블 : 통합된 엔터티 {0}개', overlay!.mergedEntities!.length)}</summary>
+                <ul>{overlay!.mergedEntities!.slice(0, 100).map((m) => <li key={m.entityId}>{m.entityName}</li>)}</ul>
+              </details>
+            )}
             {overlay?.mappingStatus === 'MAPPED' && <QualityDetail overlay={overlay} links={overlay.columns} />}
             {canView('logical-erd') && (
               <div className="erd-toolbar erd-links">

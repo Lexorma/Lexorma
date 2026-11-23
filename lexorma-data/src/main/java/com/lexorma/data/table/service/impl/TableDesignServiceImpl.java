@@ -66,6 +66,7 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final SchemaService schemaService;
     private final PhysicalModelService physicalModelService;
     private final EntityTableMappingRepository entityTableMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     private final ObjectNamespace objectNamespace;
     private final PhysicalViewRepository viewRepository;
     private final TableRelationRepository relationRepository;
@@ -405,6 +406,10 @@ public class TableDesignServiceImpl implements TableDesignService {
 
             entityTableMappingRepository.findByTable_Id(tableInfoDto.getId()).ifPresent(mapping -> {
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "엔터티 {0} 에 매핑된 테이블입니다. 매핑을 먼저 해제해주세요.", mapping.getEntity().getEntityName());
+            });
+            // A형 통합 테이블 (M-7 상속 A, D-AC-18) : 변환 기록이 가리키는 테이블은 기록을 먼저 해제한다
+            conversionRepository.findFirstByTable_IdIn(List.of(tableInfoDto.getId())).ifPresent(c -> {
+                throw new CustomException(ErrorCode.RELATION_EXISTS, "그룹 {0} 의 A형 변환 기록이 통합 테이블로 쓰는 테이블입니다. 변환 기록을 먼저 해제해주세요.", c.getGroup().getGroupName());
             });
 
             if(!tableInfo.getColumns().isEmpty()){

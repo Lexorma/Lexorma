@@ -22,6 +22,8 @@ public final class InheritanceForeignKeyCorrectionDto {
     public enum Code {
         /** 엔터티가 서브타입이 아니다 (슈퍼타입만이거나 상속 관계가 지워졌다) */
         NOT_SUBTYPE,
+        /** 상속 A·C형 계층에 영향을 주는 대상 (M-7 상속 A·C, D-AC-13 16.4) : 통합·분산·복제 구조를 이 보정이 다루지 않는다 */
+        STRATEGY_EXCLUDED,
         /** 서브타입이 물리 테이블에 매핑되지 않았다 */
         NOT_MAPPED,
         /** 루트에 주 식별자가 없다 */

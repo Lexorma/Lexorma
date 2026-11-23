@@ -1,5 +1,8 @@
 /* 논리·물리 매핑 (features/mapping). 색은 --gh-* 토큰만 써서 다크 모드를 따른다 */
 .mapping-tab { padding-top: 16px; }
+/* 매핑 목록 머리글 (M-7 AC 후속 9.1) : 공용 layout.css 는 머리글을 줄바꿈하지 않아 영어 'Attribute mapping (direct · inherited PK)' 가 고정 폭(17%) 칸을 넘어 'Actions' 와 겹쳤다
+   → 논리 모델 관리 표(logical.css)와 같이 이 표만 칸 안에서 줄바꿈 (열 폭·정렬·버튼 영역은 그대로) */
+#modelMappingGrid thead th { white-space: normal; }
 /* primer.css 의 .quality-stats(5열)보다 우선해야 한다 */
 .dash-stats.quality-stats.mapping-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 8px; }
 @media (max-width: 1012px) { .dash-stats.quality-stats.mapping-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

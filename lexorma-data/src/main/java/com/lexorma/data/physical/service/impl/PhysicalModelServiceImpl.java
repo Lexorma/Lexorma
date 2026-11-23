@@ -65,6 +65,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private final EntityManager entityManager;
     private final AttributeColumnMappingRepository attributeMappingRepository;
     private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     private final ProjectRepository projectRepository;
     private final IndexChangeRequestRepository changeRequestRepository;
 
@@ -743,6 +745,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         // 상속 PK 매핑 (M-7 3차, M7-D40) : 같은 테이블 행 잠금 안에서 본다 — 상속 PK 매핑 등록도 그 테이블 행을 잠근다
         subtypeKeyMappingRepository.findFirstByColumn_IdIn(columnIds).ifPresent(m -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 {0} 의 상속 PK 매핑에 쓰인 컬럼입니다. 상속 PK 매핑을 먼저 해제해주세요.", m.getAttribute().getAttributeName());
+        });
+        // 상속 A·C형 (D-AC-18) : C형 상속 일반 속성 매핑의 컬럼, A형 변환 기록의 분류 컬럼은 지우지 않는다 (매핑·기록을 먼저 해제)
+        subtypeAttributeMappingRepository.findFirstByColumn_IdIn(columnIds).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 {0} 의 상속 일반 속성 매핑에 쓰인 컬럼입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", m.getAttribute().getAttributeName());
+        });
+        conversionRepository.findFirstByClassificationColumn_IdIn(columnIds).ifPresent(c -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "그룹 {0} 의 A형 변환 기록이 분류 컬럼으로 쓰는 컬럼입니다. 변환 기록을 먼저 해제해주세요.", c.getGroup().getGroupName());
         });
 
         List<TableRelation> relations = relationRepository.findAllUsingColumns(columnIds);

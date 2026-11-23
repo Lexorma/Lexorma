@@ -9,6 +9,7 @@ import com.lexorma.data.logical.domain.entity.QLogicalRelationship;
 import com.lexorma.data.logical.domain.entity.QLogicalRelationshipAttribute;
 import com.lexorma.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.QSubtypeAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QSubtypeIdentifierColumnMapping;
 import com.lexorma.data.physical.domain.entity.QTableConstraint;
 import com.lexorma.data.physical.domain.entity.QTableConstraintColumn;
@@ -50,6 +51,7 @@ public class ModelStructureQualityQueryRepository {
     private static final QEntityTableMapping scopeMapping = new QEntityTableMapping("scopeMapping");
     private static final QAttributeColumnMapping attributeMapping = QAttributeColumnMapping.attributeColumnMapping;
     private static final QSubtypeIdentifierColumnMapping inheritedKey = QSubtypeIdentifierColumnMapping.subtypeIdentifierColumnMapping;
+    private static final QSubtypeAttributeColumnMapping inheritedAttribute = QSubtypeAttributeColumnMapping.subtypeAttributeColumnMapping;
     private static final QTableInfo table = QTableInfo.tableInfo;
     private static final QTableInfo parentTable = new QTableInfo("parentTable");
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
@@ -147,6 +149,18 @@ public class ModelStructureQualityQueryRepository {
                 .join(inheritedKey.mapping, mapping)
                 .join(mapping.entity, entity)
                 .join(inheritedKey.column, column)
+                .where(entity.projectId.eq(projectId), entity.model.id.eq(modelId))
+                .fetch();
+    }
+
+    /** C형 상속 일반 속성 매핑 (M-7 상속 C) : 말단 문맥 엔터티·원본 속성·말단 테이블 컬럼 (상속 PK 매핑과 같은 모양) */
+    public List<InheritedKeyRow> inheritedAttributes(Long projectId, Long modelId) {
+        return query.select(Projections.constructor(InheritedKeyRow.class, entity.id, inheritedAttribute.attribute.id, inheritedAttribute.attribute.attributeName, column.id,
+                        column.columnName, column.tableInfo.id))
+                .from(inheritedAttribute)
+                .join(inheritedAttribute.mapping, mapping)
+                .join(mapping.entity, entity)
+                .join(inheritedAttribute.column, column)
                 .where(entity.projectId.eq(projectId), entity.model.id.eq(modelId))
                 .fetch();
     }

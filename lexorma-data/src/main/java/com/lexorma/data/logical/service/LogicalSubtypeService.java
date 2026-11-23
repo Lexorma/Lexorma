@@ -50,6 +50,7 @@ public class LogicalSubtypeService {
     private final LogicalSubtypeRepository subtypeRepository;
     private final LogicalModelQueryRepository queryRepository;
     private final jakarta.persistence.EntityManager entityManager;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
 
     // ------------------------------------------------------------------ 계층
 
@@ -186,7 +187,8 @@ public class LogicalSubtypeService {
         Set<Long> touched = new LinkedHashSet<>(memberIds);
         if (old != null) touched.addAll(old.memberIds());
         Set<Long> changed = changedEntities(before, after, touched);
-        Map<Long, LogicalEntity> loaded = graph(modelId, union(changed, chains(before, changed), chains(after, changed), List.of(supertype.getId())));
+        // 분류 속성은 슈퍼타입의 유효 속성(조상 포함) — 구성원이 그대로인 수정에서도 슈퍼타입의 조상을 읽는다 (예전 : 슈퍼타입만 읽어 상속 분류 속성으로 바꾸는 수정이 거절됐다, AC-P01 검증 중 발견)
+        Map<Long, LogicalEntity> loaded = graph(modelId, union(changed, chains(before, changed), chains(after, changed), after.chain(supertype.getId())));
         Map<Long, List<LogicalIdentifier>> identifiers = identifiers(loaded.keySet());
 
         // 승인 : 슈퍼타입(옛 슈퍼타입 포함), 구성원(빠지는 것 포함), 유효 정의가 바뀌는 후손 중 승인된 것이 있으면 거절
@@ -284,6 +286,10 @@ public class LogicalSubtypeService {
         LogicalSubtypeGroup group = groupRepository.findByIdAndProjectId(groupId, projectId).orElseThrow(() -> LogicalModelService.notFound(GROUP));
         entityManager.refresh(group);
         ModelBase.verify(group, modifiedAt, group.getGroupName());
+        // 물리 변환 기록 (M-7 상속 A·C, D-AC-18) : 기록이 설명하는 그룹을 말없이 지우지 않는다 — 매핑과 변환 기록을 먼저 해제한다
+        if (conversionRepository.existsByGroup_Id(groupId)) {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "그룹 {0} 의 물리 변환 기록(상속 A·C형)이 있습니다. 매핑과 변환 기록을 먼저 해제해주세요.", group.getGroupName());
+        }
         Long modelId = model.getId();
         State state = state(modelId);
         LogicalHierarchy before = state.hierarchy();

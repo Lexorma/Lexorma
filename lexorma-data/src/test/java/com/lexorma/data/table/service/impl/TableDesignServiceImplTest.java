@@ -91,6 +91,9 @@ class TableDesignServiceImplTest {
     /** 모든 테이블이 들어 있는 기본 스키마 */
     private static final SchemaInfo SCHEMA = SchemaInfo.builder().id(1L).projectId(1L).schemaName(SchemaInfo.DEFAULT_NAME).isDefault(true).build();
 
+    @Mock
+    private com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
+
     @InjectMocks
     TableDesignServiceImpl service;
 

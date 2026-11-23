@@ -42,6 +42,9 @@ public class ProjectDataCleanup {
             "delete from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN in (select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where PRJ_SN = :projectId)",
             // 상속 PK 매핑 (M-7 3차, V4) : 엔터티 매핑·논리 속성·모델 컬럼으로 가는 FK 가 있어 그보다 먼저 (프로젝트 전체 정리 — 일반 편집은 매핑을 지우지 않는다)
             "delete from TB_SBTYP_IDNTFR_COL_MPNG where ENTT_TBL_MPNG_SN in (select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where PRJ_SN = :projectId)",
+            // 상속 A·C형 (M-7 상속 A·C, V2) : C형 상속 일반 속성 매핑(엔터티 매핑·속성·컬럼 FK), 변환 기록(그룹·테이블·컬럼 FK) — 그보다 먼저
+            "delete from TB_SBTYP_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN in (select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where PRJ_SN = :projectId)",
+            "delete from TB_SBTYP_GROUP_CNVR where PRJ_SN = :projectId",
             "delete from TB_ENTT_TBL_MPNG where PRJ_SN = :projectId",
             // 논리 모델 : 배치·관계 → 식별자 → 속성 → 엔터티 → 모델
             "delete from TB_LGCL_ERD_LYT where PRJ_SN = :projectId",

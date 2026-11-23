@@ -61,7 +61,7 @@ class ColumnRequiredValuesMigrationTest {
     @ParameterizedTest(name = "새 설치 필수값 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void freshInstallEnforces(String vendor) {
-        Db db = install(vendor, null, 2);
+        Db db = install(vendor, null, 3);
         try {
             column(db, 900000920, 900000910L, "CUST_NO");
             column(db, 900000921, 900000910L, "고객번호");

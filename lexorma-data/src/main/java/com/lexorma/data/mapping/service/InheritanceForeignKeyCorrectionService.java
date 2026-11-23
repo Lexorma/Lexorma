@@ -86,6 +86,7 @@ public class InheritanceForeignKeyCorrectionService {
     private final ModelRowLocks rowLocks;
     private final ModelVersionService versionService;
     private final ModelChangeRecorder recorder;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -198,8 +199,13 @@ public class InheritanceForeignKeyCorrectionService {
         List<Judged> judged = new ArrayList<>();
         Map<Long, ColumnInfo> columns = new HashMap<>();
         Set<Long> childTables = new TreeSet<>();
+        InheritanceConversions conversions = InheritanceConversions.ofRows(hierarchy, conversionRepository.findAllByModelId(projectId, modelId));
         for (Long id : ids) {
             Judged j = judge(id, hierarchy, context, db, groupNames);
+            // 상속 A·C형 (D-AC-13 16.4) : A·C 에는 상속 FK 가 없다 — 이 보정의 대상이 아니다 (상태·미리보기·적용 모두)
+            if (conversions.alternative(id)) {
+                j.blockers.add(0, new Issue(Code.STRATEGY_EXCLUDED, Messages.get("엔터티 {0} 의 상속 계층은 A·C형으로 만들어져 상속 FK 가 없습니다. 상속 FK 보정 대상이 아닙니다.", j.name)));
+            }
             judged.add(j);
             j.childColumns.forEach(c -> columns.put(c.getId(), c));
             j.parentColumns.forEach(c -> columns.put(c.getId(), c));

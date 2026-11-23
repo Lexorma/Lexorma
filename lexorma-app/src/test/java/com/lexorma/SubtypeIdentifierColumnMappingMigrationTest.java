@@ -40,7 +40,7 @@ class SubtypeIdentifierColumnMappingMigrationTest {
                 .cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V4(상속 PK 컬럼 매핑)는 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다
-            assertThat(v3.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(v3.migrate().migrationsExecuted).isEqualTo(3);
             assertThat(v3.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
             // 사용자 데이터 : 루트·서브타입(그룹)·엔터티 매핑·속성 매핑·물리 테이블·컬럼(PK·참조)·배치·이력·버전

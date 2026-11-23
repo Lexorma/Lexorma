@@ -17,6 +17,7 @@ import { MappingQuality } from './MappingQuality';
 import { MappingRecommendation } from './MappingRecommendation';
 import { AttributeMappingDetail, EntityMappingForm } from './mappingDialogs';
 import { InheritanceRoleLabel, InheritedKeySummary } from './subtypeKeys';
+import { ConversionRecords, PhysicalKindLabel, PhysicalTables } from './inheritanceStrategy';
 import { rate, useMappingLookup, type MappingRow, type MappingStatus, type MappingTab } from './model';
 import '../../styles/logical.css';
 import '../../styles/mapping.css';
@@ -178,9 +179,17 @@ export function ModelMappingPage() {
                 const inheritance = r.inheritanceForeignKeys || r.inheritedKeyMappings
                   ? ' ' + t('상속 FK {0}개·상속 PK 매핑 {1}개를 함께 만들었습니다.', r.inheritanceForeignKeys ?? 0, r.inheritedKeyMappings ?? 0) : '';
                 const uniques = r.uniques ? ' ' + t('보조 식별자 UNIQUE {0}개를 함께 만들었습니다 (미승인).', r.uniques) : '';
-                dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-') + inheritance + uniques);
+                const strategy = r.conversions ? ' ' + t('상속 변환 기록 {0}건·상속 일반 속성 매핑 {1}개를 저장했습니다. 전략상 FK 를 만들지 않은 관계 {2}개.',
+                  r.conversions, r.inheritedAttributeMappings ?? 0, r.excludedRelationshipIds?.length ?? 0) : '';
+                dialog.alert(t('물리 테이블 {0}개·컬럼 {1}개·FK {2}개를 만들었습니다 (승인 대기). 생성 직전 모델 버전 {3} 을(를) 남겼습니다.', r.tables, r.columns, r.foreignKeys, r.versionName ?? '-') + inheritance + uniques + strategy);
               }} />,
           })}>{t('물리 테이블 생성')}</button>
+        )}
+        {modelId != null && (
+          <button type="button" id="btn-conversion-records" className="btn" onClick={() => dialog.popup({
+            title: t('상속 변환 기록'),
+            content: () => <ConversionRecords modelId={modelId} canEdit={canEdit} onChanged={reload} />,
+          })}>{t('상속 변환 기록')}</button>
         )}
       </div>
 
@@ -208,7 +217,9 @@ export function ModelMappingPage() {
                 {plainCard(t('매핑된 속성'), 'mappedAttributes', false, status.data ? t('매핑률 {0}', rate(status.data.mappedAttributes, status.data.totalAttributes)) : undefined)}
                 {plainCard(t('미매핑 속성'), 'unmappedAttributes', true)}
               </div>
-              <p className="gh-muted mapping-note">{t('매핑률은 연결된 비율일 뿐 정합성 점수가 아닙니다. 연결된 쌍의 차이는 [정합성 비교] 에서 확인합니다.')}</p>
+              <p className="gh-muted mapping-note">{t('매핑률은 연결된 비율일 뿐 정합성 점수가 아닙니다. 연결된 쌍의 차이는 [정합성 비교] 에서 확인합니다.')}
+                {status.data && ((status.data.mergedEntities ?? 0) > 0 || (status.data.distributedEntities ?? 0) > 0) && <> {t('상속 A형 통합 엔터티 {0}개는 매핑 완료에 포함하고, C형 분산 엔터티 {1}개는 분모에서 뺍니다 (논리 엔터티 {2}개).',
+                  status.data.mergedEntities ?? 0, status.data.distributedEntities ?? 0, status.data.logicalEntities ?? status.data.totalEntities)}</>}</p>
 
               {focus && (
                 <p className="mapping-focus-note" role="status">
@@ -248,24 +259,32 @@ export function ModelMappingPage() {
                         {item.inheritance && <> <InheritanceRoleLabel value={item.inheritance} /></>}</>;
                     }
                     if (field === 'tableName') {
+                      if (!item.tableName && item.physical && (item.physical.kind === 'MERGED' || item.physical.kind === 'DISTRIBUTED')) {
+                        return <PhysicalTables value={item.physical} onOpen={openDetail} />;
+                      }
                       return item.tableName ? <><Mono>{item.tableName}</Mono>{!item.tableApproval && <> <Label variant="attention">{t('승인 대기')}</Label></>}</> : <Muted>-</Muted>;
                     }
                     if (field === 'schemaName') return item.schemaName ? <Mono>{item.schemaName}</Mono> : <Muted>-</Muted>;
                     if (field === 'mapped') {
+                      if (item.mappingId == null && item.physical && (item.physical.kind === 'MERGED' || item.physical.kind === 'DISTRIBUTED')) return <PhysicalKindLabel value={item.physical} />;
                       return item.mappingId != null ? <Label variant="success" dot>{t('매핑 완료')}</Label> : <Label variant="attention" dot>{t('미매핑')}</Label>;
                     }
                     if (field === 'mappedAttributeCount') {
                       // 직접 속성 매핑 수와 상속 PK 현황을 따로 보인다 (상속 PK 는 직접 속성 수에 들어가지 않는다)
                       return <>
                         {item.mappingId != null ? `${item.mappedAttributeCount} / ${item.attributeCount}` : <Muted>{`- / ${item.attributeCount}`}</Muted>}
-                        <InheritedKeySummary value={item.inheritance} mapped={item.mappingId != null} />
+                        {/* A형 통합·C형 분산 엔터티에는 상속 PK 매핑이 없다 (A 는 통합 테이블의 PK, C 는 말단 테이블에서만) */}
+                        {!(item.physical && (item.physical.kind === 'MERGED' || item.physical.kind === 'DISTRIBUTED'))
+                          && !(item.physical?.strategy === 'SINGLE_TABLE')
+                          && <InheritedKeySummary value={item.inheritance} mapped={item.mappingId != null} structure={item.physical?.strategy !== 'TABLE_PER_CONCRETE'} />}
                       </>;
                     }
                     if (field === 'actions') {
                       return (
                         <span className="logical-actions">
                           {item.mappingId != null && <button type="button" className="btn btn-sm" onClick={() => openDetail(item.mappingId!)}>{t('속성 매핑')}</button>}
-                          {canEdit && item.mappingId == null && <button type="button" className="btn btn-sm btn-primary" onClick={() => openEntityForm(item)}>{t('매핑')}</button>}
+                          {canEdit && item.mappingId == null && !(item.physical && (item.physical.kind === 'MERGED' || item.physical.kind === 'DISTRIBUTED'))
+                            && <button type="button" className="btn btn-sm btn-primary" onClick={() => openEntityForm(item)}>{t('매핑')}</button>}
                           {canEdit && item.mappingId != null && <button type="button" className="btn btn-sm" onClick={() => openEntityForm(item)}>{t('테이블 변경')}</button>}
                           {canEdit && item.mappingId != null && <button type="button" className="btn btn-sm btn-danger" onClick={() => removeMapping(item)}>{t('해제')}</button>}
                           {!canEdit && item.mappingId == null && <Muted>-</Muted>}

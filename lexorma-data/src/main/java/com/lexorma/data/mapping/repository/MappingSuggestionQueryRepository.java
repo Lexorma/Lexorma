@@ -9,6 +9,7 @@ import com.lexorma.data.logical.domain.entity.QLogicalIdentifierAttribute;
 import com.lexorma.data.logical.domain.entity.QLogicalModel;
 import com.lexorma.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.QSubtypeAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QSubtypeIdentifierColumnMapping;
 import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
@@ -43,6 +44,7 @@ public class MappingSuggestionQueryRepository {
     private static final QEntityTableMapping mapping = QEntityTableMapping.entityTableMapping;
     private static final QAttributeColumnMapping attributeMapping = QAttributeColumnMapping.attributeColumnMapping;
     private static final QSubtypeIdentifierColumnMapping subtypeKey = QSubtypeIdentifierColumnMapping.subtypeIdentifierColumnMapping;
+    private static final QSubtypeAttributeColumnMapping subtypeAttribute = QSubtypeAttributeColumnMapping.subtypeAttributeColumnMapping;
     private static final QTableInfo table = QTableInfo.tableInfo;
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
     private static final QColumnInfo column = QColumnInfo.columnInfo;
@@ -202,6 +204,19 @@ public class MappingSuggestionQueryRepository {
                 .fetch();
     }
 
+    /** C형 상속 일반 속성 매핑 (말단 엔터티 문맥, M-7 상속 C) */
+    public List<AttributeLinkRow> inheritedAttributeLinksByEntity(Collection<Long> entityIds) {
+        if (entityIds.isEmpty()) return List.of();
+        return query.select(Projections.constructor(AttributeLinkRow.class, mapping.entity.id, attribute.id, attribute.attributeName, column.id, column.columnName))
+                .from(subtypeAttribute)
+                .join(subtypeAttribute.mapping, mapping)
+                .join(subtypeAttribute.attribute, attribute)
+                .join(subtypeAttribute.column, column)
+                .where(mapping.entity.id.in(entityIds))
+                .orderBy(column.sortOrder.asc().nullsLast(), column.id.asc())
+                .fetch();
+    }
+
     // ------------------------------------------------------------------ ERD 매핑 표시 : 물리 쪽
 
     public record TableLink(Long tableId, Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Long columnCount) {
@@ -241,6 +256,18 @@ public class MappingSuggestionQueryRepository {
                 .join(subtypeKey.mapping, mapping)
                 .join(subtypeKey.column, column)
                 .join(subtypeKey.attribute, attribute)
+                .where(column.tableInfo.id.in(tableIds))
+                .fetch();
+    }
+
+    /** C형 상속 일반 속성 매핑 (말단 테이블 컬럼, M-7 상속 C) */
+    public List<ColumnLinkRow> inheritedAttributeLinksByTable(Collection<Long> tableIds) {
+        if (tableIds.isEmpty()) return List.of();
+        return query.select(Projections.constructor(ColumnLinkRow.class, column.tableInfo.id, mapping.entity.id, column.id, column.columnName, attribute.id, attribute.attributeName))
+                .from(subtypeAttribute)
+                .join(subtypeAttribute.mapping, mapping)
+                .join(subtypeAttribute.column, column)
+                .join(subtypeAttribute.attribute, attribute)
                 .where(column.tableInfo.id.in(tableIds))
                 .fetch();
     }

@@ -51,6 +51,7 @@ class ExampleTermCodeDefinitionTest {
         terms.put("참조_유형_코드", PhysicalViewReference.Type.values());
         terms.put("접속_유형_코드", ConnectionType.values());
         terms.put("제공자_유형_코드", AiProviderType.values());
+        terms.put("변환_유형_코드", com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion.Strategy.values());
         for (Map.Entry<String, Enum<?>[]> e : terms.entrySet()) {
             String definition = jdbc.queryForObject("select TRM_EXPLN from TB_STD_TRM where PRJ_SN = 0 and TRM_NM = ?", String.class, e.getKey());
             Set<String> expected = Arrays.stream(e.getValue()).map(Enum::name).collect(Collectors.toCollection(TreeSet::new));

@@ -406,6 +406,13 @@ public class SourceDeletionService {
                 for (Object id : entityManager.createQuery("select m.column.id from SubtypeIdentifierColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
                     attributeMapped.add((Long) id);
                 }
+                // C형 상속 일반 속성 매핑·A형 분류 컬럼도 같다 (M-7 상속 A·C — 삭제 확정은 일반 컬럼 삭제가 다시 거절한다)
+                for (Object id : entityManager.createQuery("select m.column.id from SubtypeAttributeColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
+                    attributeMapped.add((Long) id);
+                }
+                for (Object id : entityManager.createQuery("select c.classificationColumn.id from SubtypeGroupConversion c where c.classificationColumn.id in :ids").setParameter("ids", columnIds).getResultList()) {
+                    attributeMapped.add((Long) id);
+                }
                 for (Object[] row : entityManager.createQuery("select rc.sourceColumn.id, rc.targetColumn.id, r.relationName, r.relationSource, r.derivedColumnId from TableRelationColumn rc "
                         + "join rc.relation r where rc.sourceColumn.id in :ids or rc.targetColumn.id in :ids", Object[].class).setParameter("ids", columnIds).getResultList()) {
                     boolean derivedFromSource = row[3] == TableRelation.Source.REF_COLUMN && Objects.equals(row[4], row[0]);

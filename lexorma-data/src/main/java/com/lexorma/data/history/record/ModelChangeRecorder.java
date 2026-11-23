@@ -20,6 +20,8 @@ import com.lexorma.data.logical.domain.entity.LogicalSubtype;
 import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
 import com.lexorma.data.mapping.domain.entity.AttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.EntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping;
+import com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion;
 import com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping;
 import com.lexorma.data.physical.domain.entity.TableConstraint;
 import com.lexorma.data.physical.domain.entity.TableConstraintColumn;
@@ -148,6 +150,11 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                     List.of("model", "supertypeEntity", "groupName", "groupDescription", "overlapping", "total", "classificationAttribute", "sortOrder"))),
             // 상속 PK 매핑 (M-7 3차) : 서브타입 문맥 = 엔터티 매핑(mapping), 원본 = 루트 주 식별자 속성(attribute — 그 속성 자체의 이력은 속성 이력에만), 서브타입 테이블 컬럼(column)
             Map.entry(SubtypeIdentifierColumnMapping.class, new Tracked(TargetType.SUBTYPE_KEY_MAPPING, null, "mapping",
+                    List.of("mapping", "attribute", "column"))),
+            // 상속 A·C형 (M-7 상속 A·C) : 그룹 변환 기록 (전략·A형 통합 테이블·분류 컬럼), C형 상속 일반 속성 매핑 (말단 문맥 = 엔터티 매핑, 원본 = 조상 속성, 말단 테이블 컬럼)
+            Map.entry(SubtypeGroupConversion.class, new Tracked(TargetType.SUBTYPE_CONVERSION, null, null,
+                    List.of("group", "strategy", "table", "classificationColumn"))),
+            Map.entry(SubtypeAttributeColumnMapping.class, new Tracked(TargetType.SUBTYPE_ATTR_MAPPING, null, "mapping",
                     List.of("mapping", "attribute", "column"))));
 
     private static final Map<Class<?>, Child> CHILDREN = Map.of(
@@ -168,7 +175,7 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
     private static final Map<Class<?>, String> NAME_FIELDS = Map.of(
             TableInfo.class, "tableName", ColumnInfo.class, "columnName", SchemaInfo.class, "schemaName", StandardTerm.class, "commonStandardTermName",
             LogicalModel.class, "modelName", LogicalEntity.class, "entityName", LogicalAttribute.class, "attributeName", PhysicalView.class, "viewName",
-            LogicalSubjectArea.class, "areaName");
+            LogicalSubjectArea.class, "areaName", LogicalSubtypeGroup.class, "groupName");
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -682,7 +689,8 @@ public class ModelChangeRecorder implements TransactionExecutionListener, PostIn
                 case LOGICAL_RELATIONSHIP -> shown.get("relationshipName") != null ? (String) shown.get("relationshipName")
                         : joined(" → ", shown.get("sourceEntityName"), shown.get("targetEntityName"));
                 case TABLE_MAPPING -> joined(" ↔ ", shown.get("entityName"), shown.get("tableName"));
-                case COLUMN_MAPPING, SUBTYPE_KEY_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
+                case COLUMN_MAPPING, SUBTYPE_KEY_MAPPING, SUBTYPE_ATTR_MAPPING -> joined(" ↔ ", shown.get("attributeName"), shown.get("columnName"));
+                case SUBTYPE_CONVERSION -> joined(" / ", shown.get("groupName"), shown.get("strategy"));
                 case SUBJECT_AREA_ENTITY -> joined(" ∈ ", shown.get("entityName"), shown.get("subjectAreaName"));
                 case SUBTYPE_GROUP -> joined(" / ", shown.get("supertypeEntityName"), shown.get("groupName"));
                 default -> (String) shown.get(tracked.nameField());

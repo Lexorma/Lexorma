@@ -8,7 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { MAPPING_QUALITY_GRID_MIN_WIDTH, mappingQualityColumns } from './columns';
-import { CHECK_GROUPS, CHECK_STATUSES, CHECK_TYPES, checkTypeLabel, type CheckGroup, type CheckStatus, type CheckType, type QualityRow, type QualitySummary, type SubtypeKeyDetail } from './model';
+import { CHECK_GROUPS, CHECK_STATUSES, CHECK_TYPES, checkTypeLabel, type CheckGroup, type CheckStatus, type CheckType, type QualityRow, type QualitySummary, type SubtypeKeyDetail, NOT_ENFORCED } from './model';
 import { StructureView, structureCodeLabel } from './structureDetail';
 import { SubtypeStructureView } from './subtypeKeys';
 import { CORRECTION_MAX, CorrectionDetail, CorrectionLabel, correctionResultMessage, ForeignKeyPreview, type CorrectionItem } from './foreignKeyCorrection';
@@ -79,7 +79,9 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
   const dialog = useDialog();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { canView } = useAuth();
+  const { canView, user } = useAuth();
+  /** 그리드가 새 응답을 받을 때마다 올린다 (명시적 조회·쪽 이동·검색) : 같은 쪽·같은 대상이어도 보정 상태를 다시 읽는다 (§48 — 캐시를 없애거나 주기적으로 묻지 않는다) */
+  const [pageVersion, setPageVersion] = useState(0);
   /** 누락 FK 보정 (M7-FK-01) : 편집 권한(model-mapping-edit, USER 이상)일 때만 고르기·미리보기 — 서버가 다시 검사한다 */
   const canEdit = canView('model-mapping-edit');
   const grid = useRef<GridHandle>(null);
@@ -116,7 +118,8 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       .filter((st) => st?.kind === (uniqueView ? 'ALTERNATE_KEY' : 'RELATIONSHIP') && st.code === missingCode && st.logicalId != null).map((st) => st!.logicalId as number)),
   [pageRows, uniqueView, inheritanceView, missingCode]); // eslint-disable-line react-hooks/exhaustive-deps -- subtypeRow 는 순수 함수
   const correction = useQuery({
-    queryKey: [uniqueView ? 'uk-correction-status' : inheritanceView ? 'inh-correction-status' : 'fk-correction-status', modelId, missingIds],
+    // 프로젝트·모델·대상·그리드 응답 버전별로 나눈다 : 다른 프로젝트의 늦은 응답이 지금 상태를 덮지 않고, 조회할 때마다 최신 판정을 받는다
+    queryKey: [uniqueView ? 'uk-correction-status' : inheritanceView ? 'inh-correction-status' : 'fk-correction-status', user?.projectId, modelId, missingIds, pageVersion],
     queryFn: async (): Promise<(CorrectionItem | UniqueItem | InheritanceItem)[]> => (uniqueView
       ? api<UniqueItem[]>(`/api/modelMapping/quality/unique/status?modelId=${modelId}&${missingIds.map((id) => `identifierIds=${id}`).join('&')}`, { silent: true })
       : inheritanceView
@@ -249,7 +252,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
       {summary.isError && <p className="gh-muted" role="alert">{t('정합성 요약을 불러오지 못했습니다.')}</p>}
       {!!summary.data?.inheritanceEntities && (
         <p className="mapping-focus-note" role="note">
-          {t('슈퍼타입·서브타입 구조에 참여하는 엔터티 {0}개 : 표준 용어·명칭·타입 등은 직접 정의 속성만 비교하고, 서브타입의 상속 PK·FK 물리 구조는 [상속 구조] 유형으로 따로 비교합니다. 상속 일반 속성은 복제하지 않으므로 비교하지 않습니다.', summary.data.inheritanceEntities)}
+          {t('슈퍼타입·서브타입 구조에 참여하는 엔터티 {0}개 : 표준 용어·명칭·타입 등은 직접 정의 속성만 비교하고, 서브타입의 상속 PK·FK 물리 구조는 [상속 구조] 유형으로 따로 비교합니다. B형 서브타입은 상속 일반 속성을 복제하지 않으므로 비교하지 않고, 상속 A형 통합·C형 복제 속성은 통합·말단 테이블 기준으로 비교합니다.', summary.data.inheritanceEntities)}
         </p>
       )}
       {!!summary.data?.inheritance && (summary.data.inheritance.subtypes > 0 || summary.data.inheritance.invalidMappings > 0) && (
@@ -328,7 +331,7 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
         minWidth={relationshipView ? MAPPING_QUALITY_GRID_MIN_WIDTH + (canEdit ? 200 : 140) : MAPPING_QUALITY_GRID_MIN_WIDTH}
         columns={gridColumns}
         defaultSort={relationshipView && canEdit ? { column: 'entityName' } : undefined}
-        onPageData={setPageRows}
+        onPageData={(rows) => { setPageRows(rows); setPageVersion((v) => v + 1); }}
         dataUrl="/api/modelMapping/quality"
         params={params}
         searchFilters={
@@ -380,7 +383,11 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
             return structure.physicalName ? <Mono>{structure.physicalName}</Mono> : <Muted>-</Muted>;
           }
           if (field === 'columnName' || field === 'physicalValue') return row[field] ? <Mono>{row[field]}</Mono> : <Muted>-</Muted>;
-          if (field === 'logicalValue' || field === 'reason') return row[field] ?? <Muted>-</Muted>;
+          if (field === 'reason') {
+            const notes = (row as QualityRow).notEnforced ?? [];
+            return <>{row.reason ?? <Muted>-</Muted>}{notes.map((n) => <> <Label key={n} variant="attention" title={t('구조는 기대와 같아도 DB 가 강제하지 않는 업무 제약입니다.')}>{NOT_ENFORCED[n] ?? n}</Label></>)}</>;
+          }
+          if (field === 'logicalValue') return row[field] ?? <Muted>-</Muted>;
           return undefined;
         }}
       />
@@ -390,11 +397,12 @@ export function MappingQuality({ modelId, entity, onClearEntity, onMapping }: {
 
 function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; onMapping: () => void; onLeave: (path: string) => void; onClose: () => void }) {
   const [logicalLabel, physicalLabel] = VALUE_LABELS[row.type];
+  const { user } = useAuth();
   // 상속 구조 행 (M-7 4차) : 구조 상세는 이 상세를 열 때만 읽는다 (목록 응답에 넣지 않는다) — 매핑 화면의 상속 PK 매핑과 같은 API·판정
   // FK 누락 관계 (M7-FK-01) : 보정 가능 여부·사유는 상세를 열 때 서버에 묻는다
   const fkMissing = row.structure?.kind === 'RELATIONSHIP' && row.structure.code === 'FK_MISSING' && row.structure.logicalId != null;
   const correction = useQuery({
-    queryKey: ['fk-correction-status', row.modelId, [row.structure?.logicalId]],
+    queryKey: ['fk-correction-status', user?.projectId, row.modelId, [row.structure?.logicalId]],
     queryFn: () => api<CorrectionItem[]>(`/api/modelMapping/quality/foreignKey/status?modelId=${row.modelId}&relationshipIds=${row.structure?.logicalId}`, { silent: true }),
     enabled: fkMissing,
     gcTime: 0,
@@ -402,7 +410,7 @@ function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; 
   // UNIQUE 누락 보조 식별자 (M7-AK-02) : 같은 방식으로 상세를 열 때 묻는다
   const ukMissing = row.structure?.kind === 'ALTERNATE_KEY' && row.structure.code === 'UNIQUE_MISSING' && row.structure.logicalId != null;
   const uniqueCorrection = useQuery({
-    queryKey: ['uk-correction-status', row.modelId, [row.structure?.logicalId]],
+    queryKey: ['uk-correction-status', user?.projectId, row.modelId, [row.structure?.logicalId]],
     queryFn: () => api<UniqueItem[]>(`/api/modelMapping/quality/unique/status?modelId=${row.modelId}&identifierIds=${row.structure?.logicalId}`, { silent: true }),
     enabled: ukMissing,
     gcTime: 0,
@@ -410,7 +418,7 @@ function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; 
   // 상속 구조 서브타입 행 (M7-INH-03) : 누락 상속 FK 보정 가능 여부를 상세를 열 때 묻는다 (일치하면 묻지 않는다)
   const inhTarget = row.type === 'INHERITANCE' && row.attributeId == null && row.status !== 'MATCH';
   const inheritanceCorrection = useQuery({
-    queryKey: ['inh-correction-status', row.modelId, [row.entityId]],
+    queryKey: ['inh-correction-status', user?.projectId, row.modelId, [row.entityId]],
     queryFn: () => api<InheritanceItem[]>(`/api/modelMapping/quality/inheritanceFk/status?modelId=${row.modelId}&entityIds=${row.entityId}`, { silent: true }),
     enabled: inhTarget,
     gcTime: 0,
@@ -432,6 +440,8 @@ function QualityDetail({ row, onMapping, onLeave, onClose }: { row: QualityRow; 
     [logicalLabel, row.logicalValue],
     [physicalLabel, row.physicalValue, true],
     [t('사유'), row.reason],
+    ...(row.code && !row.structure ? [[t('상세 코드'), row.code] as [string, string]] : []),
+    ...((row.notEnforced?.length ?? 0) > 0 ? [[t('DB 미강제'), row.notEnforced!.map((n) => NOT_ENFORCED[n] ?? n).join(', ')] as [string, string]] : []),
     ...(row.inheritance && row.type !== 'INHERITANCE' ? [[t('상속 구조'), row.structure
       ? t('이 엔터티는 슈퍼타입·서브타입 구조에 참여합니다. 서브타입 → 슈퍼타입 상속 FK 는 [상속 관계] 진단에서 확인합니다.')
       : t('이 엔터티는 슈퍼타입·서브타입 구조에 참여합니다. 이 진단은 직접 정의 속성만 비교했습니다. 상속 PK·FK 구조는 [상속 구조] 진단에서 확인합니다.')] as [string, string]] : []),

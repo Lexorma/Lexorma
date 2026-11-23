@@ -31,7 +31,11 @@ public class ModelChangeHistory {
         TABLE_MAPPING, COLUMN_MAPPING,
         LOGICAL_SUBJECT_AREA, SUBJECT_AREA_ENTITY,
         SUBTYPE_GROUP,
-        SUBTYPE_KEY_MAPPING
+        SUBTYPE_KEY_MAPPING,
+        /** 상속 그룹 변환 기록 (M-7 상속 A·C : 전략·A형 통합 테이블·분류 컬럼) */
+        SUBTYPE_CONVERSION,
+        /** C형 상속 일반 속성 매핑 (말단 문맥 = 엔터티 매핑, 원본 = 조상 속성, 말단 테이블 컬럼) */
+        SUBTYPE_ATTR_MAPPING
     }
 
     /** APPROVE·REVOKE 는 승인 여부만 바뀐 경우 (다른 값도 함께 바뀌면 UPDATE 한 건) */

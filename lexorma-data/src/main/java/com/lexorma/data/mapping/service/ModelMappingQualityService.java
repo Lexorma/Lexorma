@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +80,11 @@ public class ModelMappingQualityService {
     private final SubtypePlanContexts subtypeContexts;
     private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyRepository;
     private final ModelStructureQualityQueryRepository structureRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeRepository;
+    private final com.lexorma.data.mapping.repository.EntityTableMappingRepository entityMappingRepository;
+    private final com.lexorma.data.logical.repository.LogicalSubtypeGroupRepository subtypeGroupRepository;
+    private final com.lexorma.data.logical.repository.LogicalSubtypeRepository subtypeRepository;
+    private final com.lexorma.data.history.repository.ModelChangeHistoryRepository historyRepository;
 
     public Summary selectSummary(AccountDto accountDto, Long modelId) {
         // 엔터티·속성 수는 매핑 현황과 같은 집계를 쓴다 (없는 모델·다른 프로젝트의 모델은 여기서 거절된다)
@@ -95,6 +101,11 @@ public class ModelMappingQualityService {
                         structure.stream().filter(r -> r.type() == CheckType.PHYSICAL_FK).count(), structure.stream().filter(r -> r.type() == CheckType.PHYSICAL_UNIQUE).count()));
     }
 
+    /** 논리 모델의 상속 변환 해석 (보정 기능이 A·C 영향 대상을 막는 데 쓴다) */
+    InheritanceConversions conversions(Long projectId, Long modelId) {
+        return mappingService.conversions(projectId, modelId);
+    }
+
     private static Counts counts(List<Row> rows, CheckGroup group) {
         List<Row> in = rows.stream().filter(r -> group.includes(r.type())).toList();
         return new Counts(in.size(), count(in, CheckStatus.MATCH), count(in, CheckStatus.MISMATCH), count(in, CheckStatus.NOT_COMPARABLE), count(in, CheckStatus.UNMAPPED));
@@ -106,12 +117,31 @@ public class ModelMappingQualityService {
      */
     List<Row> structureRows(Long projectId, Long modelId, String modelName) {
         LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId);
-        return ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(modelId, modelName,
+        // 상속 A·C형 문맥 (M-7 상속 A·C) : 기록이 없으면 예전 판정 그대로 (조회도 늘지 않는다)
+        InheritanceConversions conversions = mappingService.conversions(projectId, modelId);
+        ModelStructureQualityJudge.Strategies strategies = conversions.records().isEmpty() ? ModelStructureQualityJudge.Strategies.NONE
+                : new ModelStructureQualityJudge.Strategies(id -> conversions.role(id).name(),
+                id -> conversions.kind(id) == InheritanceConversions.Kind.SINGLE_TABLE ? conversions.hierarchy().root(id) : null,
+                conversions::leavesUnder, structureRepository.inheritedAttributes(projectId, modelId));
+        List<Row> rows = ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(modelId, modelName,
                 structureRepository.entities(projectId, modelId), structureRepository.relationships(projectId, modelId), structureRepository.pairs(projectId, modelId),
                 structureRepository.identifiers(projectId, modelId), structureRepository.attributeColumns(projectId, modelId), structureRepository.inheritedKeys(projectId, modelId),
                 structureRepository.foreignKeys(projectId, modelId), structureRepository.uniqueConstraints(projectId, modelId), structureRepository.uniqueColumns(projectId, modelId),
                 structureRepository.primaryKeyColumns(projectId, modelId), hierarchy::parent, hierarchy::root, hierarchy.participants(),
-                structureRepository.uniqueIndexes(projectId, modelId)));
+                structureRepository.uniqueIndexes(projectId, modelId), strategies));
+        if (conversions.records().isEmpty()) return rows;
+        // 전략 표시 : 구조가 기대와 같아도 DB 가 강제하지 않는 범위 (A형 서브타입 AK = 통합 테이블 전체 UNIQUE, C형 상속 AK = 말단 안에서만)
+        return rows.stream().map(row -> {
+            String code = row.structure() == null ? null : row.structure().code();
+            InheritanceConversions.Role role = row.entityId() == null ? InheritanceConversions.Role.DIRECT : conversions.role(row.entityId());
+            if (row.type() == CheckType.ALTERNATE_KEY && role == InheritanceConversions.Role.MERGED) {
+                return row.withStrategy(row.status(), row.reason(), code, List.of("SUBTYPE_SCOPE_NOT_ENFORCED"));
+            }
+            if (row.type() == CheckType.ALTERNATE_KEY && conversions.kind(row.entityId()) == InheritanceConversions.Kind.TABLE_PER_CONCRETE) {
+                return row.withStrategy(row.status(), row.reason(), code, List.of("GLOBAL_KEY_NOT_ENFORCED"));
+            }
+            return code == null ? row : row.withStrategy(row.status(), row.reason(), code, row.notEnforced());
+        }).toList();
     }
 
     /** 구조 진단 행의 엔터티·이름 조건 (목록 조회의 엔터티 ID · 검색 조건과 같은 뜻) */
@@ -184,19 +214,167 @@ public class ModelMappingQualityService {
         LogicalHierarchy hierarchy = subtypeService.hierarchy(search.modelId());
         java.util.Set<Long> inheritance = hierarchy.participants();
         List<Source> sources = queryRepository.findQualitySources(projectId, search);
-        List<Row> rows = diagnose(db, sources, queryRepository.findPrimaryIdentifierAttributes(projectId, search.modelId()), entityRows);
+        Map<Long, Set<Long>> primary = queryRepository.findPrimaryIdentifierAttributes(projectId, search.modelId());
+        InheritanceConversions conversions = mappingService.conversions(projectId, search.modelId());
+        List<Row> rows;
+        List<Row> strategyRows = List.of();
+        if (conversions.records().isEmpty()) {
+            rows = diagnose(db, sources, primary, entityRows);
+        } else {
+            // 상속 A·C형 (M-7 상속 A·C) : A형 구성원은 통합 테이블 문맥, C형 분산 엔터티의 속성은 말단마다 복제 컬럼으로 (StrategyQualityRows)
+            Map<Long, StrategyQualityRows.Leaf> leaves = concreteLeaves(projectId, search.modelId(), conversions);
+            List<Long> distributed = conversions.hierarchy().participants().stream().filter(id -> conversions.role(id) == InheritanceConversions.Role.DISTRIBUTED).toList();
+            List<Source> distributedSources = new ArrayList<>();
+            boolean leafScoped = search.entityId() == null || leaves.containsKey(search.entityId());
+            if (!distributed.isEmpty() && leafScoped) {
+                for (Source s : queryRepository.findQualitySources(projectId, new Search(search.modelId(), null, null, null, null, null))) {
+                    if (distributed.contains(s.entityId())) distributedSources.add(s);
+                }
+            }
+            java.util.function.Predicate<Row> match = row -> (search.entityId() == null || search.entityId().equals(row.entityId())) && textMatches(row, search);
+            rows = new ArrayList<>(StrategyQualityRows.rows(db, conversions, sources, primary, entityRows, leaves, distributedSources, match));
+            rows.addAll(invalidConcreteLinks(projectId, search.modelId(), conversions, match));
+            if (entityRows) strategyRows = strategyInheritanceRows(projectId, search, conversions, leaves);
+        }
         if (!inheritance.isEmpty()) rows = rows.stream().map(row -> row.withInheritance(inheritance.contains(row.entityId()))).toList();
-        return inheritanceRows(projectId, db, hierarchy, search, sources, rows, entityRows);
+        Computed computed = inheritanceRows(projectId, db, hierarchy, search, sources, rows, entityRows, conversions);
+        if (strategyRows.isEmpty()) return computed;
+        List<Row> all = new ArrayList<>(computed.rows());
+        all.addAll(strategyRows);
+        return new Computed(all, computed.participants(), computed.inheritance());
+    }
+
+    /** 이름 검색 조건 (복제 행 — DB 에서 거르지 못한 말단 문맥 행) */
+    private static boolean textMatches(Row row, Search search) {
+        if (search.searchQuery() == null || search.searchQuery().isBlank()) return true;
+        String keyword = search.searchQuery().trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (search.searchColumn() == null ? "" : search.searchColumn()) {
+            case "attributeName" -> contains(row.attributeName(), keyword);
+            case "columnName" -> contains(row.columnName(), keyword);
+            default -> contains(row.entityName(), keyword);
+        };
+    }
+
+    /** C형 말단 문맥 : 매핑된 말단마다 그 매핑의 상속 PK·상속 일반 속성 매핑 (원본 속성 → 컬럼) — 모델 단위 두 번 조회 */
+    private Map<Long, StrategyQualityRows.Leaf> concreteLeaves(Long projectId, Long modelId, InheritanceConversions c) {
+        Map<Long, StrategyQualityRows.Leaf> leaves = new HashMap<>();
+        boolean any = c.hierarchy().participants().stream().anyMatch(id -> c.kind(id) == InheritanceConversions.Kind.TABLE_PER_CONCRETE);
+        if (!any) return leaves;
+        Map<Long, Map<Long, com.lexorma.data.column.domain.entity.ColumnInfo>> copied = new HashMap<>();
+        subtypeKeyRepository.findAllByModelId(projectId, modelId).forEach(k -> copied.computeIfAbsent(k.getMapping().getId(), x -> new HashMap<>()).put(k.getAttribute().getId(), k.getColumn()));
+        subtypeAttributeRepository.findAllByModelId(projectId, modelId).forEach(k -> copied.computeIfAbsent(k.getMapping().getId(), x -> new HashMap<>()).put(k.getAttribute().getId(), k.getColumn()));
+        for (com.lexorma.data.mapping.domain.entity.EntityTableMapping m : entityMappingRepository.findAllByModelId(projectId, modelId)) {
+            Long id = m.getEntity().getId();
+            if (c.kind(id) != InheritanceConversions.Kind.TABLE_PER_CONCRETE || !c.leaf(id)) continue;
+            var table = m.getTable();
+            leaves.put(id, new StrategyQualityRows.Leaf(id, m.getEntity().getEntityName(), m.getId(), table.getSchema() == null ? null : table.getSchema().getId(),
+                    table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getId(), table.getTableName(), copied.getOrDefault(m.getId(), Map.of())));
+        }
+        return leaves;
     }
 
     /**
-     * 상속 구조 행 (M-7 4차) : 매핑된 서브타입마다 구조 1행({@link SubtypePlanContext#inspect} — 기존 부모 재사용·상속 PK 매핑 상세와 같은 판정)과
-     * 유효하지 않은 기존 상속 PK 매핑마다 1행. 상속 PK 매핑은 모델 단위 한 번, 판정 재료는 {@link SubtypePlanContext#prepare} 가 종류별로 한 번에 읽는다.
-     * 행은 그 엔터티의 다른 진단 뒤에 둔다 (조회 순서 유지)
+     * AC-P03 : 유효하지 않은 기존 상속 일반 속성 매핑 (C형) — 매핑 엔터티가 지금 C형 말단이 아니거나 원본 속성이 그 말단의 조상 속성이 아니다 (생성 뒤 말단을 그룹에서 뺀 경우 등).
+     * 지우거나 고치지 않고 MISMATCH 로만 보인다 (상속 PK 매핑의 '유효하지 않은 기존 상속 PK 매핑' 과 같은 계약)
      */
-    private Computed inheritanceRows(Long projectId, DbType db, LogicalHierarchy hierarchy, Search search, List<Source> sources, List<Row> rows, boolean entityRows) {
+    private List<Row> invalidConcreteLinks(Long projectId, Long modelId, InheritanceConversions c, java.util.function.Predicate<Row> match) {
+        List<Row> out = new ArrayList<>();
+        for (com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping link : subtypeAttributeRepository.findAllByModelId(projectId, modelId)) {
+            var mapping = link.getMapping();
+            Long entity = mapping.getEntity().getId();
+            if (c.concreteAncestor(entity, link.getAttribute().getEntity().getId())) continue;
+            var table = mapping.getTable();
+            var column = link.getColumn();
+            Row row = new Row(CheckType.INHERITANCE + ":" + entity + ":" + link.getAttribute().getId(), modelId, null, mapping.getId(), entity, mapping.getEntity().getEntityName(),
+                    link.getAttribute().getId(), link.getAttribute().getAttributeName(), table.getSchema() == null ? null : table.getSchema().getId(),
+                    table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getId(), table.getTableName(), column.getId(), column.getColumnName(),
+                    CheckType.INHERITANCE, CheckStatus.MISMATCH, Messages.get("유효하지 않은 기존 상속 일반 속성 매핑"), column.getColumnName(),
+                    Messages.get("엔터티 {0} 은(는) 지금 속성 {1} 을(를) 물려받는 C형 말단이 아닌데 상속 일반 속성 매핑이 남아 있습니다. 매핑 관리에서 해제할 수 있습니다.",
+                            mapping.getEntity().getEntityName(), link.getAttribute().getAttributeName()), true, null, "STRATEGY_STRUCTURE_MISMATCH", List.of());
+            if (match.test(row)) out.add(row);
+        }
+        return out;
+    }
+
+    /** A·C 계층 엔터티의 [상속 구조] 행 (엔터티마다 1행). 진단 원본은 모델 전체를 한 번만 읽는다 (검색 조건과 무관 — 행을 만든 뒤 거른다) */
+    private List<Row> strategyInheritanceRows(Long projectId, Search search, InheritanceConversions c, Map<Long, StrategyQualityRows.Leaf> leaves) {
+        List<Source> all = queryRepository.findQualitySources(projectId, new Search(search.modelId(), null, null, null, null, null));
+        Map<Long, Source> context = new java.util.LinkedHashMap<>();
+        Map<Long, Long> columnOfAttribute = new HashMap<>();
+        Map<Long, Long> attributeCount = new HashMap<>();
+        Set<Long> tablesWithPk = new HashSet<>();
+        for (Source s : all) {
+            if (s.tableId() != null && Boolean.TRUE.equals(s.columnPk())) tablesWithPk.add(s.tableId());
+            if (c.kind(s.entityId()) != InheritanceConversions.Kind.NONE) context.putIfAbsent(s.entityId(), s);
+            if (s.attributeId() != null) attributeCount.merge(s.entityId(), 1L, Long::sum);
+            if (s.attributeId() != null && s.columnId() != null) columnOfAttribute.put(s.attributeId(), s.columnId());
+        }
+        // 분류 컬럼 : 그룹 분류 속성의 매핑 컬럼 (A형 — 루트 매핑 아래 속성 매핑)
+        Map<Long, Long> classification = new HashMap<>();
+        subtypeGroupRepository.findClassificationByModelId(search.modelId()).forEach(row -> {
+            if (row[1] != null) classification.put((Long) row[0], columnOfAttribute.get((Long) row[1]));
+        });
+        // C형 말단 기대 복제 수 = 조상(루트·중간)의 속성 수 (루트 PK 포함)
+        Map<Long, Integer> expected = new HashMap<>();
+        for (Long leaf : leaves.keySet()) {
+            int count = 0;
+            for (Long ancestor : c.hierarchy().ancestors(leaf)) count += attributeCount.getOrDefault(ancestor, 0L).intValue();
+            expected.put(leaf, count);
+        }
+        String modelName = all.isEmpty() ? null : all.get(0).modelName();
+        Map<Long, ConversionBasis.Result> basis = conversionBasis(projectId, search.modelId(), c);
+        return StrategyQualityRows.inheritanceRows(c, context, classification, expected, leaves, basis, tablesWithPk, search.modelId(), modelName).stream()
+                .filter(r -> (search.entityId() == null || search.entityId().equals(r.entityId())) && textMatches(r, search)).toList();
+    }
+
+    /**
+     * AC-P03 : 그룹마다 변환 당시 상태(모델 변경 이력)와 지금 상태 비교 — 그룹 ID → 결과. 모델 단위 조회 4번 (그룹·구성원·변환 기록 이력·그룹 이력)
+     */
+    private Map<Long, ConversionBasis.Result> conversionBasis(Long projectId, Long modelId, InheritanceConversions c) {
+        Map<Long, ConversionBasis.Result> result = new HashMap<>();
+        List<InheritanceConversions.Record> records = c.records().stream().filter(r -> !c.orphan(r)).toList();
+        if (records.isEmpty()) return result;
+        Set<Long> groupIds = new HashSet<>();
+        records.forEach(r -> groupIds.add(r.groupId()));
+        Map<Long, ConversionBasis.History> created = new HashMap<>();
+        for (Object[] row : historyRepository.findStates(projectId, com.lexorma.data.history.domain.entity.ModelChangeHistory.TargetType.SUBTYPE_CONVERSION,
+                records.stream().map(InheritanceConversions.Record::id).toList())) {
+            if (row[5] != com.lexorma.data.history.domain.entity.ModelChangeHistory.Action.CREATE) continue;
+            ConversionBasis.History h = history(row);
+            created.merge(h.targetId(), h, (a, b) -> a.id() > b.id() ? a : b);
+        }
+        Map<Long, List<ConversionBasis.History>> groupHistory = new HashMap<>();
+        for (Object[] row : historyRepository.findStates(projectId, com.lexorma.data.history.domain.entity.ModelChangeHistory.TargetType.SUBTYPE_GROUP, groupIds)) {
+            ConversionBasis.History h = history(row);
+            groupHistory.computeIfAbsent(h.targetId(), k -> new ArrayList<>()).add(h);
+        }
+        Map<Long, Map<Long, String>> values = new HashMap<>();
+        Map<Long, String> names = new HashMap<>();
+        for (var m : subtypeRepository.findWithEntities(groupIds)) {
+            values.computeIfAbsent(m.getGroup().getId(), k -> new java.util.LinkedHashMap<>()).put(m.getSubtypeEntity().getId(), m.getClassificationValue());
+            names.put(m.getSubtypeEntity().getId(), m.getSubtypeEntity().getEntityName());
+        }
+        Map<Long, ConversionBasis.GroupState> current = new HashMap<>();
+        for (var g : subtypeGroupRepository.findWithEntities(groupIds)) {
+            current.put(g.getId(), new ConversionBasis.GroupState(g.getId(), g.getGroupName(), g.getOverlapping(), g.getTotal(),
+                    g.getClassificationAttribute() == null ? null : g.getClassificationAttribute().getId(),
+                    g.getClassificationAttribute() == null ? null : g.getClassificationAttribute().getAttributeName(), values.getOrDefault(g.getId(), Map.of()), names));
+        }
+        for (InheritanceConversions.Record r : records) {
+            result.put(r.groupId(), ConversionBasis.compare(r.strategy(), created.get(r.id()), groupHistory.getOrDefault(r.groupId(), List.of()), current.get(r.groupId())));
+        }
+        return result;
+    }
+
+    private static ConversionBasis.History history(Object[] row) {
+        return new ConversionBasis.History((Long) row[0], (Long) row[1], (String) row[2], (java.time.LocalDateTime) row[3], (String) row[4]);
+    }
+
+    private Computed inheritanceRows(Long projectId, DbType db, LogicalHierarchy hierarchy, Search search, List<Source> sources, List<Row> rows, boolean entityRows,
+                                     InheritanceConversions conversions) {
         List<SubtypeIdentifierColumnMapping> links = subtypeKeyRepository.findAllByModelId(projectId, search.modelId());
-        long subtypeCount = hierarchy.participants().stream().filter(id -> hierarchy.parent(id) != null).count();
+        // B형(기록 없는) 서브타입만 — A형 통합·C형 계층의 서브타입은 상속 PK 매핑을 쓰지 않거나 [상속 구조] 를 StrategyQualityRows 가 따로 낸다
+        long subtypeCount = hierarchy.participants().stream().filter(id -> hierarchy.parent(id) != null && conversions.kind(id) == InheritanceConversions.Kind.NONE).count();
         if (hierarchy.isEmpty() && links.isEmpty()) {
             return new Computed(rows, 0, new InheritanceSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         }
@@ -204,8 +382,8 @@ public class ModelMappingQualityService {
         links.forEach(l -> linksByMapping.computeIfAbsent(l.getMapping().getId(), k -> new ArrayList<>()).add(l));
         Map<Long, Source> firstSource = new java.util.LinkedHashMap<>();
         sources.forEach(source -> firstSource.putIfAbsent(source.entityId(), source));
-        List<Long> mappedSubtypes = firstSource.values().stream().filter(source -> source.mappingId() != null && hierarchy.parent(source.entityId()) != null)
-                .map(Source::entityId).toList();
+        List<Long> mappedSubtypes = firstSource.values().stream().filter(source -> source.mappingId() != null && hierarchy.parent(source.entityId()) != null
+                        && conversions.kind(source.entityId()) == InheritanceConversions.Kind.NONE).map(Source::entityId).toList();
         SubtypePlanContext context = subtypeContexts.lightForModel(projectId, search.modelId(), hierarchy, db);
         context.prepare(mappedSubtypes);
         String keyword = search.searchQuery() == null || search.searchQuery().isBlank() ? null : search.searchQuery().trim().toLowerCase(java.util.Locale.ROOT);
@@ -213,6 +391,8 @@ public class ModelMappingQualityService {
         long requiredKeys = 0, mappedKeys = 0, invalid = 0, valid = 0, mismatch = 0, unmapped = 0, notComparable = 0;
         for (Source source : firstSource.values()) {
             if (source.mappingId() == null) continue;
+            // A·C 계층 (상속 FK 없음) : B형 상속 구조 판정을 하지 않는다 — [상속 구조] 행은 StrategyQualityRows 가 낸다
+            if (conversions.kind(source.entityId()) != InheritanceConversions.Kind.NONE) continue;
             List<SubtypeIdentifierColumnMapping> own = linksByMapping.getOrDefault(source.mappingId(), List.of());
             boolean subtype = hierarchy.parent(source.entityId()) != null;
             if (!subtype && own.isEmpty()) continue;

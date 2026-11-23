@@ -47,4 +47,8 @@ public interface ModelChangeHistoryRepository extends JpaRepository<ModelChangeH
             + " and (h.id > :afterId or h.changedAt >= :since) order by h.id")
     List<ModelChangeHistory> changesAfter(@Param("projectId") Long projectId, @Param("type") ModelChangeHistory.TargetType type, @Param("targetId") Long targetId,
                                           @Param("afterId") Long afterId, @Param("since") java.time.LocalDateTime since);
+
+    /** 여러 객체(같은 종류)의 이력 투영 (ID·대상·작업·시각·변경 후 상태) — AC-P03 변환 당시 그룹 상태 비교 */
+    @Query("select h.id, h.targetId, h.changeGroupId, h.changedAt, h.afterData, h.action from ModelChangeHistory h where h.projectId = :projectId and h.targetType = :type and h.targetId in :ids")
+    List<Object[]> findStates(@Param("projectId") Long projectId, @Param("type") ModelChangeHistory.TargetType type, @Param("ids") Collection<Long> ids);
 }

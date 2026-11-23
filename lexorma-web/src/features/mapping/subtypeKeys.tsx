@@ -38,7 +38,9 @@ export function InheritanceRoleLabel({ value }: { value?: MappingInheritance | n
  * 목록의 상속 PK 현황 : 연결 수(필요한 수 기준 — 유효하지 않은 기존 매핑은 세지 않는다)와 구조 정합성을 따로 보인다.
  * 루트·일반 엔터티는 상속 PK 대상이 아니다 (미매핑으로 세지 않는다)
  */
-export function InheritedKeySummary({ value, mapped }: { value?: MappingInheritance | null; mapped: boolean }) {
+export function InheritedKeySummary({ value, mapped, structure = true }: { value?: MappingInheritance | null; mapped: boolean;
+  /** false : B형 상속 구조 판정을 보이지 않는다 (C형 말단 — 구조는 정합성 비교의 [상속 구조] 에서 C형 기준으로 판정) */
+  structure?: boolean }) {
   if (!value) return null;
   const parts = [];
   if (value.subtype) {
@@ -47,7 +49,7 @@ export function InheritedKeySummary({ value, mapped }: { value?: MappingInherita
       title={t('상속 PK(루트 주 식별자) {0}개 중 {1}개 연결', value.requiredKeys, value.mappedKeys)}>{t('상속 PK {0} / {1}', value.mappedKeys, value.requiredKeys)}</Label>);
   }
   if (value.invalidKeys > 0) parts.push(<Label key="invalid" variant="danger">{t('무효 매핑 {0}', value.invalidKeys)}</Label>);
-  if (mapped && value.result && value.subtype) {
+  if (structure && mapped && value.result && value.subtype) {
     const result = STRUCTURE_RESULTS[value.result];
     parts.push(<Label key="result" variant={result.variant} dot title={value.status ? INHERITANCE_STATUS[value.status] ?? value.status : undefined}>{result.label}</Label>);
   }
@@ -160,7 +162,7 @@ export function SubtypeKeySection({ mappingId, canEdit, onChanged, onNavigate }:
         {statusLabel && <> <Label variant={statusLabel.variant} dot>{statusLabel.label}</Label></>}
       </h4>
       <p className="gh-muted">
-        {data.subtype
+        {data.subtype && data.status === 'CONCRETE' ? data.statusMessage : data.subtype
           ? t('{0} 은(는) {1} 의 서브타입입니다. 루트 {2} 의 주 식별자를 상속 PK 로 이 테이블 컬럼에 연결합니다. 상속 PK 는 직접 속성이 아니며 직접 속성 매핑률에 들어가지 않습니다.',
             data.mapping.entityName, data.parentEntityName ?? '', data.rootEntityName ?? '')
           : data.statusMessage}

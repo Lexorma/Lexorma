@@ -120,7 +120,7 @@ public class ModelExchangeService {
 
     static final List<String> TYPES = List.of(ModelChangeRecorder.SCHEMA, "PHYSICAL_TABLE", "PHYSICAL_COLUMN", "PHYSICAL_RELATION", "PHYSICAL_INDEX", "PHYSICAL_CONSTRAINT",
             "PHYSICAL_VIEW", "LOGICAL_MODEL", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "TABLE_MAPPING", "COLUMN_MAPPING",
-            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY", "SUBTYPE_GROUP", "SUBTYPE_KEY_MAPPING");
+            "LOGICAL_SUBJECT_AREA", "SUBJECT_AREA_ENTITY", "SUBTYPE_GROUP", "SUBTYPE_KEY_MAPPING", "SUBTYPE_CONVERSION", "SUBTYPE_ATTR_MAPPING");
     /** 주제 영역 계층 한도 (LogicalSubjectAreaService 와 같다 : 최상위 = 1단계) */
     static final int SUBJECT_AREA_MAX_DEPTH = 3;
     /** 상속 단계 한도 (LogicalHierarchy 와 같다 : 루트 = 1단계), 그룹의 구성원 수 (LogicalSubtypeService 와 같다) */
@@ -303,6 +303,7 @@ public class ModelExchangeService {
         Map<Long, Long> supertypes = validateSubtypes(document);
         validatePairs(document, supertypes);
         validateSubtypeKeys(document, supertypes);
+        validateConversions(document, supertypes);
         validateSubjectAreas(document);
         validateLayouts(document);
         return document;
@@ -473,6 +474,135 @@ public class ModelExchangeService {
             if (!Objects.equals(columnTable.get(column), ref(mapping, "table"))) throw invalid("상속 PK 매핑 {0} 의 컬럼이 매핑된 테이블의 컬럼이 아닙니다.", label);
             if (!pairs.add(mapping.id() + ":" + attribute)) throw invalid("상속 PK 매핑 {0} : 같은 엔터티 매핑의 같은 속성이 두 번 있습니다.", label);
             if (!used.add(column) || directColumns.contains(column)) throw invalid("상속 PK 매핑 {0} 의 컬럼이 다른 매핑에 이미 쓰였습니다.", label);
+        }
+    }
+
+    /**
+     * 상속 A·C형 (형식 7, M-7 상속 A·C — D-AC-14) : 변환 기록과 실제 매핑 구조가 모순되는 파일을 거절한다 (조용히 빼지 않는다). 파일 안의 번호로 본다.
+     * <ul>
+     *   <li>속성 매핑(COLUMN_MAPPING)의 속성 = 매핑 엔터티의 속성, 또는 (A형) 매핑 엔터티가 A형 루트이고 속성이 그 계층 구성원의 것</li>
+     *   <li>변환 기록 : 파일의 그룹, 그룹마다 하나, 계층의 그룹이 모두 같은 전략. A형 = 통합 테이블·분류 컬럼이 있고, 통합 테이블 = 루트 엔터티의 매핑 테이블,
+     *       분류 컬럼 = 루트 매핑 아래 그룹 분류 속성의 컬럼, 루트 외 구성원의 엔터티 매핑 없음. C형 = 테이블·분류 컬럼 없음, 말단이 아닌 구성원의 엔터티 매핑 없음</li>
+     *   <li>상속 일반 속성 매핑 : 엔터티 매핑이 C형 계층의 말단, 속성 = 조상 엔터티의 속성이고 루트 주 식별자가 아님, 컬럼 = 매핑 테이블의 컬럼,
+     *       (매핑, 속성)·컬럼 한 번, 다른 매핑(속성·상속 PK)에 쓰인 컬럼이 아님</li>
+     * </ul>
+     */
+    private static void validateConversions(ModelExchangeDto.Document document, Map<Long, Long> supertypes) {
+        List<Item> conversions = listOf(document, "SUBTYPE_CONVERSION");
+        List<Item> inherited = listOf(document, "SUBTYPE_ATTR_MAPPING");
+        if ((!conversions.isEmpty() || !inherited.isEmpty()) && document.formatVersion() < 7) {
+            throw invalid("형식 버전 {0} 파일에는 상속 변환 기록·상속 일반 속성 매핑이 들어갈 수 없습니다.", document.formatVersion());
+        }
+        Map<Long, Long> attributeEntity = new HashMap<>();
+        listOf(document, "LOGICAL_ATTRIBUTE").forEach(a -> attributeEntity.put(a.id(), ref(a, "entity")));
+        Map<Long, Long> columnTable = new HashMap<>();
+        listOf(document, "PHYSICAL_COLUMN").forEach(c -> columnTable.put(c.id(), ref(c, "tableInfo")));
+        Map<Long, Item> mappings = new HashMap<>();
+        Map<Long, Item> mappingByEntity = new HashMap<>();
+        listOf(document, "TABLE_MAPPING").forEach(m -> {
+            mappings.put(m.id(), m);
+            mappingByEntity.put(ref(m, "entity"), m);
+        });
+        Map<Long, Item> groups = new HashMap<>();
+        Map<Long, List<Long>> groupsOfSupertype = new HashMap<>();
+        for (Item g : listOf(document, "SUBTYPE_GROUP")) {
+            groups.put(g.id(), g);
+            groupsOfSupertype.computeIfAbsent(ref(g, "supertypeEntity"), k -> new ArrayList<>()).add(g.id());
+        }
+        java.util.function.Function<Long, Long> rootOf = id -> {
+            Long root = id;
+            for (int guard = 0; supertypes.containsKey(root) && guard <= SUBTYPE_MAX_LEVEL; guard++) root = supertypes.get(root);
+            return root;
+        };
+        // 계층 → 전략 (변환 기록)
+        Map<Long, Item> conversionByGroup = new HashMap<>();
+        for (Item c : conversions) {
+            String label = String.valueOf(c.id());
+            Long group = ref(c, "group");
+            String strategy = string(c, "strategy");
+            if (group == null || !groups.containsKey(group) || !Set.of("SINGLE_TABLE", "TABLE_PER_CONCRETE").contains(strategy)) throw invalid("변환 기록 {0} 이(가) 올바르지 않습니다 (그룹·전략).", label);
+            if (conversionByGroup.put(group, c) != null) throw invalid("변환 기록 {0} : 같은 그룹의 변환 기록이 두 개입니다.", label);
+        }
+        Map<Long, String> strategyOfRoot = new HashMap<>();
+        Map<Long, Long> tableOfRoot = new HashMap<>();
+        for (Item g : groups.values()) {
+            Long root = rootOf.apply(ref(g, "supertypeEntity"));
+            Item c = conversionByGroup.get(g.id());
+            String strategy = c == null ? "-" : string(c, "strategy");
+            String before = strategyOfRoot.putIfAbsent(root, strategy);
+            if (before != null && !before.equals(strategy)) throw invalid("상속 계층(루트 엔터티 {0})의 그룹 변환 기록이 서로 다르거나 일부만 있습니다.", String.valueOf(root));
+            if (c == null) continue;
+            String label = String.valueOf(c.id());
+            Long table = ref(c, "table");
+            Long column = ref(c, "classificationColumn");
+            if ("SINGLE_TABLE".equals(strategy)) {
+                Item rootMapping = mappingByEntity.get(root);
+                if (table == null || column == null || rootMapping == null || !Objects.equals(ref(rootMapping, "table"), table) || !Objects.equals(columnTable.get(column), table)) {
+                    throw invalid("변환 기록 {0} (A형) 의 통합 테이블·분류 컬럼이 루트 엔터티의 매핑과 맞지 않습니다.", label);
+                }
+                Long previous = tableOfRoot.putIfAbsent(root, table);
+                if (previous != null && !previous.equals(table)) throw invalid("상속 계층(루트 엔터티 {0})의 A형 통합 테이블이 여러 개입니다.", String.valueOf(root));
+                Long classification = ref(g, "classificationAttribute");
+                boolean mapped = listOf(document, "COLUMN_MAPPING").stream().anyMatch(m -> Objects.equals(ref(m, "mapping"), rootMapping.id())
+                        && Objects.equals(ref(m, "column"), column) && Objects.equals(ref(m, "attribute"), classification));
+                if (classification == null || !mapped) throw invalid("변환 기록 {0} (A형) 의 분류 컬럼이 그룹 분류 속성의 매핑 컬럼이 아닙니다.", label);
+            } else if (table != null || column != null) {
+                throw invalid("변환 기록 {0} (C형) 에는 통합 테이블·분류 컬럼이 없어야 합니다.", label);
+            }
+        }
+        // 매핑 구조 : A형 루트 외·C형 말단 외 구성원의 엔터티 매핑 없음
+        java.util.function.Predicate<Long> leaf = id -> supertypes.containsKey(id) && !groupsOfSupertype.containsKey(id);
+        for (Item m : mappings.values()) {
+            Long entity = ref(m, "entity");
+            if (!supertypes.containsKey(entity) && !groupsOfSupertype.containsKey(entity)) continue;
+            String strategy = strategyOfRoot.getOrDefault(rootOf.apply(entity), "-");
+            if ("SINGLE_TABLE".equals(strategy) && supertypes.containsKey(entity)) throw invalid("엔터티 매핑 {0} : A형 계층의 서브타입은 따로 매핑되지 않습니다.", String.valueOf(m.id()));
+            if ("TABLE_PER_CONCRETE".equals(strategy) && !leaf.test(entity)) throw invalid("엔터티 매핑 {0} : C형 계층의 루트·중간 엔터티는 매핑되지 않습니다.", String.valueOf(m.id()));
+        }
+        // 속성 매핑 소속
+        for (Item c : listOf(document, "COLUMN_MAPPING")) {
+            Item mapping = mappings.get(ref(c, "mapping"));
+            Long attribute = ref(c, "attribute");
+            if (mapping == null || attribute == null) continue; // 참조 오류는 가져오기가 건너뛰던 기존 규칙 그대로
+            Long owner = attributeEntity.get(attribute);
+            Long entity = ref(mapping, "entity");
+            if (owner == null || owner.equals(entity)) continue;
+            boolean merged = "SINGLE_TABLE".equals(strategyOfRoot.getOrDefault(rootOf.apply(owner), "-")) && entity.equals(rootOf.apply(owner)) && !supertypes.containsKey(entity);
+            if (!merged) throw invalid("속성 매핑 {0} 의 속성이 매핑된 엔터티(또는 A형 계층)의 속성이 아닙니다.", String.valueOf(c.id()));
+        }
+        if (inherited.isEmpty()) return;
+        Map<Long, Set<Long>> primaryKey = new HashMap<>();
+        for (Item i : listOf(document, "LOGICAL_IDENTIFIER")) {
+            if (!Boolean.TRUE.equals(bool(i, "isPrimary"))) continue;
+            Set<Long> members = new HashSet<>();
+            children(i, "attributes").forEach(a -> members.add(longValue(a.get("attributeId"))));
+            primaryKey.put(ref(i, "entity"), members);
+        }
+        Set<Long> used = new HashSet<>();
+        listOf(document, "COLUMN_MAPPING").forEach(c -> used.add(ref(c, "column")));
+        listOf(document, "SUBTYPE_KEY_MAPPING").forEach(c -> used.add(ref(c, "column")));
+        Set<String> pairs = new HashSet<>();
+        for (Item a : inherited) {
+            String label = String.valueOf(a.id());
+            Item mapping = mappings.get(ref(a, "mapping"));
+            Long attribute = ref(a, "attribute");
+            Long column = ref(a, "column");
+            Long entity = mapping == null ? null : ref(mapping, "entity");
+            if (mapping == null || attribute == null || !attributeEntity.containsKey(attribute) || column == null || !columnTable.containsKey(column)) {
+                throw invalid("상속 일반 속성 매핑 {0} 이(가) 올바르지 않습니다 (엔터티 매핑·속성·컬럼).", label);
+            }
+            if (entity == null || !leaf.test(entity) || !"TABLE_PER_CONCRETE".equals(strategyOfRoot.getOrDefault(rootOf.apply(entity), "-"))) {
+                throw invalid("상속 일반 속성 매핑 {0} 의 엔터티가 C형 계층의 말단이 아닙니다.", label);
+            }
+            List<Long> ancestors = new ArrayList<>();
+            for (Long up = supertypes.get(entity); up != null && ancestors.size() <= SUBTYPE_MAX_LEVEL; up = supertypes.get(up)) ancestors.add(up);
+            Long owner = attributeEntity.get(attribute);
+            if (!ancestors.contains(owner) || primaryKey.getOrDefault(rootOf.apply(entity), Set.of()).contains(attribute)) {
+                throw invalid("상속 일반 속성 매핑 {0} 의 속성이 조상 엔터티의 일반 속성이 아닙니다.", label);
+            }
+            if (!Objects.equals(columnTable.get(column), ref(mapping, "table"))) throw invalid("상속 일반 속성 매핑 {0} 의 컬럼이 매핑된 테이블의 컬럼이 아닙니다.", label);
+            if (!pairs.add(mapping.id() + ":" + attribute)) throw invalid("상속 일반 속성 매핑 {0} : 같은 엔터티 매핑의 같은 속성이 두 번 있습니다.", label);
+            if (!used.add(column)) throw invalid("상속 일반 속성 매핑 {0} 의 컬럼이 다른 매핑에 이미 쓰였습니다.", label);
         }
     }
 
@@ -666,6 +796,10 @@ public class ModelExchangeService {
         private final Map<Long, List<Item>> columnMappingsByMapping = new HashMap<>();
         /** 상속 PK 매핑 (형식 6) : 부모 엔터티 매핑 번호 → 매핑 */
         private final Map<Long, List<Item>> subtypeKeysByMapping = new HashMap<>();
+        /** 상속 A·C형 (형식 7) : 변환 기록, 상속 일반 속성 매핑 (부모 엔터티 매핑 번호 → 매핑), 가져올 변환 기록 */
+        private final List<Item> conversions = new ArrayList<>();
+        private final Map<Long, List<Item>> inheritedAttributesByMapping = new HashMap<>();
+        private final Set<Long> newConversions = new LinkedHashSet<>();
         private final Map<Long, Item> views = new LinkedHashMap<>();
 
         /** 대상 프로젝트 : 스키마 이름(소문자) → ID, TABLE 키(스키마.테이블 소문자), 논리 모델 이름(소문자), 표준 용어 이름 → ID */
@@ -735,6 +869,8 @@ public class ModelExchangeService {
             tableMappings.addAll(model.getOrDefault("TABLE_MAPPING", List.of()));
             model.getOrDefault("COLUMN_MAPPING", List.of()).forEach(item -> columnMappingsByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("SUBTYPE_KEY_MAPPING", List.of()).forEach(item -> subtypeKeysByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
+            conversions.addAll(model.getOrDefault("SUBTYPE_CONVERSION", List.of()));
+            model.getOrDefault("SUBTYPE_ATTR_MAPPING", List.of()).forEach(item -> inheritedAttributesByMapping.computeIfAbsent(ref(item, "mapping"), id -> new ArrayList<>()).add(item));
             model.getOrDefault("PHYSICAL_VIEW", List.of()).forEach(item -> views.put(item.id(), item));
 
             for (Object[] row : entityManager.createQuery("select s.id, s.schemaName from SchemaInfo s where s.projectId = :p", Object[].class).setParameter("p", projectId).getResultList()) {
@@ -857,9 +993,48 @@ public class ModelExchangeService {
                 items.add(new PlanItem("TABLE_MAPPING", (entity == null ? "?" : string(entity, "entityName")) + "->" + tableKey(table), null,
                         both ? Status.NEW : Status.EXCLUDED, both ? null : Reason.RELATED_NOT_IMPORTED, null));
             }
+            planConversions();
             planLayouts();
             if (missingTerms > 0) warnings.add("TERM_NOT_FOUND:" + missingTerms);
             if (ignoredPositions > 0) warnings.add("LAYOUT_IGNORED:" + ignoredPositions);
+        }
+
+        /**
+         * 변환 기록 (형식 7) : 그룹의 모델을 새로 만들고, 그 계층의 엔터티 매핑이 모두 새로 만들어질 때만 가져온다 (A형 = 루트 매핑, C형 = 말단 매핑 전체).
+         * 계층의 기록은 모두 가져오거나 모두 뺀다 (일부만 가져와 맞지 않는 기록을 만들지 않는다)
+         */
+        private void planConversions() {
+            if (conversions.isEmpty()) return;
+            Map<Long, Item> groups = new HashMap<>();
+            document.model().getOrDefault("SUBTYPE_GROUP", List.of()).forEach(g -> groups.put(g.id(), g));
+            Map<Long, Long> supertypes = new HashMap<>();
+            groups.values().forEach(g -> children(g, "subtypes").forEach(m -> supertypes.put(longValue(m.get("subtypeEntityId")), ref(g, "supertypeEntity"))));
+            Map<Long, Long> rootOfGroup = new HashMap<>();
+            for (Item g : groups.values()) {
+                Long root = ref(g, "supertypeEntity");
+                for (int guard = 0; supertypes.containsKey(root) && guard <= SUBTYPE_MAX_LEVEL; guard++) root = supertypes.get(root);
+                rootOfGroup.put(g.id(), root);
+            }
+            Map<Long, Boolean> importable = new HashMap<>();
+            for (Item c : conversions) {
+                Item group = groups.get(ref(c, "group"));
+                Long root = rootOfGroup.get(ref(c, "group"));
+                boolean ok = group != null && newModels.contains(ref(group, "model"));
+                for (Item m : tableMappings) {
+                    Long entity = ref(m, "entity");
+                    Long up = entity;
+                    for (int guard = 0; supertypes.containsKey(up) && guard <= SUBTYPE_MAX_LEVEL; guard++) up = supertypes.get(up);
+                    if (Objects.equals(up, root) && !newMappings.contains(m.id())) ok = false;
+                }
+                importable.merge(root, ok, Boolean::logicalAnd);
+            }
+            for (Item c : conversions) {
+                boolean ok = importable.getOrDefault(rootOfGroup.get(ref(c, "group")), false);
+                if (ok) newConversions.add(c.id());
+                Item group = groups.get(ref(c, "group"));
+                items.add(new PlanItem("SUBTYPE_CONVERSION", (group == null ? "?" : string(group, "groupName")) + ":" + string(c, "strategy"), null,
+                        ok ? Status.NEW : Status.EXCLUDED, ok ? null : Reason.RELATED_NOT_IMPORTED, null));
+            }
         }
 
         /**
@@ -1013,6 +1188,9 @@ public class ModelExchangeService {
             counts.put("TABLE_MAPPING", newMappings.size());
             int newKeys = newMappings.stream().mapToInt(id -> subtypeKeysByMapping.getOrDefault(id, List.of()).size()).sum();
             if (newKeys > 0) counts.put("SUBTYPE_KEY_MAPPING", newKeys); // 형식 6 : 상속 PK 매핑이 있을 때만 (예전 파일의 계획은 그대로)
+            int newInherited = newMappings.stream().mapToInt(id -> inheritedAttributesByMapping.getOrDefault(id, List.of()).size()).sum();
+            if (newInherited > 0) counts.put("SUBTYPE_ATTR_MAPPING", newInherited); // 형식 7
+            if (!newConversions.isEmpty()) counts.put("SUBTYPE_CONVERSION", newConversions.size());
             counts.put("PHYSICAL_VIEW", newViews.size());
             int newAreas = newModels.stream().mapToInt(id -> subjectAreasByModel.getOrDefault(id, List.of()).size()).sum();
             if (newAreas > 0) counts.put("LOGICAL_SUBJECT_AREA", newAreas);
@@ -1163,6 +1341,7 @@ public class ModelExchangeService {
             count(created, "PHYSICAL_VIEW_REFERENCE", viewReferences);
 
             Map<Long, LogicalEntity> entityMap = new HashMap<>();
+            Map<Long, LogicalSubtypeGroup> groupMap = new HashMap<>();
             Map<Long, LogicalAttribute> attributeMap = new HashMap<>();
             Map<Long, LogicalSubjectArea> areaMap = new HashMap<>();
             int relationships = 0;
@@ -1210,6 +1389,7 @@ public class ModelExchangeService {
                             .classificationAttribute(classificationRef == null ? null : attributeMap.get(classificationRef))
                             .sortOrder(integer(g, "sortOrder") == null ? 0 : integer(g, "sortOrder")).build();
                     entityManager.persist(group);
+                    groupMap.put(g.id(), group);
                     subtypeGroups++;
                     for (Map<String, Object> m : children(g, "subtypes")) {
                         entityManager.persist(LogicalSubtype.builder().projectId(projectId).modelId(model.getId()).group(group)
@@ -1276,6 +1456,7 @@ public class ModelExchangeService {
             count(created, "LOGICAL_SUBTYPE", subtypes);
             int columnMappings = 0;
             int subtypeKeys = 0;
+            int inheritedAttributes = 0;
             for (Item item : tableMappings) {
                 if (!newMappings.contains(item.id())) continue;
                 EntityTableMapping mapping = EntityTableMapping.builder().projectId(projectId).entity(entityMap.get(ref(item, "entity"))).table(tableMap.get(ref(item, "table"))).build();
@@ -1295,10 +1476,36 @@ public class ModelExchangeService {
                     entityManager.persist(SubtypeIdentifierColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
                     subtypeKeys++;
                 }
+                // 상속 일반 속성 매핑 (형식 7) : 상속 PK 매핑과 같은 규칙 — 없으면 빼지 않고 전체를 되돌린다
+                for (Item a : inheritedAttributesByMapping.getOrDefault(item.id(), List.of())) {
+                    LogicalAttribute attribute = attributeMap.get(ref(a, "attribute"));
+                    ColumnInfo column = columnMap.get(ref(a, "column"));
+                    if (attribute == null || column == null) throw invalid("상속 일반 속성 매핑 {0} 의 속성·컬럼을 가져오지 못했습니다.", String.valueOf(a.id()));
+                    entityManager.persist(com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
+                    inheritedAttributes++;
+                }
+            }
+            // 변환 기록 (형식 7) : 새 그룹·새 통합 테이블·새 분류 컬럼에 다시 잇는다
+            int conversionCount = 0;
+            for (Item c : conversions) {
+                if (!newConversions.contains(c.id())) continue;
+                LogicalSubtypeGroup group = groupMap.get(ref(c, "group"));
+                Long tableRef = ref(c, "table");
+                Long columnRef = ref(c, "classificationColumn");
+                TableInfo table = tableRef == null ? null : tableMap.get(tableRef);
+                ColumnInfo column = columnRef == null ? null : columnMap.get(columnRef);
+                if (group == null || (tableRef != null && table == null) || (columnRef != null && column == null)) {
+                    throw invalid("변환 기록 {0} 의 그룹·테이블·컬럼을 가져오지 못했습니다.", String.valueOf(c.id()));
+                }
+                entityManager.persist(com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion.builder().projectId(projectId).group(group)
+                        .strategy(com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion.Strategy.valueOf(string(c, "strategy"))).table(table).classificationColumn(column).build());
+                conversionCount++;
             }
             count(created, "TABLE_MAPPING", newMappings.size());
             count(created, "COLUMN_MAPPING", columnMappings);
             if (subtypeKeys > 0) count(created, "SUBTYPE_KEY_MAPPING", subtypeKeys);
+            if (inheritedAttributes > 0) count(created, "SUBTYPE_ATTR_MAPPING", inheritedAttributes);
+            if (conversionCount > 0) count(created, "SUBTYPE_CONVERSION", conversionCount);
             entityManager.flush();
             count(created, "ERD_LAYOUT_NODE", createLayouts(tableMap, entityMap, areaMap));
             try {

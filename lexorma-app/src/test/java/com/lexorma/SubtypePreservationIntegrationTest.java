@@ -299,7 +299,7 @@ class SubtypePreservationIntegrationTest {
         Set<String> before = dbTriples(user.getProjectId());
         assertThat(before).hasSize(2 /* 기업·개인 */ + 4 /* 조직·사람 */ + 1 /* 부서(부분) */ + 2 /* 팀 */ + 2 /* 갑·을(무효) */);
         long version = versions.create(user, new ModelVersionDto.Create("v-snapshot", null)).id();
-        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, version)).isEqualTo(9);
+        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, version)).isEqualTo(10);
         JsonNode keys = snapshotItems(user, version, "SUBTYPE_KEY_MAPPING");
         assertThat(keyTriples(keys)).isEqualTo(before).doesNotContainAnyElementsOf(dbTriples(other.f().user.getProjectId()));
         // 같은 루트 속성(고객 번호)을 기업·개인이 각자 다른 매핑·컬럼으로 쓴다
@@ -315,14 +315,14 @@ class SubtypePreservationIntegrationTest {
         assertThat(jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, version)).isEqualTo(stored);
         assertThat(keyTriples(snapshotItems(user, version, "SUBTYPE_KEY_MAPPING"))).isEqualTo(before);
 
-        // 상속이 없는 모델 : 형식 9, 상속 PK 매핑 없음
+        // 상속이 없는 모델 : 형식 10 (M-7 상속 A·C), 상속 PK 매핑 없음
         GenerationFixture plain = SubtypePhysicalGenerationIntegrationTest.fixture(context, "pv-snapshot-plain");
         long only = entity(plain, "상품");
         plain.pk(only, plain.attr(only, "상품 번호", true, "PRDT_NO"));
         generate(plain, null, only);
         AccountDto plainUser = plain.member();
         long plainVersion = versions.create(plainUser, new ModelVersionDto.Create("v-plain", null)).id();
-        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, plainVersion)).isEqualTo(9);
+        assertThat(jdbc.queryForObject("select FRMT_VER_NO from TB_MDL_VER where MDL_VER_SN = ?", Integer.class, plainVersion)).isEqualTo(10);
         assertThat(snapshotItems(plainUser, plainVersion, "SUBTYPE_KEY_MAPPING").size()).isZero();
     }
 
@@ -414,7 +414,7 @@ class SubtypePreservationIntegrationTest {
         // 원본 객체를 승인해 둔다 (가져오면 미승인이어야 한다)
         jdbc.update("update TB_TBL set APRV_YN = true where PRJ_SN = ?", source.getProjectId());
         ModelExchangeDto.Document document = exchange.export(source);
-        assertThat(document.formatVersion()).isEqualTo(6);
+        assertThat(document.formatVersion()).isEqualTo(7);
         assertThat(document.model().get("SUBTYPE_KEY_MAPPING")).hasSize(9);
         assertThat(document.model().get("COLUMN_MAPPING")).as("상속 PK 매핑은 직접 매핑 목록에 섞이지 않는다")
                 .noneMatch(c -> document.model().get("SUBTYPE_KEY_MAPPING").stream().anyMatch(k -> Objects.equals(k.state().get("columnId"), c.state().get("columnId"))));
@@ -617,7 +617,7 @@ class SubtypePreservationIntegrationTest {
         bad.put("형식 2 + 속성 짝", relabel(downgrade(document, 3), 2));
         bad.put("형식 1 + 배치", withLayouts(downgrade(document, 1), document));
         bad.put("형식 0", relabel(document, 0));
-        bad.put("형식 7", relabel(document, 7));
+        bad.put("형식 8", relabel(document, 8));
         bad.put("필수 참조 없음 (mappingId)", withoutField(document, "SUBTYPE_KEY_MAPPING", "mappingId"));
         bad.put("필수 참조 없음 (columnId)", withoutField(document, "SUBTYPE_KEY_MAPPING", "columnId"));
         bad.put("알 수 없는 종류", withType(document, "SUBTYPE_KEY_MAPPING_V7"));

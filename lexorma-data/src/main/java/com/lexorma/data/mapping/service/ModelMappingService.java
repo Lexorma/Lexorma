@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -62,6 +63,13 @@ public class ModelMappingService {
     private final SubtypePlanContexts subtypeContexts;
     private final com.lexorma.core.project.repository.ProjectRepository projectRepository;
     private final com.lexorma.data.logical.repository.LogicalSubtypeGroupRepository subtypeGroupRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeRepository;
+
+    /** 논리 모델의 상속 변환 해석 (계층 ID 투영 + 변환 기록 — 모델당 두 번 조회) */
+    InheritanceConversions conversions(Long projectId, Long modelId) {
+        return InheritanceConversions.ofRows(subtypeService.hierarchy(modelId), conversionRepository.findAllByModelId(projectId, modelId));
+    }
 
     // ------------------------------------------------------------------ 조회
 
@@ -69,7 +77,7 @@ public class ModelMappingService {
     @Transactional(readOnly = true)
     public Page<ModelMappingDto.EntityRow> selectEntityRows(AccountDto accountDto, ModelMappingDto.EntitySearch search, Pageable pageable) {
         Page<ModelMappingDto.EntityRow> page = queryRepository.findEntityRows(accountDto.getProjectId(), search, pageable);
-        List<ModelMappingDto.EntityRow> rows = withInheritance(accountDto.getProjectId(), page.getContent());
+        List<ModelMappingDto.EntityRow> rows = withPhysical(accountDto.getProjectId(), withInheritance(accountDto.getProjectId(), page.getContent()));
         return new org.springframework.data.domain.PageImpl<>(rows, pageable, page.getTotalElements());
     }
 
@@ -78,8 +86,12 @@ public class ModelMappingService {
     public ModelMappingDto.Detail selectEntityMapping(AccountDto accountDto, Long mappingId) {
         ModelMappingDto.EntityRow row = mappingId == null ? null : queryRepository.findEntityRow(accountDto.getProjectId(), mappingId);
         if (row == null) throw notFound();
-        return new ModelMappingDto.Detail(withInheritance(accountDto.getProjectId(), List.of(row)).get(0), queryRepository.findAttributeRows(row.entityId()),
-                queryRepository.findUnmappedColumns(row.tableId()));
+        // A형 루트 매핑 (M-7 상속 A) : 통합 테이블에 들어간 계층 구성원의 직접 속성도 이 매핑 아래 (소유 엔터티와 함께)
+        InheritanceConversions conversions = conversions(accountDto.getProjectId(), row.modelId());
+        List<Long> owners = conversions.kind(row.entityId()) == InheritanceConversions.Kind.SINGLE_TABLE && conversions.hierarchy().parent(row.entityId()) == null
+                ? conversions.hierarchy().subtree(row.entityId()) : List.of(row.entityId());
+        ModelMappingDto.EntityRow shown = withPhysical(accountDto.getProjectId(), withInheritance(accountDto.getProjectId(), List.of(row))).get(0);
+        return new ModelMappingDto.Detail(shown, queryRepository.findAttributeRows(owners), queryRepository.findUnmappedColumns(row.tableId()));
     }
 
     /**
@@ -113,6 +125,93 @@ public class ModelMappingService {
             result.add(row.withInheritance(inheritance(contexts.get(row.modelId()), row, own)));
         }
         return result;
+    }
+
+    /**
+     * 행들의 물리 매핑 문맥 (M-7 상속 A·C, D-AC-16) : 직접 · A형 통합 · C형 분산 · 미매핑. 모델마다 계층·변환 기록 한 번, A·C 행이 있을 때만 그 계층 엔터티의 매핑을 한 번에 읽는다
+     * (행마다 조회하지 않는다). 통합·분산이 실제 매핑으로 성립하지 않으면 valid false (미매핑으로 센다 — 정상으로 위장하지 않는다)
+     */
+    List<ModelMappingDto.EntityRow> withPhysical(Long projectId, List<ModelMappingDto.EntityRow> rows) {
+        if (rows.isEmpty()) return rows;
+        java.util.Map<Long, InheritanceConversions> byModel = new java.util.HashMap<>();
+        rows.stream().map(ModelMappingDto.EntityRow::modelId).distinct().forEach(m -> byModel.put(m, conversions(projectId, m)));
+        java.util.Set<Long> needed = new java.util.TreeSet<>();
+        for (ModelMappingDto.EntityRow row : rows) {
+            InheritanceConversions c = byModel.get(row.modelId());
+            if (c.kind(row.entityId()) == InheritanceConversions.Kind.NONE) continue;
+            needed.add(c.hierarchy().root(row.entityId()));
+            needed.addAll(c.hierarchy().subtree(c.hierarchy().root(row.entityId())));
+        }
+        java.util.Map<Long, EntityTableMapping> mappings = new java.util.HashMap<>();
+        if (!needed.isEmpty()) mappingRepository.findAllByEntityIds(needed).forEach(m -> mappings.put(m.getEntity().getId(), m));
+        java.util.Map<Long, String> names = new java.util.HashMap<>();
+        if (!needed.isEmpty()) entityRepository.findAllByIds(new java.util.ArrayList<>(needed), projectId).forEach(e -> names.put(e.getId(), e.getEntityName()));
+        List<ModelMappingDto.EntityRow> result = new java.util.ArrayList<>(rows.size());
+        for (ModelMappingDto.EntityRow row : rows) {
+            InheritanceConversions c = byModel.get(row.modelId());
+            ModelMappingDto.EntityRow next = row.withPhysical(physical(c, row, mappings, names));
+            // A형 루트 : 속성 매핑 분자(통합 속성 포함)와 같은 범위의 분모 — 계층 전체 직접 속성 수 (기록이 있는 루트만, 목록 페이지의 루트 수만큼 한 번씩)
+            if (c.kind(row.entityId()) == InheritanceConversions.Kind.SINGLE_TABLE && c.hierarchy().parent(row.entityId()) == null && row.attributeCount() != null) {
+                next = next.withAttributeCount(attributeRepository.countByEntityIds(c.hierarchy().subtree(row.entityId())));
+            }
+            result.add(next);
+        }
+        return result;
+    }
+
+    /** 엔터티들의 물리 문맥 ([엔터티 ID, 매핑 ID, 테이블 ID] — ERD 매핑 표시). 모델의 계층·기록은 한 번 */
+    Map<Long, ModelMappingDto.Physical> physicalOf(Long projectId, Long modelId, List<Long[]> entities) {
+        List<ModelMappingDto.EntityRow> rows = entities.stream().map(e -> new ModelMappingDto.EntityRow(e[1], modelId, null, e[0], null, null, null, null, e[2], null, null, 0L, 0L))
+                .toList();
+        Map<Long, ModelMappingDto.Physical> result = new java.util.HashMap<>();
+        withPhysical(projectId, rows).forEach(r -> result.put(r.entityId(), r.physical()));
+        return result;
+    }
+
+    /** A형 루트에 통합된 구성원 (루트 제외, 계층 순서) */
+    List<ModelMappingDto.PhysicalTable> mergedInto(Long projectId, Long modelId, Long rootId) {
+        InheritanceConversions c = conversions(projectId, modelId);
+        if (c.kind(rootId) != InheritanceConversions.Kind.SINGLE_TABLE || c.hierarchy().parent(rootId) != null) return List.of();
+        List<Long> members = c.hierarchy().descendants(rootId);
+        Map<Long, String> names = new java.util.HashMap<>();
+        if (!members.isEmpty()) entityRepository.findAllByIds(members, projectId).forEach(e -> names.put(e.getId(), e.getEntityName()));
+        return members.stream().map(id -> new ModelMappingDto.PhysicalTable(id, names.get(id), null, null, null, null)).toList();
+    }
+
+    static ModelMappingDto.Physical physical(InheritanceConversions c, ModelMappingDto.EntityRow row, java.util.Map<Long, EntityTableMapping> mappings, java.util.Map<Long, String> names) {
+        InheritanceConversions.Kind kind = c.kind(row.entityId());
+        if (kind == InheritanceConversions.Kind.NONE) return new ModelMappingDto.Physical(row.mappingId() == null ? "UNMAPPED" : "DIRECT", null, row.mappingId() != null, null, null, List.of(), null);
+        Long root = c.hierarchy().root(row.entityId());
+        String rootName = names.get(root);
+        java.util.function.Function<Long, ModelMappingDto.PhysicalTable> table = id -> {
+            EntityTableMapping m = mappings.get(id);
+            return new ModelMappingDto.PhysicalTable(id, names.get(id), m == null ? null : m.getId(), m == null || m.getTable().getSchema() == null ? null : m.getTable().getSchema().getId(),
+                    m == null ? null : m.getTable().getId(), m == null ? null : m.getTable().getTableName());
+        };
+        if (kind == InheritanceConversions.Kind.INCONSISTENT) {
+            return new ModelMappingDto.Physical(row.mappingId() == null ? "UNMAPPED" : "DIRECT", null, false, root, rootName, row.mappingId() == null ? List.of() : List.of(table.apply(row.entityId())),
+                    "STRATEGY_STRUCTURE_MISMATCH");
+        }
+        String strategy = kind.name();
+        return switch (c.role(row.entityId())) {
+            case MERGED -> {
+                EntityTableMapping rootMapping = mappings.get(root);
+                boolean valid = rootMapping != null && rootMapping.getTable().getId().equals(c.integratedTable(row.entityId())) && row.mappingId() == null;
+                yield new ModelMappingDto.Physical("MERGED", strategy, valid, root, rootName, rootMapping == null ? List.of() : List.of(table.apply(root)),
+                        valid ? null : row.mappingId() != null ? "STRATEGY_STRUCTURE_MISMATCH" : "INTEGRATED_TABLE_UNMAPPED");
+            }
+            case DISTRIBUTED -> {
+                List<Long> leaves = c.leavesUnder(row.entityId());
+                boolean valid = row.mappingId() == null && !leaves.isEmpty() && leaves.stream().allMatch(mappings::containsKey);
+                yield new ModelMappingDto.Physical("DISTRIBUTED", strategy, valid, root, rootName, leaves.stream().filter(mappings::containsKey).map(table).toList(),
+                        valid ? null : row.mappingId() != null ? "STRATEGY_STRUCTURE_MISMATCH" : "CONCRETE_TABLE_UNMAPPED");
+            }
+            default -> {
+                boolean valid = row.mappingId() != null && (kind != InheritanceConversions.Kind.SINGLE_TABLE || row.tableId().equals(c.integratedTable(row.entityId())));
+                yield new ModelMappingDto.Physical(row.mappingId() == null ? "UNMAPPED" : "DIRECT", strategy, valid, root, rootName,
+                        row.mappingId() == null ? List.of() : List.of(table.apply(row.entityId())), valid || row.mappingId() == null ? null : "STRATEGY_STRUCTURE_MISMATCH");
+            }
+        };
     }
 
     private static ModelMappingDto.Inheritance inheritance(SubtypePlanContext context, ModelMappingDto.EntityRow row, List<SubtypeIdentifierColumnMapping> own) {
@@ -156,7 +255,8 @@ public class ModelMappingService {
         if ((entityId == null) == (tableId == null)) {
             throw invalid("엔터티와 테이블 중 하나만 지정해주세요.");
         }
-        return queryRepository.findEntityRow(accountDto.getProjectId(), entityId, tableId);
+        ModelMappingDto.EntityRow row = queryRepository.findEntityRow(accountDto.getProjectId(), entityId, tableId);
+        return row == null ? null : withPhysical(accountDto.getProjectId(), List.of(row)).get(0);
     }
 
     @Transactional(readOnly = true)
@@ -170,7 +270,40 @@ public class ModelMappingService {
         if (modelId != null && status.isEmpty()) {
             throw new CustomException(ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED, "{0}을(를) 찾을 수 없습니다.", Messages.get("논리 모델"));
         }
-        return status;
+        // 매핑률 (D-AC-16) : 유효한 A형 통합 = 매핑, 유효한 C형 분산 = 분모에서 뺀다 (기록이 없거나 실제 매핑이 모자라면 그대로 미매핑)
+        List<ModelMappingDto.Status> result = new java.util.ArrayList<>(status.size());
+        for (ModelMappingDto.Status s : status) {
+            InheritanceConversions c = conversions(accountDto.getProjectId(), s.modelId());
+            if (c.records().isEmpty()) {
+                result.add(s);
+                continue;
+            }
+            java.util.Set<Long> members = new java.util.TreeSet<>();
+            c.records().forEach(r -> {
+                var group = c.hierarchy().group(r.groupId());
+                if (group != null) members.addAll(c.hierarchy().subtree(c.hierarchy().root(group.supertypeId())));
+            });
+            java.util.Map<Long, EntityTableMapping> mappings = new java.util.HashMap<>();
+            mappingRepository.findAllByEntityIds(members).forEach(m -> mappings.put(m.getEntity().getId(), m));
+            long merged = 0;
+            long distributed = 0;
+            List<Long> distributedIds = new java.util.ArrayList<>();
+            for (Long id : members) {
+                EntityTableMapping own = mappings.get(id);
+                ModelMappingDto.EntityRow row = new ModelMappingDto.EntityRow(own == null ? null : own.getId(), s.modelId(), null, id, null, null, null, null,
+                        own == null ? null : own.getTable().getId(), null, null, 0L, 0L);
+                ModelMappingDto.Physical p = physical(c, row, mappings, java.util.Map.of());
+                if (!p.valid()) continue;
+                if ("MERGED".equals(p.kind())) merged++;
+                if ("DISTRIBUTED".equals(p.kind())) {
+                    distributed++;
+                    distributedIds.add(id);
+                }
+            }
+            long distributedAttributes = distributedIds.isEmpty() ? 0 : attributeRepository.countByEntityIds(distributedIds);
+            result.add(s.withStrategies(merged, distributed, distributedAttributes));
+        }
+        return result;
     }
 
     // ------------------------------------------------------------------ 엔터티 ↔ 테이블
@@ -184,6 +317,10 @@ public class ModelMappingService {
             mappingRepository.findByEntity_Id(entity.getId()).ifPresent(m -> {
                 throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "엔터티 {0} 은(는) 이미 테이블 {1} 에 매핑되어 있습니다.", entity.getEntityName(), m.getTable().getTableName());
             });
+            // A형 통합·C형 분산 엔터티 (M-7 상속 A·C) : 직접 테이블 매핑을 만들면 기록된 물리 구조와 맞지 않는다 — 변환 기록을 먼저 지운다
+            InheritanceConversions.Role role = conversions(projectId, entity.getModel().getId()).role(entity.getId());
+            if (role == InheritanceConversions.Role.MERGED) throw invalid("엔터티 {0} 은(는) A형 통합 테이블에 들어간 서브타입이라 따로 매핑할 수 없습니다.", entity.getEntityName());
+            if (role == InheritanceConversions.Role.DISTRIBUTED) throw invalid("엔터티 {0} 은(는) C형으로 말단 테이블에 분산된 엔터티라 테이블에 매핑할 수 없습니다.", entity.getEntityName());
             mapping = EntityTableMapping.builder().projectId(projectId).entity(entity).build();
         } else {
             mapping = lockMapping(projectId, request.id());
@@ -193,6 +330,9 @@ public class ModelMappingService {
             }
             if (!mapping.getTable().getId().equals(request.tableId()) && subtypeKeyRepository.existsByMapping_Id(mapping.getId())) {
                 throw invalid("상속 PK 매핑이 있는 엔터티 매핑은 테이블을 바꿀 수 없습니다. 상속 PK 매핑을 먼저 해제해주세요.");
+            }
+            if (!mapping.getTable().getId().equals(request.tableId()) && subtypeAttributeRepository.existsByMapping_Id(mapping.getId())) {
+                throw invalid("상속 일반 속성 매핑이 있는 엔터티 매핑은 테이블을 바꿀 수 없습니다. 상속 일반 속성 매핑을 먼저 해제해주세요.");
             }
         }
         TableInfo table = lockTable(projectId, request.tableId());
@@ -218,6 +358,9 @@ public class ModelMappingService {
         if (subtypeKeyRepository.existsByMapping_Id(mapping.getId())) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "상속 PK 매핑이 있는 엔터티 매핑입니다. 상속 PK 매핑을 먼저 해제해주세요.");
         }
+        if (subtypeAttributeRepository.existsByMapping_Id(mapping.getId())) {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "상속 일반 속성 매핑이 있는 엔터티 매핑입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.");
+        }
         mappingRepository.delete(mapping);
     }
 
@@ -233,8 +376,13 @@ public class ModelMappingService {
         if (request.id() == null) {
             // 부모 매핑은 로그인 프로젝트 것이므로, 그 엔터티·테이블에 속하는지만 보면 다른 프로젝트·다른 엔터티의 속성·컬럼이 함께 걸러진다
             LogicalAttribute attribute = (request.attributeId() == null ? null : attributeRepository.findById(request.attributeId()).orElse(null));
-            if (attribute == null || !attribute.getEntity().getId().equals(parent.getEntity().getId())) {
-                throw invalid("매핑된 엔터티 {0} 의 속성만 연결할 수 있습니다.", parent.getEntity().getEntityName());
+            if (attribute == null) throw invalid("매핑된 엔터티 {0} 의 속성만 연결할 수 있습니다.", parent.getEntity().getEntityName());
+            if (!attribute.getEntity().getId().equals(parent.getEntity().getId())) {
+                // A형 (M-7 상속 A, D-AC-02 5.3) : 루트 매핑 아래에는 같은 통합 계층 구성원의 직접 속성도 — 변환 기록과 계층 소속이 실제로 확인될 때만 (같은 프로젝트라는 이유만으로 허용하지 않는다)
+                InheritanceConversions c = conversions(projectId, parent.getEntity().getModel().getId());
+                boolean merged = c.sameSingleTableTree(parent.getEntity().getId(), attribute.getEntity().getId())
+                        && parent.getTable().getId().equals(c.integratedTable(parent.getEntity().getId()));
+                if (!merged) throw invalid("매핑된 엔터티 {0} 의 속성만 연결할 수 있습니다.", parent.getEntity().getEntityName());
             }
             attributeMappingRepository.findByAttribute_Id(attribute.getId()).ifPresent(m -> {
                 throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "속성 {0} 은(는) 이미 컬럼 {1} 에 매핑되어 있습니다.", attribute.getAttributeName(), m.getColumn().getColumnName());
@@ -316,6 +464,12 @@ public class ModelMappingService {
         Long parentId = hierarchy.parent(entity.getId());
         Long rootId = hierarchy.root(entity.getId());
         boolean complete = !rootKey.isEmpty() && rootKey.stream().allMatch(a -> byAttribute.containsKey(a.getId()));
+        if (conversions(projectId, entity.getModel().getId()).kind(entity.getId()) == InheritanceConversions.Kind.TABLE_PER_CONCRETE) {
+            // C형 말단 : 상속 FK·직계 상위 테이블이 없는 것이 정상이다 — B형 상속 구조 판정을 내지 않는다 (구조는 정합성 비교 [상속 구조] 의 C형 판정)
+            return new ModelMappingDto.SubtypeKeyDetail(row, true, parentId, context.entity(parentId).getEntityName(), rootId, context.entity(rootId).getEntityName(),
+                    "CONCRETE", Messages.get("C형 말단 테이블 : 루트 {0} 의 주 식별자를 이 테이블의 PK 로 복제합니다. 상속 FK 와 상위 테이블은 없습니다 (구조는 정합성 비교의 [상속 구조] 에서 C형 기준으로 판정).",
+                    context.entity(rootId).getEntityName()), complete, keys, null);
+        }
         String status = inspection.code() == null ? "VALID" : inspection.code();
         SubtypePlanContext.AncestorState state = context.ancestor(entity.getId(), java.util.Set.of());
         String message = state.code() == null ? null : SubtypePlanContext.ANCESTOR_INVALID.equals(state.code())
@@ -459,11 +613,208 @@ public class ModelMappingService {
                 state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), !current ? "STALE" : state == null ? null : state.state());
     }
 
-    /** 다른 상속 PK 매핑이 쓰는 컬럼은 속성 매핑·상속 PK 매핑에 다시 쓸 수 없다 (self : 바꾸는 상속 PK 매핑 자신) */
+    /** 다른 상속 PK 매핑이 쓰는 컬럼은 속성 매핑·상속 PK 매핑에 다시 쓸 수 없다 (self : 바꾸는 상속 PK 매핑 자신). 상속 일반 속성 매핑에 쓰인 컬럼도 같다 */
     private void rejectInheritedKeyColumn(ColumnInfo column, Long self) {
         subtypeKeyRepository.findByColumn_Id(column.getId()).filter(m -> !m.getId().equals(self)).ifPresent(m -> {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "컬럼 {0} 은(는) 이미 속성 {1} 의 상속 PK 매핑에 쓰이고 있습니다.", column.getColumnName(), m.getAttribute().getAttributeName());
         });
+        rejectInheritedAttributeColumn(column, null);
+    }
+
+    /** 상속 일반 속성 매핑(C형)이 쓰는 컬럼은 다른 매핑에 쓸 수 없다 (self : 바꾸는 상속 일반 속성 매핑 자신) */
+    private void rejectInheritedAttributeColumn(ColumnInfo column, Long self) {
+        subtypeAttributeRepository.findByColumn_Id(column.getId()).filter(m -> !m.getId().equals(self)).ifPresent(m -> {
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "컬럼 {0} 은(는) 이미 속성 {1} 의 상속 일반 속성 매핑에 쓰이고 있습니다.", column.getColumnName(), m.getAttribute().getAttributeName());
+        });
+    }
+
+    // ------------------------------------------------------------------ C형 상속 일반 속성 매핑 (M-7 상속 C)
+
+    /** C형 말단 매핑의 상속 일반 속성 매핑 : 지금 조상의 일반 속성마다 1행(루트 → 직계 부모, 속성 순서), 그 뒤 지금 조상 속성이 아닌 기존 매핑 */
+    @Transactional(readOnly = true)
+    public ModelMappingDto.SubtypeAttributeDetail selectSubtypeAttributes(AccountDto accountDto, Long mappingId) {
+        Long projectId = accountDto.getProjectId();
+        ModelMappingDto.EntityRow row = mappingId == null ? null : queryRepository.findEntityRow(projectId, mappingId);
+        if (row == null) throw notFound();
+        EntityTableMapping mapping = mappingRepository.findByIdAndProjectId(mappingId, projectId).orElseThrow(ModelMappingService::notFound);
+        LogicalEntity entity = mapping.getEntity();
+        InheritanceConversions c = conversions(projectId, entity.getModel().getId());
+        List<com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping> links = subtypeAttributeRepository.findAllByMappingId(mappingId);
+        java.util.Map<Long, com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping> byAttribute = new java.util.HashMap<>();
+        links.forEach(l -> byAttribute.put(l.getAttribute().getId(), l));
+        row = withPhysical(projectId, withInheritance(projectId, List.of(row))).get(0);
+        boolean concrete = c.kind(entity.getId()) == InheritanceConversions.Kind.TABLE_PER_CONCRETE && c.leaf(entity.getId());
+        List<ModelMappingDto.SubtypeAttributeRow> rows = new java.util.ArrayList<>();
+        java.util.Set<Long> current = new java.util.HashSet<>();
+        if (concrete) {
+            java.util.Map<Long, LogicalEntity> owners = new java.util.HashMap<>();
+            entityRepository.findAllByIds(c.hierarchy().ancestors(entity.getId()), projectId).forEach(e -> owners.put(e.getId(), e));
+            LogicalEntity root = owners.get(c.hierarchy().root(entity.getId()));
+            java.util.Set<Long> rootKey = root == null ? java.util.Set.of() : PhysicalGenerationService.primaryAttributeIds(root);
+            for (Long ownerId : c.hierarchy().ancestors(entity.getId()).reversed()) {
+                LogicalEntity owner = owners.get(ownerId);
+                if (owner == null) continue;
+                for (LogicalAttribute attribute : PhysicalGenerationService.columnOrder(owner)) {
+                    if (rootKey.contains(attribute.getId())) continue; // 상속 PK 는 상속 PK 매핑에서
+                    current.add(attribute.getId());
+                    var link = byAttribute.get(attribute.getId());
+                    rows.add(attributeRow(link, true, attribute, owner, mapping));
+                }
+            }
+        }
+        for (var link : links) if (!current.contains(link.getAttribute().getId())) rows.add(attributeRow(link, false, link.getAttribute(), link.getAttribute().getEntity(), mapping));
+        String message = concrete ? null : links.isEmpty() ? Messages.get("엔터티 {0} 은(는) C형 계층의 말단이 아니라 상속 일반 속성 매핑 대상이 아닙니다.", entity.getEntityName())
+                : Messages.get("엔터티 {0} 은(는) 지금 C형 계층의 말단이 아닙니다. 상속 일반 속성 매핑을 해제할 수 있습니다.", entity.getEntityName());
+        return new ModelMappingDto.SubtypeAttributeDetail(row, concrete, concrete ? InheritanceConversions.Kind.TABLE_PER_CONCRETE.name() : null, rows, message);
+    }
+
+    private static ModelMappingDto.SubtypeAttributeRow attributeRow(com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping link, boolean current,
+                                                                    LogicalAttribute attribute, LogicalEntity owner, EntityTableMapping mapping) {
+        ColumnInfo column = link == null ? null : link.getColumn();
+        String check = !current ? "STALE" : column == null ? "UNMAPPED"
+                : column.getTableInfo() == null || !column.getTableInfo().getId().equals(mapping.getTable().getId()) ? "OTHER_TABLE" : "OK";
+        return new ModelMappingDto.SubtypeAttributeRow(link == null ? null : link.getId(), current, attribute.getId(), attribute.getAttributeName(), owner.getId(), owner.getEntityName(),
+                column == null ? null : column.getId(), column == null ? null : column.getColumnName(), column == null ? null : column.getDataType(),
+                column == null ? null : column.getMaxLength(), termName(attribute), attributeType(attribute), attribute.getIsRequired(),
+                column == null ? null : com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(column), check);
+    }
+
+    /**
+     * 상속 일반 속성 매핑 등록·변경 (D-AC-02 5.4·5.5). 등록 : 지금 C형 계층 말단의 매핑, 지금 조상의 일반 속성(루트 주 식별자 제외), 그 매핑 테이블의 컬럼,
+     * (매핑, 속성)·컬럼 중복 없음, 다른 매핑(속성·상속 PK)에 쓰인 컬럼이 아님. 변경 : 컬럼만. 컬럼명으로 추론하지 않는다
+     */
+    @Transactional
+    public ModelMappingDto.SubtypeAttributeMapping saveSubtypeAttributeMapping(AccountDto accountDto, ModelMappingDto.SubtypeAttributeMapping request) {
+        Long projectId = accountDto.getProjectId();
+        if (request == null) throw invalid("상속 일반 속성 매핑 내용이 없습니다.");
+        EntityTableMapping parent = lockMapping(projectId, request.id() == null ? request.mappingId()
+                : subtypeAttributeRepository.findParentId(request.id(), projectId).orElseThrow(ModelMappingService::notFound));
+        com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping mapping;
+        if (request.id() == null) {
+            LogicalEntity entity = parent.getEntity();
+            InheritanceConversions c = conversions(projectId, entity.getModel().getId());
+            if (c.kind(entity.getId()) != InheritanceConversions.Kind.TABLE_PER_CONCRETE || !c.leaf(entity.getId())) {
+                throw invalid("엔터티 {0} 은(는) C형 계층의 말단이 아니라 상속 일반 속성 매핑을 등록할 수 없습니다.", entity.getEntityName());
+            }
+            LogicalAttribute attribute = request.attributeId() == null ? null : attributeRepository.findById(request.attributeId()).orElse(null);
+            if (attribute == null || !c.concreteAncestor(entity.getId(), attribute.getEntity().getId())) {
+                throw invalid("엔터티 {0} 의 조상 엔터티 속성만 상속 일반 속성으로 연결할 수 있습니다.", entity.getEntityName());
+            }
+            LogicalEntity root = entityRepository.findByIdAndProjectId(c.hierarchy().root(entity.getId()), projectId).orElseThrow(ModelMappingService::notFound);
+            if (PhysicalGenerationService.primaryAttributeIds(root).contains(attribute.getId())) {
+                throw invalid("루트 주 식별자 속성 {0} 은(는) 상속 PK 매핑으로 연결해주세요.", attribute.getAttributeName());
+            }
+            subtypeAttributeRepository.findByMapping_IdAndAttribute_Id(parent.getId(), attribute.getId()).ifPresent(m -> {
+                throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "속성 {0} 은(는) 이미 컬럼 {1} 에 상속 일반 속성 매핑되어 있습니다.", attribute.getAttributeName(), m.getColumn().getColumnName());
+            });
+            mapping = com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping.builder().mapping(parent).attribute(attribute).build();
+        } else {
+            mapping = subtypeAttributeRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound);
+        }
+        ColumnInfo column = request.columnId() == null ? null : columnInfoRepository.findById(request.columnId()).orElse(null);
+        if (column == null || column.getTableInfo() == null || !column.getTableInfo().getId().equals(parent.getTable().getId())) {
+            throw invalid("매핑된 테이블 {0} 의 컬럼만 연결할 수 있습니다.", parent.getTable().getTableName());
+        }
+        attributeMappingRepository.findByColumn_Id(column.getId()).ifPresent(m -> {
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "컬럼 {0} 은(는) 이미 속성 {1} 에 매핑되어 있어 상속 일반 속성 매핑에 쓸 수 없습니다.", column.getColumnName(), m.getAttribute().getAttributeName());
+        });
+        subtypeKeyRepository.findByColumn_Id(column.getId()).ifPresent(m -> {
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "컬럼 {0} 은(는) 이미 속성 {1} 의 상속 PK 매핑에 쓰이고 있습니다.", column.getColumnName(), m.getAttribute().getAttributeName());
+        });
+        rejectInheritedAttributeColumn(column, mapping.getId());
+        mapping.setColumn(column);
+        try {
+            subtypeAttributeRepository.saveAndFlush(mapping);
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(ErrorCode.SAVED_DATA_EXISTS);
+        }
+        return new ModelMappingDto.SubtypeAttributeMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId());
+    }
+
+    /** 상속 일반 속성 매핑 해제 : 매핑만 지운다 (물리 컬럼·논리 속성 그대로) */
+    @Transactional
+    public void deleteSubtypeAttributeMapping(AccountDto accountDto, Long id) {
+        Long projectId = accountDto.getProjectId();
+        if (id == null) throw notFound();
+        lockMapping(projectId, subtypeAttributeRepository.findParentId(id, projectId).orElseThrow(ModelMappingService::notFound));
+        subtypeAttributeRepository.delete(subtypeAttributeRepository.findById(id).orElseThrow(ModelMappingService::notFound));
+    }
+
+    /** 상속 일반 속성 매핑 후보 컬럼 (서버 페이징) : 세 매핑 어디에도 쓰이지 않은 매핑 테이블 컬럼. currentId 의 컬럼은 후보로 둔다 */
+    @Transactional(readOnly = true)
+    public Page<ModelMappingDto.KeyColumnCandidate> selectSubtypeAttributeCandidates(AccountDto accountDto, Long mappingId, Long currentId, String searchQuery, Pageable pageable) {
+        Long projectId = accountDto.getProjectId();
+        EntityTableMapping mapping = mappingId == null ? null : mappingRepository.findByIdAndProjectId(mappingId, projectId).orElse(null);
+        if (mapping == null) throw notFound();
+        if (currentId != null && !subtypeAttributeRepository.findParentId(currentId, projectId).map(mappingId::equals).orElse(false)) throw notFound();
+        return queryRepository.findKeyColumnCandidates(mapping.getTable().getId(), null, currentId, searchQuery, pageable);
+    }
+
+    // ------------------------------------------------------------------ 변환 기록 (D-AC-18)
+
+    /** 논리 모델의 상속 계층별 변환 기록과 삭제를 막는 매핑 */
+    @Transactional(readOnly = true)
+    public List<ModelMappingDto.ConversionTree> selectConversions(AccountDto accountDto, Long modelId) {
+        Long projectId = accountDto.getProjectId();
+        if (modelId == null || modelRepository.findByIdAndProjectId(modelId, projectId).isEmpty()) {
+            throw new CustomException(ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED, "{0}을(를) 찾을 수 없습니다.", Messages.get("논리 모델"));
+        }
+        List<com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion> rows = conversionRepository.findAllByModelId(projectId, modelId);
+        InheritanceConversions c = InheritanceConversions.ofRows(subtypeService.hierarchy(modelId), rows);
+        java.util.Map<Long, List<com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion>> byRoot = new java.util.LinkedHashMap<>();
+        for (var row : rows) {
+            var group = c.hierarchy().group(row.getGroup().getId());
+            Long root = group == null ? row.getGroup().getSupertypeEntity().getId() : c.hierarchy().root(group.supertypeId());
+            byRoot.computeIfAbsent(root, k -> new java.util.ArrayList<>()).add(row);
+        }
+        List<ModelMappingDto.ConversionTree> result = new java.util.ArrayList<>();
+        byRoot.forEach((root, list) -> {
+            List<String> dependencies = conversionDependencies(projectId, c, root);
+            LogicalEntity rootEntity = entityRepository.findByIdAndProjectId(root, projectId).orElse(null);
+            result.add(new ModelMappingDto.ConversionTree(root, rootEntity == null ? null : rootEntity.getEntityName(), c.kindOfRoot(root).name(),
+                    list.stream().map(r -> new ModelMappingDto.Conversion(r.getId(), r.getGroup().getId(), r.getGroup().getGroupName(), r.getGroup().getSupertypeEntity().getId(),
+                            r.getGroup().getSupertypeEntity().getEntityName(), r.getStrategy().name(), r.getTable() == null ? null : r.getTable().getId(),
+                            r.getTable() == null ? null : r.getTable().getTableName(), r.getClassificationColumn() == null ? null : r.getClassificationColumn().getId(),
+                            r.getClassificationColumn() == null ? null : r.getClassificationColumn().getColumnName())).toList(), dependencies, dependencies.isEmpty()));
+        });
+        return result;
+    }
+
+    /**
+     * 상속 계층의 변환 기록 삭제 (D-AC-18) : 관련 매핑(계층 엔터티의 엔터티 매핑, 계층 속성의 속성·상속 PK·상속 일반 속성 매핑)이 남아 있으면 막는다 — 매핑을 먼저 해제한다.
+     * 기록만 지운다 (물리 테이블·컬럼·FK·UNIQUE·논리 엔터티를 지우거나 다른 전략으로 바꾸지 않는다). 논리 모델 행을 잠근 뒤 판단한다 (매핑 등록과 직렬화)
+     */
+    @Transactional
+    public int deleteConversions(AccountDto accountDto, Long rootEntityId) {
+        Long projectId = accountDto.getProjectId();
+        LogicalEntity root = lockEntity(projectId, rootEntityId);
+        InheritanceConversions c = conversions(projectId, root.getModel().getId());
+        if (c.hierarchy().parent(root.getId()) != null) throw invalid("변환 기록은 상속 계층의 루트 엔터티로 지웁니다.");
+        List<Long> groups = c.groupsOfTree(root.getId()).stream().map(com.lexorma.data.logical.service.LogicalHierarchy.Group::id).toList();
+        List<com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion> records = conversionRepository.findAllByModelId(projectId, root.getModel().getId()).stream()
+                .filter(r -> groups.contains(r.getGroup().getId())).toList();
+        if (records.isEmpty()) throw notFound();
+        List<String> dependencies = conversionDependencies(projectId, c, root.getId());
+        if (!dependencies.isEmpty()) {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "변환 기록에 의존하는 매핑이 있어 지울 수 없습니다. 매핑을 먼저 해제해주세요 : {0}", String.join(", ", dependencies));
+        }
+        conversionRepository.deleteAll(records);
+        conversionRepository.flush();
+        return records.size();
+    }
+
+    /** 변환 기록 삭제를 막는 매핑 (계층 엔터티의 엔터티 매핑, 계층 속성의 세 종류 매핑) — 사람이 읽는 목록 */
+    private List<String> conversionDependencies(Long projectId, InheritanceConversions c, Long root) {
+        List<Long> tree = c.hierarchy().subtree(root);
+        List<String> result = new java.util.ArrayList<>();
+        mappingRepository.findAllByEntityIds(tree).forEach(m -> result.add(Messages.get("엔터티 매핑 {0} ↔ {1}", m.getEntity().getEntityName(), m.getTable().getTableName())));
+        long attributes = attributeMappingRepository.countByAttributeEntityIds(tree);
+        if (attributes > 0) result.add(Messages.get("속성 매핑 {0}건", attributes));
+        long keys = subtypeKeyRepository.countByAttributeEntityIds(tree);
+        if (keys > 0) result.add(Messages.get("상속 PK 매핑 {0}건", keys));
+        long inherited = subtypeAttributeRepository.countByAttributeEntityIds(tree);
+        if (inherited > 0) result.add(Messages.get("상속 일반 속성 매핑 {0}건", inherited));
+        return result;
     }
 
     private com.lexorma.core.project.domain.enums.DbType dbType(Long projectId) {

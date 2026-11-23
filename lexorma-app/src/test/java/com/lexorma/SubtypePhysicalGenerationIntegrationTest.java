@@ -233,7 +233,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         ModelVersionDto.Snapshot generated = versions.snapshot(f.member(), result.versionId());
         assertThat(generated.objects().has("SUBTYPE_KEY_MAPPING") ? generated.objects().get("SUBTYPE_KEY_MAPPING").size() : 0).isZero();
         ModelVersionDto.Summary now = versions.create(f.member(), new ModelVersionDto.Create("sg-two-" + System.nanoTime(), null));
-        assertThat(now.formatVersion()).isEqualTo(9);
+        assertThat(now.formatVersion()).isEqualTo(10);
         assertThat(now.counts().get("SUBTYPE_KEY_MAPPING").asInt()).isEqualTo(2);
         ModelVersionDto.Comparison diff = versions.compare(f.member(), result.versionId(), now.id());
         assertThat(diff.changes()).filteredOn(c -> "SUBTYPE_KEY_MAPPING".equals(c.targetType())).extracting(ModelVersionDto.Change::change).containsOnly("ADDED").hasSize(2);
@@ -674,7 +674,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         group(f, org, "조직 구분", true, false, dept, team);
         generate(f, party, org, human, dept, team);
         ModelExchangeDto.Document document = exchange.export(f.member());
-        assertThat(document.formatVersion()).isEqualTo(6);
+        assertThat(document.formatVersion()).isEqualTo(7);
         assertThat(document.model().get("SUBTYPE_KEY_MAPPING")).hasSize(8);
 
         GenerationFixture t = fixture("sg-exchange-dst");

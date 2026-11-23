@@ -39,4 +39,8 @@ public interface SubtypeIdentifierColumnMappingRepository extends JpaRepository<
 
     /** 원본 속성 삭제 차단 */
     Optional<SubtypeIdentifierColumnMapping> findFirstByAttribute_IdIn(Collection<Long> attributeIds);
+
+    /** 엔터티들의 속성이 쓰인 매핑 수 (상속 변환 기록 삭제 의존성 — D-AC-18) */
+    @org.springframework.data.jpa.repository.Query("select count(m) from SubtypeIdentifierColumnMapping m where m.attribute.entity.id in :ids")
+    long countByAttributeEntityIds(@org.springframework.data.repository.query.Param("ids") java.util.Collection<Long> ids);
 }

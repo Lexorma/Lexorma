@@ -13,14 +13,50 @@ public final class PhysicalGenerationDto {
      * excludedAttributeIds (M-7 보강 2차 P7) : 만들지 않을 속성 — 고른 엔터티의 속성만 (아니면 400, 중복도 400). 비었거나 없으면 모든 속성.
      * 주 식별자 속성은 제외를 요청해도 만든다 (서버가 정규화하고 경고)
      */
-    public record Request(List<Long> entityIds, Long schemaId, String planToken, List<Long> excludedAttributeIds) {
+    public record Request(List<Long> entityIds, Long schemaId, String planToken, List<Long> excludedAttributeIds, List<StrategyChoice> strategies) {
         public Request(List<Long> entityIds, Long schemaId, String planToken) {
-            this(entityIds, schemaId, planToken, null);
+            this(entityIds, schemaId, planToken, null, null);
+        }
+
+        public Request(List<Long> entityIds, Long schemaId, String planToken, List<Long> excludedAttributeIds) {
+            this(entityIds, schemaId, planToken, excludedAttributeIds, null);
         }
     }
 
     /**
+     * 독립 루트 상속 계층 하나의 물리 변환 전략 (M-7 상속 A·C, D-AC-15). rootEntityId : 고른 엔터티 중 상속 계층의 루트, strategy : TABLE_PER_TYPE(B형, 기본) ·
+     * SINGLE_TABLE(A형) · TABLE_PER_CONCRETE(C형). 생략한 계층은 B형 (기존 요청 그대로). 일반 엔터티·루트가 아닌 엔터티·같은 루트 두 번은 400
+     */
+    public record StrategyChoice(Long rootEntityId, String strategy) {
+    }
+
+    /**
+     * 계층 하나의 전략 요약 (M-7 상속 A·C, 미리보기 — 실제 계획 수와 같다). status : READY(만들 수 있다) · BLOCKED(errors). missingEntities : 계층에 있지만 고르지 않은 엔터티 (D-AC-03).
+     * entities : 계층의 논리 엔터티 수, tables·columns·uniques·foreignKeys : 실제로 만들 수 (이 계층 테이블의), excludedForeignKeys : 전략상 만들지 않는 FK 수 (D-AC-09·10),
+     * mergedEntities (A) · distributedEntities (C) : 통합·분산 엔터티. warnings : 막지 않는 경고 코드 (메시지는 constraintWarnings)
+     */
+    public record StrategyPlan(Long rootEntityId, String rootEntityName, String strategy, String status, int entities, int tables, int columns, int uniques,
+                               int foreignKeys, int excludedForeignKeys, List<EntityRef> missingEntities, List<EntityRef> mergedEntities, List<EntityRef> distributedEntities,
+                               List<String> errors, List<String> warnings) {
+    }
+
+    public record EntityRef(Long entityId, String entityName) {
+    }
+
+    /**
+     * 그룹 하나의 변환 기록 계획 (M-7 상속 A·C, D-AC-02). A형 : tableName·classificationAttribute*·classificationColumnName·values(구성원 분류 값), C형 : 모두 null.
+     * 반영 때 {@code TB_SBTYP_GROUP_CNVR} 1행
+     */
+    public record ConversionPlan(Long groupId, String groupName, Long supertypeEntityId, String supertypeEntityName, Long rootEntityId, String strategy, String tableName,
+                                 Long classificationAttributeId, String classificationAttributeName, String classificationColumnName, List<ClassificationValue> values) {
+    }
+
+    public record ClassificationValue(Long entityId, String entityName, String value) {
+    }
+
+    /**
      * status : CREATE(만든다 — 상속 구조 참여 엔터티는 "계획이 유효" 라는 뜻이고 반영은 {@link Plan#executable} 이 정한다) · SKIP(이미 매핑된 엔터티 — 덮어쓰지 않는다)
+     * · MERGED(A형 — 루트 통합 테이블에 들어간다, tableName = 통합 테이블, 자기 테이블 없음) · DISTRIBUTED(C형 루트·중간 — 말단 테이블에 복제된다, 자기 테이블 없음)
      * · ERROR(막는 문제 — 하나라도 있으면 반영하지 않는다) · UNSUPPORTED(M-6 후속 5차의 상속 미지원 — M-7 2차부터 만들지 않는다, 예전 클라이언트 호환용으로 값만 남는다).
      * columns 는 만들 순서 (P3 : 주 식별자 속성을 식별자 순서대로 먼저, 나머지는 속성 순서 — 서브타입은 상속 PK 컬럼을 루트 식별자 순서대로 먼저).
      * attributes : 엔터티의 직접 속성과 제외 여부 (SKIP 이면 빈 목록). inheritance : 슈퍼타입·서브타입 구조에 참여하면 그 계획 (아니면 null, M-7 2차)
@@ -41,7 +77,11 @@ public final class PhysicalGenerationDto {
      * INHERITED_KEY_TYPE_MISMATCH · INHERITANCE_FK_MISSING — 기존 조상, 3차 · 상속 FK 를 만들 수 없음 : COLUMN_UNAVAILABLE · TYPE_INCOMPATIBLE, M7-D42) — 메시지는 TablePlan.errors
      */
     public record InheritancePlan(String strategy, String role, int level, Long parentEntityId, String parentEntityName, Long rootEntityId, String rootEntityName,
-                                  Long groupId, String groupName, List<String> reasons) {
+                                  Long groupId, String groupName, List<String> reasons, String physicalRole, List<EntityRef> tableEntities) {
+        public InheritancePlan(String strategy, String role, int level, Long parentEntityId, String parentEntityName, Long rootEntityId, String rootEntityName,
+                               Long groupId, String groupName, List<String> reasons) {
+            this(strategy, role, level, parentEntityId, parentEntityName, rootEntityId, rootEntityName, groupId, groupName, reasons, "DIRECT", List.of());
+        }
     }
 
     /**
@@ -53,13 +93,23 @@ public final class PhysicalGenerationDto {
 
     /**
      * refTableName : 컬럼의 참조 테이블명 (단일 FK — 짝이 완성된 관계(4차) 또는 단일 상속 PK 의 상속 FK(M-7 2차)). termApproved false 면 승인 전 용어.
-     * inheritedFromEntityId : 상속 PK 컬럼이면 그 주 식별자를 정의한 루트 엔터티 (attributeId 는 루트의 원본 속성 ID — 논리 속성을 복제하지 않는다, M7-D03·D15), 직접 속성이면 null
+     * inheritedFromEntityId : 상속 PK 컬럼이면 그 주 식별자를 정의한 루트 엔터티 (attributeId 는 루트의 원본 속성 ID — 논리 속성을 복제하지 않는다, M7-D03·D15), 직접 속성이면 null.
+     * mappingKind (M-7 상속 A·C) : DIRECT(이 테이블 엔터티의 직접 속성 — 속성 컬럼 매핑) · MERGED(A형 — 같은 계층 다른 엔터티의 직접 속성, 루트 매핑 아래 속성 컬럼 매핑) ·
+     * INHERITED_KEY(상속 PK — 서브타입 식별자 컬럼 매핑) · INHERITED_ATTRIBUTE(C형 — 조상 일반 속성 복제, 서브타입 속성 컬럼 매핑). sourceEntityId·sourceEntityName : 속성을 정의한 엔터티.
+     * logicalRequired : 논리 필수 여부 (A형 서브타입 필수 속성은 nullable true 로 만든다 — D-AC-05, 차이는 경고), classification : A형 분류 컬럼
      */
     public record ColumnPlan(Long attributeId, String attributeName, Long termId, String columnName, String dataType, Integer maxLength, Integer precision,
-                             Integer scale, boolean pk, boolean nullable, String refTableName, Boolean termApproved, Long inheritedFromEntityId) {
+                             Integer scale, boolean pk, boolean nullable, String refTableName, Boolean termApproved, Long inheritedFromEntityId,
+                             String mappingKind, Long sourceEntityId, String sourceEntityName, boolean logicalRequired, boolean classification) {
         public ColumnPlan(Long attributeId, String attributeName, Long termId, String columnName, String dataType, Integer maxLength, Integer precision,
                           Integer scale, boolean pk, boolean nullable, String refTableName, Boolean termApproved) {
             this(attributeId, attributeName, termId, columnName, dataType, maxLength, precision, scale, pk, nullable, refTableName, termApproved, null);
+        }
+
+        public ColumnPlan(Long attributeId, String attributeName, Long termId, String columnName, String dataType, Integer maxLength, Integer precision,
+                          Integer scale, boolean pk, boolean nullable, String refTableName, Boolean termApproved, Long inheritedFromEntityId) {
+            this(attributeId, attributeName, termId, columnName, dataType, maxLength, precision, scale, pk, nullable, refTableName, termApproved, inheritedFromEntityId,
+                    inheritedFromEntityId == null ? "DIRECT" : "INHERITED_KEY", null, null, !nullable, false);
         }
     }
 
@@ -72,7 +122,14 @@ public final class PhysicalGenerationDto {
      */
     public record Plan(List<TablePlan> tables, boolean creatable, String planToken, String dbType, List<IdentifierIssue> identifiers, List<RelationPlan> relations,
                        boolean executable, String executionBlockedReason, List<InheritanceForeignKeyPlan> inheritanceForeignKeys,
-                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors, List<UniquePlan> uniques) {
+                       List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors, List<UniquePlan> uniques,
+                       List<StrategyPlan> strategies, List<ConversionPlan> conversions) {
+        public Plan(List<TablePlan> tables, boolean creatable, String planToken, String dbType, List<IdentifierIssue> identifiers, List<RelationPlan> relations,
+                    boolean executable, String executionBlockedReason, List<InheritanceForeignKeyPlan> inheritanceForeignKeys,
+                    List<RequiredAncestor> requiredAncestors, List<ConstraintWarning> constraintWarnings, List<AncestorUse> ancestors, List<UniquePlan> uniques) {
+            this(tables, creatable, planToken, dbType, identifiers, relations, executable, executionBlockedReason, inheritanceForeignKeys, requiredAncestors, constraintWarnings,
+                    ancestors, uniques, List.of(), List.of());
+        }
     }
 
     /**
@@ -151,9 +208,14 @@ public final class PhysicalGenerationDto {
      * inheritanceForeignKeys : 만든 상속 FK 수, inheritedKeyMappings : 저장한 상속 PK 매핑 수 (M-7 3차)
      */
     public record Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys, int inheritanceForeignKeys, int inheritedKeyMappings,
-                         int uniques) {
+                         int uniques, int inheritedAttributeMappings, int conversions, List<Long> excludedRelationshipIds) {
         public Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys) {
-            this(tables, columns, tableIds, versionId, versionName, foreignKeys, 0, 0, 0);
+            this(tables, columns, tableIds, versionId, versionName, foreignKeys, 0, 0, 0, 0, 0, List.of());
+        }
+
+        public Result(int tables, int columns, List<Long> tableIds, Long versionId, String versionName, int foreignKeys, int inheritanceForeignKeys, int inheritedKeyMappings,
+                      int uniques) {
+            this(tables, columns, tableIds, versionId, versionName, foreignKeys, inheritanceForeignKeys, inheritedKeyMappings, uniques, 0, 0, List.of());
         }
     }
 }

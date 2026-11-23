@@ -242,9 +242,17 @@ public class ForeignKeyCorrectionService {
 
         List<Item> items = new ArrayList<>();
         Map<String, List<Long>> plannedNames = new HashMap<>();
+        InheritanceConversions conversions = qualityService.conversions(projectId, modelId);
         for (Long id : ids) {
             Row row = rows.get(id);
             Item item = item(row, expected.get(id), columns, relationsByChild, usedNames, byStructure, hierarchy, db, rows, alternateKeys);
+            // 상속 A·C형 (D-AC-13 16.4) : 부모·자식이 A·C 계층이면 (통합 테이블·분산 엔터티·복제 FK) 이 보정으로 만들지 않는다 — 상태·미리보기·적용 모두 같은 판정
+            if (row.structure() != null && (conversions.alternative(row.entityId()) || (row.structure().parentEntityId() != null && conversions.alternative(row.structure().parentEntityId())))
+                    && item.blockers().stream().noneMatch(b -> b.code() == Code.STRATEGY_EXCLUDED)) {
+                List<Issue> blockers = new ArrayList<>(item.blockers());
+                blockers.add(0, new Issue(Code.STRATEGY_EXCLUDED, Messages.get("상속 A·C형 계층(통합 테이블·분산 엔터티·복제 FK)과 관련된 관계는 이 보정으로 만들지 않습니다. 필요하면 물리 모델에서 직접 등록하세요.")));
+                item = withBlockers(item, blockers);
+            }
             items.add(item);
             if (item.relationName() != null && item.childTableId() != null) {
                 String schema = columns.get(item.pairs().get(0).childColumnId()).getTableInfo().getSchema().getId().toString();

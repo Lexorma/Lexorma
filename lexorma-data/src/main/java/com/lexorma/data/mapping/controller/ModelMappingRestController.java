@@ -159,6 +159,59 @@ public class ModelMappingRestController {
         return ResponseEntity.ok(DONE);
     }
 
+    @Operation(summary = "C형 상속 일반 속성 매핑 조회 (M-7 상속 C)", description = "C형 말단 엔터티 매핑의 상속 일반 속성 매핑 : 조상 일반 속성마다 1행(없으면 컬럼 null), 지금 조상 속성이 아닌 기존 매핑(current false)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeAttributes")
+    public ResponseEntity<ModelMappingDto.SubtypeAttributeDetail> selectSubtypeAttributes(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "mappingId") Long mappingId) {
+        return ResponseEntity.ok(modelMappingService.selectSubtypeAttributes(accountDto, mappingId));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 후보 컬럼 (M-7 상속 C)", description = "매핑된 테이블의 컬럼 중 속성·상속 PK·상속 일반 속성 매핑에 쓰이지 않은 것. currentId 의 컬럼은 후보로 둔다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeAttributes/candidates")
+    public ResponseEntity<Map<String, Object>> selectSubtypeAttributeCandidates(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                @PathVariable(name = "mappingId") Long mappingId,
+                                                                                @RequestParam(value = "page") int page,
+                                                                                @RequestParam(value = "size") int size,
+                                                                                @RequestParam(value = "sort", required = false) String sort,
+                                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                                @RequestParam(value = "currentId", required = false) Long currentId) {
+        return PageableUtil.getGridPageableMap(modelMappingService.selectSubtypeAttributeCandidates(accountDto, mappingId, currentId, searchQuery,
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.ModelMappingQueryRepository.KEY_COLUMN_SORT_FIELDS)));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 등록·변경 (M-7 상속 C)", description = "mappingId(C형 말단 엔터티 매핑)의 조상 일반 속성(attributeId)과 그 테이블의 컬럼을 연결한다. 변경(id 있음)은 컬럼만 바꾼다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/subtypeAttribute")
+    public ResponseEntity<ModelMappingDto.SubtypeAttributeMapping> saveSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                               @RequestBody ModelMappingDto.SubtypeAttributeMapping mapping) {
+        return ResponseEntity.ok(modelMappingService.saveSubtypeAttributeMapping(accountDto, mapping));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 해제 (M-7 상속 C)", description = "매핑만 지운다. 물리 컬럼·논리 속성은 그대로")
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/subtypeAttribute/{id}")
+    public ResponseEntity<Map<String, Object>> deleteSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
+        modelMappingService.deleteSubtypeAttributeMapping(accountDto, id);
+        return ResponseEntity.ok(DONE);
+    }
+
+    @Operation(summary = "상속 변환 기록 (M-7 상속 A·C)", description = "논리 모델의 상속 계층별 변환 기록(A형 통합 테이블·분류 컬럼, C형)과 기록 삭제를 막는 매핑")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/conversions")
+    public ResponseEntity<List<ModelMappingDto.ConversionTree>> selectConversions(@AuthenticationPrincipal AccountDto accountDto, @RequestParam(value = "modelId") Long modelId) {
+        return ResponseEntity.ok(modelMappingService.selectConversions(accountDto, modelId));
+    }
+
+    @Operation(summary = "상속 변환 기록 삭제 (M-7 상속 A·C, D-AC-18)", description = "상속 계층(루트 엔터티)의 변환 기록을 지운다. 관련 매핑이 남아 있으면 409 가 아니라 RELATION_EXISTS 로 거절한다 (매핑을 먼저 해제). "
+            + "물리 테이블·컬럼·FK·UNIQUE·논리 엔터티는 지우지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/conversions/{rootEntityId}")
+    public ResponseEntity<Map<String, Object>> deleteConversions(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "rootEntityId") Long rootEntityId) {
+        modelMappingService.deleteConversions(accountDto, rootEntityId);
+        return ResponseEntity.ok(DONE);
+    }
+
     @Operation(summary = "매핑 후보 테이블", description = "아직 엔터티에 매핑하지 않은 프로젝트의 테이블. 조건 : schemaId, 검색 : 테이블명·한글명")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/table/data")

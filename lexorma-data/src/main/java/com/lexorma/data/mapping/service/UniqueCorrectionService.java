@@ -177,6 +177,7 @@ public class UniqueCorrectionService {
                 .setParameter("id", modelId).setParameter("projectId", projectId).getResultStream().findFirst()
                 .orElseThrow(() -> new CustomException(ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED, "{0}을(를) 찾을 수 없습니다.", Messages.get("논리 모델")));
         Map<Long, Row> rows = rowsOf(qualityService.structureRows(projectId, modelId, modelName));
+        InheritanceConversions conversions = qualityService.conversions(projectId, modelId);
         for (Long id : ids) {
             if (!rows.containsKey(id)) throw new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, "이 논리 모델의 보조 식별자가 아닙니다. (식별자 ID {0})", id);
         }
@@ -226,7 +227,14 @@ public class UniqueCorrectionService {
         List<Item> items = new ArrayList<>();
         for (Long id : ids) {
             Row row = rows.get(id);
-            items.add(item(row, columns, primaryKeys, uniqueConstraints, uniqueIndexes, namesBySchema, representative, identifierName, db));
+            Item made = item(row, columns, primaryKeys, uniqueConstraints, uniqueIndexes, namesBySchema, representative, identifierName, db);
+            // 상속 A·C형 (D-AC-13 16.4) : 통합 테이블·말단 복제 UNIQUE 는 이 보정으로 만들지 않는다 — 상태·미리보기·적용 모두 같은 판정
+            if (conversions.alternative(row.entityId())) {
+                List<Issue> blockers = new ArrayList<>(made.blockers());
+                blockers.add(0, new Issue(Code.STRATEGY_EXCLUDED, Messages.get("상속 A·C형 계층(통합 테이블·말단 테이블)의 보조 식별자는 이 보정으로 UNIQUE 를 만들지 않습니다. 필요하면 물리 모델에서 직접 등록하세요.")));
+                made = withBlockers(made, blockers);
+            }
+            items.add(made);
         }
         // 같은 요청 안에서 만들 UNIQUE 이름이 같은 이름 공간에서 겹친다 (다른 사유로 막혀 만들지 않을 항목은 세지 않는다 — 같은 구성의 두 번째 보조 식별자 등)
         List<Item> named = items.stream().filter(i -> i.correctable() && i.constraintName() != null && i.tableId() != null && !i.columns().isEmpty()).toList();

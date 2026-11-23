@@ -51,9 +51,11 @@ public class ModelVersionService {
      * 8 : 대상 종류 SUBTYPE_GROUP (서브타입 그룹 — state 에 subtypes 배열, M-6 후속 5차. 상속 속성·식별자는 담지 않는다 : 원본 속성·식별자와 그룹으로 해석한다.
      *     형식 7 이하 버전에는 상속 정보가 없다 — 지금 DB 의 상속으로 채우지 않는다),
      * 9 : 대상 종류 SUBTYPE_KEY_MAPPING (서브타입 식별자 컬럼 매핑 = 상속 PK 매핑, M-7 3차·M7-D43 — 형식 8 이하 버전에는 없다 : 담지 않았다. 예전 버전을 고치거나 채우지 않는다).
+     * 10 : 대상 종류 SUBTYPE_CONVERSION (상속 그룹 변환 기록 — 전략·A형 통합 테이블·분류 컬럼)·SUBTYPE_ATTR_MAPPING (C형 상속 일반 속성 매핑) (M-7 상속 A·C, D-AC-14 — 형식 9 이하 버전에는 없다 :
+     *     담지 않았다. 예전 버전을 지금 기록으로 채우지 않는다).
      * 비교는 값이 null 인 필드와 없는 필드를 같게 본다 (예전 형식과 비교 가능). 예전 버전에는 PHYSICAL_VIEW·주제 영역이 없어 현재의 VIEW·주제 영역은 모두 추가로 보인다
      */
-    static final int FORMAT_VERSION = 9;
+    static final int FORMAT_VERSION = 10;
     private static final int NAME_MAX = 100;
     private static final int DESCRIPTION_MAX = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();

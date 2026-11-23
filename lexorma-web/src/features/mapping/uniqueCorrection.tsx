@@ -13,7 +13,7 @@ import '../../styles/ai-dictionary.css';
 
 /** UniqueCorrectionDto.Code */
 export type UniqueCode =
-  | 'NOT_MISSING' | 'MAPPING_MISSING' | 'COLUMN_INVALID' | 'PRIMARY_KEY_DUPLICATE' | 'UNIQUE_DUPLICATE' | 'UNIQUE_INDEX_DUPLICATE'
+  | 'STRATEGY_EXCLUDED' | 'NOT_MISSING' | 'MAPPING_MISSING' | 'COLUMN_INVALID' | 'PRIMARY_KEY_DUPLICATE' | 'UNIQUE_DUPLICATE' | 'UNIQUE_INDEX_DUPLICATE'
   | 'COLUMN_UNIQUE_DUPLICATE' | 'DUPLICATE_ALTERNATE_KEY' | 'NAME_CONFLICT' | 'APPROVED_TABLE' | 'APPROVED_COLUMN';
 
 export interface UniqueIssue { code: UniqueCode; reason: string }
@@ -39,6 +39,7 @@ export const UNIQUE_CORRECTION_MAX = 100;
 
 export const UNIQUE_CODE_LABELS: Record<UniqueCode, string> = {
   NOT_MISSING: t('UNIQUE 누락 아님'),
+  STRATEGY_EXCLUDED: t('상속 A·C형 대상 제외'),
   MAPPING_MISSING: t('매핑 없음'),
   COLUMN_INVALID: t('구성 컬럼 오류'),
   PRIMARY_KEY_DUPLICATE: t('PK 와 같은 구성'),

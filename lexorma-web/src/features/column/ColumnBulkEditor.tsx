@@ -230,8 +230,9 @@ function toPasteItem(item: ResolvedItem): PasteItem {
     input: item.input,
     status: item.status,
     terms: item.terms || [],
-    selectedId: item.terms?.[0]?.id ?? null, // 여러 건이면 승인된 용어가 앞에 온다
-    checked: item.status !== 'NOT_FOUND',
+    // 여러 건(AMBIGUOUS)이면 미리 고르지 않는다 — 승인 여부·순서로 정하지 않고 사용자가 고른다 (M7-NAME-1, NAME-P09)
+    selectedId: item.status === 'MATCHED' ? item.terms?.[0]?.id ?? null : null,
+    checked: item.status === 'MATCHED',
   };
 }
 
@@ -808,8 +809,9 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
                           <>
                             {item.status === 'AMBIGUOUS' ? (
                               <>
-                                <select className="form-control col-bulk-paste-select" aria-label={t('{0} 용어 선택', item.input)} value={String(item.selectedId)}
-                                  onChange={(e) => updatePasteItem(index, { selectedId: Number(e.target.value), checked: true })}>
+                                <select className="form-control col-bulk-paste-select" aria-label={t('{0} 용어 선택', item.input)} value={item.selectedId == null ? '' : String(item.selectedId)}
+                                  onChange={(e) => updatePasteItem(index, e.target.value === '' ? { selectedId: null, checked: false } : { selectedId: Number(e.target.value), checked: true })}>
+                                  <option value="">{t('용어를 고르세요')}</option>
                                   {item.terms.map((term) => (
                                     <option key={term.id} value={term.id}>
                                       {`${term.commonStandardTermAbbreviation} · ${term.commonStandardDomainName ?? '-'} · ${term.dataType ?? '-'}${term.isApprovalYn === 'Y' ? '' : t(' (미승인)')}`}

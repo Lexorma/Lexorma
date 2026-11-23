@@ -9,9 +9,9 @@ import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { TableLinks } from '../dictionary/DictionaryUsage';
-import { RECOMMENDATION_COLUMN_GRID_MIN_WIDTH, RECOMMENDATION_TABLE_GRID_MIN_WIDTH, recommendationColumnColumns, recommendationTableColumns } from './columns';
+import { RECOMMENDATION_COLUMN_GRID_MIN_WIDTH, RECOMMENDATION_TABLE_GRID_MIN_WIDTH, recommendationColumnColumns, recommendationInheritedColumns, recommendationTableColumns } from './columns';
 import {
-  mappingPath, RECOMMENDATION_SOURCES, RECOMMENDATION_STATUSES,
+  inheritanceLabel, mappingPath, RECOMMENDATION_SOURCES, RECOMMENDATION_STATUSES,
   useColumnRecommendation, type ColumnRecommendation, type ColumnRecommendationSummary, type RecommendationStatus, type TableRecommendation,
 } from './model';
 import {
@@ -25,7 +25,8 @@ export function RecommendationStatusLabel({ status }: { status: RecommendationSt
   return <Label variant={item?.variant} dot>{item?.label ?? status}</Label>;
 }
 
-type Target = 'column' | 'table';
+/** inherited (M7-NAME-1) : 상속 매핑으로 이어진 컬럼 — B형 상속 PK · C형 복제 컬럼, 읽기 전용 (고를 수 없다) */
+type Target = 'column' | 'table' | 'inherited';
 
 /**
  * 물리명 추천 (M-7 3차, 조회 전용) : 표준 사전을 근거로 한 추천 컬럼명(논리 속성의 표준 용어 영문약어)과
@@ -67,7 +68,7 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
   if (status) columnParams.status = status;
   if (attributeId != null) columnParams.attributeId = String(attributeId);
 
-  const value = (count: keyof ColumnRecommendationSummary) => (summary.data ? summary.data[count] : '-');
+  const value = (count: 'total' | 'available' | 'alreadyMatched' | 'unavailable' | 'conflict') => (summary.data ? summary.data[count] : '-');
 
   const openColumn = (row: Row) => {
     const item = row as ColumnRecommendation;
@@ -87,10 +88,12 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
   };
 
   const name = (value: string | null) => (value ? <Mono>{value}</Mono> : <Muted>-</Muted>);
-  const targets: [Target, string][] = [['column', t('컬럼명')], ['table', t('테이블명')]];
+  const targets: [Target, string][] = [['column', t('컬럼명')], ['table', t('테이블명')], ['inherited', t('상속 컬럼 (읽기 전용)')]];
+  const inheritedParams = { ...columnParams, scope: 'INHERITED' };
 
   // ---------------------------------------------------------------- 일괄 적용 선택
   const pickOf = (row: Row): RenamePick | null => {
+    if (target === 'inherited' || row.inheritance) return null; // 상속 컬럼은 읽기 전용 (서버도 INHERITED_READ_ONLY 로 막는다)
     const type: RenameTarget = target === 'column' ? 'COLUMN' : 'TABLE';
     const id = target === 'column' ? row.physicalColumnId : row.physicalTableId;
     if (id == null || !row.recommendedPhysicalName || !listSelectable(row.applicability as Applicability)) return null;
@@ -98,6 +101,7 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
     return { key: pickKey(type, id), type, id, recommendedName: row.recommendedPhysicalName, currentName: row.currentPhysicalName ?? '', label };
   };
   const rowKey = (row: Row) => {
+    if (target === 'inherited') return null;
     const id = target === 'column' ? row.physicalColumnId : row.physicalTableId;
     return id == null ? null : pickKey(target === 'column' ? 'COLUMN' : 'TABLE', id);
   };
@@ -227,9 +231,46 @@ export function MappingRecommendation({ modelId, entity, attributeId, onClearEnt
         </p>
       )}
 
-      {renameBar}
+      {target !== 'inherited' && renameBar}
 
-      {target === 'column' ? (
+      {target === 'inherited' ? (
+        <>
+          <p className="form-help">{t('B형 서브타입 테이블의 상속 PK 와 C형 말단 테이블에 복제한 루트 PK·조상 속성 컬럼입니다. 원본 속성의 표준 용어 영문약어로 추천·진단만 보이며, 이 목록에서는 이름을 바꿀 수 없습니다.')}</p>
+          {summary.data?.inherited && (
+            <p className="gh-muted" role="status">
+              {t('상속 컬럼 {0}개 · 추천 가능 {1} · 일치 {2} · 추천 불가 {3} · 충돌 {4}', summary.data.inherited.total, summary.data.inherited.available,
+                summary.data.inherited.alreadyMatched, summary.data.inherited.unavailable, summary.data.inherited.conflict)}
+            </p>
+          )}
+          <Grid
+            key="inherited"
+            id="recommendationInheritedGrid"
+            minWidth={RECOMMENDATION_COLUMN_GRID_MIN_WIDTH + 120}
+            columns={recommendationInheritedColumns}
+            defaultSort={{ column: 'entityName' }}
+            onPageData={setPageRows}
+            dataUrl="/api/modelMapping/recommendation/column"
+            params={inheritedParams}
+            searchFilters={
+              <select className="search-column-select" aria-label={t('추천 상태')} value={status} onChange={(e) => setStatus(e.target.value as RecommendationStatus | '')}>
+                <option value="">{t('전체 상태')}</option>
+                {RECOMMENDATION_STATUSES.map((item) => <option key={item.status} value={item.status}>{item.label}</option>)}
+              </select>
+            }
+            emptyText={status || entity ? t('조건에 맞는 추천 결과가 없습니다.') : t('상속 매핑으로 이어진 컬럼이 없습니다.')}
+            onRowClick={openColumn}
+            renderCell={(field, row) => {
+              const inheritance = row.inheritance as ColumnRecommendation['inheritance'];
+              if (field === 'originEntityName') return inheritance ? inheritance.originEntityName : <Muted>-</Muted>;
+              if (field === 'tableName') return name(row.tableName);
+              if (field === 'strategy') return inheritance ? <Label title={inheritance.readOnlyReason}>{inheritanceLabel(inheritance)}</Label> : <Muted>-</Muted>;
+              if (field === 'currentPhysicalName' || field === 'recommendedPhysicalName') return name(row[field]);
+              if (field === 'status') return <RecommendationStatusLabel status={row.status} />;
+              return undefined;
+            }}
+          />
+        </>
+      ) : target === 'column' ? (
         <>
           {summary.isError && <p className="gh-muted" role="alert">{t('추천 요약을 불러오지 못했습니다.')}</p>}
           <div className="dash dash-stats quality-stats">
@@ -339,9 +380,15 @@ function ColumnRecommendationDetail({ row, close, onMapping }: { row: ColumnReco
         [t('추천 물리 컬럼명'), row.recommendedPhysicalName, true],
         [t('추천 기준'), row.source ? RECOMMENDATION_SOURCES[row.source] : null],
         [t('추천 근거'), row.reason],
+        ...(row.inheritance ? [
+          [t('상속 전략'), inheritanceLabel(row.inheritance)],
+          [t('원본 엔터티'), row.inheritance.originEntityName],
+          [t('읽기 전용 사유'), row.inheritance.readOnlyReason],
+        ] as [string, string | null][] : []),
       ]} />
       <ApplicabilityDetail value={row.applicability} />
-      <p className="form-help">{READ_ONLY_NOTE}</p>
+      {/* 상속 컬럼은 위 [읽기 전용 사유]·일괄 적용 판정에 이미 사유가 있다 — 같은 문장을 세 번 보이지 않는다 */}
+      {!row.inheritance && <p className="form-help">{READ_ONLY_NOTE}</p>}
       <div className="gh-dialog-actions">
         {row.tableId != null && row.schemaId != null && <TableLinks tableId={row.tableId} schemaId={row.schemaId} columnId={row.physicalColumnId ?? undefined} onNavigate={close} />}
         {canView('column-manage') && row.tableName && (

@@ -532,8 +532,9 @@ class ColumnInsertConcurrencyIntegrationTest {
     void uploadAndBulkOrDelete() throws Exception {
         Fx x = fixture("u06");
         jdbc.update("update TB_TBL set APRV_YN = true where TBL_SN = ?", x.cust());
-        long term = x.f().term("CUST_Q", "VARCHAR", 20);
+        // 용어는 소문자 약어 하나 : 엑셀의 'CUST_Q' 는 대소문자 무시로 이 용어를 찾고 (M7-NAME-1 — 대문자 용어를 함께 두면 같은 약어 두 개라 모호성 오류), 일괄 저장은 'cust_q' 를 더하려 한다
         long lower = x.f().term("cust_q", "VARCHAR", 20);
+        long term = lower;
         Outcome bulk = ordered(() -> uploadRows(x, new String[]{"O_CUST", "CUST_Q"}), () -> bulkAdd(x, lower));
         assertThat(bulk.first()).isEqualTo("OK");
         assertThat(bulk.secondWaited()).isTrue();

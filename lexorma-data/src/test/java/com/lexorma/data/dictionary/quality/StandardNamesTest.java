@@ -42,6 +42,32 @@ class StandardNamesTest {
     }
 
     @Test
+    @DisplayName("NAME-T01 (M7-NAME-1) : 정책 표 그대로 — 대소문자·앞뒤 공백(탭·줄바꿈 포함)은 같고, 내부 공백·'__'·'-'·숫자 접미사는 다르다. 비 ASCII 는 글자 단위 대소문자만 (ß ≠ SS)")
+    void policyTable() {
+        assertThat(StandardNames.sameColumnName("USER_ID", "USER_ID")).isTrue();
+        assertThat(StandardNames.sameColumnName("user_id", "USER_ID")).isTrue();
+        assertThat(StandardNames.sameColumnName(" USER_ID ", "USER_ID")).isTrue();
+        assertThat(StandardNames.sameColumnName("USER_ID\t", "\nUSER_ID")).isTrue();
+        assertThat(StandardNames.sameColumnName("USERID", "USER_ID")).isFalse();
+        assertThat(StandardNames.sameColumnName("USER ID", "USER_ID")).isFalse();
+        assertThat(StandardNames.sameColumnName("USER__ID", "USER_ID")).isFalse();
+        assertThat(StandardNames.sameColumnName("USER-ID", "USER_ID")).isFalse();
+        assertThat(StandardNames.sameColumnName("USER_ID2", "USER_ID")).isFalse();
+        // 비 ASCII : String.equalsIgnoreCase (글자 하나씩, 로캘 없음) — 확장 대문자·합자·전각·결합 문자는 같게 보지 않는다
+        assertThat(StandardNames.sameColumnName("straße_cd", "STRAßE_CD")).isTrue();
+        assertThat(StandardNames.sameColumnName("STRAßE_CD", "STRASSE_CD")).isFalse();
+        assertThat(StandardNames.sameColumnName("ﬁ_CD", "FI_CD")).isFalse();
+        assertThat(StandardNames.sameColumnName("ＦＵＬＬ_CD", "FULL_CD")).isFalse();
+        assertThat(StandardNames.sameColumnName("é_cd", "É_CD")).isTrue();
+        assertThat(StandardNames.sameColumnName("e\u0301_cd", "É_CD")).isFalse();
+        assertThat(StandardNames.sameColumnName("ıd", "ID")).as("toUpperCase('ı') = 'I'").isTrue();
+        // null · 빈 값 · 공백만
+        assertThat(StandardNames.sameColumnName(null, StandardNames.expectedColumnName(""))).isFalse();
+        assertThat(StandardNames.sameColumnName(" ", " ")).as("기대 이름은 호출하는 쪽이 expectedColumnName 으로 걸러 null 이 된다").isTrue();
+        assertThat(StandardNames.expectedColumnName("\t")).isNull();
+    }
+
+    @Test
     @DisplayName("물리명 추천·정합성 비교의 컬럼명 규칙은 같은 함수다 (추천명·사유·일치 판정)")
     void recommendationUsesSameRule() {
         for (String abbreviation : Arrays.asList("USER_NM", " user_nm ", " ", "", null)) {

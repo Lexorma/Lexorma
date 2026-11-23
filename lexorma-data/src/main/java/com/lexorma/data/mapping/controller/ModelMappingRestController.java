@@ -303,7 +303,7 @@ public class ModelMappingRestController {
         return ResponseEntity.ok(recommendationService.selectColumnSummary(accountDto, modelId));
     }
 
-    @Operation(summary = "컬럼명 추천 목록", description = "논리 속성의 표준 용어 영문약어 = 추천 컬럼명. 조회 전용이며 컬럼명을 바꾸지 않는다. 조건 : modelId(attributeId·columnId 가 없으면 필수), entityId, attributeId, columnId, status, 검색 : entityName / logicalName / currentPhysicalName / recommendedPhysicalName")
+    @Operation(summary = "컬럼명 추천 목록", description = "논리 속성의 표준 용어 영문약어 = 추천 컬럼명. 조회 전용이며 컬럼명을 바꾸지 않는다. 조건 : modelId(attributeId·columnId 가 없으면 필수), entityId, attributeId, columnId, status, scope(DIRECT 기본 / INHERITED = 상속 컬럼, 읽기 전용), 검색 : entityName / logicalName / currentPhysicalName / recommendedPhysicalName")
     @PreAuthorize("hasRole('VIEWER')")
     @GetMapping("/recommendation/column/data")
     public ResponseEntity<Map<String, Object>> selectColumnRecommendations(@AuthenticationPrincipal AccountDto accountDto,
@@ -316,10 +316,13 @@ public class ModelMappingRestController {
                                                                            @RequestParam(value = "entityId", required = false) Long entityId,
                                                                            @RequestParam(value = "attributeId", required = false) Long attributeId,
                                                                            @RequestParam(value = "columnId", required = false) Long columnId,
-                                                                           @RequestParam(value = "status", required = false) PhysicalNameRecommendationDto.Status status) {
+                                                                           @RequestParam(value = "status", required = false) PhysicalNameRecommendationDto.Status status,
+                                                                           @RequestParam(value = "scope", required = false) PhysicalNameRecommendationDto.Scope scope) {
+        // scope (M7-NAME-1) : 없으면 DIRECT (예전 목록), INHERITED = 상속 매핑으로 이어진 컬럼 (읽기 전용)
         return PageableUtil.getGridPageableMap(recommendationService.selectColumnRows(accountDto,
                 new PhysicalNameRecommendationDto.ColumnSearch(modelId, entityId, attributeId, columnId, status, searchColumn, searchQuery),
-                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.COLUMN_SORT_FIELDS)));
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.COLUMN_SORT_FIELDS),
+                scope == null ? PhysicalNameRecommendationDto.Scope.DIRECT : scope));
     }
 
     @Operation(summary = "테이블명 추천 목록", description = "엔터티명을 표준 단어로 나눠 테이블명 생성 규칙(접두어 + 승인된 단어의 영문약어)으로 만든 추천 테이블명. 조회 전용. 조건 : modelId(entityId 가 없으면 필수), entityId, 검색 : entityName / tableName")

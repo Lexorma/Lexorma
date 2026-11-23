@@ -388,6 +388,8 @@ public class ModelMappingQualityService {
         context.prepare(mappedSubtypes);
         String keyword = search.searchQuery() == null || search.searchQuery().isBlank() ? null : search.searchQuery().trim().toLowerCase(java.util.Locale.ROOT);
         Map<Long, List<Row>> extra = new java.util.HashMap<>();
+        // 상속 PK 명칭 진단 (M7-NAME-1, NAME-P07) : 원본(루트 주 식별자) 속성의 표준 용어 — 모델의 상속 PK 매핑 속성을 한 번에
+        Map<Long, Object[]> keyTerms = queryRepository.findAttributeTerms(links.stream().map(l -> l.getAttribute().getId()).collect(java.util.stream.Collectors.toSet()));
         long requiredKeys = 0, mappedKeys = 0, invalid = 0, valid = 0, mismatch = 0, unmapped = 0, notComparable = 0;
         for (Source source : firstSource.values()) {
             if (source.mappingId() == null) continue;
@@ -420,6 +422,13 @@ public class ModelMappingQualityService {
                             inspection.tableKey().isEmpty() ? "-" : "PK (" + String.join(", ", inspection.tableKey().stream().map(SubtypePlanContext.KeyCol::name).toList()) + ")",
                             reason, true));
                 }
+                // B형 상속 PK 컬럼의 명칭 (M7-NAME-1) : 지금 루트 주 식별자에 있는 원본 속성의 매핑만 — 컬럼마다 1행. 상속 PK·FK 구조는 위 [상속 구조] 행이 그대로 본다
+                for (SubtypeIdentifierColumnMapping link : own) {
+                    if (!current.contains(link.getAttribute().getId())) continue;
+                    if (keyword != null && !entityRows && !("attributeName".equals(search.searchColumn()) ? contains(link.getAttribute().getAttributeName(), keyword)
+                            : contains(link.getColumn().getColumnName(), keyword))) continue;
+                    list.add(inheritedKeyName(source, link, keyTerms.get(link.getAttribute().getId())));
+                }
             }
             for (SubtypeIdentifierColumnMapping link : own) {
                 if (current.contains(link.getAttribute().getId())) continue;
@@ -443,9 +452,18 @@ public class ModelMappingQualityService {
                     com.lexorma.data.mapping.domain.entity.EntityTableMapping m = link.getMapping();
                     if (search.entityId() != null && !search.entityId().equals(m.getEntity().getId())) continue;
                     boolean subtype = hierarchy.parent(m.getEntity().getId()) != null;
-                    if (subtype && context.rootKey(m.getEntity().getId()).stream().anyMatch(a -> a.getId().equals(link.getAttribute().getId()))) continue;
-                    if (!(contains(link.getAttribute().getAttributeName(), keyword) || contains(link.getColumn().getColumnName(), keyword))) continue;
                     com.lexorma.data.table.domain.entity.TableInfo table = m.getTable();
+                    if (subtype && context.rootKey(m.getEntity().getId()).stream().anyMatch(a -> a.getId().equals(link.getAttribute().getId()))) {
+                        // 유효한 상속 PK : 명칭 행만 이름으로 찾는다 (M7-NAME-1 — B형만, A·C 계층은 위와 같이 건너뛴다)
+                        if (conversions.kind(m.getEntity().getId()) != InheritanceConversions.Kind.NONE) continue;
+                        if (!("attributeName".equals(search.searchColumn()) ? contains(link.getAttribute().getAttributeName(), keyword)
+                                : contains(link.getColumn().getColumnName(), keyword))) continue;
+                        extra.computeIfAbsent(m.getEntity().getId(), k -> new ArrayList<>()).add(inheritedKeyName(m.getEntity().getModel().getId(), m.getEntity().getModel().getModelName(),
+                                m.getId(), m.getEntity().getId(), m.getEntity().getEntityName(), table.getSchema() == null ? null : table.getSchema().getId(),
+                                table.getSchema() == null ? null : table.getSchema().getSchemaName(), table.getId(), table.getTableName(), link, keyTerms.get(link.getAttribute().getId())));
+                        continue;
+                    }
+                    if (!(contains(link.getAttribute().getAttributeName(), keyword) || contains(link.getColumn().getColumnName(), keyword))) continue;
                     extra.computeIfAbsent(m.getEntity().getId(), k -> new ArrayList<>()).add(new Row(CheckType.INHERITANCE + ":" + m.getEntity().getId() + ":" + link.getAttribute().getId(),
                             m.getEntity().getModel().getId(), m.getEntity().getModel().getModelName(), m.getId(), m.getEntity().getId(), m.getEntity().getEntityName(),
                             link.getAttribute().getId(), link.getAttribute().getAttributeName(), table.getSchema() == null ? null : table.getSchema().getId(),
@@ -474,6 +492,29 @@ public class ModelMappingQualityService {
 
     private static boolean contains(String value, String keyword) {
         return value != null && value.toLowerCase(java.util.Locale.ROOT).contains(keyword);
+    }
+
+    /**
+     * 상속 PK 컬럼 1개의 명칭 행 (M7-NAME-1, NAME-P03·P07) : 기대 컬럼명 = 원본 속성(루트 주 식별자)의 표준 용어 영문약어 — 직접 매핑 행의 {@link #name} 과 같은 규칙.
+     * 엔터티 = 서브타입, 속성 = 원본 속성, 컬럼 = 서브타입 테이블의 상속 PK 컬럼. 코드 INHERITED_KEY 로 직접 속성 행과 구분한다 (같은 컬럼에 NAME 행은 하나뿐 — 컬럼은 한 매핑만 쓴다)
+     */
+    static Row inheritedKeyName(Source s, SubtypeIdentifierColumnMapping link, Object[] term) {
+        return inheritedKeyName(s.modelId(), s.modelName(), s.mappingId(), s.entityId(), s.entityName(), s.schemaId(), s.schemaName(), s.tableId(), s.tableName(), link, term);
+    }
+
+    static Row inheritedKeyName(Long modelId, String modelName, Long mappingId, Long entityId, String entityName, Long schemaId, String schemaName, Long tableId,
+                                String tableName, SubtypeIdentifierColumnMapping link, Object[] term) {
+        Long termId = term == null ? null : (Long) term[0];
+        String abbreviation = term == null ? null : (String) term[2];
+        var column = link.getColumn();
+        PhysicalNameRecommendationService.ColumnName expected = PhysicalNameRecommendationService.recommendColumnName(termId, abbreviation);
+        CheckStatus status = !expected.available() ? CheckStatus.NOT_COMPARABLE
+                : PhysicalNameRecommendationService.sameName(column.getColumnName(), expected.name()) ? CheckStatus.MATCH : CheckStatus.MISMATCH;
+        String reason = !expected.available() ? expected.unavailableReason()
+                : status == CheckStatus.MATCH ? null : Messages.get("상속 PK 컬럼명이 원본 속성(루트 주 식별자)의 표준 용어 영문약어와 다릅니다.");
+        return new Row(CheckType.NAME + ":" + entityId + ":" + link.getAttribute().getId(), modelId, modelName, mappingId, entityId, entityName,
+                link.getAttribute().getId(), link.getAttribute().getAttributeName(), schemaId, schemaName, tableId, tableName, column.getId(), column.getColumnName(),
+                CheckType.NAME, status, expected.name(), column.getColumnName(), reason, true, null, "INHERITED_KEY", List.of());
     }
 
     private static long count(List<Row> rows, CheckStatus status) {

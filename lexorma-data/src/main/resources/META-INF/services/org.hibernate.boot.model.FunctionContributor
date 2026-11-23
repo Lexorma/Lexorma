@@ -1,1 +1,2 @@
 com.lexorma.data.column.repository.ColumnNameKeySql
+com.lexorma.data.mapping.repository.StandardNameSql

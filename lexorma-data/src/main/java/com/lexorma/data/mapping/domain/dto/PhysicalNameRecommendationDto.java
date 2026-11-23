@@ -66,7 +66,12 @@ public final class PhysicalNameRecommendationDto {
         /** (2차) 요청이 보낸 추천 이름이 서버가 지금 계산한 추천 이름과 다르다 (목록을 다시 불러와야 한다) */
         RECOMMENDATION_CHANGED,
         /** (2차, P-15, 경고) 원본 DB 와 매핑된 테이블(또는 그 테이블의 컬럼)이다 — 원본 비교에서 이름이 달라 보일 수 있다 */
-        SOURCE_MAPPED
+        SOURCE_MAPPED,
+        /**
+         * (M7-NAME-1, NAME-P07) 상속 매핑으로 이어진 컬럼이다 — B형 상속 PK, C형 루트 PK 복제, C형 조상 일반 속성 복제. 추천·진단은 보이지만 이 작업에서는 이름을 바꾸지 않는다
+         * (목록·미리보기·적용 모두 막는다)
+         */
+        INHERITED_READ_ONLY
     }
 
     /** 경고(warnings)로만 쓰는 코드 — 나머지는 적용을 막는다 */
@@ -111,11 +116,32 @@ public final class PhysicalNameRecommendationDto {
                             Long schemaId, String schemaName, Long tableId, String tableName,
                             Long logicalAttributeId, String logicalName, Long termId, String termName, String termAbbreviation,
                             Long physicalColumnId, String currentPhysicalName, String recommendedPhysicalName,
-                            Status status, Source source, String reason, Applicability applicability) {
+                            Status status, Source source, String reason, Applicability applicability, Inheritance inheritance) {
     }
 
-    /** 모델 1개의 컬럼명 추천 요약 : total = 모델의 속성 수 = 네 상태의 합 */
-    public record ColumnSummary(Long modelId, long total, long available, long alreadyMatched, long unavailable, long conflict) {
+    /** 컬럼명 추천 목록의 범위 (M7-NAME-1) : DIRECT = 논리 속성 1개 = 1행 (예전 목록 그대로), INHERITED = 상속 매핑으로 이어진 물리 컬럼 1개 = 1행 (읽기 전용) */
+    public enum Scope {
+        DIRECT, INHERITED
+    }
+
+    /** 상속 컬럼의 종류 : KEY = 상속 PK 매핑, ATTRIBUTE = C형 상속 일반 속성 매핑 */
+    public enum InheritedKind {
+        KEY, ATTRIBUTE
+    }
+
+    /**
+     * 상속 컬럼 행의 표시 정보 (INHERITED 범위의 행에만, 그 밖에는 null). strategy = B(서브타입별 테이블) · C(말단 서브타입별 테이블),
+     * originEntity = 원본 속성의 엔터티(루트·중간 조상), readOnlyReason = 읽기 전용 사유
+     */
+    public record Inheritance(InheritedKind kind, String strategy, Long originEntityId, String originEntityName, String readOnlyReason) {
+    }
+
+    /** 모델 1개의 컬럼명 추천 요약 : total = 모델의 속성 수 = 네 상태의 합. inherited = 읽기 전용 상속 컬럼의 같은 건수 (total 에 넣지 않는다, M7-NAME-1) */
+    public record ColumnSummary(Long modelId, long total, long available, long alreadyMatched, long unavailable, long conflict, InheritedSummary inherited) {
+    }
+
+    /** 상속 컬럼 (읽기 전용) 건수 : total = 상속 매핑으로 이어진 물리 컬럼 수 = 네 상태의 합 */
+    public record InheritedSummary(long total, long available, long alreadyMatched, long unavailable, long conflict) {
     }
 
     /** 컬럼명 추천 조건. modelId 는 attributeId·columnId 가 없으면 필수. searchColumn : entityName / logicalName / currentPhysicalName / recommendedPhysicalName */

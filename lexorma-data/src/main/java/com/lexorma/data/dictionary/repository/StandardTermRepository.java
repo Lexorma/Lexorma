@@ -74,6 +74,17 @@ public interface StandardTermRepository extends JpaRepository<StandardTerm, Long
     List<StandardTerm> findALlByProjectIdAndCommonStandardTermAbbreviation(Long projectId, String commonStandardTermAbbreviation);
 
 
+    /**
+     * 영문약어로 찾는 후보 (M7-NAME-1, NAME-P09) : 앞뒤 공백 제거 + 대소문자 무시의 <b>후보</b>만 DB 에서 고른다. 앞뒤 제거는 자바 {@code String.trim()} 과 같은
+     * HQL {@code standard_name_trim} (탭·줄바꿈 등 U+0020 이하 제어 문자까지 — SQL TRIM 은 공백만이라 쓰지 않는다, NAME-F01). 소문자 키·대문자 키 두 목록으로 찾아
+     * DB 의 대소문자 변환이 로캘에 따라 한쪽에서 어긋나도 후보가 빠지지 않게 한다. 최종 일치는 호출하는 쪽이 {@code StandardNames.sameColumnName} 으로 다시 판정한다
+     * ({@code StandardTermAbbreviationLookup})
+     */
+    @Query("select t from StandardTerm t where t.projectId = :projectId and (lower(standard_name_trim(t.commonStandardTermAbbreviation)) in :lowerKeys"
+            + " or upper(standard_name_trim(t.commonStandardTermAbbreviation)) in :upperKeys) order by t.id")
+    List<StandardTerm> findAbbreviationCandidates(@Param("projectId") Long projectId, @Param("lowerKeys") Collection<String> lowerKeys,
+                                                  @Param("upperKeys") Collection<String> upperKeys);
+
     /** 엑셀 업로드 : 청크의 영문약어(컬럼명)를 한 번에 조회 */
     List<StandardTerm> findAllByProjectIdAndCommonStandardTermAbbreviationIn(Long projectId, Collection<String> commonStandardTermAbbreviations);
 

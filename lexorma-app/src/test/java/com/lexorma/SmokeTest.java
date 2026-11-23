@@ -710,6 +710,8 @@ class SmokeTest {
             // modelId 가 필수라 조회할 때 예제 모델 ID 를 붙인다 (gridSortAndSearch)
             Map.entry("mappingQualityColumns", "/api/modelMapping/quality"),
             Map.entry("recommendationColumnColumns", "/api/modelMapping/recommendation/column"),
+            // 상속 컬럼 (M7-NAME-1, 읽기 전용) : 같은 API 의 scope=INHERITED
+            Map.entry("recommendationInheritedColumns", "/api/modelMapping/recommendation/column"),
             Map.entry("recommendationTableColumns", "/api/modelMapping/recommendation/table"),
             Map.entry("standardTermsColumns", "/api/getStandardTerms"),
             Map.entry("standardWordsColumns", "/api/getStandardWords"),
@@ -996,7 +998,9 @@ class SmokeTest {
                 grids++;
                 String dataUrl = GRID_DATA_URLS.get(gridMatcher.group(1));
                 assertThat(dataUrl).as("GRID_DATA_URLS 에 없는 그리드 : " + gridMatcher.group(1)).isNotNull();
-                String required = Set.of("mappingQualityColumns", "recommendationColumnColumns", "recommendationTableColumns").contains(gridMatcher.group(1)) ? "&modelId=" + exampleModelId() : "";
+                String required = Set.of("mappingQualityColumns", "recommendationColumnColumns", "recommendationTableColumns", "recommendationInheritedColumns").contains(gridMatcher.group(1))
+                        ? "&modelId=" + exampleModelId() : "";
+                if ("recommendationInheritedColumns".equals(gridMatcher.group(1))) required += "&scope=INHERITED";
 
                 Set<String> sorts = new LinkedHashSet<>();
                 List<String> searches = new ArrayList<>(List.of(""));

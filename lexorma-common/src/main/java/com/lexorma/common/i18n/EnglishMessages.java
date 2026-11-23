@@ -1353,5 +1353,12 @@ final class EnglishMessages {
         add("C형 말단 테이블 : 루트 {0} 의 주 식별자를 이 테이블의 PK 로 복제합니다. 상속 FK 와 상위 테이블은 없습니다 (구조는 정합성 비교의 [상속 구조] 에서 C형 기준으로 판정).",
                 "Concrete-table (C) leaf table: the primary identifier of root {0} is copied as this table's PK. There is no inheritance foreign key or parent table (the structure is judged by the concrete-table rules under [Inheritance structure] in the quality comparison).");
         add("형식 버전 {0} 파일에는 상속 변환 기록·상속 일반 속성 매핑이 들어갈 수 없습니다.", "A format version {0} file cannot contain inheritance conversion records or inherited attribute mappings.");
+
+        // ---------------------------------------------------------------- M7-NAME-1 물리명 추천·표준화 판정 통일
+        add("{0}.{1} : 영문약어가 같은 표준 용어 {2}개", "{0}.{1} : {2} standard terms have the same abbreviation");
+        add("C형 말단 테이블에 복제한 조상 속성 컬럼입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.", "This is an ancestor attribute column copied into a type C leaf table. Renaming inherited columns is not supported yet, so only the recommendation and check are shown.");
+        add("C형 말단 테이블에 복제한 루트 PK 컬럼입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.", "This is a root PK column copied into a type C leaf table. Renaming inherited columns is not supported yet, so only the recommendation and check are shown.");
+        add("서브타입 테이블의 상속 PK 컬럼(B형)입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.", "This is an inherited PK column of a subtype table (type B). Renaming inherited columns is not supported yet, so only the recommendation and check are shown.");
+        add("상속 PK 컬럼명이 원본 속성(루트 주 식별자)의 표준 용어 영문약어와 다릅니다.", "The inherited PK column name differs from the standard term abbreviation of the origin attribute (root primary identifier).");
     }
 }

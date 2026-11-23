@@ -17,7 +17,7 @@ export type RenameTarget = 'TABLE' | 'COLUMN';
 export type ApplyCode =
   | 'NOT_RECOMMENDED' | 'NO_CHANGE' | 'NOT_MAPPED' | 'NAME_CONFLICT' | 'RECOMMENDATION_DUPLICATE' | 'IDENTIFIER_INVALID' | 'IDENTIFIER_NOT_RECOMMENDED'
   | 'TABLE_APPROVED' | 'COLUMN_APPROVED' | 'TERM_MISMATCH' | 'COLUMN_TERM_MISSING' | 'CHECK_REFERENCE' | 'INDEX_REFERENCE' | 'VIEW_REFERENCE'
-  | 'REFERENCE_UNVERIFIABLE' | 'CONSTRAINT_NAME_INVALID' | 'CONSTRAINT_NAME_CONFLICT' | 'RECOMMENDATION_CHANGED' | 'SOURCE_MAPPED';
+  | 'REFERENCE_UNVERIFIABLE' | 'CONSTRAINT_NAME_INVALID' | 'CONSTRAINT_NAME_CONFLICT' | 'RECOMMENDATION_CHANGED' | 'SOURCE_MAPPED' | 'INHERITED_READ_ONLY';
 
 export interface ApplyIssue { code: ApplyCode; reason: string; related: string[] }
 
@@ -81,6 +81,7 @@ export const APPLY_CODE_LABELS: Record<ApplyCode, string> = {
   CONSTRAINT_NAME_CONFLICT: t('제약조건 이름 충돌'),
   RECOMMENDATION_CHANGED: t('추천 이름 바뀜'),
   SOURCE_MAPPED: t('원본 DB 매핑'),
+  INHERITED_READ_ONLY: t('상속 컬럼 (읽기 전용)'),
 };
 
 const issueText = (issues: ApplyIssue[]) => issues.map((i) => i.reason).join('\n');

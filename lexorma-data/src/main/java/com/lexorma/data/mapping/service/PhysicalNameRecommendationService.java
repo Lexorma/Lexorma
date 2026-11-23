@@ -12,6 +12,7 @@ import com.lexorma.core.project.domain.entity.Project;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.core.project.repository.ProjectRepository;
 import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
+import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.Applicability;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ApplyCode;
 import com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ApplyIssue;
@@ -36,6 +37,7 @@ import com.lexorma.data.table.domain.dto.TableNameDto;
 import com.lexorma.data.table.service.TableDesignService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -83,6 +85,7 @@ public class PhysicalNameRecommendationService {
     private final TableDesignService tableDesignService;
     private final SchemaInfoRepository schemaInfoRepository;
     private final ProjectRepository projectRepository;
+    private final ModelMappingService mappingService;
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -122,21 +125,143 @@ public class PhysicalNameRecommendationService {
     public ColumnSummary selectColumnSummary(AccountDto accountDto, Long modelId) {
         Long projectId = accountDto.getProjectId();
         requireModel(projectId, modelId);
-        long available = queryRepository.countColumns(projectId, modelId, Status.AVAILABLE);
-        long matched = queryRepository.countColumns(projectId, modelId, Status.ALREADY_MATCHED);
-        long unavailable = queryRepository.countColumns(projectId, modelId, Status.UNAVAILABLE);
-        long conflict = queryRepository.countColumns(projectId, modelId, Status.CONFLICT);
-        return new ColumnSummary(modelId, available + matched + unavailable + conflict, available, matched, unavailable, conflict);
+        // ASCII 밖의 글자가 있는 행은 자바 판정을 따른다 (M7-NAME-1 — 목록의 상태 조건과 같은 덮어쓰기, 모델 단위 한 번)
+        ColumnSearch modelSearch = new ColumnSearch(modelId, null, null, null, null, null, null);
+        StatusPlan plan = statusPlan(projectId, modelSearch);
+        long available;
+        long matched;
+        long unavailable;
+        long conflict;
+        if (plan.javaJudged()) {
+            // 자바로 판정할 행이 많다 (M7-NAME-F02) : 모델의 모든 행을 한 번 읽어 자바로 판정하고 센다 — 바인딩 목록이 긴 건수 SQL 4번 대신
+            Map<Status, Long> counts = judgeStatuses(queryRepository.findAllColumnSources(projectId, modelSearch, Sort.unsorted())).stream()
+                    .collect(Collectors.groupingBy(st -> st, () -> new java.util.EnumMap<>(Status.class), Collectors.counting()));
+            available = counts.getOrDefault(Status.AVAILABLE, 0L);
+            matched = counts.getOrDefault(Status.ALREADY_MATCHED, 0L);
+            unavailable = counts.getOrDefault(Status.UNAVAILABLE, 0L);
+            conflict = counts.getOrDefault(Status.CONFLICT, 0L);
+        } else {
+            available = queryRepository.countColumns(projectId, modelId, Status.AVAILABLE, plan.overrides());
+            matched = queryRepository.countColumns(projectId, modelId, Status.ALREADY_MATCHED, plan.overrides());
+            unavailable = queryRepository.countColumns(projectId, modelId, Status.UNAVAILABLE, plan.overrides());
+            conflict = queryRepository.countColumns(projectId, modelId, Status.CONFLICT, plan.overrides());
+        }
+        List<ColumnRow> inherited = inheritedRows(projectId, new ColumnSearch(modelId, null, null, null, null, null, null));
+        java.util.function.Function<Status, Long> inheritedCount = st -> inherited.stream().filter(r -> r.status() == st).count();
+        return new ColumnSummary(modelId, available + matched + unavailable + conflict, available, matched, unavailable, conflict,
+                new PhysicalNameRecommendationDto.InheritedSummary(inherited.size(), inheritedCount.apply(Status.AVAILABLE), inheritedCount.apply(Status.ALREADY_MATCHED),
+                        inheritedCount.apply(Status.UNAVAILABLE), inheritedCount.apply(Status.CONFLICT)));
+    }
+
+    /**
+     * SQL 로 판정하지 않는 행(영문약어·컬럼명에 탭·줄바꿈·비 ASCII 글자가 있다)의 자바 판정 (M7-NAME-1, NAME-P01). 목록 행과 같은 {@link #columnRow} 로 상태를 정해 상태별 속성 ID 로 넘긴다.
+     * 그런 행이 없으면 조회 1번으로 끝나고 상태 조건은 예전 SQL 식 그대로다
+     */
+    PhysicalNameRecommendationQueryRepository.Overrides overrides(Long projectId, ColumnSearch search) {
+        if (!queryRepository.hasComplexNames(projectId)) return PhysicalNameRecommendationQueryRepository.Overrides.NONE;
+        return overridesOf(queryRepository.findComplexColumnSources(projectId, search));
+    }
+
+    /**
+     * 자바로 판정할 행이 이 수 이상이면 상태 조건·요약을 SQL 덮어쓰기 대신 전체 자바 판정으로 한다 (M7-NAME-F02, docs/completed/physical-name-recommendation-m7.md 12.12).
+     * 덮어쓰기는 그 행들의 속성 ID 를 {@code not in}·{@code in} 바인딩 목록으로 넘긴다. H2 는 바인딩 목록을 행마다 훑어 비용이 (모델 행 수 × 목록 길이) 로 늘고
+     * (10,000건 상태 필터 약 50초), 전체 자바 판정은 목록 없이 모델 행 수에만 비례한다 — H2 기준값 = 두 방식의 측정이 만나는 곳.
+     * PostgreSQL 은 목록이 길어도 빨라(10,000건 0.4초 — 자바 판정과 같다) 그 지점까지 예전 경로를 쓴다 (바인딩 수 15,004 — 드라이버 한도 32,767 안)
+     */
+    static final int JAVA_JUDGE_MIN_ROWS_H2 = 500;
+    static final int JAVA_JUDGE_MIN_ROWS = 10_000;
+
+    int javaJudgeMinRows() {
+        return queryRepository.scansBoundInListPerRow() ? JAVA_JUDGE_MIN_ROWS_H2 : JAVA_JUDGE_MIN_ROWS;
+    }
+
+    /** 전체 자바 판정에서 이름 충돌(DB 비교 값)을 한 번에 조회하는 행 수 — 한 조회의 바인딩은 이 행들의 추천명 + 테이블 ID 뿐이다 */
+    static final int JUDGE_CHUNK = 1_000;
+
+    /** 상태 판정 방식 : javaJudged = 모든 행을 자바로 판정 (overrides 는 쓰지 않는다), 아니면 SQL 식 + overrides */
+    record StatusPlan(PhysicalNameRecommendationQueryRepository.Overrides overrides, boolean javaJudged) {
+        static final StatusPlan SQL = new StatusPlan(PhysicalNameRecommendationQueryRepository.Overrides.NONE, false);
+    }
+
+    StatusPlan statusPlan(Long projectId, ColumnSearch search) {
+        if (!queryRepository.hasComplexNames(projectId)) return StatusPlan.SQL;
+        int min = javaJudgeMinRows();
+        List<ColumnSource> complex = queryRepository.findComplexColumnSources(projectId, search, min);
+        if (complex.size() >= min) return new StatusPlan(PhysicalNameRecommendationQueryRepository.Overrides.NONE, true);
+        return new StatusPlan(overridesOf(complex), false);
+    }
+
+    /**
+     * 행마다 목록 행과 같은 {@link #columnRow} 로 정한 상태 (같은 순서). 이름 충돌은 추천명이 있는 행을 테이블 ID 순으로 {@link #JUDGE_CHUNK} 행씩 묶어
+     * 그 행들의 테이블·추천명만 한 번에 조회한다 — 한 행의 충돌 후보(같은 테이블 · 같은 추천명)는 늘 그 행이 든 조각의 조회 결과에 있다.
+     * 목록 순서(예 : 컬럼명 정렬)대로 자르면 한 조각이 모델의 거의 모든 테이블에 걸쳐 조회가 무거워진다 (H2 10,000건 컬럼명 정렬 48초 → 테이블 순 묶음, 12.12)
+     */
+    List<Status> judgeStatuses(List<ColumnSource> sources) {
+        List<ColumnSource> named = sources.stream().filter(source -> source.tableId() != null && recommendColumnName(source.termId(), source.termAbbreviation()).available())
+                .sorted(java.util.Comparator.comparing(ColumnSource::tableId)).toList();
+        Set<ColumnNameDbKeys.Taken> taken = new java.util.LinkedHashSet<>();
+        for (int from = 0; from < named.size(); from += JUDGE_CHUNK) {
+            List<ColumnSource> chunk = named.subList(from, Math.min(named.size(), from + JUDGE_CHUNK));
+            taken.addAll(dbKeys.taken(chunk.stream().map(ColumnSource::tableId).collect(Collectors.toSet()),
+                    chunk.stream().map(source -> recommendColumnName(source.termId(), source.termAbbreviation()).name()).collect(Collectors.toSet())));
+        }
+        Map<Long, List<ColumnNameDbKeys.Taken>> byTable = taken.stream().collect(Collectors.groupingBy(ColumnNameDbKeys.Taken::tableId));
+        // columnRow 는 같은 테이블의 후보만 보므로 그 테이블 몫만 넘겨도 판정이 같다
+        List<Status> statuses = new ArrayList<>(sources.size());
+        for (ColumnSource source : sources) {
+            statuses.add(columnRow(source, source.tableId() == null ? List.of() : byTable.getOrDefault(source.tableId(), List.of()), null).status());
+        }
+        return statuses;
+    }
+
+    /** 전체 자바 판정 쪽 : 상태 조건을 뺀 같은 정렬의 전체 → 상태로 거름 → 쪽 자르기. 건수 = 거른 행 수 (SQL 쪽 + 건수 조회와 같은 결과) */
+    Page<ColumnSource> judgedPage(Long projectId, ColumnSearch search, Pageable pageable) {
+        List<ColumnSource> all = queryRepository.findAllColumnSources(projectId, search, pageable.getSort());
+        List<Status> statuses = judgeStatuses(all);
+        List<ColumnSource> filtered = new ArrayList<>();
+        for (int i = 0; i < all.size(); i++) if (statuses.get(i) == search.status()) filtered.add(all.get(i));
+        if (pageable.isUnpaged()) return new PageImpl<>(filtered, pageable, filtered.size());
+        int from = (int) Math.min(pageable.getOffset(), filtered.size());
+        return new PageImpl<>(filtered.subList(from, Math.min(filtered.size(), from + pageable.getPageSize())), pageable, filtered.size());
+    }
+
+    private PhysicalNameRecommendationQueryRepository.Overrides overridesOf(List<ColumnSource> complex) {
+        if (complex.isEmpty()) return PhysicalNameRecommendationQueryRepository.Overrides.NONE;
+        List<ColumnSource> named = complex.stream().filter(source -> source.tableId() != null && recommendColumnName(source.termId(), source.termAbbreviation()).available()).toList();
+        List<ColumnNameDbKeys.Taken> taken = dbKeys.taken(named.stream().map(ColumnSource::tableId).collect(Collectors.toSet()),
+                named.stream().map(source -> recommendColumnName(source.termId(), source.termAbbreviation()).name()).collect(Collectors.toSet()));
+        Set<Long> all = new HashSet<>();
+        Map<Status, Set<Long>> byStatus = new java.util.EnumMap<>(Status.class);
+        for (ColumnSource source : complex) {
+            all.add(source.attributeId());
+            byStatus.computeIfAbsent(columnRow(source, taken, null).status(), k -> new HashSet<>()).add(source.attributeId());
+        }
+        return new PhysicalNameRecommendationQueryRepository.Overrides(all, byStatus);
     }
 
     public Page<ColumnRow> selectColumnRows(AccountDto accountDto, ColumnSearch search, Pageable pageable) {
+        return selectColumnRows(accountDto, search, pageable, PhysicalNameRecommendationDto.Scope.DIRECT);
+    }
+
+    /**
+     * scope DIRECT : 논리 속성 1개 = 1행 (예전 목록). INHERITED : 상속 매핑으로 이어진 물리 컬럼 1개 = 1행 (M7-NAME-1, NAME-P07 — 읽기 전용, 고를 수 없다).
+     * 컬럼 하나로 찾았는데(columnId) 직접 매핑이 없으면 그 컬럼의 상속 행을 돌려준다 (컬럼 상세의 추천 표시)
+     */
+    public Page<ColumnRow> selectColumnRows(AccountDto accountDto, ColumnSearch search, Pageable pageable, PhysicalNameRecommendationDto.Scope scope) {
         Long projectId = accountDto.getProjectId();
         if (search.modelId() != null) {
             requireModel(projectId, search.modelId());
         } else if (search.attributeId() == null && search.columnId() == null) {
             throw modelNotFound();
         }
-        Page<ColumnSource> sources = queryRepository.findColumnSources(projectId, search, pageable);
+        if (scope == PhysicalNameRecommendationDto.Scope.INHERITED) return inheritedPage(projectId, search, pageable);
+        StatusPlan plan = search.status() == null ? StatusPlan.SQL : statusPlan(projectId, search);
+        Page<ColumnSource> sources = plan.javaJudged() ? judgedPage(projectId, search, pageable)
+                : queryRepository.findColumnSources(projectId, search, pageable, plan.overrides());
+        if (sources.isEmpty() && search.columnId() != null && search.attributeId() == null && pageable.getOffset() == 0) {
+            Page<ColumnRow> inherited = inheritedPage(projectId, search, pageable);
+            if (!inherited.isEmpty()) return inherited;
+        }
         // 충돌 사유 : 이 쪽의 추천명을 쓰는 컬럼을 한 번에 읽는다 (행마다 조회하지 않는다)
         List<ColumnSource> named = sources.getContent().stream()
                 .filter(source -> source.tableId() != null && recommendColumnName(source.termId(), source.termAbbreviation()).available()).toList();
@@ -181,13 +306,102 @@ public class PhysicalNameRecommendationService {
         return new ColumnRow(String.valueOf(s.attributeId()), s.modelId(), s.modelName(), s.entityId(), s.entityName(), s.mappingId(),
                 s.schemaId(), s.schemaName(), s.tableId(), s.tableName(),
                 s.attributeId(), s.attributeName(), s.termId(), s.termName(), s.termAbbreviation(),
-                s.columnId(), s.columnName(), recommended.name(), status, recommended.available() ? Source.STANDARD_TERM : null, reason, applicability);
+                s.columnId(), s.columnName(), recommended.name(), status, recommended.available() ? Source.STANDARD_TERM : null, reason, applicability, null);
     }
 
     private static ColumnRow withApplicability(ColumnRow r, Applicability a) {
         return new ColumnRow(r.id(), r.modelId(), r.modelName(), r.entityId(), r.entityName(), r.mappingId(), r.schemaId(), r.schemaName(), r.tableId(), r.tableName(),
                 r.logicalAttributeId(), r.logicalName(), r.termId(), r.termName(), r.termAbbreviation(), r.physicalColumnId(), r.currentPhysicalName(),
-                r.recommendedPhysicalName(), r.status(), r.source(), r.reason(), a);
+                r.recommendedPhysicalName(), r.status(), r.source(), r.reason(), a, r.inheritance());
+    }
+
+    // ------------------------------------------------------------------ 상속 컬럼 (M7-NAME-1, NAME-P07 — 읽기 전용)
+
+    /** 상속 컬럼 목록의 정렬 (화면 필드 → 값). 같은 값은 엔터티명 → 테이블명 → 컬럼 ID */
+    private static final Map<String, java.util.Comparator<ColumnRow>> INHERITED_SORTS = Map.of(
+            "entityName", java.util.Comparator.comparing(ColumnRow::entityName, java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
+            "logicalName", java.util.Comparator.comparing(ColumnRow::logicalName, java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
+            "currentPhysicalName", java.util.Comparator.comparing(ColumnRow::currentPhysicalName, java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
+            "recommendedPhysicalName", java.util.Comparator.comparing(ColumnRow::recommendedPhysicalName, java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)));
+
+    private Page<ColumnRow> inheritedPage(Long projectId, ColumnSearch search, Pageable pageable) {
+        java.util.Comparator<ColumnRow> order = (a, b) -> 0;
+        for (Sort.Order requested : pageable.getSort()) {
+            java.util.Comparator<ColumnRow> c = INHERITED_SORTS.get(requested.getProperty());
+            if (c != null) order = order.thenComparing(requested.isAscending() ? c : c.reversed());
+        }
+        order = order.thenComparing(INHERITED_SORTS.get("entityName")).thenComparing(ColumnRow::tableName, java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                .thenComparing(ColumnRow::physicalColumnId);
+        List<ColumnRow> rows = inheritedRows(projectId, search).stream().filter(r -> search.status() == null || r.status() == search.status()).sorted(order).toList();
+        int from = (int) Math.min(pageable.getOffset(), rows.size());
+        return new org.springframework.data.domain.PageImpl<>(rows.subList(from, Math.min(from + pageable.getPageSize(), rows.size())), pageable, rows.size());
+    }
+
+    /**
+     * 상속 컬럼 행 (상태 조건 전) : 상속 PK 매핑·C형 상속 일반 속성 매핑의 물리 컬럼마다 1행. 기대 컬럼명 = 원본 속성의 표준 용어 영문약어 (직접 매핑 행과 같은 {@link #columnRow} 판정 —
+     * 일치는 {@link StandardNames#sameColumnName}, 충돌은 DB 비교 값). 일괄 적용 판정은 항상 {@link ApplyCode#INHERITED_READ_ONLY} 로 막는다
+     */
+    List<ColumnRow> inheritedRows(Long projectId, ColumnSearch search) {
+        List<PhysicalNameRecommendationQueryRepository.InheritedSource> links = queryRepository.findInheritedSources(projectId, search.modelId(), search.entityId(), search.columnId());
+        if (search.attributeId() != null) links = links.stream().filter(l -> search.attributeId().equals(l.attributeId())).toList();
+        if (search.searchQuery() != null && !search.searchQuery().isBlank()) {
+            String keyword = search.searchQuery().trim().toLowerCase(Locale.ROOT);
+            links = links.stream().filter(l -> contains(switch (search.searchColumn() == null ? "" : search.searchColumn()) {
+                case "logicalName" -> l.attributeName();
+                case "currentPhysicalName" -> l.columnName();
+                case "recommendedPhysicalName" -> l.termAbbreviation();
+                default -> l.entityName();
+            }, keyword) || ("entityName".equals(search.searchColumn()) || search.searchColumn() == null || search.searchColumn().isBlank()) && contains(l.originEntityName(), keyword)).toList();
+        }
+        if (links.isEmpty()) return List.of();
+        Map<Long, InheritanceConversions> conversions = new HashMap<>();
+        List<ColumnSource> sources = links.stream().map(l -> new ColumnSource(l.modelId(), l.modelName(), l.entityId(), l.entityName(), l.mappingId(), l.schemaId(), l.schemaName(),
+                l.tableId(), l.tableName(), l.attributeId(), l.attributeName(), l.termId(), l.termName(), l.termAbbreviation(), l.linkId(), l.columnId(), l.columnName(),
+                l.columnTermId(), l.columnApproval(), l.tableApproval())).toList();
+        List<ColumnSource> named = sources.stream().filter(source -> recommendColumnName(source.termId(), source.termAbbreviation()).available()).toList();
+        List<ColumnNameDbKeys.Taken> taken = dbKeys.taken(named.stream().map(ColumnSource::tableId).collect(Collectors.toSet()),
+                named.stream().map(source -> recommendColumnName(source.termId(), source.termAbbreviation()).name()).collect(Collectors.toSet()));
+        List<ColumnRow> rows = new ArrayList<>();
+        for (int i = 0; i < links.size(); i++) {
+            PhysicalNameRecommendationQueryRepository.InheritedSource l = links.get(i);
+            ColumnRow row = columnRow(sources.get(i), taken, null);
+            InheritanceConversions c = conversions.computeIfAbsent(l.modelId(), modelId -> mappingService.conversions(projectId, modelId));
+            boolean concrete = "ATTRIBUTE".equals(l.kind()) || c.kind(l.entityId()) == InheritanceConversions.Kind.TABLE_PER_CONCRETE;
+            PhysicalNameRecommendationDto.InheritedKind kind = "KEY".equals(l.kind()) ? PhysicalNameRecommendationDto.InheritedKind.KEY : PhysicalNameRecommendationDto.InheritedKind.ATTRIBUTE;
+            String readOnly = readOnlyReason(kind, concrete);
+            List<ApplyIssue> issues = new ArrayList<>(fixedIssues(row.status(), row.reason(), true, true));
+            issues.add(new ApplyIssue(ApplyCode.INHERITED_READ_ONLY, readOnly, List.of()));
+            rows.add(new ColumnRow("INHERITED:" + l.columnId(), row.modelId(), row.modelName(), row.entityId(), row.entityName(), row.mappingId(), row.schemaId(), row.schemaName(),
+                    row.tableId(), row.tableName(), row.logicalAttributeId(), row.logicalName(), row.termId(), row.termName(), row.termAbbreviation(), row.physicalColumnId(),
+                    row.currentPhysicalName(), row.recommendedPhysicalName(), row.status(), row.source(), row.reason(), Applicability.of(issues),
+                    new PhysicalNameRecommendationDto.Inheritance(kind, concrete ? "C" : "B", l.originEntityId(), l.originEntityName(), readOnly)));
+        }
+        return rows;
+    }
+
+    /** 상속 매핑으로 이어진 컬럼 → 읽기 전용 사유 (일괄 적용 미리보기·적용이 막는다 — 목록과 같은 문구). 직접 매핑만 있는 컬럼은 없다 */
+    Map<Long, String> inheritedReadOnly(Long projectId, Set<Long> columnIds) {
+        Map<Long, String> result = new HashMap<>();
+        Map<Long, InheritanceConversions> conversions = new HashMap<>();
+        for (PhysicalNameRecommendationQueryRepository.InheritedSource l : queryRepository.findInheritedSources(projectId, null, null, (java.util.Collection<Long>) columnIds)) {
+            InheritanceConversions c = conversions.computeIfAbsent(l.modelId(), modelId -> mappingService.conversions(projectId, modelId));
+            boolean attribute = "ATTRIBUTE".equals(l.kind());
+            boolean concrete = attribute || c.kind(l.entityId()) == InheritanceConversions.Kind.TABLE_PER_CONCRETE;
+            result.put(l.columnId(), readOnlyReason(attribute ? PhysicalNameRecommendationDto.InheritedKind.ATTRIBUTE : PhysicalNameRecommendationDto.InheritedKind.KEY, concrete));
+        }
+        return result;
+    }
+
+    /** 읽기 전용 사유 (목록·미리보기·적용 공용 문구) */
+    static String readOnlyReason(PhysicalNameRecommendationDto.InheritedKind kind, boolean concrete) {
+        return kind == PhysicalNameRecommendationDto.InheritedKind.ATTRIBUTE
+                ? Messages.get("C형 말단 테이블에 복제한 조상 속성 컬럼입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.")
+                : concrete ? Messages.get("C형 말단 테이블에 복제한 루트 PK 컬럼입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.")
+                : Messages.get("서브타입 테이블의 상속 PK 컬럼(B형)입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.");
+    }
+
+    private static boolean contains(String value, String keyword) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(keyword);
     }
 
     /**

@@ -710,10 +710,26 @@ public class LogicalModelService {
         relationshipRepository.delete(relationship);
     }
 
+    /**
+     * 관계 승인·승인 취소 (M8-C1 L-01, M8-D02). 모델 행을 잠근 뒤 관계를 다시 읽고, 승인자가 본 관계(modifiedAt = MDFCN_DT)와 같을 때만 승인 여부를 바꾼다 — 다르면 409.
+     * 예전에는 잠그지 않고 읽어 바꿔, 그 사이 다른 사용자가 커밋한 관계 수정(이름·카디널리티·양 끝)을 행 전체 UPDATE 로 되돌린 채 승인했다.
+     * 이미 그 상태면 바꾸는 것이 없다 (표준 용어 승인과 같다). HTTP 요청은 기준값이 필수다 (컨트롤러)
+     */
     @Transactional
-    public void updateRelationshipApproval(AccountDto accountDto, Long relationshipId, boolean isApproval) {
+    public void updateRelationshipApproval(AccountDto accountDto, Long relationshipId, boolean isApproval, java.time.LocalDateTime modifiedAt) {
         requireApprover();
-        relationshipRepository.findByIdAndProjectId(relationshipId, accountDto.getProjectId()).orElseThrow(() -> notFound("관계")).setIsApproval(isApproval);
+        Long projectId = accountDto.getProjectId();
+        lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
+        LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
+        try {
+            entityManager.refresh(relationship);
+        } catch (jakarta.persistence.EntityNotFoundException gone) {
+            throw notFound("관계");
+        }
+        if (Boolean.TRUE.equals(relationship.getIsApproval()) == isApproval) return;
+        com.lexorma.common.jpa.ModelBase.verify(relationship, modifiedAt,
+                relationship.getRelationshipName() == null ? String.valueOf(relationship.getId()) : relationship.getRelationshipName());
+        relationship.setIsApproval(isApproval);
     }
 
     // ------------------------------------------------------------------ 논리 ERD

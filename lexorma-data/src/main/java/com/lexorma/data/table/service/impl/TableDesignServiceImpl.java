@@ -402,7 +402,9 @@ public class TableDesignServiceImpl implements TableDesignService {
 
         tableInfoDtos.forEach(tableInfoDto -> {
             // 행을 잠가 논리·물리 매핑 등록과 엇갈리지 않게 한다
-            TableInfo tableInfo = tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+            // 없는(그 사이 지워진·다른 프로젝트) 테이블은 대상 없음 400 (예전에는 아래에서 NullPointerException 으로 500 — M8-C1)
+            TableInfo tableInfo = tableInfoDto.getId() == null ? null : tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+            if (tableInfo == null) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
 
             entityTableMappingRepository.findByTable_Id(tableInfoDto.getId()).ifPresent(mapping -> {
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "엔터티 {0} 에 매핑된 테이블입니다. 매핑을 먼저 해제해주세요.", mapping.getEntity().getEntityName());

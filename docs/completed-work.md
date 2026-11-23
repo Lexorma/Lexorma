@@ -519,6 +519,7 @@
 - **물리 모델 정합성 안정화** : 승인된 테이블 수정의 서버 차단, FK 참조 키·타입 검사 — [model-integrity-hardening.md](completed/model-integrity-hardening.md).
 - 설계 결정 : 연결은 폼을 열 뿐이고 저장 성공 후 선이 생긴다. 관계와 식별자는 서로 자동 변환하지 않는다. DDL 승인 상태 정책(2026-11-13 결정) — 기본은 설계용 + 안내, 통합 DDL Export 에 승인 기준 모드.
 - 검증 결과 : H2/PostgreSQL 테스트 + 헤드리스 Chrome. 레이아웃 확장·동시 편집 정책(D-09)은 M-8 에서 떼어 pending-work.md 로.
+- **M8-C1 동시 편집 P1 결함 수정 · 공통 계약 보강 (2026-11-23, 사용자 확정 M8-D01~D07)** — [ongoing/modeling-concurrency-m8.md 11~12장](ongoing/modeling-concurrency-m8.md) (M-8 동시 편집 안정성 전체는 진행 중 — C2~C4 는 pending-work.md [M-8]). 수정 전 코드로 두 트랜잭션을 실제로 엇갈려 6개 손실을 재현(H2·PostgreSQL 모두)한 뒤 고쳤다 : 논리 관계 승인이 잠금 없이 행 전체를 써 동시 관계 수정을 되돌리던 것 → 모델 행 잠금 + 관계 `modifiedAt` 기준값(409); 표준 도메인·단어 수정·승인 → 행 잠금(`findForUpdate`, 승인은 ID 순) + `modifiedAt` 기준값(409, 조회 응답에 필드 추가), 승인된 도메인 수정 400(M8-D03), 단어 금칙어만 바뀌어도 기준값 이동; 컬럼 순서 팝업 → 테이블 행 잠금 + 컬럼 전체 ID 순 잠금 + 팝업이 본 순서 `baseSortOrder` 비교(컬럼 추가·삭제·순서 변경 409, 순서 밖 값의 변경은 충돌 아님); 스키마 이름 변경 → 프로젝트 배타 + 스키마·참조 컬럼 NOWAIT, 지금도 이 스키마를 가리키는 컬럼만 고침; 동시 삭제 뒤 NPE·`EntityNotFoundException` 500 → 대상 없음 400 (테이블·컬럼 삭제, 컬럼 승인, 관계 규칙·삭제, 제약조건 삭제). **API 계약** : 관계 승인 `?modifiedAt=`, 도메인·단어 수정·승인 본문 `modifiedAt`, 순서 저장 행마다 `baseSortOrder` 가 HTTP 에서 필수(없으면 400 `MODEL_BASE_REQUIRED`) — 새 오류 코드·마이그레이션 없음. 화면은 관계 승인·순서 팝업만 고침(데이터 사전은 기존 공통 코드가 그대로 보냄). **검증** : 새 `ConcurrentEditP1IntegrationTest` 16건(H2·PostgreSQL), H2 `./gradlew build --continue --rerun` 1,452건 실패 0 · 건너뜀 123, PostgreSQL 18.6 새 빈 DB 1,452건 실패 0 · 건너뜀 46, `npm run typecheck`·vite build 통과. 단일 JAR·브라우저 확인은 하지 않았다(화면 변경이 요청 값 추가뿐 — C3 에서 두 계정 브라우저로).
 
 ### [M-9] 모델 버전 · 변경 이력 — 1~3차
 
@@ -756,3 +757,4 @@
 | 2026-11-22 | [M-7] 컬럼 데이터 무결성 커밋 전 마무리 (M7-U09 통합 V5 · M7-U10 · M7-U11 · M7-U12) — column-name-uniqueness-m7.md 15장, 최근 전체 실행 갱신 |
 | 2026-11-22 | [M-7] 보조 식별자 기반 UNIQUE 생성·누락 UNIQUE 보정·보조 식별자 참조 FK (M7-AK-01~03, D01~D17) — alternate-key-unique-m7.md, 최근 전체 실행 갱신 |
 | 2026-11-23 | [M-7] M7-NAME-1 최종 보완 NAME-F01(약어 조회 앞뒤 제거)·NAME-F02(H2 비 ASCII 대량 상태 필터·요약 — 전체 자바 판정, PoC 12.12) — physical-name-recommendation-m7.md 12.10·12.12·12.13 |
+| 2026-11-23 | [M-8] M8-C1 동시 편집 P1 수정 (관계 승인·표준 도메인/단어·컬럼 순서·스키마 이름 변경, 동시 삭제 뒤 500 일부) — ongoing/modeling-concurrency-m8.md 11~12장, M-8 동시 편집 C2~C4 는 pending-work |

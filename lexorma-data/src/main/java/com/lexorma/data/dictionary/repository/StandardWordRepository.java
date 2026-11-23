@@ -32,6 +32,11 @@ public interface StandardWordRepository extends JpaRepository<StandardWord, Long
 
     StandardWord findByIdAndProjectId(Long id, Long projectId);
 
+    /** 수정·승인이 잠근 행을 다시 읽어 비교하고 바꾼다 (행 배타 잠금, M8-C1 — 표준 용어 findForUpdate 와 같다) */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select w from StandardWord w where w.id = :id and w.projectId = :projectId")
+    java.util.Optional<StandardWord> findForUpdate(@org.springframework.data.repository.query.Param("id") Long id, @org.springframework.data.repository.query.Param("projectId") Long projectId);
+
     StandardWord findByCommonStandardWordAbbreviationAndProjectId(String commonStandardWordAbbreviation, Long projectId);
 
     StandardWord findBycommonStandardWordName(String commonStandardWordName);

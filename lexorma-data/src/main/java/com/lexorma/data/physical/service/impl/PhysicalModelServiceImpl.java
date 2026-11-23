@@ -171,8 +171,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     public PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules) {
         Long projectId = accountDto.getProjectId();
         TableRelation relation = relationRepository.findByIdAndProjectId(relationId, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
-        // 행을 잠그고 다시 읽는다 (DEC-08 : 비교와 반영 사이에 다른 수정이 끼어들지 않는다)
-        entityManager.refresh(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        // 행을 잠그고 다시 읽는다 (DEC-08 : 비교와 반영 사이에 다른 수정이 끼어들지 않는다). 그 사이 지워졌으면 대상 없음 400 (예전에는 500 — M8-C1)
+        refreshOrNotFound(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (relation.getRelationType() != TableRelation.Type.FK) throw invalid("논리 관계에는 삭제·수정 규칙이 없습니다.");
         rejectApproved(relation.getIsApproval());
         com.lexorma.common.jpa.ModelBase.verify(relation, rules == null ? null : rules.baseModifiedAt(), relation.getRelationName());
@@ -550,6 +550,16 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 refIds(d.includeColumns()), d.condition());
     }
 
+    /** 다시 읽기 (잠금 강도는 선택) : 그 사이 지워진 행은 대상 없음 400 — EntityNotFoundException 이 500 으로 나가지 않게 한다 (M8-C1) */
+    private void refreshOrNotFound(Object entity, jakarta.persistence.LockModeType lock) {
+        try {
+            if (lock == null) entityManager.refresh(entity);
+            else entityManager.refresh(entity, lock);
+        } catch (EntityNotFoundException e) {
+            throw notFound();
+        }
+    }
+
     /** 인덱스를 찾고 그 테이블 행을 잠근 뒤 최신 상태로 다시 읽는다 (잠그기 전에 다른 트랜잭션이 고쳤거나 지웠을 수 있다) */
     private TableIndex lockIndex(Long projectId, Long id) {
         TableIndex index = indexRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
@@ -685,6 +695,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 if (relation.getRelationSource() == TableRelation.Source.REF_COLUMN) {
                     throw invalid("참조 테이블명으로 만든 관계입니다. 컬럼 관리에서 참조 테이블을 비워주세요.");
                 }
+                // 행을 잠그고 다시 읽은 뒤 지운다 : 그 사이 지워졌으면 대상 없음 400 (예전에는 0행 DELETE 로 500 — M8-C1), 그 사이 승인됐으면 승인된 상태를 본다
+                refreshOrNotFound(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
                 rejectApproved(relation.getIsApproval());
                 relationRepository.delete(relation);
             }
@@ -699,7 +711,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 TableConstraint constraint = constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
                 // 테이블 행을 먼저 잠근다 (M7-AK-D15) : 그 UNIQUE 를 참조하는 FK 를 만드는 보정·생성(테이블 행 NOWAIT)과 엇갈려 만드는 시점에 무효인 FK 가 생기지 않게
                 lockTable(projectId, constraint.getTableInfo().getId());
-                entityManager.refresh(constraint);
+                refreshOrNotFound(constraint, null); // 그 사이 지워졌으면 대상 없음 400 (예전에는 500 — M8-C1)
                 rejectApproved(constraint.getIsApproval());
                 constraintRepository.delete(constraint);
             }

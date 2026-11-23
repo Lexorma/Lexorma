@@ -281,12 +281,12 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 승인취소 → 카디널리티 수정 → 같은 값 → 승인 → (승인된 관계 삭제 거절) → 승인취소 → 삭제
         mark = mark();
-        logical.updateRelationshipApproval(admin, rel.id(), false);
+        logical.updateRelationshipApproval(admin, rel.id(), false, null);
         logical.saveRelationship(admin, relationship(rel.id(), model, "주문-상품", order, item, 1, 1, 1, null));
         logical.saveRelationship(admin, relationship(rel.id(), model, "주문-상품", order, item, 1, 1, 1, null));
-        logical.updateRelationshipApproval(admin, rel.id(), true);
+        logical.updateRelationshipApproval(admin, rel.id(), true, null);
         assertThatThrownBy(() -> logical.deleteRelationship(admin, rel.id())).isInstanceOf(CustomException.class);
-        logical.updateRelationshipApproval(admin, rel.id(), false);
+        logical.updateRelationshipApproval(admin, rel.id(), false, null);
         logical.deleteRelationship(admin, rel.id());
         List<ModelChangeHistory> lifecycle = since(projectId, mark);
         assertThat(lifecycle).extracting(ModelChangeHistory::getAction).containsExactly(Action.REVOKE, Action.UPDATE, Action.APPROVE, Action.REVOKE, Action.DELETE);

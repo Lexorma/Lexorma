@@ -334,13 +334,18 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "관계 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능")
+    @Operation(summary = "관계 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능. modifiedAt(화면이 읽은 관계의 수정 일시) 필수 — 그 사이 관계가 바뀌었으면 409 (M8-C1)")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/relationship/{relationshipId}/approval/{isApproval}")
     public ResponseEntity<Map<String, Object>> updateRelationshipApproval(@AuthenticationPrincipal AccountDto accountDto,
                                                                           @PathVariable(name = "relationshipId") Long relationshipId,
-                                                                          @PathVariable(name = "isApproval") boolean isApproval) {
-        logicalModelService.updateRelationshipApproval(accountDto, relationshipId, isApproval);
+                                                                          @PathVariable(name = "isApproval") boolean isApproval,
+                                                                          @RequestParam(value = "modifiedAt", required = false)
+                                                                          @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+                                                                          java.time.LocalDateTime modifiedAt) {
+        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다 (표준 용어 승인과 같은 순서)
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        logicalModelService.updateRelationshipApproval(accountDto, relationshipId, isApproval, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 }

@@ -150,7 +150,7 @@ class StandardWordServiceTest {
     @DisplayName("승인/미승인 처리는 로그인 프로젝트의 단어에만 적용된다")
     void approval() {
         StandardWord word = word(1L, "사용자", "-", false);
-        when(standardWordRepository.findByIdAndProjectId(1L, 1L)).thenReturn(word);
+        when(standardWordRepository.findForUpdate(1L, 1L)).thenReturn(java.util.Optional.of(word)); // 승인은 행을 잠그고 읽는다 (M8-C1)
 
         service.approvalStandardWords(List.of(StandardWordDto.builder().id(1L).build()), login, true);
 
@@ -161,7 +161,7 @@ class StandardWordServiceTest {
     @DisplayName("수정 시 금칙어 문자열을 , 로 분리하고 Y/N 값을 boolean 으로 변환한다")
     void update() {
         StandardWord word = word(1L, "사용자", "-", false);
-        when(standardWordRepository.findByIdAndProjectId(1L, 1L)).thenReturn(word);
+        when(standardWordRepository.findForUpdate(1L, 1L)).thenReturn(java.util.Optional.of(word)); // 수정은 행을 잠그고 읽는다 (M8-C1)
 
         service.updateStandardWords(StandardWordDto.builder().id(1L).projectId(1L)
                 .restrictedWords("유저,회원").useAbbreviation("Y").isFormatWord("N").revisionNumber(2)

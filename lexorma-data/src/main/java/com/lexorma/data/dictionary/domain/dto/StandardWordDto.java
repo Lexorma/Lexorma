@@ -29,6 +29,9 @@ public class StandardWordDto {
     /** 사용 건수 (목록 조회 전용) : 이 단어를 쓰는 표준 용어 수 */
     private Long usageCount;
 
+    /** 수정 기준값 (DEC-08, M8-C1) : 마지막 수정 일시(MDFCN_DT). 수정·승인·승인 취소 요청이 조회 때의 값을 그대로 돌려준다 — 그 사이 바뀌었으면 409 */
+    private java.time.LocalDateTime modifiedAt;
+
     public static StandardWordDto fromEntity(StandardWord entity) {
         return StandardWordDto.builder()
                 .id(entity.getId())
@@ -44,6 +47,7 @@ public class StandardWordDto {
                 .synonyms(convertListToString(entity.getSynonymList()))
                 .restrictedWords(convertListToString(entity.getRestrictedWords()))
                 .isApprovalYn(entity.getIsApproval() ? "Y" : "N")
+                .modifiedAt(entity.modifiedAt())
                 .build();
     }
 

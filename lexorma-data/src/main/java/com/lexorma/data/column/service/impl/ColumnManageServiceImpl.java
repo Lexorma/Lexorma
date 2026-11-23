@@ -188,6 +188,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         columnInfoDtos.forEach(columnInfoDto -> {
             ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
+            // 없는(그 사이 지워진·다른 프로젝트) 컬럼은 대상 없음 400 (예전에는 NullPointerException 으로 500 — M8-C1). 잠금·기준값은 M8-C2
+            if (columnInfo == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
 
             columnInfo.setIsApproval(Boolean.parseBoolean(type));
         });
@@ -222,6 +224,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         columnInfoDtos.forEach(columnInfoDto -> {
             ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
+            // 없는(그 사이 지워진·다른 프로젝트) 컬럼은 대상 없음 400 (예전에는 NullPointerException 으로 500 — M8-C1)
+            if (columnInfo == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
 
             if(columnInfo.getIsApproval()){
                 throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
@@ -542,16 +546,46 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     @Transactional
     public void updateSortOrder(AccountDto accountDto, List<ColumnInfoDto> columnInfoDtos) {
         Long projectId = accountDto.getProjectId();
-
-        columnInfoDtos.forEach(columnInfoDto -> {
-            ColumnInfo columnInfo = columnInfoRepository.findByIdAndProjectId(columnInfoDto.getId(), projectId);
-
-            if(columnInfo.getIsApproval()){
+        if (columnInfoDtos == null || columnInfoDtos.isEmpty()) return;
+        // M8-C1 P-01 : 오래된 순서 팝업이 그 사이 다른 사용자가 바꾼 순서를 되돌리지 않게 한다. 한 테이블의 컬럼 전체를 보내야 하고(팝업은 테이블의 컬럼 전체를 보여 준다),
+        // 테이블 행을 먼저 잠근 뒤(컬럼 구성을 바꾸는 쓰기의 공통 잠금 — 등록·일괄 저장·삭제·엑셀) 컬럼 행을 ID 순으로 잠그고 다시 읽어 비교한다.
+        // 컬럼이 더해지거나 지워졌으면, 또는 컬럼 하나라도 지금 순서가 팝업이 본 순서(baseSortOrder)와 다르면 409 — 아무것도 바꾸지 않는다 (한 트랜잭션)
+        Map<Long, ColumnInfoDto> requested = new java.util.LinkedHashMap<>();
+        for (ColumnInfoDto dto : columnInfoDtos) {
+            if (dto == null || dto.getId() == null || requested.putIfAbsent(dto.getId(), dto) != null) {
+                throw CustomException.withMessage(ErrorCode.INVALID_PHYSICAL_MODEL, "한 테이블의 컬럼 순서만 한 번에 저장할 수 있습니다.");
+            }
+        }
+        ColumnInfo first = columnInfoRepository.findByIdAndProjectId(requested.keySet().iterator().next(), projectId);
+        if (first == null || first.getTableInfo() == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
+        Long tableId = first.getTableInfo().getId();
+        tableInfoRepository.findForUpdate(tableId, projectId).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
+        List<ColumnInfo> current = columnInfoRepository.findAllByTableInfo_IdIn(List.of(tableId)).stream()
+                .sorted(java.util.Comparator.comparing(ColumnInfo::getId)).toList();
+        for (ColumnInfo column : current) entityManager.refresh(column, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        Set<Long> currentIds = current.stream().map(ColumnInfo::getId).collect(Collectors.toSet());
+        for (Long id : requested.keySet()) {
+            if (currentIds.contains(id)) continue;
+            ColumnInfo elsewhere = columnInfoRepository.findByIdAndProjectId(id, projectId);
+            // 다른 테이블의 컬럼을 섞어 보냈다 (요청 오류) — 없는 컬럼은 그 사이 지워진 것이다 (아래 409)
+            if (elsewhere != null && elsewhere.getTableInfo() != null && !tableId.equals(elsewhere.getTableInfo().getId())) {
+                throw CustomException.withMessage(ErrorCode.INVALID_PHYSICAL_MODEL, "한 테이블의 컬럼 순서만 한 번에 저장할 수 있습니다.");
+            }
+        }
+        if (!currentIds.equals(requested.keySet())) {
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "화면을 연 뒤 이 테이블의 컬럼이 추가되거나 삭제되어 순서를 저장하지 않았습니다. 컬럼 순서 변경을 다시 열어 주세요.");
+        }
+        for (ColumnInfo column : current) {
+            if (Boolean.TRUE.equals(column.getIsApproval())) {
                 throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
             }
-
-            columnInfo.setSortOrder(columnInfoDto.getSortOrder());
-        });
+            int seen = requested.get(column.getId()).getBaseSortOrder() == null ? 0 : requested.get(column.getId()).getBaseSortOrder();
+            int now = column.getSortOrder() == null ? 0 : column.getSortOrder();
+            if (seen != now) {
+                throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "화면을 연 뒤 다른 사용자가 컬럼 {0} 의 순서를 바꿔 순서를 저장하지 않았습니다. 컬럼 순서 변경을 다시 열어 주세요.", column.getColumnName());
+            }
+        }
+        for (ColumnInfo column : current) column.setSortOrder(requested.get(column.getId()).getSortOrder());
     }
 
     // ------------------------------------------------------------------ 컬럼 일괄 편집

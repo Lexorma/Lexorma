@@ -105,6 +105,13 @@ public class ColumnInfoDto {
     /** 수정 기준값 (조회 전용, DEC-08) : 마지막 수정 일시 — 일괄 편집 저장이 baseModifiedAt 으로 돌려준다 */
     private java.time.LocalDateTime modifiedAt;
 
+    /**
+     * 컬럼 순서 저장의 기준값 (요청 전용, M8-C1 P-01) : 순서 팝업이 연 때의 이 컬럼 정렬 순서 (정렬 순서가 없던 컬럼은 0). 저장 직전의 값과 다르면 409.
+     * 순서만 비교한다 — 다른 사용자가 이 컬럼의 설명 등 순서 밖의 값만 고친 것은 충돌이 아니다. 응답에는 싣지 않는다
+     */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Integer baseSortOrder;
+
     public static ColumnInfoDto fromEntity(ColumnInfo entity) {
         TableInfo tableInfo = entity.getTableInfo();
         SchemaInfo schema = tableInfo == null ? null : tableInfo.getSchema();

@@ -146,9 +146,11 @@ public class ColumnManageRestController {
         return ResponseEntity.ok(Map.of("result", true, "columnInfos", columnInfoDtos));
     }
 
-    @Operation(summary = "컬럼 정렬순서 변경", description = "컬럼 목록의 정렬순서를 변경한다.")
+    @Operation(summary = "컬럼 정렬순서 변경", description = "한 테이블의 컬럼 전체를 새 순서(sortOrder)로 보낸다. 행마다 baseSortOrder(팝업을 연 때의 정렬 순서, 없던 컬럼은 0) 필수 — "
+            + "그 사이 순서가 바뀌었거나 컬럼이 더해지거나 지워졌으면 409, 아무것도 바꾸지 않는다 (M8-C1)")
     @PatchMapping(value = "/saveColumn/sortOrder")
     public ResponseEntity<Map<String, Boolean>> updateSortOrder(@RequestBody List<ColumnInfoDto> columnInfoDtos, @AuthenticationPrincipal AccountDto accountDto) {
+        if (columnInfoDtos != null) columnInfoDtos.forEach(row -> com.lexorma.common.jpa.ModelBase.require(true, row == null ? null : row.getBaseSortOrder()));
         columnManageService.updateSortOrder(accountDto, columnInfoDtos);
 
         return ResponseEntity.ok(Map.of("result", true));

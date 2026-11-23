@@ -222,15 +222,18 @@ class StandardDomainDuplicateIntegrationTest {
     }
 
     @Test
-    @DisplayName("수정 : 이름은 수정 대상이 아니다(보낸 이름 무시, 다른 필드만), 중복 데이터의 도메인도 다른 필드 수정 가능, 없는 도메인 400")
+    @DisplayName("수정 : 이름은 수정 대상이 아니다(보낸 이름 무시, 다른 필드만), 중복 데이터의 도메인도 다른 필드 수정 가능, 승인된 도메인은 수정 불가(M8-D03), 없는 도메인 400")
     void update() {
         Context a = project("dict2-update");
-        long dup1 = insertRaw(a, "DUP", true);
-        insertRaw(a, "dup", true);
+        long dup1 = insertRaw(a, "DUP", false); // 승인된 도메인은 고칠 수 없다 (M8-C1 M8-D03) — 미승인 중복 행으로 다른 필드 수정을 본다
+        long approved = insertRaw(a, "dup", true);
         dictionary.updateStandardDomain(a.user, StandardDomainDto.builder().id(dup1).commonStandardDomainName("OTHER").commonStandardDomainDescription("바뀐 설명")
                 .dataType("VARCHAR").dataLength(20).dataDecimalLength(0).unit("").revisionNumber(2).build());
         assertThat(jdbc.queryForMap("select DMN_NM, DMN_EXPLN, DATA_LEN from TB_STD_DMN where STD_DMN_SN = ?", dup1))
                 .containsEntry("DMN_NM", "DUP").containsEntry("DMN_EXPLN", "바뀐 설명").containsEntry("DATA_LEN", 20);
+        assertThatThrownBy(() -> dictionary.updateStandardDomain(a.user, StandardDomainDto.builder().id(approved).commonStandardDomainDescription("승인된 도메인 수정")
+                .dataType("VARCHAR").dataLength(20).dataDecimalLength(0).unit("").revisionNumber(2).build()))
+                .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         assertThatThrownBy(() -> dictionary.updateStandardDomain(a.user, StandardDomainDto.builder().id(-1L).build()))
                 .extracting("errorCode").isEqualTo(ErrorCode.NOT_FOUND_DOMAIN_DATA);
     }

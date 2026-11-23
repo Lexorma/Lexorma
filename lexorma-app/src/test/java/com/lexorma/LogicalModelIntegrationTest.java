@@ -252,7 +252,7 @@ class LogicalModelIntegrationTest {
 
         // 수정 : 승인된 관계는 승인 취소 후에. N:1 로, 최대 참여 수를 숫자로
         rejected(() -> service.saveRelationship(admin, relationship(assigned.id(), model, "투입", employee, project, false, 1, 5, 1, 1)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        service.updateRelationshipApproval(admin, assigned.id(), false);
+        service.updateRelationshipApproval(admin, assigned.id(), false, null);
         assertThat(service.saveRelationship(admin, relationship(assigned.id(), model, "투입", employee, project, false, 1, 5, 1, 1)))
                 .extracting(Relationship::cardinality, Relationship::sourceMax, Relationship::targetMin).containsExactly("N:1", 5, 1);
 
@@ -278,7 +278,7 @@ class LogicalModelIntegrationTest {
         rejected(() -> service.deleteEntity(admin, dept.id()), ErrorCode.RELATION_EXISTS);
 
         // 승인 : 승인된 관계·엔터티 자체는 승인 취소 전에는 바꿀 수 없다. 승인된 엔터티의 속성·식별자는 승인 권한자만 바꾼다
-        service.updateRelationshipApproval(admin, belongs.id(), true);
+        service.updateRelationshipApproval(admin, belongs.id(), true, null);
         rejected(() -> service.saveRelationship(admin, relationship(belongs.id(), model, "소속", dept, employee, true, 1, 1, 0, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.deleteRelationship(admin, belongs.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         service.updateEntityApproval(admin, employee.id(), true);
@@ -303,7 +303,7 @@ class LogicalModelIntegrationTest {
         AccountDto other = loginAsAdmin("m6-relationship-other");
         rejected(() -> service.selectRelationships(other, model.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.deleteRelationship(other, parent.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.updateRelationshipApproval(other, belongs.id(), false), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.updateRelationshipApproval(other, belongs.id(), false, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         Model theirs = service.saveModel(other, new Model(null, "조직", null));
         Entity theirEntity = service.saveEntity(other, new Entity(null, theirs.id(), "부서", null, null, null, null));
         rejected(() -> service.saveRelationship(other, relationship(null, theirs, "남의 엔터티", theirEntity, dept, false, 0, 1, 0, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);

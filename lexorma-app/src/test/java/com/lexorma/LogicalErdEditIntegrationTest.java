@@ -150,7 +150,7 @@ class LogicalErdEditIntegrationTest {
         EntityMapping mapping = mappingService.saveEntityMapping(admin, new EntityMapping(null, grade.id(), table.getId()));
         AttributeMapping attributeMapping = mappingService.saveAttributeMapping(admin, new AttributeMapping(null, mapping.id(), memo, column.getId()));
         rejected(() -> service.deleteAttribute(admin, memo), ErrorCode.RELATION_EXISTS);
-        service.updateRelationshipApproval(admin, relationship.id(), false); // 승인 권한자가 만든 관계는 승인 상태다
+        service.updateRelationshipApproval(admin, relationship.id(), false, null); // 승인 권한자가 만든 관계는 승인 상태다
         service.deleteRelationship(admin, relationship.id());
         rejected(() -> service.deleteEntity(admin, grade.id()), ErrorCode.RELATION_EXISTS);
         assertThat(graphEntity(admin, model, "회원 등급").attributes()).extracting(GraphAttribute::id).containsExactly(memo, name, no);
@@ -255,7 +255,7 @@ class LogicalErdEditIntegrationTest {
         // ---- 관계 수정 : 승인된 관계는 승인취소 후에. 이름·유형·참여 수·방향을 바꿀 수 있다
         rejected(() -> relation(admin, model, orders.id(), "주문", member.id(), order.id(), true, 1, 1, 1, null), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.deleteRelationship(admin, orders.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
-        service.updateRelationshipApproval(admin, orders.id(), false);
+        service.updateRelationshipApproval(admin, orders.id(), false, null);
         Relationship changed = relation(admin, model, orders.id(), "주문 소유", member.id(), order.id(), true, 1, 1, 1, 5);
         assertThat(changed).extracting(Relationship::id, Relationship::relationshipName, Relationship::isIdentifying, Relationship::targetMin, Relationship::targetMax, Relationship::cardinality)
                 .containsExactly(orders.id(), "주문 소유", true, 1, 5, "1:N");
@@ -303,7 +303,7 @@ class LogicalErdEditIntegrationTest {
         rejected(() -> controller.saveRelationship(user, new Relationship(details.id(), model.id(), "승인된 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null, details.modifiedAt())), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> controller.deleteRelationship(user, details.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         rejected(() -> controller.saveIdentifier(user, new Identifier(null, item.id(), "사용자 식별자", false, List.of(itemQuantity), null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> controller.updateRelationshipApproval(user, byUser.id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);
+        rejected(() -> controller.updateRelationshipApproval(user, byUser.id(), true, null), ErrorCode.APPROVAL_PERMISSION_DENIED);
         controller.deleteRelationship(user, byUser.id());
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "942", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.saveRelationship(notApproved, new Relationship(null, model.id(), "미승인", null, member.id(), null, order.id(), null, false, 1, 1, 0, null, null, null))).isInstanceOf(AccessDeniedException.class);
@@ -323,7 +323,7 @@ class LogicalErdEditIntegrationTest {
         // ---- 관계 삭제 : 그 관계만 지워지고 엔터티·속성·배치는 그대로다
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
         service.deleteRelationship(admin, orders.id());
-        service.updateRelationshipApproval(admin, details.id(), false);
+        service.updateRelationshipApproval(admin, details.id(), false, null);
         service.deleteRelationship(admin, details.id());
         Graph graph = service.selectGraph(admin, model.id());
         assertThat(graph.relationships()).extracting(Relationship::id).containsExactlyInAnyOrder(recommends.id(), reverse.id(), self.id());

@@ -681,7 +681,9 @@ class SmokeTest {
         assertThat(delete("/api/logical/entity/" + entityId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
         assertThat(delete("/api/logical/relationship/" + relationshipId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
         assertThat(patch("/api/logical/entity/" + entityId + "/approval/false").statusCode()).isEqualTo(200);
-        assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false").statusCode()).isEqualTo(200);
+        // 관계 승인·승인 취소는 화면이 읽은 관계의 수정 일시(modifiedAt)가 필수다 (M8-C1) — 없으면 400 MODEL_BASE_REQUIRED
+        assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false").body()).contains("MODEL_BASE_REQUIRED");
+        assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false?modifiedAt=" + modifiedAt("TB_LGCL_REL", "LGCL_REL_SN", relationshipId)).statusCode()).isEqualTo(200);
         HttpResponse<String> blocked = delete("/api/logical/entity/" + entityId);
         assertThat(blocked.statusCode()).isEqualTo(400);
         assertThat(blocked.body()).contains("RELATION_EXISTS");
@@ -1267,15 +1269,18 @@ class SmokeTest {
         assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", none)).as("동의어 없던 용어 수정").isZero();
 
         // 단어 수정 : 금칙어 생략 → 유지, 값 → 교체, 필수 Y/N 누락 → 400, 없는 단어 → 400
+        // 단어 수정은 화면이 읽은 수정 일시(modifiedAt)가 필수다 (M8-C1) — 요청마다 지금 값을 다시 읽어 보낸다
         String wordUpdate = """
-                {"id":%d,"revisionNumber":1,"commonStandardWordDescription":"DICT-1 수정","isFormatWord":"N","useAbbreviation":"Y"%s}""";
-        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, ",\"restrictedWords\":\"금칙A,금칙B\"")).statusCode()).isEqualTo(200);
-        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, "")).statusCode()).isEqualTo(200);
+                {"id":%d,"revisionNumber":1,"commonStandardWordDescription":"DICT-1 수정","isFormatWord":"N","useAbbreviation":"Y","modifiedAt":"%s"%s}""";
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, wordBase(wordId), ",\"restrictedWords\":\"금칙A,금칙B\"")).statusCode()).isEqualTo(200);
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, wordBase(wordId), "")).statusCode()).isEqualTo(200);
         assertThat(lists("TB_STD_WORD_PRHBT", "STD_WORD_SN", wordId)).as("단어 수정 : 금칙어 생략 → 유지").isEqualTo(2);
-        HttpResponse<String> noUseAbbreviation = putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, "").replace(",\"useAbbreviation\":\"Y\"", ""));
+        HttpResponse<String> noUseAbbreviation = putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, wordBase(wordId), "").replace(",\"useAbbreviation\":\"Y\"", ""));
         assertThat(noUseAbbreviation.statusCode()).isEqualTo(400);
         assertThat(noUseAbbreviation.body()).contains("INVALID_DICTIONARY_REQUEST");
-        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(-1L, "")).body()).contains("NOT_FOUND_WORD_DATA");
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(-1L, wordBase(wordId), "")).body()).contains("NOT_FOUND_WORD_DATA");
+        assertThat(putJson("/api/updateDataDictionary/standardWords", wordUpdate.formatted(wordId, wordBase(wordId), "").replace(",\"modifiedAt\":\"" + wordBase(wordId) + "\"", "")).body())
+                .contains("MODEL_BASE_REQUIRED");
     }
 
     @Test
@@ -1621,4 +1626,13 @@ class SmokeTest {
         throw new AssertionError("스키마 없음 : " + id);
     }
 
+
+    /** 행의 지금 수정 일시 (ISO, 화면이 조회 응답에서 받는 기준값과 같은 값) — M8-C1 기준값 필수 API 용 */
+    private String modifiedAt(String table, String idColumn, long id) {
+        return jdbcTemplate.queryForObject("SELECT MDFCN_DT FROM " + table + " WHERE " + idColumn + " = ?", java.sql.Timestamp.class, id).toLocalDateTime().toString();
+    }
+
+    private String wordBase(long wordId) {
+        return modifiedAt("TB_STD_WORD", "STD_WORD_SN", wordId);
+    }
 }

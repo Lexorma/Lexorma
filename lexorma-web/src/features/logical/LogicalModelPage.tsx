@@ -6,7 +6,7 @@ import { useToast } from '../../components/toast/ToastProvider';
 import { Label, SkeletonRows } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { t, tc } from '../../lib/i18n';
 import { EntityForm, useEntityDetail } from './entityDetail';
 import { AreaForm, ClassifyForm, SubjectAreaPanel, useAreaRemoval, type ClassifyTarget } from './SubjectAreaPanel';
@@ -317,7 +317,13 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
   const toggleRelationshipApproval = (relationship: LogicalRelationship) => {
     const approved = !!relationship.isApproval;
     dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
-      await api(`/api/logical/relationship/${relationship.id}/approval/${!approved}`, { method: 'PATCH' });
+      // 화면이 읽은 관계의 수정 일시를 기준값으로 보낸다 (M8-C1) : 그 사이 바뀌었으면 409(공통 알림) — 목록을 다시 불러와 최신 관계를 보게 한다 (자동 재시도 없음)
+      try {
+        await api(`/api/logical/relationship/${relationship.id}/approval/${!approved}?modifiedAt=${encodeURIComponent(relationship.modifiedAt ?? '')}`, { method: 'PATCH' });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MODEL_CONFLICT') refresh();
+        return;
+      }
       refresh();
     });
   };

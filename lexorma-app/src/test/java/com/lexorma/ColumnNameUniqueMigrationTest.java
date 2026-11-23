@@ -30,7 +30,7 @@ class ColumnNameUniqueMigrationTest {
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         // 2026-11-22 네 번째 합침 : 예전 V5(컬럼 데이터 무결성)는 V0·V1 에 있다 — 새 설치(V0·V1)의 제약을 본다
-        assertThat(latest.migrate().migrationsExecuted).isEqualTo(3);
+        assertThat(latest.migrate().migrationsExecuted).isEqualTo(4); // V0~V3 (V3 : 2026-11-23 변환 전략 CHECK 재정의)
         assertThat(latest.validateWithResult().validationSuccessful).isTrue();
         return new Db(latest, new JdbcTemplate(dataSource), "\"" + schema + "\".");
     }

@@ -403,29 +403,29 @@ final class EnglishMessages {
         add("""
                 안녕하세요. **Lexorma**를 이용해 주셔서 감사합니다.
 
-                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, ERD로 구조와 관계를 확인하며, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
+                Lexorma는 데이터 표준화와 데이터 모델링을 지원하는 오픈소스 메타데이터 관리 플랫폼입니다. 표준 데이터 사전을 기준으로 논리·물리 모델을 설계하고, 논리 모델에서 물리 모델을 만들고 둘의 정합성을 확인하며, ERD로 구조와 관계를 살펴보고, 변경 이력과 모델 버전으로 모델이 바뀐 과정을 추적할 수 있습니다. 운영 중인 데이터베이스의 구조를 수집해 모델과 비교하고, 필요한 변경만 골라 모델에 반영할 수도 있습니다.
 
                 ## 주요 기능
 
                 ### 1. 데이터 사전
 
-                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치)으로 표준 준수 여부를 확인합니다.
+                표준 단어·도메인·용어를 등록하고 승인하며, Excel 템플릿을 이용한 가져오기와 내보내기를 지원합니다. 표준 용어를 기준으로 테이블·컬럼 이름을 만들고, 사용 현황 조회와 표준화 품질 진단(용어 미연결, 이름 불일치, 도메인 정의 불일치, 중복 도메인·용어, DBMS 식별자 규칙)으로 표준 준수 여부를 확인합니다.
 
                 ### 2. 논리 모델
 
-                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
+                엔터티·속성·식별자·관계를 관리 화면과 논리 ERD에서 설계하고 승인합니다. 관계마다 부모 주 식별자와 자식 속성의 짝을 지정하고, 주제 영역(최대 3단계)으로 엔터티를 분류하며, 슈퍼타입·서브타입(상속) 구조를 표현합니다. 표준 사전을 기준으로 물리 이름을 추천합니다.
 
                 ### 3. 테이블 및 컬럼
 
-                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다.
+                스키마·테이블·컬럼과 관계(복합 FK)·인덱스·UNIQUE/CHECK 제약조건·VIEW를 관리합니다. 일괄 편집, 공통 컬럼 세트, Excel 가져오기를 지원하며, PostgreSQL 인덱스의 표현식·부분 조건·정렬·INCLUDE도 표현합니다. 같은 테이블 안의 컬럼명은 대소문자와 앞뒤 공백을 무시하고 하나만 둘 수 있고, 모델 구조 진단이 무효 FK와 중복 인덱스를 알려 줍니다.
 
                 ### 4. 논리·물리 ERD
 
-                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 드래그로 관계를 연결하고, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다.
+                논리·물리 모델을 ERD에서 조회하고 직접 편집합니다. 검색·주제 영역·이웃 탐색으로 필요한 범위만 불러오고, 드래그로 관계를 연결하며, 자동 배치·전체 보기·사용자별 배치 저장을 지원합니다. 물리 ERD는 FK마다 관계선과 제약조건에서 계산한 카디널리티를 보여 주고, ERD를 PNG·SVG 이미지로 내려받을 수 있습니다. 매핑 표시를 켜면 논리·물리 매핑 상태를 함께 봅니다.
 
                 ### 5. 논리·물리 매핑
 
-                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 정합성을 진단합니다.
+                엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑을 관리하고 규칙에 따른 매핑 후보를 추천합니다. 논리 모델에서 고른 엔터티로 물리 테이블을 만들고(관계 속성 짝으로 FK 생성, 서브타입은 엔터티마다 테이블), 정합성 비교에서 속성·상속 구조·관계 ↔ FK·보조 식별자 ↔ UNIQUE를 진단합니다. 물리명 추천을 골라 한 번에 적용하고, 누락된 복합·자기 참조 FK를 미리보기한 뒤 보정할 수 있습니다. 생성·일괄 적용·보정 직전의 모델은 모델 버전으로 자동 보존됩니다.
 
                 ### 6. DDL 내보내기
 
@@ -433,11 +433,11 @@ final class EnglishMessages {
 
                 ### 7. 변경 이력과 모델 버전
 
-                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다.
+                물리·논리 모델과 매핑을 누가, 언제, 무엇을 바꿨는지 변경 전후 값과 함께 기록합니다. 프로젝트 전체 모델을 이름 있는 버전으로 저장하고, 버전끼리 또는 현재 모델과 목록·ERD로 비교할 수 있습니다. 모델을 파일로 내보내 다른 프로젝트로 가져오거나 복사할 수도 있습니다 (새 객체는 미승인 상태로 만들어지고 기존 객체는 덮어쓰지 않습니다).
 
                 ### 8. 원본 DB 연결과 가져오기
 
-                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 가져오기 직전의 모델은 모델 버전으로 자동 보존됩니다.
+                운영 중인 데이터베이스(현재 PostgreSQL)에 연결해 구조와 VIEW 정의를 조회 전용으로 수집하고, 수집 시점별 원본 카탈로그·변경 이력·원본 ERD를 확인합니다. 원본 스키마·테이블을 모델에 매핑하고 원본과 모델의 차이를 비교한 뒤, 고른 항목만 미승인 상태로 모델에 가져옵니다. 이름이 바뀐 테이블·컬럼은 확인해 연결하고, 원본에서 사라진 테이블·컬럼은 따로 골라 모델에서 지우며, 원본이 다시 바뀌면 마지막으로 가져온 값을 기준으로 다시 가져옵니다. 가져오기·삭제 직전의 모델은 모델 버전으로 자동 보존됩니다.
 
                 ### 9. 프로젝트
 
@@ -449,16 +449,20 @@ final class EnglishMessages {
 
                 ### 11. AI 기능 (선택)
 
-                관리자가 **AI 관리 › AI Provider 설정**에서 AI 서버(현재 Ollama)를 등록하고 시스템 기본 AI Provider로 지정하면 AI 기능을 사용할 수 있습니다. AI를 사용하지 않아도 다른 기능은 그대로 동작하며, 기본 AI Provider가 없으면 AI 관리 메뉴는 관리자에게만 보입니다.
+                관리자가 **AI 관리 › AI Provider 설정**에서 AI 서버(현재 Ollama)를 등록하고 시스템 기본 AI Provider로 지정하면 AI 기능을 사용할 수 있습니다. 프로젝트마다 다른 AI Provider를 지정할 수도 있습니다. AI를 사용하지 않아도 다른 기능은 그대로 동작하며, 기본 AI Provider가 없으면 AI 관리 메뉴는 관리자에게만 보입니다.
 
                 - **AI 도우미** : 화면 오른쪽 아래 버튼으로 현재 프로젝트의 메타데이터에 대해 질문합니다. AI는 읽기 전용 조회만 할 수 있고, 답변이 근거로 든 메타데이터는 Lexorma가 다시 확인해 표시합니다.
                 - **AI 설명 제안** : AI 관리 › AI 설명 제안에서 테이블·컬럼의 업무 설명 초안을 만들고 근거, 확인할 수 없는 부분, 확인 질문과 함께 검토합니다. 승인한 내용만 업무 설명에 반영되며, 원본 COMMENT와 표준 용어 연결은 바꾸지 않습니다.
                 - **AI 품질 평가** : AI 관리 › AI 품질 평가에서 업무 담당자·검토자가 확인한 실제 의미를 기준으로 AI 설명을 판정하고 모델별 지표를 봅니다. AI가 스스로 정답을 판정하지 않습니다.
+                - **MCP 연결** : 서버 설정과 프로젝트 설정에서 켜면 외부 AI 도구가 프로젝트 토큰으로 이 프로젝트의 메타데이터를 읽기 전용으로 조회할 수 있습니다. 토큰은 만료일이 있고 언제든 폐기할 수 있습니다.
 
                 ## 이용 안내
 
-                - 최초 로그인 시 초기 비밀번호를 변경하고 접근 가능한 프로젝트를 선택해 주세요.
+                - 설치 후 처음 접속하면 최초 관리자 계정을 만듭니다. 이후 가입한 사용자는 관리자가 권한을 부여해야 이용할 수 있습니다.
+                - 로그인할 때 접근 가능한 프로젝트를 선택해 주세요.
                 - 기본 프로젝트 `LEXORMA`에서 Lexorma 자체 스키마를 예제로 담은 데이터 사전, 논리·물리 모델과 ERD를 확인해 보세요.
+                - 승인된 데이터는 수정할 수 없습니다. 승인 권한자가 승인을 취소한 뒤 수정해 주세요.
+                - 다른 사용자가 같은 모델을 동시에 바꾸고 있으면 저장이 충돌로 거절될 수 있습니다. 화면을 새로 고친 뒤 다시 시도해 주세요.
                 - 원본 DB 정보는 모든 사용자가 조회할 수 있고, 연결·수집·매핑·가져오기는 프로젝트 관리자 또는 ADMIN만 실행할 수 있습니다. 원본 DB에는 조회만 하며 원본 구조를 바꾸지 않습니다.
                 - 원본 DB 연결 비밀번호를 저장하려면 서버에 암호화 키(`LEXORMA_SECRET_KEYS`)가 설정되어 있어야 합니다.
                 - AI 서버 연결은 관리자가 등록한 주소와 외부 연결 보안의 허용 규칙으로만 이루어지며, 질문과 조회한 메타데이터가 그 AI 서버로 전송됩니다. 실제 업무 데이터는 보내지 않습니다.
@@ -479,36 +483,36 @@ final class EnglishMessages {
 
                 ## 안내 사항
 
-                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(원본 DB 재최신화, AI 기반 품질 점검 등)은 저장소의 문서를 확인해 주세요.
+                Lexorma는 MIT 라이선스로 공개된 프로젝트입니다. 현재 제공하는 기능과 향후 계획(관계 관리 개선, AI 기반 품질 점검 등)은 저장소의 문서를 확인해 주세요.
                 서비스 이용 중 발견한 문제점이나 개선 의견은 프로젝트 발전에 도움이 됩니다.
 
                 감사합니다.
                 **Lexorma**""", """
                 Hello, and thank you for using **Lexorma**.
 
-                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
+                Lexorma is an open-source metadata management platform for data standardization and data modeling. You design logical and physical models on top of a standard data dictionary, generate physical models from logical models and check that the two stay consistent, review structures and relationships in ERDs, and trace how the model evolved through the change history and model versions. You can also collect the structure of a live database, compare it with the model and apply only the changes you choose.
 
                 ## Key features
 
                 ### 1. Data dictionary
 
-                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches) show how well the model follows the standard.
+                Register and approve standard words, domains and terms, and import or export them with Excel templates. Table and column names are built from standard terms, and usage lookup and standardization quality checks (columns without a term, mismatched names, domain definition mismatches, duplicate domains and terms, DBMS identifier rules) show how well the model follows the standard.
 
                 ### 2. Logical model
 
-                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Physical names are recommended from the standard dictionary.
+                Design and approve entities, attributes, identifiers and relationships in the management screens and the logical ERD. Each relationship pairs the parent's primary identifier with child attributes, entities can be grouped into subject areas (up to three levels), and supertype/subtype (inheritance) structures can be modeled. Physical names are recommended from the standard dictionary.
 
                 ### 3. Tables and columns
 
-                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled.
+                Manage schemas, tables and columns together with relations (composite foreign keys), indexes, UNIQUE/CHECK constraints and views. Bulk editing, common column sets and Excel import are supported, and PostgreSQL index expressions, partial conditions, sort order and INCLUDE columns can be modeled. Column names are unique within a table regardless of case and surrounding spaces, and the model structure diagnostics report invalid foreign keys and duplicate indexes.
 
                 ### 4. Logical and physical ERD
 
-                View and edit the logical and physical models directly in ERDs. Connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts.
+                View and edit the logical and physical models directly in ERDs. Load only the scope you need by search, subject area or neighbor exploration, connect relationships by dragging, and use auto layout, fit-to-view and per-user layouts. The physical ERD draws one line per foreign key with cardinalities computed from the constraints, and ERDs can be downloaded as PNG or SVG images. Turn on the mapping overlay to see the logical ↔ physical mapping status as well.
 
                 ### 5. Logical ↔ physical mapping
 
-                Manage entity ↔ table and attribute ↔ column mappings and check their consistency.
+                Manage entity ↔ table and attribute ↔ column mappings, with rule-based mapping candidates. Generate physical tables from the entities you choose in a logical model (foreign keys from relationship attribute pairs, one table per entity for subtypes), and check attributes, inheritance structures, relationships ↔ foreign keys and alternate identifiers ↔ UNIQUE constraints in the consistency check. Apply chosen physical name recommendations in one go, and preview and correct missing composite and self-referencing foreign keys. The model just before a generation, bulk rename or correction is kept automatically as a model version.
 
                 ### 6. DDL export
 
@@ -516,11 +520,11 @@ final class EnglishMessages {
 
                 ### 7. Change history and model versions
 
-                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs.
+                Every change to the physical and logical models and the mappings is recorded with who made it, when, and the values before and after. Save the whole project model as a named version, and compare versions with each other or with the current model, as a list or as ERDs. You can also export a model to a file and import or copy it into another project (new objects are created unapproved and existing objects are never overwritten).
 
                 ### 8. Source database connections and import
 
-                Connect to a live database (PostgreSQL for now), collect its structure read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. The model just before each import is kept automatically as a model version.
+                Connect to a live database (PostgreSQL for now), collect its structure and view definitions read-only, and review the source catalog, its change history and the source ERD for each collection. Map source schemas and tables to the model, compare the source with the model, and import only the items you choose, as unapproved objects. Confirm renamed tables and columns, remove tables and columns that disappeared from the source as a separate choice, and re-import later source changes against the values you last imported. The model just before each import or removal is kept automatically as a model version.
 
                 ### 9. Projects
 
@@ -532,16 +536,20 @@ final class EnglishMessages {
 
                 ### 11. AI features (optional)
 
-                When an administrator registers an AI server (Ollama for now) under **AI management › AI provider settings** and sets it as the system default AI provider, the AI features become available. Everything else works without AI, and without a default AI provider the AI management menu is shown only to administrators.
+                When an administrator registers an AI server (Ollama for now) under **AI management › AI provider settings** and sets it as the system default AI provider, the AI features become available. A project can also use its own AI provider. Everything else works without AI, and without a default AI provider the AI management menu is shown only to administrators.
 
                 - **AI assistant** : ask about the metadata of the current project with the button at the bottom right of the screen. The AI can only read, and Lexorma checks again the metadata that an answer cites.
                 - **AI description proposals** : under AI management › AI description proposals, draft business descriptions of tables and columns and review them with their evidence, the points that cannot be determined and questions to confirm. Only approved text becomes the business description; source comments and standard term links are not changed.
                 - **AI quality evaluation** : under AI management › AI quality evaluation, judge AI descriptions against the actual meaning confirmed by business owners or reviewers and see metrics per model. The AI never judges its own answers.
+                - **MCP access** : when enabled in the server and project settings, external AI tools can read this project's metadata with a project token. Tokens expire and can be revoked at any time.
 
                 ## Getting started
 
-                - On your first login, change the initial password and choose a project you can access.
+                - The first visit after installation creates the first administrator account. Users who sign up later can work once an administrator grants them a role.
+                - Choose a project you can access when you log in.
                 - Explore the default project `LEXORMA`, whose example data dictionary, logical and physical models and ERDs describe Lexorma's own schema.
+                - Approved data cannot be edited. Ask an approver to revoke the approval first.
+                - If another user is changing the same model at the same time, your save may be rejected as a conflict. Refresh the screen and try again.
                 - Every user can view source database information; connecting, collecting, mapping and importing are limited to the project manager or ADMIN. Lexorma only reads from source databases and never changes their structure.
                 - Storing a source database password requires an encryption key (`LEXORMA_SECRET_KEYS`) configured on the server.
                 - Lexorma connects only to the AI server address an administrator registered and allowed in external connection security; questions and the metadata looked up are sent to that AI server. Actual business data is not sent.
@@ -562,7 +570,7 @@ final class EnglishMessages {
 
                 ## About
 
-                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (source database refresh, AI-assisted quality checks and more).
+                Lexorma is released under the MIT License. See the documentation in the repository for the current features and future plans (relationship management improvements, AI-assisted quality checks and more).
                 Any problems or suggestions you share while using the service help the project grow.
 
                 Thank you.
@@ -723,6 +731,44 @@ final class EnglishMessages {
         add("엔터티에 주 식별자가 없습니다.", "The entity has no primary identifier.");
         add("주 식별자 속성인데 컬럼이 PK 가 아닙니다.", "The attribute belongs to the primary identifier but the column is not part of the PK.");
         add("PK 컬럼인데 속성이 주 식별자가 아닙니다.", "The column is part of the PK but the attribute does not belong to the primary identifier.");
+
+        // ---------------------------------------------------------------- 보조 식별자 UNIQUE · 참조 FK (M7-AK-01~03)
+        add("FK 가 참조하는 부모 컬럼이 지금 부모 테이블의 PK·UNIQUE 가 아닙니다 (참조 키가 나중에 바뀌었습니다 — FK 는 지우지 않으며 DDL 은 이 FK 를 만들지 않습니다).", "The parent columns this foreign key references are no longer the parent table's primary key or a UNIQUE key (the referenced key changed later — the foreign key is not deleted, and the DDL does not create it).");
+        add("UNIQUE 보정 계획", "UNIQUE correction plan");
+        add("UNIQUE 컬럼을 1개 이상 지정해주세요.", "Specify at least one UNIQUE column.");
+        add("같은 구성의 보조 식별자 {0} 이(가) 있습니다. 같은 컬럼 집합에는 UNIQUE 하나만 만들며 {0} 을(를) 기준으로 합니다.", "Alternate identifier {0} has the same composition. Only one UNIQUE is created for the same set of columns, based on {0}.");
+        add("같은 보조 식별자가 두 번 들어 있습니다. (식별자 ID {0})", "The same alternate identifier is included twice. (identifier ID {0})");
+        add("같은 컬럼 구성(순서 무관)의 UNIQUE 제약조건이 이미 있습니다. 기존 UNIQUE 는 고치지 않습니다.", "A UNIQUE constraint with the same columns (in any order) already exists. Existing UNIQUE constraints are not changed.");
+        add("같은 컬럼 구성의 고유(UNIQUE) 인덱스가 이미 있습니다. 같은 유일성을 UNIQUE 제약조건으로 다시 만들지 않습니다.", "A unique index with the same columns already exists. The same uniqueness is not created again as a UNIQUE constraint.");
+        add("관계 {0} → {1} : 기존 부모 테이블에 보조 식별자({2})와 같은 순서의 UNIQUE 가 없어 FK 를 만들지 않습니다 (기존 테이블은 고치지 않습니다 — 정합성 비교에서 UNIQUE 를 먼저 보정하세요).", "Relationship {0} → {1}: the existing parent table has no UNIQUE in the order of alternate identifier ({2}), so no foreign key is created (existing tables are not changed — correct the UNIQUE first in the consistency check).");
+        add("관계 {0} → {1} : 보조 식별자 {3} 의 UNIQUE 를 참조하는 FK 를 미승인 사용자 관계로 만듭니다 ({2}).", "Relationship {0} → {1}: creates a foreign key referencing the UNIQUE of alternate identifier {3} as an unapproved user relation ({2}).");
+        add("관계 {0} → {1} : 속성 짝 순서가 부모 보조 식별자({2})의 속성 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서).", "Relationship {0} → {1}: the attribute pair order differs from the attribute order of the parent alternate identifier ({2}), so no foreign key is created (foreign key column order = UNIQUE order).");
+        add("구성 컬럼 {0} 이(가) 승인되어 있어 UNIQUE 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "Column {0} is approved, so a UNIQUE cannot be added. Revoke the approval and try again.");
+        add("구성 컬럼이 매핑 테이블 {0} 의 서로 다른 컬럼이 아닙니다.", "The columns are not distinct columns of the mapped table {0}.");
+        add("구성 컬럼이 테이블 PK 와 같아 UNIQUE 를 따로 만들지 않습니다.", "The columns are the table's primary key, so no separate UNIQUE is created.");
+        add("논리 관계 {0} 의 속성 짝이 부모의 식별자 하나와 맞지 않습니다 (보조 식별자는 구성 속성 전체, 서로 다른 식별자의 속성을 섞지 않는다).", "The attribute pairs of logical relationship {0} do not match one identifier of the parent (an alternate identifier needs all of its attributes, and attributes of different identifiers cannot be mixed).");
+        add("누락 UNIQUE 보정 직전 상태 (보조 식별자 {0}개, 요청 {1})", "State just before the missing UNIQUE correction ({0} alternate identifiers, request {1})");
+        add("만들 UNIQUE 이름 {0} 이(가) 같은 이름 공간의 다른 제약조건·인덱스와 같습니다. 기존 이름은 바꾸지 않습니다.", "The UNIQUE name {0} is the same as another constraint or index in the same namespace. Existing names are not changed.");
+        add("보정한 UNIQUE 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected UNIQUE does not match in the consistency check. ({0} : {1})");
+        add("보정할 보조 식별자를 고르세요.", "Select the alternate identifiers to correct.");
+        add("보정할 수 없는 보조 식별자가 있습니다. 미리보기의 사유를 확인하고 그 식별자를 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some alternate identifiers cannot be corrected. Check the reasons in the preview, remove them and preview again. ({0} : {1})");
+        add("보조 식별자 ID 가 비어 있습니다.", "An alternate identifier ID is empty.");
+        add("보조 식별자 {0} 을(를) UNIQUE 로 만듭니다 (미승인).", "Creates alternate identifier {0} as a UNIQUE (unapproved).");
+        add("보조 식별자 {0} 의 구성 컬럼을 만들 수 없어 UNIQUE 를 만들지 않습니다 (테이블의 오류를 먼저 고쳐주세요).", "The columns of alternate identifier {0} cannot be created, so no UNIQUE is created (fix the table errors first).");
+        add("보조 식별자 {0} 의 구성이 보조 식별자 {1} 과(와) 같아 UNIQUE 하나만 만듭니다 ({1} 기준).", "Alternate identifier {0} has the same composition as alternate identifier {1}, so only one UNIQUE is created (based on {1}).");
+        add("보조 식별자 {0} 의 구성이 주 식별자(PK)와 같아 UNIQUE 를 따로 만들지 않습니다.", "Alternate identifier {0} has the same composition as the primary identifier (primary key), so no separate UNIQUE is created.");
+        add("보조 식별자 속성 {0} 은(는) 제외할 수 없어 포함했습니다 (UNIQUE 구성 컬럼).", "Alternate identifier attribute {0} cannot be excluded, so it was included (UNIQUE column).");
+        add("보조 식별자의 엔터티·구성 속성이 물리 테이블·컬럼에 매핑되지 않았습니다.", "The entity or attributes of the alternate identifier are not mapped to a physical table and columns.");
+        add("부모 UNIQUE 의 컬럼 순서가 관계 속성 짝 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서). 관계 속성 짝의 순서를 보조 식별자 순서로 맞춰주세요.", "The column order of the parent UNIQUE differs from the attribute pair order, so no foreign key is created (foreign key column order = UNIQUE order). Put the attribute pairs in the order of the alternate identifier.");
+        add("부모 보조 식별자 {0} 에 대응하는 UNIQUE 가 부모 테이블 {1} 에 없거나 일치하지 않습니다. 정합성 비교 [보조 식별자·UNIQUE]에서 UNIQUE 를 먼저 보정해주세요.", "Parent table {1} has no matching UNIQUE for parent alternate identifier {0}. Correct the UNIQUE first under [Alternate identifiers · UNIQUE] in the consistency check.");
+        add("부모 속성은 부모 엔터티 {0} 의 (상속 포함) 주 식별자 또는 보조 식별자 속성이어야 합니다. (ID {1})", "The parent attribute must be a primary identifier (including inherited) or alternate identifier attribute of parent entity {0}. (ID {1})");
+        add("상속 구조(슈퍼타입·서브타입)에 참여하는 부모 엔터티 {0} 의 보조 식별자를 참조하는 관계는 아직 지원하지 않습니다. (ID {1})", "Relationships referencing an alternate identifier of parent entity {0}, which takes part in an inheritance structure (supertype/subtype), are not supported yet. (ID {1})");
+        add("속성 짝의 부모 속성이 부모 엔터티 {0} 의 식별자 하나와 맞지 않습니다. 보조 식별자는 구성 속성 전체를 지정해야 하고, 서로 다른 식별자의 속성을 섞을 수 없습니다.", "The parent attributes of the pairs do not match one identifier of parent entity {0}. An alternate identifier needs all of its attributes, and attributes of different identifiers cannot be mixed.");
+        add("이 논리 모델의 보조 식별자가 아닙니다. (식별자 ID {0})", "This is not an alternate identifier of this logical model. (identifier ID {0})");
+        add("진단 결과가 UNIQUE 누락이 아닙니다 ({0}). 기존 UNIQUE 는 고치거나 지우지 않습니다.", "The diagnosis is not a missing UNIQUE ({0}). Existing UNIQUE constraints are not changed or deleted.");
+        add("컬럼 {0} 이(가) 이미 고유값(UNIQUE)입니다.", "Column {0} is already unique (UNIQUE).");
+        add("테이블 {0} 이(가) 승인되어 있어 UNIQUE 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "Table {0} is approved, so a UNIQUE cannot be added. Revoke the approval and try again.");
+        add("함께 고른 다른 보조 식별자도 같은 이름의 UNIQUE {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected alternate identifier also creates the UNIQUE {0}. Select only one.");
 
         // ---------------------------------------------------------------- 물리명 추천
         add("현재 컬럼명이 표준 용어의 영문약어와 같습니다.", "The current column name equals the abbreviation of the standard term.");
@@ -1120,5 +1166,192 @@ final class EnglishMessages {
         add("이 UNIQUE 에 대응하는 논리 보조 식별자가 없습니다. 물리에만 있는 구조입니다 (오류로 보지 않으며 자동으로 지우지 않습니다).", "There is no logical alternate identifier for this UNIQUE constraint. It exists only in the physical model (not treated as an error and never deleted automatically).");
         add("자기 참조 관계의 자식 속성이 부모 키 속성 자신이라 물리 FK 를 만들 대상이 아닙니다.", "The child attributes of the self-referencing relationship are the parent key attributes themselves, so it is not a target for a physical foreign key.");
         add("참조받는 테이블 {0} 이(가) 이 논리 모델의 엔터티에 매핑되지 않아 대응 논리 관계를 찾을 수 없습니다.", "The referenced table {0} is not mapped to an entity of this logical model, so no corresponding logical relationship can be found.");
+        add("다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 시도해주세요.", "Another user is changing the same model, tables or columns. Try again in a moment.");
+        add("FK 보정 계획", "Foreign key correction plan");
+        add("보정할 수 없는 관계가 있습니다. 미리보기의 사유를 확인하고 그 관계를 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some relationships cannot be corrected. Check the reasons in the preview, remove those relationships and preview again. ({0}: {1})");
+        add("누락 FK 보정 직전 상태 (논리 관계 {0}개, 요청 {1})", "State before the missing foreign key correction ({0} logical relationships, request {1})");
+        add("보정한 FK 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected foreign key does not match in the consistency check. ({0}: {1})");
+        add("이 논리 모델의 관계가 아닙니다. (관계 ID {0})", "This is not a relationship of this logical model. (relationship ID {0})");
+        add("함께 고른 다른 관계도 같은 이름의 FK {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected relationship also creates a foreign key named {0}. Select only one of them.");
+        add("진단 결과가 FK 누락이 아닙니다 ({0}). 기존 FK 는 고치거나 지우지 않습니다.", "The diagnosis is not a missing foreign key ({0}). Existing foreign keys are never changed or deleted.");
+        add("관계 속성 짝의 컬럼을 정할 수 없습니다.", "The columns of the relationship attribute pairs cannot be determined.");
+        add("서브타입과 직계 슈퍼타입 사이의 관계입니다. 상속 FK 는 상속 구조 진단에서 다루며 이 기능으로 만들지 않습니다.", "This is a relationship between a subtype and its direct supertype. Inheritance foreign keys are handled by the inheritance structure check and are not created here.");
+        add("자기 참조가 아닌 단일 FK 는 기존 규칙상 자식 컬럼의 참조 테이블명으로 만들며, 그 관계는 동기화에서 항상 승인 상태로 만들어져 승인 절차를 거치지 않습니다. 승인 정책과 충돌하여 이 유형의 보정은 보류합니다 (컬럼 관리에서 참조 테이블을 직접 지정할 수 있습니다).", "A single-column foreign key that is not self-referencing is represented by the child column's referenced table name, and the reference sync always creates that relation as approved without the approval process. Because this conflicts with the approval policy, correcting this type is on hold (you can set the referenced table directly in column management).");
+        add("관계 속성 짝의 컬럼을 찾을 수 없습니다.", "The columns of the relationship attribute pairs cannot be found.");
+        add("자식 테이블 {0} 이(가) 승인되어 있어 FK 를 추가할 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "The child table {0} is approved, so a foreign key cannot be added. Revoke the approval and try again.");
+        add("자식 컬럼 {0} 이(가) 승인되어 있어 FK 에 쓸 수 없습니다. 승인을 취소한 뒤 다시 시도해주세요.", "The child column {0} is approved, so it cannot be used in a foreign key. Revoke the approval and try again.");
+        add("{0} 은(는) 참조 테이블({1})이 지정된 컬럼입니다. 그 값으로 관계가 만들어지므로 FK 를 따로 만들지 않습니다.", "{0} has a referenced table ({1}). The relation is created from that value, so no separate foreign key is created.");
+        add("관계 속성 짝에 같은 컬럼이 두 번 쓰였습니다.", "The same column is used twice in the relationship attribute pairs.");
+        add("부모 컬럼이 부모 테이블 {0} 의 PK 가 아닙니다.", "The parent columns are not the PK of the parent table {0}.");
+        add("같은 컬럼 구성으로 {0} 을(를) 가리키는 관계 {1} 이(가) 이미 있습니다.", "Relation {1} with the same columns referencing {0} already exists.");
+        add("같은 FK 구성을 기대하는 다른 논리 관계가 있습니다 ({0}). 만들면 하나의 FK 를 여러 관계가 함께 쓰게 되어 자동으로 고르지 않습니다.", "Other logical relationships expect the same foreign key ({0}). Creating it would make several relationships share one foreign key, so none is chosen automatically.");
+        add("같은 스키마에 이름이 {0} 인 FK 가 이미 있습니다.", "A foreign key named {0} already exists in the same schema.");
+        add("논리 모델을 고르세요.", "Select a logical model.");
+        add("보정할 논리 관계를 고르세요.", "Select the logical relationships to correct.");
+        add("한 번에 {0}개까지 보정할 수 있습니다. (요청 {1}개)", "Up to {0} can be corrected at once. ({1} requested)");
+        add("논리 관계 ID 가 비어 있습니다.", "A logical relationship ID is empty.");
+        add("같은 논리 관계가 두 번 들어 있습니다. (관계 ID {0})", "The same logical relationship is included twice. (relationship ID {0})");
+        add("같은 서브타입이 두 번 들어 있습니다. (엔터티 ID {0})", "The same subtype is included twice. (entity ID {0})");
+        add("같은 컬럼 쌍의 FK {0} 이(가) 이미 있어 참조 테이블명으로 FK 를 다시 만들지 않습니다. 참조 테이블명을 비우거나 기존 FK 를 먼저 삭제해주세요. ({1}.{2} → {3}.{4})", "Foreign key {0} with the same column pair already exists, so no foreign key is created again from the referenced table name. Clear the referenced table name or delete the existing foreign key first. ({1}.{2} → {3}.{4})");
+        add("관계 속성 짝의 FK 구성이 서브타입 {0} 의 상속 FK(직계 슈퍼타입 {1} 참조)와 같습니다. 상속 FK 는 [상속 구조] 진단·상속 FK 보정에서 다루며, 같은 구성의 FK 를 따로 만들지 않습니다.", "The foreign key the attribute pairs describe is the inheritance foreign key of subtype {0} (referencing its direct supertype {1}). Inheritance foreign keys are handled by the [Inheritance] check and the inheritance foreign key correction; no separate foreign key with the same columns is created.");
+        add("관계의 FK 구성이 서브타입의 상속 FK 와 같습니다. 상속 FK 는 [상속 구조] 정합성의 상속 FK 보정에서 다루며 이 기능으로 만들지 않습니다.", "The relationship's foreign key is the same as the subtype's inheritance foreign key. Inheritance foreign keys are created by the inheritance foreign key correction of the [Inheritance] consistency check, not by this function.");
+        add("누락 상속 FK 보정 직전 상태 (서브타입 {0}개, 요청 {1})", "State before the missing inheritance foreign key correction ({0} subtypes, request {1})");
+        add("보정한 상속 FK 가 정합성 비교에서 일치하지 않습니다. ({0} : {1})", "The corrected inheritance foreign key does not match in the consistency check. ({0} : {1})");
+        add("보정할 서브타입을 고르세요.", "Select the subtypes to correct.");
+        add("보정할 수 없는 서브타입이 있습니다. 미리보기의 사유를 확인하고 그 서브타입을 뺀 뒤 다시 미리보기해주세요. ({0} : {1})", "Some subtypes cannot be corrected. Check the reasons in the preview, remove those subtypes and preview again. ({0} : {1})");
+        add("상속 FK 보정 계획", "inheritance foreign key correction plan");
+        add("상속 PK 컬럼 쌍을 정할 수 없습니다.", "The inherited PK column pairs cannot be determined.");
+        add("상속 구조를 판정할 수 없어 보정하지 않습니다.", "The inheritance structure cannot be judged, so it is not corrected.");
+        add("상속받은 보조 식별자는 현재 부모 엔터티 {0} 의 참조 키로 사용할 수 없습니다. 해당 식별자를 직접 정의한 엔터티를 부모로 지정해 주세요. (ID {1})", "An inherited alternate identifier cannot be used as the reference key of the parent entity {0}. Make the entity that defines that identifier the parent. (ID {1})");
+        add("상위 서브타입 {0} 의 상속 FK 가 아직 없습니다. {0} 을(를) 먼저 보정한 뒤 다시 미리보기해주세요.", "The upper subtype {0} has no inheritance foreign key yet. Correct {0} first and preview again.");
+        add("서브타입 {0} 이(가) 물리 테이블에 매핑되지 않았습니다.", "Subtype {0} is not mapped to a physical table.");
+        add("엔터티 ID 가 비어 있습니다.", "An entity ID is empty.");
+        add("엔터티 {0} 은(는) 서브타입이 아닙니다 (상속 관계가 없거나 지워졌습니다).", "Entity {0} is not a subtype (it has no inheritance link, or the link was removed).");
+        add("이 논리 모델의 엔터티가 아닙니다. (엔터티 ID {0})", "Not an entity of this logical model. (entity ID {0})");
+        add("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 둘 이상 있습니다. 기존 FK 는 자동으로 지우지 않습니다.", "More than one foreign key references the direct supertype table {0} with the inherited PK. Existing foreign keys are not deleted automatically.");
+        add("직계 상위 테이블 {0} 을(를) 상속 PK 그대로 참조하는 FK 가 이미 있습니다. 기존 FK 는 고치거나 지우지 않습니다.", "A foreign key already references the direct supertype table {0} with the inherited PK. Existing foreign keys are not changed or deleted.");
+        add("테이블 {0} 에서 {1} 을(를) 상속 PK 컬럼으로 참조하는 FK 가 있지만 컬럼 순서가 루트 주 식별자 순서와 다릅니다. 기존 FK 는 고치지 않습니다.", "Table {0} has a foreign key referencing {1} with the inherited PK columns, but its column order differs from the root primary identifier order. Existing foreign keys are not changed.");
+        add("함께 고른 다른 서브타입도 같은 이름의 FK {0} 을(를) 만듭니다. 하나만 골라주세요.", "Another selected subtype also creates a foreign key named {0}. Select only one of them.");
+        // M-7 상속 A·C형 (docs/completed/inheritance-strategy-ac-m7.md)
+        add("A형 : 루트 통합 테이블 {0} 에 들어갑니다 (자기 테이블을 만들지 않습니다).", "Single table (A): goes into the root's integrated table {0} (no table of its own).");
+        add("A형 : 루트 통합 테이블 {0} 에 통합되었습니다.", "Single table (A): merged into the root's integrated table {0}.");
+        add("A형 통합 계층의 서브타입이 따로 테이블에 매핑되어 있습니다.", "A subtype of a single-table (A) hierarchy is mapped to a table of its own.");
+        add("A형 통합 테이블 : 계층 {0}개 엔터티, 분류 컬럼 {1}개 (분류 값 범위·완전성·유형별 필수는 DB 에서 강제되지 않습니다).", "Single-table (A) integrated table: {0} entities in the hierarchy, {1} classification columns (the classification value range, completeness and per-type required values are not enforced by the database).");
+        add("A형 통합 테이블에 루트 엔터티가 매핑되어 있지 않습니다.", "The root entity is not mapped to the single-table (A) integrated table.");
+        add("A형 통합 테이블에서는 서브타입의 필수 속성 컬럼이 NULL 을 허용해야 합니다 (다른 유형의 행에는 값이 없습니다).", "In a single-table (A) integrated table a subtype's required attribute column must allow NULL (rows of other types have no value).");
+        add("A형(단일 테이블 통합)", "Single table (A)");
+        add("B형(슈퍼타입·서브타입 개별 테이블)", "Table per type (B)");
+        add("C형 : 자기 테이블 없이 말단 테이블 {0} 에 분산되었습니다. 테이블 사이의 PK·보조 식별자 유일성은 DB 에서 보장되지 않습니다.", "Concrete tables (C): distributed to the leaf tables {0} without a table of its own. PK and alternate key uniqueness across those tables is not guaranteed by the database.");
+        add("C형 : 자기 테이블을 만들지 않고 말단 테이블 {0} 에 속성을 복제합니다.", "Concrete tables (C): no table of its own; its attributes are copied into the leaf tables {0}.");
+        add("C형 계층 {0} : 서로 다른 말단 테이블 사이의 PK·상속 보조 식별자 유일성은 DB 에서 보장되지 않습니다 (말단 테이블 안에서만 보장).", "Concrete-table (C) hierarchy {0}: PK and inherited alternate key uniqueness across different leaf tables is not guaranteed by the database (only within each leaf table).");
+        add("C형 말단 엔터티 중 테이블에 매핑되지 않은 것이 있습니다.", "Some leaf entities of the concrete-table (C) hierarchy are not mapped to a table.");
+        add("C형 말단 엔터티가 테이블에 매핑되어 있지 않습니다.", "The concrete-table (C) leaf entity is not mapped to a table.");
+        add("C형 말단 테이블 : 상속 PK·조상 속성 {0}개 중 {1}개 연결 (다른 말단 테이블과의 PK·보조 식별자 유일성은 DB 에서 보장되지 않습니다).", "Concrete-table (C) leaf table: {1} of {0} inherited PK and ancestor attributes linked (PK and alternate key uniqueness against other leaf tables is not guaranteed by the database).");
+        add("C형 분산 엔터티가 테이블에 매핑되어 있습니다.", "A distributed entity of a concrete-table (C) hierarchy is mapped to a table.");
+        add("C형(말단 서브타입별 테이블)", "Concrete tables (C)");
+        add("{0} 의 보조 식별자 {1} 을(를) 통합 테이블 전체의 UNIQUE 로 만듭니다 (미승인 — 유형 안의 적용 범위는 DB 에서 강제되지 않습니다).", "Creates alternate identifier {1} of {0} as a UNIQUE constraint on the whole integrated table (unapproved; its per-type scope is not enforced by the database).");
+        add("같은 상속 계층의 전략을 두 번 지정했습니다. (엔터티 ID {0})", "The strategy of the same inheritance hierarchy was given twice. (entity ID {0})");
+        add("관계 {0} → {1} : {0} 은(는) A형 통합 테이블의 서브타입이라 일반 FK 로는 그 유형만 참조한다는 의미를 지킬 수 없어 FK 를 만들지 않습니다 (필요하면 직접 등록하세요).", "Relationship {0} → {1}: {0} is a subtype inside a single-table (A) integrated table, so a plain foreign key cannot keep the meaning of referencing only that type. No foreign key is created (register one yourself if needed).");
+        add("관계 {0} → {1} : {0} 은(는) C형으로 여러 말단 테이블에 분산되어 FK 하나로 참조할 수 없어 FK 를 만들지 않습니다.", "Relationship {0} → {1}: {0} is distributed over several leaf tables (C), so it cannot be referenced by one foreign key. No foreign key is created.");
+        add("관계 {0} → {1} : {0} 의 상속 변환 기록이 맞지 않아 FK 를 만들지 않습니다.", "Relationship {0} → {1}: the inheritance conversion records of {0} are inconsistent, so no foreign key is created.");
+        add("그룹 {0} 의 A형 변환 기록이 분류 컬럼으로 쓰는 컬럼입니다. 변환 기록을 먼저 해제해주세요.", "This column is the classification column of the single-table (A) conversion record of group {0}. Remove the conversion record first.");
+        add("그룹 {0} 의 A형 변환 기록이 통합 테이블로 쓰는 테이블입니다. 변환 기록을 먼저 해제해주세요.", "This table is the integrated table of the single-table (A) conversion record of group {0}. Remove the conversion record first.");
+        add("그룹 {0} 의 물리 변환 기록(상속 A·C형)이 있습니다. 매핑과 변환 기록을 먼저 해제해주세요.", "Group {0} has a physical conversion record (inheritance A/C). Remove the mappings and the conversion record first.");
+        add("그룹 {0} 의 분류 속성 {1} 의 컬럼을 만들 수 없어 A형으로 만들 수 없습니다.", "The column of classification attribute {1} of group {0} cannot be created, so it cannot be generated as single table (A).");
+        add("그룹 {0} 의 분류 속성 {1} 의 타입을 정할 수 없습니다 : {2}", "The type of classification attribute {1} of group {0} cannot be determined: {2}");
+        add("그룹 {0} 의 분류 속성 {1} 이(가) 필수가 아니라 분류 컬럼이 NULL 을 허용합니다 (논리 필수 여부는 바꾸지 않습니다).", "Classification attribute {1} of group {0} is not required, so the classification column allows NULL (the logical required flag is not changed).");
+        add("그룹 {0}({1}) 에 분류 속성이 없어 A형으로 만들 수 없습니다. 논리 모델의 상속 그룹에서 분류 속성과 분류 값을 먼저 지정해주세요.", "Group {0} ({1}) has no classification attribute, so it cannot be generated as single table (A). Set the classification attribute and values on the inheritance group in the logical model first.");
+        add("그룹 {0}({1}) 은(는) 부분(Partial) 상속이라 C형으로 만들 수 없습니다 (슈퍼타입만의 행을 담을 테이블이 없습니다).", "Group {0} ({1}) is a partial inheritance, so it cannot be generated as concrete tables (C) (there is no table for rows of the supertype only).");
+        add("그룹 {0}({1}) 은(는) 중복(Overlapping) 상속이라 A형(단일 테이블 통합)으로 만들 수 없습니다. A형은 배타(Disjoint) 상속만 지원합니다.", "Group {0} ({1}) is an overlapping inheritance, so it cannot be generated as single table (A). Single table supports disjoint inheritance only.");
+        add("그룹 {0}({1}) 은(는) 중복(Overlapping) 상속이라 C형(말단 서브타입별 테이블)으로 만들 수 없습니다 (같은 행이 여러 테이블에 복제됩니다).", "Group {0} ({1}) is an overlapping inheritance, so it cannot be generated as concrete tables (C) (the same row would be copied into several tables).");
+        add("그룹 {0}({1}) 의 분류 값 범위는 DB 제약으로 강제되지 않습니다 (분류 값 CHECK 를 만들지 않습니다).", "The classification value range of group {0} ({1}) is not enforced by a database constraint (no classification CHECK is created).");
+        add("그룹 {0}({1}) 의 분류 속성 {2} 이(가) 슈퍼타입의 유효 속성이 아닙니다.", "Classification attribute {2} of group {0} ({1}) is not an effective attribute of the supertype.");
+        add("그룹 {0}({1}) 의 서브타입 {2} 에 분류 값이 없어 A형으로 만들 수 없습니다.", "Subtype {2} of group {0} ({1}) has no classification value, so it cannot be generated as single table (A).");
+        add("그룹 {0}({1}) 의 서브타입 {2}·{3} 의 분류 값이 같은 값({4})입니다. 분류 값은 그룹 안에서 달라야 합니다.", "Subtypes {2} and {3} of group {0} ({1}) have the same classification value ({4}). Classification values must differ within a group.");
+        add("그룹 {0}({1}) 의 서브타입 속성이 해당 유형의 행에만 쓰인다는 조건은 DB 에서 강제되지 않습니다.", "That the subtype attributes of group {0} ({1}) are used only by rows of that type is not enforced by the database.");
+        add("그룹 {0}({1}) 의 완전(Total) 조건은 통합 테이블에서 강제되지 않습니다 : 분류 값이 비어 있는 행이 있을 수 있습니다.", "The total condition of group {0} ({1}) is not enforced in the integrated table: rows without a classification value can exist.");
+        add("그룹의 분류 컬럼이 분류 속성의 매핑 컬럼과 다릅니다 (그룹 ID {0}).", "The group's classification column differs from the column mapped to the classification attribute (group ID {0}).");
+        add("논리적으로 필수지만 A형 통합 테이블에서는 NULL 을 허용합니다 (유형 안의 필수 조건은 DB 에서 강제되지 않습니다).", "Logically required, but NULL is allowed in the single-table (A) integrated table (the per-type required condition is not enforced by the database).");
+        add("그룹 {0} 에 변환 뒤 구성원 {1} 이(가) 추가되었습니다.", "Member {1} was added to group {0} after the conversion.");
+        add("그룹 {0} 에서 변환 뒤 구성원 {1} 이(가) 빠졌습니다.", "Member {1} was removed from group {0} after the conversion.");
+        add("그룹 {0} 의 배타·완전 여부가 변환 뒤 바뀌었습니다.", "The disjoint/total setting of group {0} changed after the conversion.");
+        add("그룹 {0} 의 분류 속성이 변환 뒤 {1} 에서 {2} (으)로 바뀌었습니다.", "The classification attribute of group {0} changed from {1} to {2} after the conversion.");
+        add("그룹 {0} 의 구성원 {1} 의 분류 값이 변환 뒤 {2} 에서 {3} (으)로 바뀌었습니다.", "The classification value of member {1} in group {0} changed from {2} to {3} after the conversion.");
+        add("변환 당시 그룹 상태 이력이 없어 생성 이후 그룹 구성원·분류 값 변경 여부는 비교하지 않았습니다.",
+                "There is no history of the group state at conversion time, so member and classification value changes after generation were not compared.");
+        add("엔터티 {0} 은(는) 지금 A형 계층의 구성원이 아닌데, 속성 {1} 이(가) 다른 엔터티의 매핑(통합 테이블) 아래 컬럼 {2} 에 그대로 매핑되어 있습니다. 매핑 관리에서 해제할 수 있습니다.",
+                "Entity {0} is no longer a member of the single table (A) hierarchy, but attribute {1} is still mapped to column {2} under another entity's mapping (the single table). You can remove it in mapping management.");
+        add("A형 통합 테이블 {0} 에 PK 가 없습니다. 루트 주 식별자를 정하고 PK 를 직접 정리해주세요 (자동으로 고치지 않습니다).",
+                "Single table (A) {0} has no PK. Define the root's primary identifier and fix the PK yourself (it is not corrected automatically).");
+        add("유효하지 않은 기존 상속 일반 속성 매핑", "Invalid existing inherited attribute mapping");
+        add("엔터티 {0} 은(는) 지금 속성 {1} 을(를) 물려받는 C형 말단이 아닌데 상속 일반 속성 매핑이 남아 있습니다. 매핑 관리에서 해제할 수 있습니다.",
+                "Entity {0} is no longer a concrete (C) leaf that inherits attribute {1}, but its inherited attribute mapping remains. You can remove it in mapping management.");
+        add("기존 물리 테이블·컬럼·매핑·변환 기록은 자동으로 바뀌지 않았습니다.", "The existing physical tables, columns, mappings and conversion records were not changed automatically.");
+        add("루트 엔터티 {0} 에 주 식별자가 없어 A형 통합 테이블의 PK 를 만들 수 없습니다. 논리 모델에서 루트의 주 식별자를 먼저 지정해주세요.",
+                "Root entity {0} has no primary identifier, so the PK of the type A single table cannot be created. Define the root's primary identifier in the logical model first.");
+        add("루트 엔터티 {0} 의 주 식별자 {1} 에 구성 속성이 없어 PK 를 만들 수 없습니다.", "Primary identifier {1} of root entity {0} has no attributes, so the PK cannot be created.");
+        add("루트 엔터티 {0} 의 주 식별자 {1} 에 루트에 속하지 않는 속성 {2} 이(가) 들어 있어 PK 를 만들 수 없습니다.",
+                "Primary identifier {1} of root entity {0} contains attribute {2}, which does not belong to the root, so the PK cannot be created.");
+        add("루트 엔터티 {0} 의 주 식별자 {1} 에 같은 속성 {2} 이(가) 두 번 들어 있어 PK 를 만들 수 없습니다.",
+                "Primary identifier {1} of root entity {0} contains attribute {2} twice, so the PK cannot be created.");
+        add("루트 엔터티 {0} 에 주 식별자가 없어 말단 테이블의 PK 를 만들 수 없습니다.", "Root entity {0} has no primary identifier, so the PK of the leaf tables cannot be created.");
+        add("루트 엔터티가 변환 기록의 통합 테이블이 아닌 테이블에 매핑되어 있습니다.", "The root entity is mapped to a table other than the integrated table of the conversion record.");
+        add("루트 엔터티가 통합 테이블에 매핑되어 있지 않습니다.", "The root entity is not mapped to the integrated table.");
+        add("루트 주 식별자 속성 {0} 은(는) 상속 PK 매핑으로 연결해주세요.", "Link the root primary identifier attribute {0} with an inherited PK mapping.");
+        add("말단 {0} 테이블에 조상 {1} 의 속성 {2} 을(를) 복제한 컬럼의 매핑(상속 PK·상속 일반 속성 매핑)이 없습니다.", "The table of leaf {0} has no mapping (inherited PK or inherited attribute mapping) for the column copied from attribute {2} of ancestor {1}.");
+        add("말단 테이블 {0} 에서 서로 다른 속성이 같은 컬럼명({1})이 됩니다 ({2}). 이름을 바꾸거나 합치지 않습니다 — 표준 용어를 먼저 정리해주세요.", "In leaf table {0} different attributes get the same column name ({1}) ({2}). Names are not changed or merged; fix the standard terms first.");
+        add("말단 테이블 사이의 PK 유일성은 보장되지 않습니다 : 같은 {0} 값이 다른 말단 테이블에도 들어갈 수 있습니다.", "PK uniqueness across leaf tables is not guaranteed: the same {0} value can be stored in another leaf table.");
+        add("말단 테이블 컬럼 {0} 의 상속 일반 속성 매핑에서 사용 중인 속성입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", "This attribute is used by the inherited attribute mapping of leaf table column {0}. Remove the inherited attribute mapping first.");
+        add("맞지 않는 변환 기록", "Inconsistent conversion records");
+        add("변환 기록 {0} (A형) 의 분류 컬럼이 그룹 분류 속성의 매핑 컬럼이 아닙니다.", "The classification column of conversion record {0} (A) is not the column mapped to the group's classification attribute.");
+        add("변환 기록 {0} (A형) 의 통합 테이블·분류 컬럼이 루트 엔터티의 매핑과 맞지 않습니다.", "The integrated table or classification column of conversion record {0} (A) does not match the root entity's mapping.");
+        add("변환 기록 {0} (C형) 에는 통합 테이블·분류 컬럼이 없어야 합니다.", "Conversion record {0} (C) must not have an integrated table or classification column.");
+        add("변환 기록 {0} : 같은 그룹의 변환 기록이 두 개입니다.", "Conversion record {0}: there are two conversion records for the same group.");
+        add("변환 기록 {0} 의 그룹·테이블·컬럼을 가져오지 못했습니다.", "The group, table or column of conversion record {0} could not be imported.");
+        add("변환 기록 {0} 이(가) 올바르지 않습니다 (그룹·전략).", "Conversion record {0} is not valid (group or strategy).");
+        add("변환 기록에 의존하는 매핑이 있어 지울 수 없습니다. 매핑을 먼저 해제해주세요 : {0}", "Mappings depend on the conversion records, so they cannot be deleted. Remove the mappings first: {0}");
+        add("변환 기록은 상속 계층의 루트 엔터티로 지웁니다.", "Conversion records are deleted through the root entity of the inheritance hierarchy.");
+        add("부모 {0} 은(는) A형 통합 테이블의 서브타입이라 일반 FK 로는 그 유형만 참조한다는 의미를 지킬 수 없습니다. 전략상 FK 를 기대하지 않습니다 (자동 보정 대상 아님).", "Parent {0} is a subtype inside a single-table (A) integrated table, so a plain foreign key cannot keep the meaning of referencing only that type. No foreign key is expected by the strategy (not a correction target).");
+        add("부모 {0} 은(는) C형으로 여러 말단 테이블에 분산되어 FK 하나로 참조할 수 없습니다. 전략상 FK 를 기대하지 않습니다 (자동 보정 대상 아님).", "Parent {0} is distributed over several leaf tables (C) and cannot be referenced by one foreign key. No foreign key is expected by the strategy (not a correction target).");
+        add("분류 속성 {0} 을(를) 상속 계층의 여러 그룹({1})이 함께 씁니다. A형은 그룹마다 서로 다른 분류 속성이 있어야 합니다. 그룹마다 다른 분류 속성을 지정해주세요.",
+                "Several groups of the inheritance hierarchy ({1}) share classification attribute {0}. Single table (A) needs a different classification attribute for each group. Give each group its own classification attribute.");
+        add("분류 속성 {0} 의 타입({1})은 A형 분류 값 검사를 지원하지 않습니다 (문자형·정수형·NUMBER/NUMERIC/DECIMAL 만). 다른 분류 속성을 지정해주세요.", "The type ({1}) of classification attribute {0} is not supported by the single-table (A) classification value check (character, integer and NUMBER/NUMERIC/DECIMAL only). Choose another classification attribute.");
+        add("상속 A·C형 계층(통합 테이블·말단 테이블)의 보조 식별자는 이 보정으로 UNIQUE 를 만들지 않습니다. 필요하면 물리 모델에서 직접 등록하세요.", "This correction does not create UNIQUE constraints for alternate identifiers of an inheritance A/C hierarchy (integrated or leaf tables). Register them in the physical model yourself if needed.");
+        add("상속 A·C형 계층(통합 테이블·분산 엔터티·복제 FK)과 관련된 관계는 이 보정으로 만들지 않습니다. 필요하면 물리 모델에서 직접 등록하세요.", "This correction does not create foreign keys for relationships involving an inheritance A/C hierarchy (integrated table, distributed entity, copied foreign keys). Register them in the physical model yourself if needed.");
+        add("상속 PK 매핑 {0}건", "{0} inherited PK mappings");
+        add("상속 계층 {0} 을(를) {1} 로 만들려면 계층 전체를 함께 골라야 합니다. 고르지 않은 엔터티 : {2}", "To generate inheritance hierarchy {0} as {1}, select the whole hierarchy. Entities not selected: {2}");
+        add("상속 계층(루트 엔터티 {0})의 A형 통합 테이블이 여러 개입니다.", "The inheritance hierarchy (root entity {0}) has more than one single-table (A) integrated table.");
+        add("상속 계층(루트 엔터티 {0})의 그룹 변환 기록이 서로 다르거나 일부만 있습니다.", "The group conversion records of the inheritance hierarchy (root entity {0}) differ from each other or exist only for some groups.");
+        add("상속 계층에 순환이 있어 {0} 을(를) 만들 수 없습니다.", "The inheritance hierarchy has a cycle, so {0} cannot be generated.");
+        add("상속 계층에 이미 매핑된 엔터티가 있어 새 변환 전략으로 만들 수 없습니다 (기존 물리 모델을 바꾸지 않습니다) : {0}", "Entities of the inheritance hierarchy are already mapped, so it cannot be generated with a new conversion strategy (the existing physical model is not changed): {0}");
+        add("상속 계층에 이미 변환 기록이 있어 다시 만들 수 없습니다. 기존 매핑과 변환 기록을 먼저 해제해주세요.", "The inheritance hierarchy already has conversion records, so it cannot be generated again. Remove the existing mappings and conversion records first.");
+        add("상속 계층의 그룹 변환 기록이 일부만 있거나 전략·통합 테이블이 섞여 있습니다. 변환 기록과 매핑을 확인해주세요.", "Only some groups of the inheritance hierarchy have conversion records, or strategies or integrated tables are mixed. Check the conversion records and mappings.");
+        add("상속 계층의 속성 중 이미 컬럼에 매핑된 것이 있어 새 변환 전략으로 만들 수 없습니다 (매핑 {0}건).", "Attributes of the inheritance hierarchy are already mapped to columns, so it cannot be generated with a new conversion strategy ({0} mappings).");
+        add("상속 그룹을 찾을 수 없습니다. (ID {0})", "The inheritance group cannot be found. (ID {0})");
+        add("상속 변환 기록과 물리 매핑 구조가 맞지 않아 FK 와 비교할 수 없습니다.", "The inheritance conversion records do not match the physical mapping structure, so it cannot be compared with foreign keys.");
+        add("상속 변환 전략은 상속 계층의 루트 엔터티에만 지정할 수 있습니다. (엔터티 ID {0})", "A conversion strategy can only be set on the root entity of an inheritance hierarchy. (entity ID {0})");
+        add("상속 일반 속성 매핑 {0} : 같은 엔터티 매핑의 같은 속성이 두 번 있습니다.", "Inherited attribute mapping {0}: the same attribute appears twice in the same entity mapping.");
+        add("상속 일반 속성 매핑 {0} 의 속성·컬럼을 가져오지 못했습니다.", "The attribute or column of inherited attribute mapping {0} could not be imported.");
+        add("상속 일반 속성 매핑 {0} 의 속성이 조상 엔터티의 일반 속성이 아닙니다.", "The attribute of inherited attribute mapping {0} is not a non-key attribute of an ancestor entity.");
+        add("상속 일반 속성 매핑 {0} 의 엔터티가 C형 계층의 말단이 아닙니다.", "The entity of inherited attribute mapping {0} is not a leaf of a concrete-table (C) hierarchy.");
+        add("상속 일반 속성 매핑 {0} 의 컬럼이 다른 매핑에 이미 쓰였습니다.", "The column of inherited attribute mapping {0} is already used by another mapping.");
+        add("상속 일반 속성 매핑 {0} 의 컬럼이 매핑된 테이블의 컬럼이 아닙니다.", "The column of inherited attribute mapping {0} is not a column of the mapped table.");
+        add("상속 일반 속성 매핑 {0} 이(가) 올바르지 않습니다 (엔터티 매핑·속성·컬럼).", "Inherited attribute mapping {0} is not valid (entity mapping, attribute or column).");
+        add("상속 일반 속성 매핑 {0}건", "{0} inherited attribute mappings");
+        add("상속 일반 속성 매핑 내용이 없습니다.", "The inherited attribute mapping is empty.");
+        add("상속 일반 속성 매핑이 있는 엔터티 매핑은 테이블을 바꿀 수 없습니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", "An entity mapping with inherited attribute mappings cannot change its table. Remove the inherited attribute mappings first.");
+        add("상속 일반 속성 매핑이 있는 엔터티 매핑입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", "This entity mapping has inherited attribute mappings. Remove the inherited attribute mappings first.");
+        add("상속받은 보조 식별자 {1}({0}) 을(를) 이 말단 테이블의 UNIQUE 로 만듭니다 (미승인 — 다른 말단 테이블과의 유일성은 보장되지 않습니다).", "Creates inherited alternate identifier {1} ({0}) as a UNIQUE constraint on this leaf table (unapproved; uniqueness against other leaf tables is not guaranteed).");
+        add("서브타입 {0} 의 분류 값 {1} 이(가) 분류 속성 {2} 의 길이({3})를 넘습니다.", "Classification value {1} of subtype {0} exceeds the length ({3}) of classification attribute {2}.");
+        add("서브타입 {0} 의 분류 값 {1} 이(가) 분류 속성 {2} 의 정밀도({3},{4})에 맞지 않습니다.", "Classification value {1} of subtype {0} does not fit the precision ({3},{4}) of classification attribute {2}.");
+        add("서브타입 {0} 의 분류 값 {1} 이(가) 분류 속성 {2} 의 타입({3})에 맞지 않습니다.", "Classification value {1} of subtype {0} does not fit the type ({3}) of classification attribute {2}.");
+        add("서브타입 {0} 의 분류 값 {1} 이(가) 숫자형 분류 속성 {2} 의 값이 아닙니다.", "Classification value {1} of subtype {0} is not a value of numeric classification attribute {2}.");
+        add("속성 {0} 은(는) 논리적으로 필수지만 통합 테이블에서는 NULL 을 허용합니다 (다른 유형의 행에는 값이 없다 — 유형 안의 필수 조건은 DB 에서 강제되지 않습니다).", "Attribute {0} is logically required but allows NULL in the integrated table (rows of other types have no value; the per-type required condition is not enforced by the database).");
+        add("속성 {0} 은(는) 이미 컬럼 {1} 에 상속 일반 속성 매핑되어 있습니다.", "Attribute {0} already has an inherited attribute mapping to column {1}.");
+        add("속성 {0} 은(는) 주 식별자·FK·보조 식별자 속성이라 제외할 수 없어 포함했습니다.", "Attribute {0} is a primary identifier, foreign key or alternate identifier attribute and cannot be excluded, so it was included.");
+        add("속성 {0} 은(는) 주 식별자·FK·보조 식별자·분류 속성이라 제외할 수 없어 포함했습니다.", "Attribute {0} is a primary identifier, foreign key, alternate identifier or classification attribute and cannot be excluded, so it was included.");
+        add("속성 {0} 의 상속 일반 속성 매핑에 쓰인 컬럼입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", "This column is used by the inherited attribute mapping of attribute {0}. Remove the inherited attribute mapping first.");
+        add("속성 매핑 {0} 의 속성이 매핑된 엔터티(또는 A형 계층)의 속성이 아닙니다.", "The attribute of attribute mapping {0} is not an attribute of the mapped entity (or its single-table (A) hierarchy).");
+        add("속성 매핑 {0}건", "{0} attribute mappings");
+        add("엔터티 {0} 은(는) A형 통합 테이블에 들어간 서브타입이라 따로 매핑할 수 없습니다.", "Entity {0} is a subtype merged into a single-table (A) integrated table and cannot be mapped separately.");
+        add("엔터티 {0} 은(는) C형 계층의 말단이 아니라 상속 일반 속성 매핑 대상이 아닙니다.", "Entity {0} is not a leaf of a concrete-table (C) hierarchy and has no inherited attribute mappings.");
+        add("엔터티 {0} 은(는) C형 계층의 말단이 아니라 상속 일반 속성 매핑을 등록할 수 없습니다.", "Entity {0} is not a leaf of a concrete-table (C) hierarchy, so inherited attribute mappings cannot be registered.");
+        add("엔터티 {0} 은(는) C형으로 말단 테이블에 분산된 엔터티라 테이블에 매핑할 수 없습니다.", "Entity {0} is distributed to leaf tables (C) and cannot be mapped to a table.");
+        add("엔터티 {0} 은(는) 지금 C형 계층의 말단이 아닙니다. 상속 일반 속성 매핑을 해제할 수 있습니다.", "Entity {0} is no longer a leaf of a concrete-table (C) hierarchy. You can remove its inherited attribute mappings.");
+        add("엔터티 {0} 의 상속 계층은 A·C형으로 만들어져 상속 FK 가 없습니다. 상속 FK 보정 대상이 아닙니다.", "The inheritance hierarchy of entity {0} was generated as A/C and has no inheritance foreign keys. It is not an inheritance foreign key correction target.");
+        add("엔터티 {0} 의 상속 계층은 이미 {1} 로 만들어졌습니다. 한 상속 계층에 다른 변환 전략을 섞을 수 없습니다.", "The inheritance hierarchy of entity {0} was already generated as {1}. Strategies cannot be mixed within one inheritance hierarchy.");
+        add("엔터티 {0} 의 조상 엔터티 속성만 상속 일반 속성으로 연결할 수 있습니다.", "Only attributes of the ancestor entities of {0} can be linked as inherited attributes.");
+        add("엔터티 매핑 {0} : A형 계층의 서브타입은 따로 매핑되지 않습니다.", "Entity mapping {0}: subtypes of a single-table (A) hierarchy are not mapped separately.");
+        add("엔터티 매핑 {0} : C형 계층의 루트·중간 엔터티는 매핑되지 않습니다.", "Entity mapping {0}: the root and intermediate entities of a concrete-table (C) hierarchy are not mapped.");
+        add("엔터티 매핑 {0} ↔ {1}", "Entity mapping {0} ↔ {1}");
+        add("전략을 고른 루트 엔터티를 생성 대상에서 찾을 수 없습니다. (엔터티 ID {0})", "The root entity with a strategy is not among the entities to generate. (entity ID {0})");
+        add("전략을 고른 상속 계층의 루트 엔터티가 비어 있습니다.", "The root entity of an inheritance hierarchy with a strategy is empty.");
+        add("지원하지 않는 상속 변환 전략입니다 : {0}", "Unsupported inheritance conversion strategy: {0}");
+        add("컬럼 {0} 은(는) 이미 속성 {1} 에 매핑되어 있어 상속 일반 속성 매핑에 쓸 수 없습니다.", "Column {0} is already mapped to attribute {1} and cannot be used for an inherited attribute mapping.");
+        add("컬럼 {0} 은(는) 이미 속성 {1} 의 상속 일반 속성 매핑에 쓰이고 있습니다.", "Column {0} is already used by the inherited attribute mapping of attribute {1}.");
+        add("통합 테이블에서 서로 다른 속성이 같은 컬럼명({0})이 됩니다 ({1}). 이름을 바꾸거나 합치지 않습니다 — 표준 용어를 먼저 정리해주세요.", "In the integrated table different attributes get the same column name ({0}) ({1}). Names are not changed or merged; fix the standard terms first.");
+        add("C형 말단 테이블 : 루트 {0} 의 주 식별자를 이 테이블의 PK 로 복제합니다. 상속 FK 와 상위 테이블은 없습니다 (구조는 정합성 비교의 [상속 구조] 에서 C형 기준으로 판정).",
+                "Concrete-table (C) leaf table: the primary identifier of root {0} is copied as this table's PK. There is no inheritance foreign key or parent table (the structure is judged by the concrete-table rules under [Inheritance structure] in the quality comparison).");
+        add("형식 버전 {0} 파일에는 상속 변환 기록·상속 일반 속성 매핑이 들어갈 수 없습니다.", "A format version {0} file cannot contain inheritance conversion records or inherited attribute mappings.");
     }
 }

@@ -38,6 +38,7 @@ public class ObjectNamespace {
     private final SchemaInfoRepository schemaInfoRepository;
     private final TableInfoRepository tableInfoRepository;
     private final PhysicalViewRepository viewRepository;
+    private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
 
     /**
      * 이 트랜잭션이 끝날 때까지 스키마들의 이름 공간을 잠근다 (쓰기 트랜잭션 안에서만).
@@ -59,6 +60,23 @@ public class ObjectNamespace {
 
     public void lock(Long projectId, boolean viewGraph, Long... schemaIds) {
         lock(projectId, viewGraph, Arrays.asList(schemaIds));
+    }
+
+    /**
+     * {@link #lock} 과 같은 순서(기본 스키마 → 나머지 ID 순)지만 기다리지 않는다 : 프로젝트 행을 이미 배타로 잡은 구조 변경(테이블 이름 변경·스키마 이동 — M7-FK-D06)용.
+     * 다른 트랜잭션이 잡고 있으면 409 ({@link com.lexorma.data.physical.sync.ModelRowLocks#busy()})
+     */
+    public void lockNoWait(Long projectId, boolean viewGraph, Long... schemaIds) {
+        SchemaInfo defaultSchema = schemaService.resolveSchema(projectId, null);
+        TreeSet<Long> others = new TreeSet<>(Arrays.stream(schemaIds).filter(Objects::nonNull).toList());
+        boolean lockDefault = viewGraph || others.remove(defaultSchema.getId());
+        List<Long> order = new ArrayList<>();
+        if (lockDefault) order.add(defaultSchema.getId());
+        order.addAll(others);
+        for (Long id : order) {
+            if (schemaInfoRepository.findByIdAndProjectId(id, projectId).isEmpty()) throw new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED);
+        }
+        rowLocks.schemasNoWait(order);
     }
 
     /** 스키마에서 같은 이름(대문자)을 이미 쓰는 객체 종류. selfTableId·selfViewId 는 이름을 바꾸는 자기 자신 (비교에서 뺀다). 없으면 null */

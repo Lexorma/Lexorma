@@ -8,6 +8,7 @@ import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.EntityRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.ForeignKeyRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.IdentifierRow;
+import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.InheritedKeyRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.PairRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.RelationshipRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.UniqueRow;
@@ -110,10 +111,53 @@ class ModelStructureQualityJudgeTest {
     }
 
     @Test
-    @DisplayName("상속 FK (자식 엔터티의 직계 슈퍼타입 테이블로 가는 FK) 는 물리 전용으로 내지 않는다")
+    @DisplayName("D-INH-11 : 상속 FK(서브타입의 상속 PK 컬럼 → 직계 슈퍼타입) 는 물리 전용으로 내지 않고, 같은 두 테이블 사이의 다른 일반 FK 는 물리 전용으로 낸다 (I-4 — 예전에는 둘 다 뺐다)")
     void inheritanceForeignKeySkipped() {
-        List<Row> rows = ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(7L, "M", entities, List.of(), List.of(), primary, columns, List.of(),
-                List.of(fk(70L, 200L, "FK1", 10L, 100L, "PK1")), List.of(), List.of(), PK, id -> id == 2L ? 1L : null, id -> id == 2L ? 1L : id, Set.of(1L, 2L)));
-        assertThat(rows).noneMatch(r -> r.type() == CheckType.PHYSICAL_FK);
+        // 자식 테이블 20 의 상속 PK 컬럼 210 (루트 주 식별자 1000 의 상속 PK 매핑)
+        List<InheritedKeyRow> inherited = List.of(new InheritedKeyRow(2L, 1000L, "부모 키", 210L, "C_PK", 20L));
+        List<ColumnFlagRow> pks = List.of(new ColumnFlagRow(10L, "P", 100L, "PK1"), new ColumnFlagRow(20L, "C", 210L, "C_PK"));
+        List<Row> rows = ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(7L, "M", entities, List.of(), List.of(), primary, columns, inherited,
+                List.of(fk(70L, 210L, "C_PK", 10L, 100L, "PK1"), fk(71L, 200L, "FK1", 10L, 100L, "PK1")), List.of(), List.of(), pks, id -> id == 2L ? 1L : null,
+                id -> id == 2L ? 1L : id, Set.of(1L, 2L)));
+        assertThat(rows).filteredOn(r -> r.type() == CheckType.PHYSICAL_FK).singleElement().satisfies(r -> assertThat(r.structure().physicalId()).isEqualTo(71L));
+        // 상속 PK 매핑이 없으면 자식 테이블 PK 컬럼 집합으로 상속 FK 후보를 본다 (직계 슈퍼타입 테이블 참조만 — 상속 구조 진단이 매핑 누락을 따로 낸다)
+        List<Row> unmapped = ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(7L, "M", entities, List.of(), List.of(), primary, columns, List.of(),
+                List.of(fk(70L, 210L, "C_PK", 10L, 100L, "PK1"), fk(71L, 200L, "FK1", 10L, 100L, "PK1")), List.of(), List.of(), pks, id -> id == 2L ? 1L : null,
+                id -> id == 2L ? 1L : id, Set.of(1L, 2L)));
+        assertThat(unmapped).filteredOn(r -> r.type() == CheckType.PHYSICAL_FK).singleElement().satisfies(r -> assertThat(r.structure().physicalId()).isEqualTo(71L));
+    }
+
+    @Test
+    @DisplayName("D-INH-11·29.3 : 일반 관계의 기대 쌍이 상속 FK 쌍과 같으면 INHERITANCE_FK_OVERLAP (비교 불가) — 상속 FK 를 그 관계의 일치로 가져가지 않고 물리 전용에도 내지 않는다")
+    void overlapWithInheritanceForeignKey() {
+        List<InheritedKeyRow> inherited = List.of(new InheritedKeyRow(2L, 1000L, "부모 키", 210L, "C_PK", 20L));
+        List<AttributeColumnRow> cols = new ArrayList<>(columns);
+        cols.add(new AttributeColumnRow(2003L, "자식 키 사본", 210L, "C_PK", 20L)); // (잘못된 데이터) 자식 속성이 상속 PK 컬럼에 직접 매핑됨
+        List<ColumnFlagRow> pks = List.of(new ColumnFlagRow(10L, "P", 100L, "PK1"), new ColumnFlagRow(20L, "C", 210L, "C_PK"));
+        for (boolean withFk : new boolean[]{true, false}) {
+            List<ForeignKeyRow> fks = withFk ? List.of(fk(70L, 210L, "C_PK", 10L, 100L, "PK1")) : List.of();
+            List<Row> rows = ModelStructureQualityJudge.judge(new ModelStructureQualityJudge.Input(7L, "M", entities, List.of(new RelationshipRow(50L, "관계", 1L, 2L)),
+                    List.of(new PairRow(50L, 1, 1L, 1000L, "부모 키", 2003L, "자식 키 사본")), primary, cols, inherited, fks, List.of(), List.of(), pks,
+                    id -> id == 2L ? 1L : null, id -> id == 2L ? 1L : id, Set.of(1L, 2L)));
+            assertThat(rows).filteredOn(r -> r.type() == CheckType.RELATIONSHIP).singleElement().satisfies(r -> {
+                assertThat(r.structure().code()).as("FK " + withFk).isEqualTo("INHERITANCE_FK_OVERLAP");
+                assertThat(r.status()).isEqualTo(CheckStatus.NOT_COMPARABLE);
+            });
+            assertThat(rows).noneMatch(r -> r.type() == CheckType.PHYSICAL_FK);
+        }
+    }
+
+    @Test
+    @DisplayName("D-INH-11 순수 함수 : 상속 FK 후보 = 자식 컬럼 집합이 상속 PK 컬럼 집합과 같음 (중복·NULL 없음), 정상 상속 FK = 직계 부모 대상 + 자식·부모 쌍 순서까지 같음")
+    void inheritancePureFunctions() {
+        assertThat(ModelStructureQualityJudge.isInheritanceCandidate(List.of(1L, 2L), Set.of(2L, 1L))).isTrue();
+        assertThat(ModelStructureQualityJudge.isInheritanceCandidate(List.of(1L), Set.of(1L, 2L))).isFalse();
+        assertThat(ModelStructureQualityJudge.isInheritanceCandidate(List.of(1L, 1L), Set.of(1L))).isFalse();
+        assertThat(ModelStructureQualityJudge.isInheritanceCandidate(java.util.Arrays.asList(1L, null), Set.of(1L))).isFalse();
+        assertThat(ModelStructureQualityJudge.isInheritanceCandidate(List.of(), Set.of())).isFalse();
+        assertThat(ModelStructureQualityJudge.isExactInheritanceFk(10L, List.of(1L, 2L), List.of(5L, 6L), 10L, List.of(1L, 2L), List.of(5L, 6L))).isTrue();
+        assertThat(ModelStructureQualityJudge.isExactInheritanceFk(10L, List.of(2L, 1L), List.of(6L, 5L), 10L, List.of(1L, 2L), List.of(5L, 6L))).as("순서").isFalse();
+        assertThat(ModelStructureQualityJudge.isExactInheritanceFk(11L, List.of(1L, 2L), List.of(5L, 6L), 10L, List.of(1L, 2L), List.of(5L, 6L))).as("대상").isFalse();
+        assertThat(ModelStructureQualityJudge.isExactInheritanceFk(10L, List.of(1L, 2L), List.of(6L, 5L), 10L, List.of(1L, 2L), List.of(5L, 6L))).as("부모 컬럼").isFalse();
     }
 }

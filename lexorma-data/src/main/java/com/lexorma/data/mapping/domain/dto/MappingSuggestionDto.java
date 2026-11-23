@@ -80,13 +80,19 @@ public final class MappingSuggestionDto {
     public enum OverlayStatus { MAPPED, UNMAPPED, MISMATCH, NOT_COMPARABLE }
 
     /** 속성·컬럼 매핑 종류 : DIRECT(속성 ↔ 컬럼) · INHERITED_KEY(상속 PK 매핑 — 루트 주 식별자 속성 ↔ 서브타입 테이블 컬럼) */
-    public enum LinkKind { DIRECT, INHERITED_KEY }
+    public enum LinkKind { DIRECT, INHERITED_KEY, INHERITED_ATTRIBUTE }
 
     /**
      * 매핑 상태 (M7-F02-1) : 저장된 매핑 관계만으로 정한다 — MAPPED(매핑이 있다) · UNMAPPED(없다). 정합성 판정·이름·표준 용어와 무관하다.
      * 상속 PK 매핑도 MAPPED 이며 종류(LinkKind)로 구분한다
      */
-    public enum MappingStatus { MAPPED, UNMAPPED }
+    public enum MappingStatus {
+        MAPPED, UNMAPPED,
+        /** A형 통합 (M-7 상속 A) : 자기 매핑 없이 루트 통합 테이블에 — 유효한 통합만 (아니면 UNMAPPED) */
+        MERGED,
+        /** C형 분산 (M-7 상속 C) : 자기 테이블 없이 말단 테이블에 — 아래 말단이 모두 매핑된 것만 (아니면 UNMAPPED) */
+        DISTRIBUTED
+    }
 
     /**
      * 정합성 판정 1건 (M7-F02-2, 기존 정합성 비교의 진단 행 그대로 — 사유를 새로 만들지 않는다). status 는 MISMATCH · NOT_COMPARABLE (일치 행은 내지 않는다).
@@ -105,7 +111,14 @@ public final class MappingSuggestionDto {
     public record EntityOverlay(Long entityId, boolean mapped, Long mappingId, Long schemaId, String schemaName, Long tableId, String tableName,
                                 OverlayStatus status, int attributeCount, int mappedAttributeCount, int mismatches, int notComparable,
                                 List<AttributeLink> attributes, List<AttributeLink> inheritedKeys,
-                                MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues) {
+                                MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues, String strategy, List<ModelMappingDto.PhysicalTable> physicalTables) {
+        public EntityOverlay(Long entityId, boolean mapped, Long mappingId, Long schemaId, String schemaName, Long tableId, String tableName,
+                             OverlayStatus status, int attributeCount, int mappedAttributeCount, int mismatches, int notComparable,
+                             List<AttributeLink> attributes, List<AttributeLink> inheritedKeys,
+                             MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues) {
+            this(entityId, mapped, mappingId, schemaId, schemaName, tableId, tableName, status, attributeCount, mappedAttributeCount, mismatches, notComparable, attributes,
+                    inheritedKeys, mappingStatus, qualityStatus, issues, null, List.of());
+        }
     }
 
     /**
@@ -119,6 +132,13 @@ public final class MappingSuggestionDto {
     /** 물리 ERD 의 테이블 1개. mapped false 면 엔터티 값이 null. 상태 필드는 EntityOverlay 와 같은 뜻 (판정은 매핑된 엔터티의 것) */
     public record TableOverlay(Long tableId, boolean mapped, Long mappingId, Long modelId, String modelName, Long entityId, String entityName,
                                OverlayStatus status, int columnCount, int mappedColumnCount, int mismatches, int notComparable,
-                               List<AttributeLink> columns, MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues) {
+                               List<AttributeLink> columns, MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues, String strategy,
+                               List<ModelMappingDto.PhysicalTable> mergedEntities) {
+        public TableOverlay(Long tableId, boolean mapped, Long mappingId, Long modelId, String modelName, Long entityId, String entityName,
+                            OverlayStatus status, int columnCount, int mappedColumnCount, int mismatches, int notComparable,
+                            List<AttributeLink> columns, MappingStatus mappingStatus, CheckStatus qualityStatus, List<Issue> issues) {
+            this(tableId, mapped, mappingId, modelId, modelName, entityId, entityName, status, columnCount, mappedColumnCount, mismatches, notComparable, columns, mappingStatus,
+                    qualityStatus, issues, null, List.of());
+        }
     }
 }

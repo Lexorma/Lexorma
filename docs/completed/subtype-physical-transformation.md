@@ -1,5 +1,7 @@
 # M-7 슈퍼타입·서브타입 물리 모델 변환 — 1차 설계 · 2차 정책·계획 · 3차 상속 PK 매핑·실제 생성 · 4차 화면·정합성 비교 · 5차 보존·호환 검증 · 6차 최종 통합 검증
 
+> **2026-11-22 네 번째 Flyway 합침 (사용자 결정)** : 이 문서의 마이그레이션 V4 는 `V0__init.sql`(스키마 — 끝의 '예전 증분 V4 (… 네 번째 합침)' 구간)·`V1__seed_data.sql`(예제 — 같은 이름의 구간)로 합쳐져 지금 파일로는 없다. 아래의 V4 파일명·업그레이드 검증은 기록용이다 ([completed-work.md](../completed-work.md) 마이그레이션 기록).
+
 - 상태 : **완료 (1~6차, 2026-11-20~21)** — 정책 M7-D01~D43 확정, V4 상속 PK 매핑(`TB_SBTYP_IDNTFR_COL_MPNG`)·수동 매핑 API·실제 B형 생성·스냅샷 9·교환 6 (30장), 상속 PK 매핑 화면·정합성 비교 상속 구조·필요한 조상 함께 선택 (31장), 스냅샷 9·교환 6 보존·하위 호환·원자성·제한 검증 (32장), 최종 통합 검증·완료 판단 (33장). 남은 것은 후속 과제뿐이다 (33.10 — A·C형, 보조 식별자 UNIQUE, 참조 키 공통화, 성능 과제). 6차에 `ongoing/` 에서 `completed/` 로 옮겼다
 - 범위 : M-6 D-47 에서 후속으로 남긴 상속 구조 물리 변환. 기존 M-7(매핑·선택 생성·보강 1~5차)을 다시 만들지 않는다. 이 문서의 권장안은 확정 정책이 아니다 — 26장의 결정(M7-D01~D30) 뒤 별도 지시로 구현한다.
 - 근거 : 2026-11-20 HEAD(`1de0a9b`) 소스·마이그레이션(V0~V3)·문서. 관련 기록 [logical-subtype.md](../completed/logical-subtype.md) 0·14·15장, [logical-physical-mapping-m7.md](../completed/logical-physical-mapping-m7.md), [physical-erd-m2-improvement.md](../completed/physical-erd-m2-improvement.md), [physical-diagnostics-performance.md](../completed/physical-diagnostics-performance.md), [model-exchange-dec22.md](../completed/model-exchange-dec22.md).
@@ -411,7 +413,7 @@ DDL Export 성능 : `DdlExportService` 가 테이블마다 `tableDesignService.r
 |---|---|---|
 | M-7 A·C 전략 | 단일 테이블·구체 테이블 | M7-D02 |
 | 보조 식별자 → UNIQUE 생성·비교 | 상속과 무관한 기존 후속 | pending [M-7] 에 이미 있음 |
-| 기존 테이블의 B 구조 보정 | 상속 FK 추가 등 기존 테이블 변경 | pending [M-7] 별도 정책 ① |
+| 기존 테이블의 B 구조 보정 | 상속 FK 추가 등 기존 테이블 변경 | pending [M-7] 별도 정책 ① — **누락 상속 FK 만 2026-11-22 M7-INH-03 으로 보정** (미승인 USER 관계, [inheritance-reference-key-m7.md](inheritance-reference-key-m7.md) 5장). 상속 PK 컬럼·매핑 자동 생성·기존 FK 수정은 여전히 하지 않는다 (D-INH-10) |
 | 논리 → 물리 자동 동기화 | 금지 원칙 유지 | — |
 | 업무 DB DDL 실행·트리거 생성·ORM 코드 생성 | 범위 밖 | — |
 | **M-DDL-PERF (등록 제안)** | DDL Export 의 테이블별 `referencedKeys`·`ddlExtras` 반복 — **측정 먼저** | 미측정 |
@@ -550,7 +552,7 @@ M7-D01~D38 그대로. 추가 확정 :
 
 - 엔티티 `mapping/domain/entity/SubtypeIdentifierColumnMapping`, 리포지토리 `SubtypeIdentifierColumnMappingRepository` (매핑별·여러 매핑 일괄·컬럼·속성 참조 조회).
 - 판정 : `SubtypePlanContext` 하나가 물리 생성(기존 조상 재사용)과 조회 API(정합성 사유)를 함께 맡는다 (M7-D36, 규칙 복제 없음). `SubtypePlanContexts`(컴포넌트)가 요청 단위로 만들고 `prepare(엔터티들)` 가 조상 체인의 엔터티·엔터티 매핑·루트 키 직접 매핑·상속 PK 매핑·서브타입 테이블에서 나가는 관계를 종류마다 한 번에 읽는다.
-- 기존 서브타입(중간 엔터티) 유효 조건 : 지금 루트 주 식별자 전체의 상속 PK 매핑(일부만 = 미완성), 그 컬럼 집합 = 테이블 PK 전체, 직계 부모 키 컬럼과 순서대로 FK 타입 호환(`TableDdlGenerator.isReferenceTypeCompatible`), 직계 부모 테이블을 그 쌍 그대로 참조하는 FK(출처 무관 — REF_COLUMN 관계도), 직계 부모도 유효. 사유 : `INHERITED_KEY_MAPPING_MISSING`·`PARENT_KEY_MISMATCH`·`INHERITED_KEY_TYPE_MISMATCH`·`INHERITANCE_FK_MISSING`·`ANCESTOR_INVALID`(부모 쪽 원인 — 목록에서는 원인만 보인다). 컬럼명·FK 이름으로 추론하지 않는다.
+- 기존 서브타입(중간 엔터티) 유효 조건 : 지금 루트 주 식별자 전체의 상속 PK 매핑(일부만 = 미완성), 그 컬럼 집합 = 테이블 PK 전체, 직계 부모 키 컬럼과 순서대로 FK 타입 호환(`TableDdlGenerator.isReferenceTypeCompatible`), 직계 부모 테이블을 그 쌍 그대로 참조하는 FK(출처 무관 — REF_COLUMN 관계도. 2026-11-22 M7-INH-01 D-INH-11 부터 쌍의 **순서까지** 같아야 한다 — 순서만 다른 FK 는 `INHERITANCE_FK_ORDER`), 직계 부모도 유효. 사유 : `INHERITED_KEY_MAPPING_MISSING`·`PARENT_KEY_MISMATCH`·`INHERITED_KEY_TYPE_MISMATCH`·`INHERITANCE_FK_MISSING`·`ANCESTOR_INVALID`(부모 쪽 원인 — 목록에서는 원인만 보인다). 컬럼명·FK 이름으로 추론하지 않는다.
 
 | API (`/api/modelMapping`) | 권한 | 내용 |
 |---|---|---|

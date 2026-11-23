@@ -71,6 +71,21 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     /** 관계 동기화 : 테이블들의 PK 컬럼 */
     List<ColumnInfo> findAllByTableInfo_IdInAndIsPkTrue(Collection<Long> tableInfoIds);
 
+    /**
+     * 컬럼 삭제의 구조 변경 판정 (M7-FK-D11) : 이 컬럼들 중 지금 PK 인 것. 잠그기 전에도 부르므로 엔티티를 읽지 않는다 (ID 만 — 영속성 컨텍스트에 남은 옛 상태로
+     * 잠근 뒤 판정하지 않도록)
+     */
+    @Query("select c.id from ColumnInfo c where c.projectId = :projectId and c.id in :ids and c.isPk = true")
+    List<Long> findPkColumnIds(@Param("projectId") Long projectId, @Param("ids") Collection<Long> ids);
+
+    /** 이 컬럼들의 소속 테이블 ID (엔티티를 읽지 않는다) */
+    @Query("select distinct c.tableInfo.id from ColumnInfo c where c.projectId = :projectId and c.id in :ids")
+    List<Long> findTableIdsOfColumns(@Param("projectId") Long projectId, @Param("ids") Collection<Long> ids);
+
+    /** 이 테이블들의 컬럼 ID (엔티티를 읽지 않는다) */
+    @Query("select c.id from ColumnInfo c where c.tableInfo.id in :tableIds")
+    List<Long> findIdsByTableIds(@Param("tableIds") Collection<Long> tableIds);
+
     /** 관계 동기화 : 참조 테이블명(대소문자·앞뒤 공백 무시)이 names 중 하나인 컬럼 */
     @Query("select c from ColumnInfo c where c.projectId = :projectId and upper(trim(c.refTableName)) in :names")
     List<ColumnInfo> findAllReferencing(@Param("projectId") Long projectId, @Param("names") Collection<String> names);

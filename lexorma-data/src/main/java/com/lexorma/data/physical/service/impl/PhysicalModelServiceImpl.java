@@ -65,6 +65,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private final EntityManager entityManager;
     private final AttributeColumnMappingRepository attributeMappingRepository;
     private final com.lexorma.data.mapping.repository.SubtypeIdentifierColumnMappingRepository subtypeKeyMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     private final ProjectRepository projectRepository;
     private final IndexChangeRequestRepository changeRequestRepository;
 
@@ -101,7 +103,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Transactional
     public PhysicalModelDto.Relation saveRelation(AccountDto accountDto, PhysicalModelDto.Relation request) {
         Long projectId = accountDto.getProjectId();
-        TableInfo source = requireTable(projectId, request.sourceTableId());
+        // 원본(자식) 테이블 행을 먼저 잠그고 같은 구성의 관계를 찾는다 : 누락 FK 보정(같은 행을 NOWAIT 로 잡고 같은 FK 를 만든다)이 다시 계획한 뒤 커밋하기 전에
+        // 같은 FK 를 넣으면 중복 FK 가 생겼다 (docs/completed/physical-fk-correction-m7.md 14장). 보정이 끝나면 그 FK 를 보고 중복으로 거절한다
+        TableInfo source = lockTable(projectId, request.sourceTableId());
         TableInfo target = requireTable(projectId, request.targetTableId());
 
         List<PhysicalModelDto.ColumnPair> pairs = request.columns() == null ? List.of() : request.columns();
@@ -602,7 +606,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     @Transactional
     public PhysicalModelDto.Constraint saveConstraint(AccountDto accountDto, PhysicalModelDto.Constraint request) {
         Long projectId = accountDto.getProjectId();
-        TableInfo table = requireTable(projectId, request.tableId());
+        // 테이블 행을 먼저 잠그고 같은 구성·이름을 본다 (M7-AK-D15) : 누락 UNIQUE 보정(같은 행을 NOWAIT 로 잡고 같은 UNIQUE 를 만든다)이 다시 계획한 뒤 커밋하기 전에
+        // 같은 UNIQUE 를 넣거나, 같은 테이블의 등록 둘이 동시에 같은 구성을 만들면 중복이 생겼다. 보정이 끝나면 그 UNIQUE 를 보고 중복으로 거절한다
+        TableInfo table = lockTable(projectId, request.tableId());
         TableConstraint.Type type = parse(TableConstraint.Type.class, request.constraintType(), null);
         if (type == null) throw invalid("제약조건 유형은 UNIQUE 또는 CHECK 입니다. (PK 는 컬럼의 PK 여부, FK 는 관계로 정의)");
 
@@ -613,15 +619,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
         if (type == TableConstraint.Type.UNIQUE) {
             columns = tableColumns(projectId, table, refIds(request.columns()));
-            rejectSameAsColumnKeys(table, columns, true);
-            Set<Long> columnSet = new HashSet<>(ids(columns));
-            boolean duplicated = existing.stream().anyMatch(c -> c.getConstraintType() == TableConstraint.Type.UNIQUE
-                    && new HashSet<>(ids(c.getColumns().stream().map(TableConstraintColumn::getColumn).toList())).equals(columnSet))
-                    || indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()).stream()
-                    .anyMatch(i -> Boolean.TRUE.equals(i.getIsUnique())
-                            && new HashSet<>(ids(i.getColumns().stream().map(TableIndexColumn::getColumn).toList())).equals(columnSet));
-            if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 구성의 UNIQUE");
-            defaultName = "UK_" + table.getTableName() + "_" + joinNames(columns);
+            rejectDuplicateUnique(projectId, table, columns, existing);
+            defaultName = com.lexorma.data.table.ddl.DbIdentifierRules.uniqueName(table.getTableName(), columns.stream().map(ColumnInfo::getColumnName).toList());
         } else {
             checkExpression = request.checkExpression() == null ? "" : request.checkExpression().trim();
             if (checkExpression.isEmpty()) throw invalid("CHECK 조건식을 입력해주세요.");
@@ -645,6 +644,33 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             constraint.getColumns().add(TableConstraintColumn.builder().tableConstraint(constraint).column(columns.get(i)).columnOrder(i + 1).build());
         }
         return PhysicalModelDto.Constraint.fromEntity(constraintRepository.save(constraint));
+    }
+
+    @Override
+    public TableConstraint createGeneratedUnique(Long projectId, TableInfo table, List<ColumnInfo> columns, String name) {
+        if (columns.isEmpty()) throw invalid("UNIQUE 컬럼을 1개 이상 지정해주세요.");
+        List<TableConstraint> existing = constraintRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId());
+        rejectDuplicateUnique(projectId, table, columns, existing);
+        String constraintName = objectName(name, com.lexorma.data.table.ddl.DbIdentifierRules.uniqueName(table.getTableName(), columns.stream().map(ColumnInfo::getColumnName).toList()));
+        if (existing.stream().anyMatch(c -> c.getConstraintName().equalsIgnoreCase(constraintName))) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, constraintName);
+        TableConstraint constraint = TableConstraint.builder().projectId(projectId).tableInfo(table).constraintName(constraintName)
+                .constraintType(TableConstraint.Type.UNIQUE).isApproval(false).build();
+        for (int i = 0; i < columns.size(); i++) {
+            constraint.getColumns().add(TableConstraintColumn.builder().tableConstraint(constraint).column(columns.get(i)).columnOrder(i + 1).build());
+        }
+        return constraintRepository.save(constraint);
+    }
+
+    /** UNIQUE 중복 (등록·생성·보정 공통) : PK·고유값 컬럼과 같은 구성, 같은 컬럼 <b>집합</b>(순서 무시 — M7-AK-D04)의 UNIQUE 제약조건·고유 인덱스 */
+    private void rejectDuplicateUnique(Long projectId, TableInfo table, List<ColumnInfo> columns, List<TableConstraint> existing) {
+        rejectSameAsColumnKeys(table, columns, true);
+        Set<Long> columnSet = new HashSet<>(ids(columns));
+        boolean duplicated = existing.stream().anyMatch(c -> c.getConstraintType() == TableConstraint.Type.UNIQUE
+                && new HashSet<>(ids(c.getColumns().stream().map(TableConstraintColumn::getColumn).toList())).equals(columnSet))
+                || indexRepository.findAllByProjectIdAndTableInfo_Id(projectId, table.getId()).stream()
+                .anyMatch(i -> Boolean.TRUE.equals(i.getIsUnique())
+                        && new HashSet<>(ids(i.getColumns().stream().map(TableIndexColumn::getColumn).toList())).equals(columnSet));
+        if (duplicated) throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 구성의 UNIQUE");
     }
 
     // ------------------------------------------------------------------ 삭제 / 승인
@@ -671,6 +697,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             }
             case CONSTRAINT -> {
                 TableConstraint constraint = constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+                // 테이블 행을 먼저 잠근다 (M7-AK-D15) : 그 UNIQUE 를 참조하는 FK 를 만드는 보정·생성(테이블 행 NOWAIT)과 엇갈려 만드는 시점에 무효인 FK 가 생기지 않게
+                lockTable(projectId, constraint.getTableInfo().getId());
+                entityManager.refresh(constraint);
                 rejectApproved(constraint.getIsApproval());
                 constraintRepository.delete(constraint);
             }
@@ -716,6 +745,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         // 상속 PK 매핑 (M-7 3차, M7-D40) : 같은 테이블 행 잠금 안에서 본다 — 상속 PK 매핑 등록도 그 테이블 행을 잠근다
         subtypeKeyMappingRepository.findFirstByColumn_IdIn(columnIds).ifPresent(m -> {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 {0} 의 상속 PK 매핑에 쓰인 컬럼입니다. 상속 PK 매핑을 먼저 해제해주세요.", m.getAttribute().getAttributeName());
+        });
+        // 상속 A·C형 (D-AC-18) : C형 상속 일반 속성 매핑의 컬럼, A형 변환 기록의 분류 컬럼은 지우지 않는다 (매핑·기록을 먼저 해제)
+        subtypeAttributeMappingRepository.findFirstByColumn_IdIn(columnIds).ifPresent(m -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 {0} 의 상속 일반 속성 매핑에 쓰인 컬럼입니다. 상속 일반 속성 매핑을 먼저 해제해주세요.", m.getAttribute().getAttributeName());
+        });
+        conversionRepository.findFirstByClassificationColumn_IdIn(columnIds).ifPresent(c -> {
+            throw new CustomException(ErrorCode.RELATION_EXISTS, "그룹 {0} 의 A형 변환 기록이 분류 컬럼으로 쓰는 컬럼입니다. 변환 기록을 먼저 해제해주세요.", c.getGroup().getGroupName());
         });
 
         List<TableRelation> relations = relationRepository.findAllUsingColumns(columnIds);
@@ -781,6 +817,38 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         Map<Long, List<ColumnInfo>> pkByTable = targetIds.isEmpty() ? Map.of()
                 : columnInfoRepository.findAllByTableInfo_IdInAndIsPkTrue(targetIds).stream()
                     .collect(Collectors.groupingBy(c -> c.getTableInfo().getId()));
+
+        // 역방향 중복 방지 (M7-INH D-INH-12, docs/completed/inheritance-reference-key-m7.md 6장) : 새로 만들거나 대상 키가 바뀌는 REF_COLUMN 관계와 같은 컬럼 쌍
+        // (자식 컬럼 1개 → 같은 부모 PK 컬럼)의 다른 관계(USER 등)가 이미 있으면 만들지 않고 거절한다 — 기존 관계를 지우거나 바꾸지 않는다. 대상이 그대로인 관계(이름만 따라가는 경우)는
+        // 보지 않는다 (예전 중복 데이터가 이름 변경을 막지 않게). 참조 테이블명을 쓰는 경로(컬럼 등록·일괄 저장·엑셀·이름 변경·생성·가져오기)와 관계를 만드는 경로(관계 등록·FK 보정·
+        // 상속 FK 보정)는 모두 자식 테이블 행을 먼저 잠그므로 이 검사와 반대쪽 검사(buildRelation 의 참조 테이블명 컬럼 거절)가 서로 직렬화된다
+        Map<Long, ColumnInfo> newTargets = new LinkedHashMap<>();
+        for (ColumnInfo column : candidates.values()) {
+            TableRelation relation = existing.get(column.getId());
+            ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());
+            if (targetPk == null) continue;
+            boolean sameTarget = relation != null && relation.getColumns().get(0).getTargetColumn() != null
+                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId());
+            if (!sameTarget) newTargets.put(column.getId(), targetPk);
+        }
+        if (!newTargets.isEmpty()) {
+            Set<Long> sourceTables = candidates.values().stream().filter(c -> newTargets.containsKey(c.getId())).map(c -> c.getTableInfo().getId()).collect(Collectors.toSet());
+            for (TableRelation other : entityManager.createQuery("select distinct r from TableRelation r join fetch r.columns where r.projectId = :projectId and r.sourceTable.id in :tables"
+                            + " and r.relationType = :fk and r.relationSource <> :ref", TableRelation.class)
+                    .setParameter("projectId", projectId).setParameter("tables", sourceTables).setParameter("fk", TableRelation.Type.FK)
+                    .setParameter("ref", TableRelation.Source.REF_COLUMN).getResultList()) {
+                if (other.getColumns().size() != 1) continue;
+                TableRelationColumn pair = other.getColumns().get(0);
+                if (pair.getSourceColumn() == null || pair.getTargetColumn() == null) continue;
+                ColumnInfo wanted = newTargets.get(pair.getSourceColumn().getId());
+                if (wanted != null && wanted.getId().equals(pair.getTargetColumn().getId())) {
+                    ColumnInfo column = candidates.get(pair.getSourceColumn().getId());
+                    throw new CustomException(ErrorCode.SAVED_DATA_EXISTS, "같은 컬럼 쌍의 FK {0} 이(가) 이미 있어 참조 테이블명으로 FK 를 다시 만들지 않습니다. 참조 테이블명을 비우거나 기존 FK 를 먼저 삭제해주세요. ({1}.{2} → {3}.{4})",
+                            Objects.requireNonNullElse(other.getRelationName(), "-"), column.getTableInfo().getTableName(), column.getColumnName(),
+                            wanted.getTableInfo().getTableName(), wanted.getColumnName());
+                }
+            }
+        }
 
         for (ColumnInfo column : candidates.values()) {
             TableRelation relation = existing.get(column.getId());

@@ -12,6 +12,10 @@ import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
 import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto;
 import com.lexorma.data.mapping.domain.entity.QAttributeColumnMapping;
 import com.lexorma.data.mapping.domain.entity.QEntityTableMapping;
+import com.lexorma.data.mapping.domain.entity.QSubtypeAttributeColumnMapping;
+import com.lexorma.data.mapping.domain.entity.QSubtypeGroupConversion;
+import com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion;
+import com.lexorma.data.logical.domain.entity.QLogicalSubtype;
 import com.lexorma.data.mapping.domain.entity.QSubtypeIdentifierColumnMapping;
 import com.lexorma.data.schema.domain.entity.QSchemaInfo;
 import com.lexorma.data.table.domain.entity.QTableInfo;
@@ -20,6 +24,7 @@ import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.ComparableExpressionBase;
 import com.querydsl.jpa.JPAExpressions;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +55,9 @@ public class ModelMappingQueryRepository {
     private static final QEntityTableMapping mapping = QEntityTableMapping.entityTableMapping;
     private static final QAttributeColumnMapping attributeMapping = QAttributeColumnMapping.attributeColumnMapping;
     private static final QSubtypeIdentifierColumnMapping subtypeKey = QSubtypeIdentifierColumnMapping.subtypeIdentifierColumnMapping;
+    private static final QSubtypeAttributeColumnMapping subtypeAttribute = QSubtypeAttributeColumnMapping.subtypeAttributeColumnMapping;
+    private static final QSubtypeGroupConversion conversion = QSubtypeGroupConversion.subtypeGroupConversion;
+    private static final QLogicalSubtype subtypeMember = QLogicalSubtype.logicalSubtype;
     private static final QTableInfo table = QTableInfo.tableInfo;
     private static final QSchemaInfo schema = QSchemaInfo.schemaInfo;
     private static final QColumnInfo column = QColumnInfo.columnInfo;
@@ -85,7 +93,14 @@ public class ModelMappingQueryRepository {
         if (search.modelId() != null) where.and(model.id.eq(search.modelId()));
         if (search.entityId() != null) where.and(entity.id.eq(search.entityId()));
         if (search.schemaId() != null) where.and(schema.id.eq(search.schemaId()));
-        if (search.mapped() != null) where.and(search.mapped() ? mapping.id.isNotNull() : mapping.id.isNull());
+        if (search.mapped() != null) {
+            // 매핑 문맥 (M-7 상속 A·C) : A형 통합(구성원이 A형 기록 그룹의 서브타입)·C형 분산(C형 기록 그룹의 슈퍼타입)도 매핑된 쪽으로 센다 — 목록의 physical 과 같은 분류
+            BooleanExpression merged = JPAExpressions.selectOne().from(subtypeMember, conversion)
+                    .where(subtypeMember.subtypeEntity.eq(entity), conversion.group.eq(subtypeMember.group), conversion.strategy.eq(SubtypeGroupConversion.Strategy.SINGLE_TABLE)).exists();
+            BooleanExpression distributed = JPAExpressions.selectOne().from(conversion)
+                    .where(conversion.group.supertypeEntity.eq(entity), conversion.strategy.eq(SubtypeGroupConversion.Strategy.TABLE_PER_CONCRETE)).exists();
+            where.and(search.mapped() ? mapping.id.isNotNull().or(merged).or(distributed) : mapping.id.isNull().and(merged.not()).and(distributed.not()));
+        }
         if (search.searchQuery() != null && !search.searchQuery().isBlank()) {
             String keyword = search.searchQuery().trim();
             where.and("tableName".equals(search.searchColumn()) ? table.tableName.containsIgnoreCase(keyword) : entity.entityName.containsIgnoreCase(keyword));
@@ -129,17 +144,27 @@ public class ModelMappingQueryRepository {
 
     /** 엔터티의 속성 전체 (속성 순서대로) 와 각 속성에 매핑된 컬럼 */
     public List<ModelMappingDto.AttributeRow> findAttributeRows(Long entityId) {
-        return query.select(Projections.constructor(ModelMappingDto.AttributeRow.class,
+        return findAttributeRows(List.of(entityId));
+    }
+
+    /** 여러 엔터티의 속성 (A형 통합 매핑 상세 — 계층 구성원의 직접 속성, 주어진 엔터티 순서 → 속성 순서). 소유 엔터티를 함께 준다 */
+    public List<ModelMappingDto.AttributeRow> findAttributeRows(List<Long> entityIds) {
+        List<ModelMappingDto.AttributeRow> rows = query.select(Projections.constructor(ModelMappingDto.AttributeRow.class,
                         attributeMapping.id, attribute.id, attribute.attributeName, attributeTerm.id, attributeTerm.commonStandardTermName,
-                        column.id, column.columnName, columnTerm.id, columnTerm.commonStandardTermName))
+                        column.id, column.columnName, columnTerm.id, columnTerm.commonStandardTermName, entity.id, entity.entityName))
                 .from(attribute)
+                .join(attribute.entity, entity)
                 .leftJoin(attribute.standardTerm, attributeTerm)
                 .leftJoin(attributeMapping).on(attributeMapping.attribute.eq(attribute))
                 .leftJoin(attributeMapping.column, column)
                 .leftJoin(column.standardTerms, columnTerm)
-                .where(attribute.entity.id.eq(entityId))
+                .where(attribute.entity.id.in(entityIds))
                 .orderBy(attribute.sortOrder.asc().nullsLast(), attribute.id.asc())
                 .fetch();
+        if (entityIds.size() < 2) return rows;
+        List<ModelMappingDto.AttributeRow> ordered = new java.util.ArrayList<>(rows);
+        ordered.sort(java.util.Comparator.comparingInt(r -> entityIds.indexOf(r.ownerEntityId())));
+        return ordered;
     }
 
     /** 매핑 후보 컬럼 : 테이블의 컬럼 중 속성 매핑이 없는 것 */
@@ -150,8 +175,9 @@ public class ModelMappingQueryRepository {
                 .leftJoin(column.standardTerms, columnTerm)
                 .where(column.tableInfo.id.eq(tableId),
                         JPAExpressions.selectOne().from(attributeMapping).where(attributeMapping.column.eq(column)).notExists(),
-                        // 상속 PK 매핑에 쓰인 컬럼은 속성 매핑 후보가 아니다 (교차 중복 금지, M-7 3차)
-                        JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column)).notExists())
+                        // 상속 PK 매핑에 쓰인 컬럼은 속성 매핑 후보가 아니다 (교차 중복 금지, M-7 3차) — 상속 일반 속성 매핑도 같다 (M-7 상속 C형)
+                        JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column)).notExists(),
+                        JPAExpressions.selectOne().from(subtypeAttribute).where(subtypeAttribute.column.eq(column)).notExists())
                 .orderBy(column.sortOrder.asc().nullsLast(), column.id.asc())
                 .fetch();
     }
@@ -168,9 +194,16 @@ public class ModelMappingQueryRepository {
      * 검색어는 컬럼명·컬럼 설명, 기본 순서는 컬럼 순서 → ID. PK·타입은 보여만 준다 (등록이 구조를 바꾸지 않는다)
      */
     public Page<ModelMappingDto.KeyColumnCandidate> findKeyColumnCandidates(Long tableId, Long currentId, String searchQuery, Pageable pageable) {
+        return findKeyColumnCandidates(tableId, currentId, null, searchQuery, pageable);
+    }
+
+    /** 상속 PK·상속 일반 속성 매핑 후보 컬럼 : 세 매핑(속성·상속 PK·상속 일반 속성) 어디에도 쓰이지 않은 컬럼. currentKeyId·currentAttributeId 의 컬럼은 후보로 둔다 */
+    public Page<ModelMappingDto.KeyColumnCandidate> findKeyColumnCandidates(Long tableId, Long currentId, Long currentAttributeId, String searchQuery, Pageable pageable) {
         BooleanBuilder where = new BooleanBuilder(column.tableInfo.id.eq(tableId))
                 .and(JPAExpressions.selectOne().from(attributeMapping).where(attributeMapping.column.eq(column)).notExists())
-                .and(JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column), currentId == null ? null : subtypeKey.id.ne(currentId)).notExists());
+                .and(JPAExpressions.selectOne().from(subtypeKey).where(subtypeKey.column.eq(column), currentId == null ? null : subtypeKey.id.ne(currentId)).notExists())
+                .and(JPAExpressions.selectOne().from(subtypeAttribute).where(subtypeAttribute.column.eq(column),
+                        currentAttributeId == null ? null : subtypeAttribute.id.ne(currentAttributeId)).notExists());
         if (searchQuery != null && !searchQuery.isBlank()) {
             String keyword = searchQuery.trim();
             where.and(column.columnName.containsIgnoreCase(keyword).or(column.columnDesc.containsIgnoreCase(keyword)));

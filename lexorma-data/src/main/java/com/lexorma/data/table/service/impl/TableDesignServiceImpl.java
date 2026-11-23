@@ -66,9 +66,12 @@ public class TableDesignServiceImpl implements TableDesignService {
     private final SchemaService schemaService;
     private final PhysicalModelService physicalModelService;
     private final EntityTableMappingRepository entityTableMappingRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     private final ObjectNamespace objectNamespace;
     private final PhysicalViewRepository viewRepository;
     private final TableRelationRepository relationRepository;
+    private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
+    private final com.lexorma.core.project.guard.ProjectWriteGuard projectWriteGuard;
     private static final int FIRST_ROW = 1;
 
     /** 그리드 검색 컬럼 → 엔티티 필드 (부분 일치) */
@@ -241,11 +244,26 @@ public class TableDesignServiceImpl implements TableDesignService {
         }
         // 스키마를 보내지 않으면(기존 화면·API) 지금 스키마를 유지한다
         SchemaInfo oldSchema = current.getSchema();
+        // 이름·스키마(키)를 바꾸는 요청인지 잠그기 전에 본다 (M7-FK-D06). 바꾸면 물리명 일괄 적용과 같은 순서로 잠근다 : 프로젝트 행 배타(맨 먼저)
+        // → 스키마 행 → 테이블 행(키 강도 FOR UPDATE) → 컬럼 행, 프로젝트를 잡은 뒤에는 기다리지 않는다 (바쁘면 409). 키를 바꾸는 UPDATE 가 다른 트랜잭션의
+        // FK KEY SHARE 를, 관계 동기화가 다른 테이블 행의 KEY SHARE 를 기다리다 서로 엇갈리던 교착(S4)을 없앤다. 설명만 고치는 저장은 예전 그대로다
+        boolean keyChange = changesKey(tableInfoDto, current, accountDto);
+        if (keyChange) {
+            projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+            projectWriteGuard.lock(projectId);
+        }
         SchemaInfo targetSchema = tableInfoDto.getSchemaId() == null ? oldSchema : schemaService.resolveSchema(projectId, tableInfoDto.getSchemaId());
         // 이름·스키마를 바꿀 수 있으므로 지금 스키마와 옮길 스키마의 이름 공간을 함께 잠근다 (잠금 순서 : 이름 공간 → 테이블 행)
-        objectNamespace.lock(projectId, false, oldSchema.getId(), targetSchema.getId());
+        if (keyChange) objectNamespace.lockNoWait(projectId, false, oldSchema.getId(), targetSchema.getId());
+        else objectNamespace.lock(projectId, false, oldSchema.getId(), targetSchema.getId());
         // 행을 잠가 승인 처리와 엇갈리지 않게 한다 (승인이 먼저 끝났으면 여기서 승인된 상태를 본다)
-        TableInfo tableInfo = tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+        TableInfo tableInfo;
+        if (keyChange) {
+            rowLocks.tablesForKeyChange(List.of(tableInfoDto.getId()));
+            tableInfo = rowLocks.tablesNoWait(List.of(tableInfoDto.getId())).stream().filter(t -> projectId.equals(t.getProjectId())).findFirst().orElse(null);
+        } else {
+            tableInfo = tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+        }
         if (tableInfo == null) {
             throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         }
@@ -280,8 +298,21 @@ public class TableDesignServiceImpl implements TableDesignService {
         String oldTableName = tableInfo.getTableName();
         boolean renamed = !tableName.equals(oldTableName);
         boolean moved = !targetSchema.getId().equals(oldSchema.getId());
+        if ((renamed || moved) && !keyChange) {
+            // 잠그기 전에 본 이름과 잠근 뒤의 이름이 다르다 (그 사이 다른 사용자가 바꿨다) : 키 변경 잠금 없이 바꾸지 않는다
+            throw new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", tableInfo.getTableName());
+        }
         // 이 테이블을 이름으로 가리키던 컬럼 (바꾸기 전 기준) : 이름·스키마가 바뀌어도 같은 테이블을 가리키게 참조 테이블명을 고친다
         List<ColumnInfo> referencing = renamed || moved ? columnsReferencing(projectId, tableInfo) : List.of();
+        if (renamed || moved) {
+            // 고칠 컬럼(소속 컬럼의 테이블명 사본·참조 컬럼) + 새 이름을 미리 참조하던 컬럼(동기화가 관계를 새로 만든다 — 그 컬럼 행에 KEY SHARE) : 기다리지 않고 잠근다
+            java.util.Set<Long> lockColumns = new java.util.TreeSet<>();
+            tableInfo.getColumns().forEach(c -> lockColumns.add(c.getId()));
+            referencing.forEach(c -> lockColumns.add(c.getId()));
+            columnInfoRepository.findAllReferencing(projectId, List.of(tableName, targetSchema.getSchemaName().toUpperCase(java.util.Locale.ROOT) + "." + tableName))
+                    .forEach(c -> lockColumns.add(c.getId()));
+            rowLocks.columnsNoWait(lockColumns);
+        }
 
         if(renamed){
             // 컬럼은 테이블명을 따로 저장하므로 소속 컬럼도 함께 변경한다.
@@ -305,6 +336,20 @@ public class TableDesignServiceImpl implements TableDesignService {
         if (tableInfoDto.getBizDescription() != null) tableInfo.setBizDescription(BizDescriptions.normalize(tableInfoDto.getBizDescription()));
         tableInfo.setIsMasterTable(tableInfoDto.getIsMasterTable().equals("Y"));
         tableInfo.setSortOrder(tableInfoDto.getSortOrder());
+    }
+
+    /**
+     * 잠그기 전 판정 : 요청이 테이블명(한글명으로 다시 만드는 경우 포함)이나 스키마를 바꾸는가. 한글명 변환이 실패하면 아래 검사가 같은 오류를 낸다 (여기서는 이름을 그대로 본다).
+     * 잠근 뒤 다시 확인한다 (updateTable)
+     */
+    private boolean changesKey(TableInfoDto request, TableInfo current, AccountDto accountDto) {
+        if (request.getSchemaId() != null && current.getSchema() != null && !request.getSchemaId().equals(current.getSchema().getId())) return true;
+        String name = request.getTableName();
+        if (request.getTableKorName() != null && !request.getTableKorName().isBlank()) {
+            TableNameDto generated = generateTableName(request.getTableKorName(), accountDto);
+            if (generated.valid()) name = generated.tableName();
+        }
+        return name != null && !name.toUpperCase().equals(current.getTableName());
     }
 
     @Override
@@ -361,6 +406,10 @@ public class TableDesignServiceImpl implements TableDesignService {
 
             entityTableMappingRepository.findByTable_Id(tableInfoDto.getId()).ifPresent(mapping -> {
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "엔터티 {0} 에 매핑된 테이블입니다. 매핑을 먼저 해제해주세요.", mapping.getEntity().getEntityName());
+            });
+            // A형 통합 테이블 (M-7 상속 A, D-AC-18) : 변환 기록이 가리키는 테이블은 기록을 먼저 해제한다
+            conversionRepository.findFirstByTable_IdIn(List.of(tableInfoDto.getId())).ifPresent(c -> {
+                throw new CustomException(ErrorCode.RELATION_EXISTS, "그룹 {0} 의 A형 변환 기록이 통합 테이블로 쓰는 테이블입니다. 변환 기록을 먼저 해제해주세요.", c.getGroup().getGroupName());
             });
 
             if(!tableInfo.getColumns().isEmpty()){

@@ -81,8 +81,18 @@ class TableDesignServiceImplTest {
     @Mock
     EntityManager entityManager;
 
+    /** 이름·스키마를 바꾸는 수정 (M7-FK-D06) : 프로젝트 행 배타 → 이름 공간·테이블·컬럼 NOWAIT. 잠금 자체는 RelationSyncDeadlockIntegrationTest (PostgreSQL) */
+    @Mock
+    com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
+
+    @Mock
+    com.lexorma.core.project.guard.ProjectWriteGuard projectWriteGuard;
+
     /** 모든 테이블이 들어 있는 기본 스키마 */
     private static final SchemaInfo SCHEMA = SchemaInfo.builder().id(1L).projectId(1L).schemaName(SchemaInfo.DEFAULT_NAME).isDefault(true).build();
+
+    @Mock
+    private com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
 
     @InjectMocks
     TableDesignServiceImpl service;
@@ -91,6 +101,10 @@ class TableDesignServiceImplTest {
     @BeforeEach
     void namespace() {
         lenient().when(schemaService.resolveSchema(any(), any())).thenReturn(SCHEMA);
+        // 키 변경 경로의 잠금 : 프로젝트 행은 있고, 테이블 행 NOWAIT 잠금은 기존 잠금 조회(findForUpdate)와 같은 결과를 준다
+        lenient().when(projectRepository.findByIdForUpdate(any())).thenReturn(Optional.of(Project.builder().id(1L).build()));
+        lenient().when(rowLocks.tablesNoWait(any())).thenAnswer(call -> ((java.util.Collection<Long>) call.getArgument(0)).stream()
+                .flatMap(id -> tableInfoRepository.findForUpdate(id, 1L).stream()).toList());
         lenient().when(objectNamespace.conflict(any(), any(), any(), any())).thenAnswer(call -> tableInfoRepository
                 .findAllBySchema_IdAndTableName(call.getArgument(0), ((String) call.getArgument(1)).toUpperCase()).stream()
                 .anyMatch(t -> !java.util.Objects.equals(t.getId(), call.getArgument(2))) ? ObjectNamespace.Kind.TABLE : null);

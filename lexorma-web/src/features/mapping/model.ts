@@ -23,6 +23,15 @@ export interface MappingRow {
   mappedAttributeCount: number;
   /** 상속 역할·상속 PK 현황 (M-7 4차, 목록·상세 조회 때 계산). 일반 엔터티(참여하지 않고 남은 상속 PK 매핑도 없음)는 null */
   inheritance?: MappingInheritance | null;
+  /** 물리 매핑 문맥 (M-7 상속 A·C) : 직접 · A형 통합 · C형 분산 · 미매핑 */
+  physical?: MappingPhysical | null;
+}
+
+/** 엔터티의 물리 매핑 문맥 (ModelMappingDto.Physical). valid false 면 통합·분산이 실제 매핑으로 성립하지 않는다 (미매핑으로 센다) */
+export interface MappingPhysical {
+  kind: 'DIRECT' | 'MERGED' | 'DISTRIBUTED' | 'UNMAPPED'; strategy: 'SINGLE_TABLE' | 'TABLE_PER_CONCRETE' | null; valid: boolean;
+  rootEntityId: number | null; rootEntityName: string | null; tables: { entityId: number; entityName: string | null; mappingId: number | null; schemaId: number | null; tableId: number | null; tableName: string | null }[];
+  reason: string | null;
 }
 
 export type InheritanceRole = 'ROOT' | 'INTERMEDIATE' | 'SUBTYPE';
@@ -176,6 +185,8 @@ export interface MappingAttribute {
   columnName: string | null;
   columnTermId: number | null;
   columnTermName: string | null;
+  /** 속성을 정의한 엔터티 (A형 통합 매핑 — 루트 매핑 아래 서브타입 속성) */
+  ownerEntityId?: number | null; ownerEntityName?: string | null;
 }
 
 /** 매핑 후보 컬럼 : 매핑된 테이블의 컬럼 중 아직 속성에 연결하지 않은 것 */
@@ -214,6 +225,8 @@ export interface MappingStatus {
   totalAttributes: number;
   mappedAttributes: number;
   unmappedAttributes: number;
+  /** 매핑률 구분 (D-AC-16) : 전체 논리 엔터티 · 직접 · 유효한 A형 통합 · 유효한 C형 분산 (분산은 분모에서 뺀다) */
+  logicalEntities?: number; directEntities?: number; mergedEntities?: number; distributedEntities?: number;
 }
 
 export type CheckType = 'MAPPING' | 'TERM' | 'NAME' | 'DATA_TYPE' | 'LENGTH' | 'REQUIRED' | 'IDENTIFIER' | 'INHERITANCE'
@@ -296,7 +309,19 @@ export interface QualityRow {
   inheritance?: boolean;
   /** 구조 진단 상세 (관계·보조 식별자·물리 전용 행에만) */
   structure?: QualityStructure | null;
+  /** 상세 코드 (M-7 상속 A·C) */
+  code?: string | null;
+  /** 구조는 기대와 같아도 DB 가 강제하지 않는 업무 제약 (MATCH 라도 강제된다는 뜻이 아니다) */
+  notEnforced?: string[];
 }
+
+/** DB 가 강제하지 않는 업무 제약 (QualityRow.notEnforced) */
+export const NOT_ENFORCED: Record<string, string> = {
+  CONDITIONAL_REQUIRED_NOT_ENFORCED: t('유형 안 필수 미강제'),
+  SUBTYPE_SCOPE_NOT_ENFORCED: t('유형별 적용 범위 미강제'),
+  GLOBAL_KEY_NOT_ENFORCED: t('테이블 간 유일성 미보장'),
+  CLASSIFICATION_VALUE_NOT_ENFORCED: t('분류 값 범위 미강제'),
+};
 
 export const CHECK_TYPES: { type: CheckType; label: string }[] = [
   { type: 'MAPPING', label: t('매핑 여부') },

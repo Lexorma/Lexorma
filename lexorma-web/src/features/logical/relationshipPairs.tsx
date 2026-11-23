@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Label, type LabelVariant } from '../../components/grid/cells';
 import { ApiError, api } from '../../lib/api';
 import { t } from '../../lib/i18n';
-import type { PairState, PairStatus, PairWarning, RelationshipPairs } from './model';
+import type { ParentKey, PairState, PairStatus, PairWarning, RelationshipPairs } from './model';
 import '../../styles/logical.css';
 
 const STATUS: Record<PairStatus, { label: string; variant: LabelVariant }> = {
@@ -14,7 +14,7 @@ const STATUS: Record<PairStatus, { label: string; variant: LabelVariant }> = {
 };
 
 export const PAIR_WARNINGS: Record<PairWarning, string> = {
-  ORDER_DIFFERS: t('짝 순서가 부모 주 식별자 순서와 다릅니다.'),
+  ORDER_DIFFERS: t('짝 순서가 참조하는 부모 식별자의 속성 순서와 다릅니다.'),
   SELF_KEY_REUSED: t('자기 참조인데 자식 속성으로 부모 키 속성 자신을 골랐습니다. 상위 항목을 가리키는 별도 속성인지 확인해주세요.'),
   IDENTIFYING_CHILD_NOT_KEY: t('식별 관계인데 자식 속성이 자식 엔터티의 주 식별자에 없습니다.'),
   REQUIRED_CHILD_NULLABLE: t('부모가 필수인 관계인데 자식 속성이 필수가 아닙니다.'),
@@ -24,8 +24,16 @@ export const PAIR_WARNINGS: Record<PairWarning, string> = {
 export function PairStatusLabel({ state }: { state?: PairState | null }) {
   if (!state) return null;
   const item = STATUS[state.status];
-  return <Label variant={item.variant} title={state.warnings.map((w) => PAIR_WARNINGS[w]).join('\n') || undefined}>{item.label}{state.warnings.length ? ' !' : ''}</Label>;
+  return (
+    <>
+      <Label variant={item.variant} title={state.warnings.map((w) => PAIR_WARNINGS[w]).join('\n') || undefined}>{item.label}{state.warnings.length ? ' !' : ''}</Label>
+      {state.keyType === 'ALTERNATE' && <> <Label variant="accent" title={t('부모 보조 식별자 {0} 를 참조합니다.', state.keyIdentifierName ?? '-')}>{t('보조 식별자 참조')}</Label></>}
+    </>
+  );
 }
+
+/** 부모 식별자 키 (주 식별자 = 'P', 보조 식별자 = 식별자 ID) */
+const keyId = (key: ParentKey) => (key.keyType === 'PRIMARY' ? 'P' : String(key.identifierId));
 
 /** 짝 목록 요약 : "부모 → 자식" 을 순서대로 */
 export function PairList({ state }: { state?: PairState | null }) {
@@ -51,11 +59,34 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  /** 참조할 부모 식별자 (M7-AK-D09) : 주 식별자 또는 보조 식별자 하나 — 서로 다른 식별자의 속성은 섞지 않는다 (서버도 거절한다) */
+  const [key, setKey] = useState<string>('P');
+
+  const keysOf = (next: RelationshipPairs): ParentKey[] => next.parentKeys ?? [{
+    identifierId: null, identifierName: null, keyType: 'PRIMARY',
+    attributeIds: next.parentCandidates.filter((c) => c.primary).map((c) => c.attributeId), attributeNames: next.parentCandidates.filter((c) => c.primary).map((c) => c.attributeName),
+  }];
+  const rowsFor = (next: RelationshipPairs, selected: ParentKey | undefined, keepStored: boolean, current: Row[]) => {
+    const attributes = selected?.attributeIds ?? [];
+    const stored = keepStored ? next.state.pairs.map((p) => ({ parentId: p.parentAttributeId, childId: p.childAttributeId as number | null })) : [];
+    const kept = stored.length > 0 ? stored : attributes.map((id) => ({ parentId: id, childId: current.find((r) => r.parentId === id)?.childId ?? null }));
+    const rest = attributes.filter((id) => !kept.some((r) => r.parentId === id)).map((id) => ({ parentId: id, childId: null }));
+    return [...kept, ...rest];
+  };
   const load = (next: RelationshipPairs) => {
     setData(next);
-    const paired = next.state.pairs.map((p) => ({ parentId: p.parentAttributeId, childId: p.childAttributeId }));
-    const rest = next.parentCandidates.filter((c) => !paired.some((r) => r.parentId === c.attributeId)).map((c) => ({ parentId: c.attributeId, childId: null }));
-    setRows([...paired, ...rest]);
+    const keys = keysOf(next);
+    const initial = next.state.keyType === 'ALTERNATE' ? keys.find((k) => k.keyType === 'ALTERNATE' && k.identifierId === next.state.keyIdentifierId) : undefined;
+    const selected = initial ?? keys.find((k) => k.keyType === 'PRIMARY') ?? keys[0];
+    setKey(selected ? keyId(selected) : 'P');
+    setRows(rowsFor(next, selected, true, []));
+  };
+  const changeKey = (value: string) => {
+    if (!data) return;
+    setSaved(false);
+    setKey(value);
+    // 다른 식별자로 바꾸면 그 식별자의 속성만 행으로 (같은 부모 속성의 자식 선택은 유지)
+    setRows((prev) => rowsFor(data, keysOf(data).find((k) => keyId(k) === value), false, prev));
   };
   useEffect(() => {
     api<RelationshipPairs>(`/api/logical/relationship/${relationshipId}/attributes`).then(load).catch((e) => setError(e instanceof ApiError ? e.message : t('속성 짝을 불러오지 못했습니다.')));
@@ -65,10 +96,14 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
   if (!data) return <p className="gh-muted">{t('불러오는 중…')}</p>;
 
   const name = (id: number | null, list: RelationshipPairs['childCandidates']) => list.find((c) => c.attributeId === id)?.attributeName ?? '-';
+  const keys = keysOf(data);
+  const selectedKey = keys.find((k) => keyId(k) === key);
+  const keyAttributes = new Set(selectedKey?.attributeIds ?? []);
+  const outside = rows.filter((r) => !keyAttributes.has(r.parentId)).length;
   const chosen = rows.filter((r) => r.childId != null);
   const duplicates = new Set(chosen.map((r) => r.childId).filter((id, i, all) => all.indexOf(id) !== i));
   const self = data.parentEntityId === data.childEntityId;
-  const missingChild = rows.filter((r) => r.childId == null).length;
+  const missingChild = rows.filter((r) => keyAttributes.has(r.parentId) && r.childId == null).length;
   const move = (index: number, delta: number) => setRows((prev) => {
     const next = [...prev];
     const [row] = next.splice(index, 1);
@@ -81,7 +116,7 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
     try {
       const result = await api<RelationshipPairs>(`/api/logical/relationship/${relationshipId}/attributes`, {
         method: 'PUT', silent: true,
-        body: { modifiedAt: data.modifiedAt, pairs: chosen.map((r) => ({ parentAttributeId: r.parentId, childAttributeId: r.childId })) },
+        body: { modifiedAt: data.modifiedAt, pairs: chosen.filter((r) => keyAttributes.has(r.parentId)).map((r) => ({ parentAttributeId: r.parentId, childAttributeId: r.childId })) },
       });
       load(result); setSaved(true); onSaved?.(result);
     } catch (e) {
@@ -98,7 +133,28 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
         <PairStatusLabel state={data.state} />
         {self && <> <Label>{t('자기 참조')}</Label></>}
       </p>
-      {data.parentCandidates.length === 0 ? (
+      {keys.length > 1 && (
+        <label className="logical-pairs-key">
+          <span>{t('참조할 부모 식별자')}</span>{' '}
+          {readOnly ? <strong>{selectedKey?.keyType === 'PRIMARY' ? t('주 식별자') : selectedKey?.identifierName ?? '-'}</strong> : (
+            <select className="form-control" aria-label={t('참조할 부모 식별자')} value={key} onChange={(e) => changeKey(e.target.value)}>
+              {keys.map((k) => (
+                <option key={keyId(k)} value={keyId(k)}>
+                  {k.keyType === 'PRIMARY' ? t('주 식별자') : t('보조 식별자 {0}', k.identifierName ?? '-')} ({k.attributeNames.join(', ')})
+                  {k.ownerEntityName && k.ownerEntityName !== data.parentEntityName ? ` · ${t('정의 : {0} (상속)', k.ownerEntityName)}` : k.keyType === 'ALTERNATE' ? ` · ${t('자체 정의')}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+      )}
+      {selectedKey?.keyType === 'ALTERNATE' && (
+        <p className="gh-muted">{t('보조 식별자를 참조하는 짝은 그 식별자의 속성 전체를 식별자 순서대로 이어야 합니다. 물리 FK 는 부모 테이블의 같은 순서 UNIQUE 를 참조하는 미승인 사용자 관계로 만듭니다.')}</p>
+      )}
+      {keys.length > 0 && !readOnly && (
+        <p className="gh-muted">{t('부모 엔터티가 직접 정의한 보조 식별자만 참조할 수 있습니다. 상속받은 보조 식별자는 그 식별자를 정의한 엔터티를 부모로 지정해야 합니다.')}</p>
+      )}
+      {(selectedKey?.attributeIds.length ?? 0) === 0 ? (
         <div className="ai-dict-callout is-warn" role="status">{t('부모 엔터티에 주 식별자가 없어 속성 짝을 지정할 수 없습니다. 먼저 주 식별자를 정해주세요.')}</div>
       ) : (
         <div className="logical-pairs-scroll">
@@ -106,12 +162,13 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
             <thead><tr><th>{t('순서')}</th><th>{t('부모 식별자 속성')}</th><th>{t('자식 속성')}</th>{!readOnly && <th>{t('순서 변경')}</th>}</tr></thead>
             <tbody>
               {rows.map((row, index) => {
-                const parent = data.parentCandidates.find((c) => c.attributeId === row.parentId);
+                const parent = keyAttributes.has(row.parentId) ? data.parentCandidates.find((c) => c.attributeId === row.parentId) : undefined;
                 const dup = row.childId != null && duplicates.has(row.childId);
                 return (
                   <tr key={row.parentId} className={dup ? 'logical-pairs-dup' : undefined}>
                     <td>{index + 1}</td>
-                    <td>{parent ? parent.attributeName : <span className="logical-pairs-error">{t('부모 식별자에 없는 속성')}</span>}{parent?.keyOrder != null && <span className="gh-muted"> (PK {parent.keyOrder})</span>}</td>
+                    <td>{parent ? parent.attributeName : <span className="logical-pairs-error">{t('부모 식별자에 없는 속성')}</span>}{parent && selectedKey?.keyType === 'PRIMARY' && parent.keyOrder != null && <span className="gh-muted"> (PK {parent.keyOrder})</span>}
+                      {parent && selectedKey?.keyType === 'ALTERNATE' && <span className="gh-muted"> ({t('보조 식별자 {0}', selectedKey.attributeIds.indexOf(row.parentId) + 1)})</span>}</td>
                     <td>
                       {readOnly ? name(row.childId, data.childCandidates) : (
                         <select className="form-control" aria-label={t('자식 속성')} value={row.childId ?? ''} onChange={(e) => setChild(index, e.target.value)}>
@@ -136,7 +193,10 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
         </div>
       )}
       {data.state.warnings.length > 0 && <ul className="logical-pairs-warnings">{data.state.warnings.map((w) => <li key={w}>{PAIR_WARNINGS[w]}</li>)}</ul>}
-      {!readOnly && data.parentCandidates.length > 0 && missingChild > 0 && (
+      {!readOnly && outside > 0 && (
+        <p className="logical-pairs-error">{t('고른 부모 식별자에 없는 속성의 짝이 {0}개 있습니다. 저장하면 빠집니다.', outside)}</p>
+      )}
+      {!readOnly && (selectedKey?.attributeIds.length ?? 0) > 0 && missingChild > 0 && (
         <p className="gh-muted">{t('자식 속성을 고르지 않은 부모 식별자 속성이 {0}개 있습니다. 일부만 이으면 FK 근거로 완성되지 않습니다.', missingChild)}</p>
       )}
       <p className="gh-muted">{t('속성 짝은 논리 관계에 저장되고, 짝이 완성된 관계는 논리 → 물리 생성 때 FK 의 근거가 됩니다. 이미 만든 물리 테이블은 바꾸지 않습니다.')}</p>
@@ -144,7 +204,7 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
       {saved && <div className="ai-dict-callout is-ok" role="status">{t('속성 짝을 저장했습니다.')}</div>}
       {!readOnly && (
         <div className="gh-dialog-actions">
-          <button type="button" className="btn btn-primary" disabled={busy || duplicates.size > 0 || data.parentCandidates.length === 0} onClick={() => void save()}>{t('속성 짝 저장')}</button>
+          <button type="button" className="btn btn-primary" disabled={busy || duplicates.size > 0 || (selectedKey?.attributeIds.length ?? 0) === 0} onClick={() => void save()}>{t('속성 짝 저장')}</button>
         </div>
       )}
     </div>

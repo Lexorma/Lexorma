@@ -119,7 +119,7 @@ class ModelIntegrityHardeningIntegrationTest {
     }
 
     @Test
-    @DisplayName("승인 처리와 수정 요청이 겹치면 행 잠금으로 줄을 선다 : 승인이 먼저 잡았으면 뒤따른 수정은 승인된 상태를 보고 거절된다")
+    @DisplayName("승인 처리와 수정 요청이 겹치면 : 승인이 먼저 행을 잡았으면 뒤따른 이름 변경은 기다리지 않고 409 (M7-FK-D06 — 이름 변경은 프로젝트 행 배타 뒤 NOWAIT), 승인 상태·이름 그대로")
     void approvalAndUpdateRace() throws Exception {
         AccountDto admin = loginAsAdmin("hard-race", DbType.POSTGRESQL);
         long projectId = admin.getProjectId();
@@ -154,7 +154,8 @@ class ModelIntegrityHardeningIntegrationTest {
                 }
             });
             approval.get(20, TimeUnit.SECONDS);
-            assertThat(update.get(20, TimeUnit.SECONDS)).isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+            // 예전(대기) 계약은 APPROVED_DATA_CANNOT_BE_UPDATE 였다. 이름 변경이 프로젝트 행을 쥔 채 기다리면 승인 트랜잭션의 커밋(프로젝트 공유 잠금)과 서로 기다리므로 409 로 끝낸다
+            assertThat(update.get(20, TimeUnit.SECONDS)).isEqualTo(ErrorCode.MODEL_CONFLICT);
         } finally {
             pool.shutdownNow();
         }

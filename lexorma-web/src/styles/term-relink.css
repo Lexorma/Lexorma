@@ -17,6 +17,9 @@
 
 /* 논리 → 물리 생성 미리보기 (M-7 보강 1차) : DBMS 식별자 진단·관계 FK 미생성 사유 */
 .gen-section h4 { margin: 8px 0 4px; font-size: 14px; }
+/* M-7 상속 A·C : 전략 계획 안의 소제목·계층 함께 선택 줄 */
+.gen-section h5 { margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
+.gen-tree-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 .gen-section p { margin: 0 0 6px; font-size: 13px; }
 .gen-issues { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; }
 .gen-issues > li { min-width: 0; padding: 6px 8px; border: 1px solid var(--gh-border); border-radius: 6px; overflow-wrap: anywhere; }

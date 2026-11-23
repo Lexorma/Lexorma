@@ -87,6 +87,7 @@ public class SourceDeletionService {
     private final SourceCatalogReader reader;
     private final ExecutionContextVerifier verifier;
     private final ProjectWriteGuard projectWriteGuard;
+    private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
     private final ProjectRepository projectRepository;
     private final PhysicalViewRepository viewRepository;
     private final ColumnManageService columnManageService;
@@ -141,6 +142,9 @@ public class SourceDeletionService {
         }
         try {
             lockSchemas(first, tables);
+            // 지울 행 : 키 강도(FOR UPDATE NOWAIT) 먼저 (M7-FK-D07). DELETE 는 PostgreSQL 에서 FOR UPDATE 강도라, 프로젝트 행을 쥔 채 다른 트랜잭션의 FK KEY SHARE
+            // (그 컬럼·테이블을 대상으로 하는 관계 INSERT)를 기다리면 교착이다 — 물리명 일괄 적용(S6b)과 같은 구조. 바쁘면 다른 잠금 경합과 같은 409
+            keyLockDeleted(projectId, selected, first);
             for (Long id : tables) entityManager.find(TableInfo.class, id, LockModeType.PESSIMISTIC_WRITE, NO_WAIT);
             if (!tables.isEmpty()) {
                 entityManager.createQuery("select c from ColumnInfo c where c.tableInfo.id in :ids order by c.id", ColumnInfo.class).setParameter("ids", tables)
@@ -148,6 +152,9 @@ public class SourceDeletionService {
             }
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
             if (!SourceImportService.lockNotAvailable(e)) throw e;
+            throw new CustomException(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
+        } catch (CustomException e) {
+            if (e.getErrorCode() != ErrorCode.MODEL_CONFLICT) throw e;
             throw new CustomException(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
         }
         Work work = work(accountDto, request.connectionId(), request.reflectedOrder());
@@ -185,6 +192,24 @@ public class SourceDeletionService {
         }
         entityManager.flush();
         return new SourceDeletionDto.Result(work.connectionId, work.order, request.requestId(), version.id(), version.versionName(), deletedTables, columns);
+    }
+
+    /** 지울 TABLE 행과 지울 컬럼 행(컬럼 항목 + 지울 TABLE 의 모든 컬럼)을 키 강도로 기다리지 않고 잠근다 */
+    private void keyLockDeleted(Long projectId, List<String> selected, Work work) {
+        TreeSet<Long> deletedTables = new TreeSet<>();
+        TreeSet<Long> deletedColumns = new TreeSet<>();
+        for (String id : selected) {
+            SourceDeletionDto.Candidate item = work.items.get(id);
+            if (item == null) continue;
+            if (item.kind() == Kind.TABLE) deletedTables.add(item.tableId());
+            else if (item.columnId() != null) deletedColumns.add(item.columnId());
+        }
+        if (!deletedTables.isEmpty()) {
+            deletedColumns.addAll(entityManager.createQuery("select c.id from ColumnInfo c where c.projectId = :p and c.tableInfo.id in :t", Long.class)
+                    .setParameter("p", projectId).setParameter("t", deletedTables).getResultList());
+        }
+        rowLocks.tablesForKeyChange(deletedTables);
+        rowLocks.columnsForKeyChange(deletedColumns);
     }
 
     /** TABLE 하나 : 나가는 관계·제약조건·인덱스 → 컬럼 → TABLE. 들어오는 관계는 계획이 막았다. 지운 컬럼 수 */
@@ -379,6 +404,13 @@ public class SourceDeletionService {
                 }
                 // 상속 PK 매핑에 쓰인 컬럼도 매핑된 컬럼이다 (M-7 3차 — 삭제 확정은 일반 컬럼 삭제가 같은 이유로 다시 거절한다)
                 for (Object id : entityManager.createQuery("select m.column.id from SubtypeIdentifierColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
+                    attributeMapped.add((Long) id);
+                }
+                // C형 상속 일반 속성 매핑·A형 분류 컬럼도 같다 (M-7 상속 A·C — 삭제 확정은 일반 컬럼 삭제가 다시 거절한다)
+                for (Object id : entityManager.createQuery("select m.column.id from SubtypeAttributeColumnMapping m where m.column.id in :ids").setParameter("ids", columnIds).getResultList()) {
+                    attributeMapped.add((Long) id);
+                }
+                for (Object id : entityManager.createQuery("select c.classificationColumn.id from SubtypeGroupConversion c where c.classificationColumn.id in :ids").setParameter("ids", columnIds).getResultList()) {
                     attributeMapped.add((Long) id);
                 }
                 for (Object[] row : entityManager.createQuery("select rc.sourceColumn.id, rc.targetColumn.id, r.relationName, r.relationSource, r.derivedColumnId from TableRelationColumn rc "

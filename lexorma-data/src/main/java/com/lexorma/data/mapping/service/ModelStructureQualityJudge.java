@@ -9,6 +9,7 @@ import com.lexorma.data.mapping.domain.dto.ModelMappingQualityDto.StructureColum
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.AttributeColumnRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.ColumnFlagRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.EntityRow;
+import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.UniqueIndexRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.ForeignKeyRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.IdentifierRow;
 import com.lexorma.data.mapping.repository.ModelStructureQualityQueryRepository.InheritedKeyRow;
@@ -39,7 +40,13 @@ import java.util.stream.Collectors;
  *   <li><b>ALTERNATE_KEY</b> (보조 식별자 ↔ UNIQUE, 보조 식별자마다 1행) : 구성 속성(식별자 속성 순서 SORT_ORD — 순서가 저장되어 있어 순서도 비교한다)의 매핑 컬럼과
  *       그 테이블의 UNIQUE 제약조건(구성 컬럼 순서)·컬럼 단위 고유값(PK 아님, DDL 의 UK_테이블_컬럼)을 비교한다. UNIQUE 인덱스·식·부분 인덱스는 UNIQUE 로 보지 않는다.</li>
  *   <li><b>PHYSICAL_FK · PHYSICAL_UNIQUE</b> (물리 기준 역방향) : 위 판정이 대응시키지 않은(claim 하지 않은) FK·UNIQUE 만 1행씩 — 같은 쌍을 두 번 보이지 않는다.
- *       서브타입 테이블 → 직계 슈퍼타입 테이블 FK 는 상속 FK 라 [상속 구조] 진단(INHERITANCE)이 본다 (여기서 내지 않는다).</li>
+ *       상속 FK 후보는 [상속 구조] 진단(INHERITANCE)이 본다 (여기서 내지 않는다).</li>
+ *   <li><b>상속 FK 판별</b> (M7-INH-01, D-INH-11 — docs/completed/inheritance-reference-key-m7.md 4장) : 서브타입 S 의 상속 FK 쌍 = 루트 주 식별자 속성마다
+ *       (S 문맥 컬럼 = 상속 PK 매핑, 직계 슈퍼타입 P 문맥 컬럼 = P 가 루트면 직접 매핑·아니면 상속 PK 매핑), 식별자 순서. <i>상속 FK 후보</i> = S 테이블에서 나가는 FK 중
+ *       자식 컬럼 집합이 그 상속 PK 컬럼 집합과 같은 것 (참조 대상·순서와 무관 — 정확히 같으면 정상 상속 FK, 아니면 잘못된 상속 FK 로 상속 구조 진단이 다룬다).
+ *       상속 FK 후보는 일반 관계의 FK 후보·역방향 진단에서 뺀다 (I-3·I-4 — 같은 두 테이블 사이의 다른 일반 FK 는 그대로 진단한다). 일반 관계의 기대 쌍이 상속 FK 쌍과
+ *       정확히 같으면 FK 를 따로 대응시키지 않고 비교 불가(INHERITANCE_FK_OVERLAP)로 둔다 — 하나의 FK 를 두 관계가 충족한 것으로 보지 않고, 일반 FK 보정이 상속 FK 를 만들지 않는다.
+ *       순수 함수 {@link #inheritanceFkPairs}·{@link #isInheritanceCandidate} 를 상속 FK 보정·상속 구조 진단과 같은 규칙으로 쓴다.</li>
  * </ul>
  * 범위 : 그 논리 모델의 엔터티·관계·식별자와, 그 엔터티에 매핑된 테이블의 FK(자식 쪽)·UNIQUE. 대응은 저장된 매핑으로만 정한다 — 이름이나 표준 용어로 짝을 짓지 않는다 (M7-C02).
  */
@@ -53,7 +60,35 @@ public final class ModelStructureQualityJudge {
                         List<ForeignKeyRow> foreignKeys, List<UniqueRow> uniqueConstraints, List<ColumnFlagRow> uniqueColumns, List<ColumnFlagRow> primaryKeyColumns,
                         /* 엔터티 → 직계 슈퍼타입 (없으면 null) */ Function<Long, Long> supertypeOf,
                         /* 엔터티 → 상속 루트 (참여하지 않으면 자기 자신) */ Function<Long, Long> rootOf,
-                        Set<Long> participants) {
+                        Set<Long> participants, List<UniqueIndexRow> uniqueIndexes, Strategies strategies) {
+        public Input(Long modelId, String modelName, List<EntityRow> entities, List<RelationshipRow> relationships, List<PairRow> pairs,
+                     List<IdentifierRow> identifiers, List<AttributeColumnRow> attributeColumns, List<InheritedKeyRow> inheritedKeys,
+                     List<ForeignKeyRow> foreignKeys, List<UniqueRow> uniqueConstraints, List<ColumnFlagRow> uniqueColumns, List<ColumnFlagRow> primaryKeyColumns,
+                     Function<Long, Long> supertypeOf, Function<Long, Long> rootOf, Set<Long> participants, List<UniqueIndexRow> uniqueIndexes) {
+            this(modelId, modelName, entities, relationships, pairs, identifiers, attributeColumns, inheritedKeys, foreignKeys, uniqueConstraints, uniqueColumns,
+                    primaryKeyColumns, supertypeOf, rootOf, participants, uniqueIndexes, Strategies.NONE);
+        }
+
+        /** 고유 인덱스 없이 (예전 호출 — 사후 무효 FK 판정의 키 범위에서 고유 인덱스만 빠진다) */
+        public Input(Long modelId, String modelName, List<EntityRow> entities, List<RelationshipRow> relationships, List<PairRow> pairs,
+                     List<IdentifierRow> identifiers, List<AttributeColumnRow> attributeColumns, List<InheritedKeyRow> inheritedKeys,
+                     List<ForeignKeyRow> foreignKeys, List<UniqueRow> uniqueConstraints, List<ColumnFlagRow> uniqueColumns, List<ColumnFlagRow> primaryKeyColumns,
+                     Function<Long, Long> supertypeOf, Function<Long, Long> rootOf, Set<Long> participants) {
+            this(modelId, modelName, entities, relationships, pairs, identifiers, attributeColumns, inheritedKeys, foreignKeys, uniqueConstraints, uniqueColumns,
+                    primaryKeyColumns, supertypeOf, rootOf, participants, List.of(), Strategies.NONE);
+        }
+    }
+
+    /**
+     * 상속 A·C형 문맥 (M-7 상속 A·C — 없으면 모든 엔터티가 직접 문맥, 예전 판정 그대로). role : 엔터티 → DIRECT · MERGED(A형 통합) · DISTRIBUTED(C형 분산) · INCONSISTENT,
+     * integratedRoot : A형 구성원 → 루트 (그 매핑 테이블이 통합 테이블), leavesOf : C형 분산 엔터티 → 아래 말단, inheritedAttributes : C형 상속 일반 속성 매핑 (말단 문맥 엔터티·원본 속성·컬럼)
+     */
+    public record Strategies(Function<Long, String> role, Function<Long, Long> integratedRoot, Function<Long, List<Long>> leavesOf, List<InheritedKeyRow> inheritedAttributes) {
+        public static final Strategies NONE = new Strategies(id -> "DIRECT", id -> null, id -> List.of(), List.of());
+
+        String roleOf(Long entityId) {
+            return entityId == null ? "DIRECT" : role.apply(entityId);
+        }
     }
 
     private record Col(Long id, String name) {
@@ -83,6 +118,23 @@ public final class ModelStructureQualityJudge {
         }
     }
 
+    /**
+     * 상속 FK 후보인가 (D-INH-11) : FK 의 자식 컬럼 집합(중복 없이)이 서브타입 상속 PK 컬럼 집합과 같다. 참조 대상·순서·부모 컬럼은 묻지 않는다 —
+     * 정상 상속 FK 인지는 {@link #isExactInheritanceFk} 로 따로 본다 (후보지만 정확하지 않은 FK = 잘못된 상속 FK : 일반 FK 로 보지 않고 상속 구조 진단이 수정 필요로 본다)
+     */
+    public static boolean isInheritanceCandidate(List<Long> fkChildColumnIds, Set<Long> inheritedKeyColumnIds) {
+        if (fkChildColumnIds == null || fkChildColumnIds.isEmpty() || inheritedKeyColumnIds == null || inheritedKeyColumnIds.isEmpty()) return false;
+        if (fkChildColumnIds.stream().anyMatch(Objects::isNull)) return false;
+        Set<Long> set = new HashSet<>(fkChildColumnIds);
+        return set.size() == fkChildColumnIds.size() && set.equals(inheritedKeyColumnIds);
+    }
+
+    /** 정상 상속 FK (D-INH-11) : 직계 슈퍼타입 테이블을 참조하고 컬럼 쌍(자식 i → 부모 i)이 상속 FK 쌍과 순서까지 같다. 관계 출처(REF_COLUMN·USER)는 묻지 않는다 */
+    public static boolean isExactInheritanceFk(Long fkTargetTableId, List<Long> fkChildIds, List<Long> fkParentIds, Long parentTableId, List<Long> childKey, List<Long> parentKey) {
+        return fkTargetTableId != null && fkTargetTableId.equals(parentTableId) && fkChildIds != null && fkChildIds.equals(childKey) && fkParentIds != null
+                && fkParentIds.equals(parentKey) && !childKey.isEmpty();
+    }
+
     /** 판정 결과 : 진단 행 (조회 순서 = 엔터티명 → 관계 → 보조 식별자 → 물리 전용) */
     public static List<Row> judge(Input in) {
         Context c = new Context(in);
@@ -106,21 +158,41 @@ public final class ModelStructureQualityJudge {
         final Map<String, InheritedKeyRow> inheritedKey = new HashMap<>();
         final Map<Long, String> attributeOfColumn = new HashMap<>();
         final Map<Long, List<Long>> primaryKey = new HashMap<>();
+        final Map<Long, Long[]> primaryIdentifier = new HashMap<>(); // 엔터티 → [식별자 ID]
+        final Map<Long, String> primaryIdentifierName = new HashMap<>();
+        final Map<Long, List<com.lexorma.data.logical.service.ReferenceKeys.Key>> alternateKeys = new HashMap<>(); // 엔터티 → 보조 식별자 (식별자 ID 순)
+        final Map<Long, List<Set<Long>>> uniqueIndexKeys = new HashMap<>(); // 테이블 → FK 가 참조할 수 있는 고유 인덱스 컬럼 집합
         final Map<Long, Fk> foreignKeys = new LinkedHashMap<>();
         final Map<Long, List<Fk>> foreignKeysByChildTable = new HashMap<>();
         final Map<String, Uq> uniques = new LinkedHashMap<>();
         final Map<Long, List<Uq>> uniquesByTable = new HashMap<>();
         final Map<Long, Set<Long>> pkByTable = new HashMap<>();
         final Set<Long> claimedForeignKeys = new HashSet<>();
+        /** 상속 FK 후보 (서브타입 테이블 → 상속 PK 컬럼 집합 FK) : 일반 관계·역방향 진단에서 뺀다 (D-INH-11) */
+        final Set<Long> inheritanceCandidates = new HashSet<>();
+        /** 서브타입 엔터티 → 상속 FK 쌍 [자식, 부모] (정해진 것만) */
+        final Map<Long, List<Col[]>> inheritancePairs = new HashMap<>();
         final Set<String> claimedUniques = new HashSet<>();
         final Map<Long, String> attributeName = new HashMap<>();
 
+        /** C형 상속 일반 속성 매핑 : 말단:원본 속성 → 컬럼 */
+        final Map<String, InheritedKeyRow> inheritedAttribute = new HashMap<>();
+
         Context(Input in) {
             this.in = in;
-            in.entities().forEach(e -> {
-                entityById.putIfAbsent(e.entityId(), e);
-                if (e.tableId() != null) entityByTable.putIfAbsent(e.tableId(), e);
+            in.entities().forEach(e -> entityById.putIfAbsent(e.entityId(), e));
+            // A형 구성원 (M-7 상속 A) : 통합 테이블(루트 매핑) 문맥으로 본다 — 물리 테이블 → 엔터티는 직접 문맥(루트)만 (역방향 진단을 서브타입별로 중복 집계하지 않는다)
+            for (EntityRow e : List.copyOf(entityById.values())) {
+                if (!"MERGED".equals(in.strategies().roleOf(e.entityId()))) continue;
+                EntityRow root = entityById.get(in.strategies().integratedRoot().apply(e.entityId()));
+                entityById.put(e.entityId(), root == null || root.tableId() == null ? e
+                        : new EntityRow(e.entityId(), e.entityName(), root.mappingId(), root.tableId(), root.tableName(), root.schemaId(), root.schemaName()));
+            }
+            entityById.values().forEach(e -> {
+                if (e.tableId() != null && "DIRECT".equals(in.strategies().roleOf(e.entityId()))) entityByTable.putIfAbsent(e.tableId(), e);
             });
+            in.strategies().inheritedAttributes().forEach(k -> inheritedAttribute.put(k.entityId() + ":" + k.attributeId(), k));
+            in.strategies().inheritedAttributes().forEach(k -> attributeOfColumn.putIfAbsent(k.columnId(), k.attributeName()));
             in.attributeColumns().forEach(a -> attributeColumn.put(a.attributeId(), a));
             in.inheritedKeys().forEach(k -> inheritedKey.put(k.entityId() + ":" + k.attributeId(), k));
             in.attributeColumns().forEach(a -> attributeName.put(a.attributeId(), a.attributeName()));
@@ -132,8 +204,22 @@ public final class ModelStructureQualityJudge {
             });
             in.attributeColumns().forEach(a -> attributeOfColumn.put(a.columnId(), attributeName.getOrDefault(a.attributeId(), String.valueOf(a.attributeId()))));
             in.inheritedKeys().forEach(k -> attributeOfColumn.putIfAbsent(k.columnId(), attributeName.getOrDefault(k.attributeId(), String.valueOf(k.attributeId()))));
-            in.identifiers().stream().filter(i -> Boolean.TRUE.equals(i.primary()))
-                    .forEach(i -> primaryKey.computeIfAbsent(i.entityId(), k -> new ArrayList<>()).add(i.attributeId()));
+            in.identifiers().stream().filter(i -> Boolean.TRUE.equals(i.primary())).forEach(i -> {
+                primaryKey.computeIfAbsent(i.entityId(), k -> new ArrayList<>()).add(i.attributeId());
+                primaryIdentifier.putIfAbsent(i.entityId(), new Long[]{i.identifierId()});
+                primaryIdentifierName.putIfAbsent(i.entityId(), i.identifierName());
+            });
+            // 보조 식별자 (조회 순서 = 식별자 ID → 식별자 속성 순서) : 짝 해석의 후보 — 같은 구성이면 식별자 ID 가 가장 작은 것이 대표 (ReferenceKeys)
+            Map<Long, List<IdentifierRow>> byAlternate = in.identifiers().stream().filter(i -> !Boolean.TRUE.equals(i.primary()))
+                    .collect(Collectors.groupingBy(IdentifierRow::identifierId, LinkedHashMap::new, Collectors.toList()));
+            byAlternate.values().forEach(rows -> alternateKeys.computeIfAbsent(rows.get(0).entityId(), k -> new ArrayList<>())
+                    .add(new com.lexorma.data.logical.service.ReferenceKeys.Key(rows.get(0).identifierId(), rows.get(0).identifierName(), false,
+                            rows.stream().map(IdentifierRow::attributeId).toList())));
+            Map<Long, List<UniqueIndexRow>> byIndex = in.uniqueIndexes().stream().collect(Collectors.groupingBy(UniqueIndexRow::indexId, LinkedHashMap::new, Collectors.toList()));
+            byIndex.values().forEach(rows -> {
+                if (rows.stream().anyMatch(r -> r.columnId() == null)) return; // 표현식 요소가 있는 인덱스는 FK 가 참조할 키가 아니다
+                uniqueIndexKeys.computeIfAbsent(rows.get(0).tableId(), k -> new ArrayList<>()).add(rows.stream().map(UniqueIndexRow::columnId).collect(Collectors.toSet()));
+            });
             for (ForeignKeyRow r : in.foreignKeys()) {
                 Fk fk = foreignKeys.computeIfAbsent(r.relationId(), id -> new Fk(id, r.relationName(), r.childTableId(), r.childTableName(), r.parentTableId(),
                         r.parentTableName(), new ArrayList<>()));
@@ -150,6 +236,46 @@ public final class ModelStructureQualityJudge {
             }
             uniques.values().forEach(u -> uniquesByTable.computeIfAbsent(u.tableId(), k -> new ArrayList<>()).add(u));
             in.primaryKeyColumns().forEach(p -> pkByTable.computeIfAbsent(p.tableId(), k -> new HashSet<>()).add(p.columnId()));
+            for (EntityRow e : entityById.values()) {
+                Long parent = in.supertypeOf().apply(e.entityId());
+                if (parent == null || e.tableId() == null) continue;
+                // A·C형 계층에는 상속 FK 가 없다 (D-AC-01) : B형 상속 FK 판별을 하지 않는다 (통합·말단 테이블의 일반 FK 를 상속 FK 로 오판하지 않는다)
+                if (alternative(e.entityId(), parent)) continue;
+                List<Col[]> pairs = inheritanceFkPairs(e.entityId(), parent);
+                if (pairs == null) {
+                    // 상속 PK 매핑이 모자라 쌍을 정할 수 없다 : 자식 테이블 PK 컬럼 집합으로 직계 슈퍼타입 테이블을 가리키는 FK 만 상속 FK 후보로 본다
+                    // (상속 구조 진단이 매핑 누락을 따로 낸다 — 같은 FK 를 물리 전용으로 두 번 보이지 않는다)
+                    EntityRow parentRow = entityById.get(parent);
+                    Set<Long> tablePk = pkByTable.getOrDefault(e.tableId(), Set.of());
+                    for (Fk fk : foreignKeysByChildTable.getOrDefault(e.tableId(), List.of())) {
+                        if (parentRow != null && Objects.equals(fk.parentTableId(), parentRow.tableId()) && isInheritanceCandidate(fk.childIds(), tablePk)) inheritanceCandidates.add(fk.id());
+                    }
+                    continue;
+                }
+                inheritancePairs.put(e.entityId(), pairs);
+                Set<Long> keyColumns = pairs.stream().map(p -> p[0].id()).collect(Collectors.toSet());
+                for (Fk fk : foreignKeysByChildTable.getOrDefault(e.tableId(), List.of())) {
+                    if (isInheritanceCandidate(fk.childIds(), keyColumns)) inheritanceCandidates.add(fk.id());
+                }
+            }
+        }
+
+        /** 서브타입 → 직계 슈퍼타입 상속 FK 쌍 (루트 주 식별자 순서, [자식 컬럼, 부모 컬럼]). 매핑이 모자라면 null (이름으로 추론하지 않는다) */
+        List<Col[]> inheritanceFkPairs(Long subtypeId, Long supertypeId) {
+            List<Long> key = primaryKey.getOrDefault(in.rootOf().apply(subtypeId), List.of());
+            if (key.isEmpty()) return null;
+            List<Col[]> pairs = new ArrayList<>();
+            for (Long attribute : key) {
+                Col child = columnFor(subtypeId, attribute);
+                Col parent = columnFor(supertypeId, attribute);
+                if (child == null || parent == null) return null;
+                pairs.add(new Col[]{child, parent});
+            }
+            return pairs;
+        }
+
+        boolean inheritanceFk(Fk fk) {
+            return inheritanceCandidates.contains(fk.id());
         }
 
         /** 엔터티 문맥의 속성 → 컬럼 : 직접 속성 매핑(그 엔터티 테이블의 컬럼) → 상속 PK 매핑 (이름으로 추론하지 않는다) */
@@ -160,7 +286,17 @@ public final class ModelStructureQualityJudge {
             if (direct != null && Objects.equals(direct.tableId(), e.tableId())) return new Col(direct.columnId(), direct.columnName());
             InheritedKeyRow inherited = inheritedKey.get(entityId + ":" + attributeId);
             if (inherited != null && Objects.equals(inherited.tableId(), e.tableId())) return new Col(inherited.columnId(), inherited.columnName());
+            // C형 말단 문맥의 복제 컬럼 (상속 일반 속성 매핑 — 말단마다 따로, 대표 말단 하나로 판단하지 않는다)
+            InheritedKeyRow copied = inheritedAttribute.get(entityId + ":" + attributeId);
+            if (copied != null && Objects.equals(copied.tableId(), e.tableId())) return new Col(copied.columnId(), copied.columnName());
             return null;
+        }
+
+        /** A·C 문맥인가 (엔터티 또는 그 직계 슈퍼타입이 통합·분산·맞지 않는 문맥 — 또는 C형 말단) */
+        boolean alternative(Long entityId, Long parent) {
+            String role = in.strategies().roleOf(entityId);
+            String parentRole = in.strategies().roleOf(parent);
+            return !"DIRECT".equals(role) || "DISTRIBUTED".equals(parentRole) || "MERGED".equals(parentRole) || "INCONSISTENT".equals(parentRole);
         }
 
         String entityName(Long id) {
@@ -175,29 +311,71 @@ public final class ModelStructureQualityJudge {
 
         // ------------------------------------------------------------------ 논리 관계 ↔ 물리 FK
 
-        private record Rel(RelationshipRow r, List<PairRow> pairs) {
+        /** 관계 1건의 판정 문맥 : child = 자식 문맥 엔터티 (C형 분산 자식이면 말단 — D-AC-17, 그 밖에는 관계의 자식), key = 결과 키 */
+        private record Rel(RelationshipRow r, List<PairRow> pairs, Long child, String key) {
+            Rel(RelationshipRow r, List<PairRow> pairs) {
+                this(r, pairs, r.childEntityId(), String.valueOf(r.relationshipId()));
+            }
         }
 
         List<Row> relationships() {
             Map<Long, List<PairRow>> pairsByRelationship = in.pairs().stream().collect(Collectors.groupingBy(PairRow::relationshipId, LinkedHashMap::new, Collectors.toList()));
-            List<Rel> rels = in.relationships().stream().map(r -> new Rel(r, pairsByRelationship.getOrDefault(r.relationshipId(), List.of()))).toList();
-            Map<Long, Row> result = new LinkedHashMap<>();
+            List<Rel> rels = new ArrayList<>();
+            for (RelationshipRow r : in.relationships()) {
+                List<PairRow> pairs = pairsByRelationship.getOrDefault(r.relationshipId(), List.of());
+                if ("DISTRIBUTED".equals(in.strategies().roleOf(r.childEntityId()))) {
+                    // C형 루트·중간이 자식 : 그 관계를 상속받는 말단 테이블마다 FK 하나씩 기대한다 (D-AC-17 — 일부 누락도 그 말단의 행으로 보인다)
+                    for (Long leaf : in.strategies().leavesOf().apply(r.childEntityId())) rels.add(new Rel(r, pairs, leaf, r.relationshipId() + ":" + leaf));
+                } else {
+                    rels.add(new Rel(r, pairs));
+                }
+            }
+            Map<String, Row> result = new LinkedHashMap<>();
+            // 전략상 FK 로 표현할 수 없는 참조 (D-AC-09·10) : A형 루트가 아닌 엔터티·C형 분산 엔터티를 부모로 하는 관계 — 비교 불가 (FK 를 기대하지 않는다)
+            for (Rel rel : rels) {
+                String parentRole = in.strategies().roleOf(rel.r.parentEntityId());
+                String childRole = in.strategies().roleOf(rel.child);
+                String code = "MERGED".equals(parentRole) ? "SUBTYPE_SCOPE_NOT_ENFORCED" : "DISTRIBUTED".equals(parentRole) ? "SUPERTYPE_DISTRIBUTED"
+                        : "INCONSISTENT".equals(parentRole) || "INCONSISTENT".equals(childRole) ? "STRATEGY_STRUCTURE_MISMATCH" : null;
+                if (code == null) continue;
+                Expected x = expected(rel);
+                String reason = switch (code) {
+                    case "SUBTYPE_SCOPE_NOT_ENFORCED" -> Messages.get("부모 {0} 은(는) A형 통합 테이블의 서브타입이라 일반 FK 로는 그 유형만 참조한다는 의미를 지킬 수 없습니다. 전략상 FK 를 기대하지 않습니다 (자동 보정 대상 아님).",
+                            entityName(rel.r.parentEntityId()));
+                    case "SUPERTYPE_DISTRIBUTED" -> Messages.get("부모 {0} 은(는) C형으로 여러 말단 테이블에 분산되어 FK 하나로 참조할 수 없습니다. 전략상 FK 를 기대하지 않습니다 (자동 보정 대상 아님).",
+                            entityName(rel.r.parentEntityId()));
+                    default -> Messages.get("상속 변환 기록과 물리 매핑 구조가 맞지 않아 FK 와 비교할 수 없습니다.");
+                };
+                result.put(rel.key, relationshipRow(rel, x, CheckStatus.NOT_COMPARABLE, code, null, List.of(), reason));
+            }
             // 1단계 : 구성·순서가 같은 FK 를 먼저 대응시킨다 (앞 관계의 불일치 판정이 뒤 관계의 정확한 FK 를 가져가지 않게)
             for (Rel rel : rels) {
+                if (result.containsKey(rel.key)) continue;
                 Expected x = expected(rel);
                 if (x.columns == null) continue;
+                if (overlapsInheritance(rel, x)) {
+                    result.put(rel.key, relationshipRow(rel, x, CheckStatus.NOT_COMPARABLE, "INHERITANCE_FK_OVERLAP", null, List.of(),
+                            Messages.get("관계 속성 짝의 FK 구성이 서브타입 {0} 의 상속 FK(직계 슈퍼타입 {1} 참조)와 같습니다. 상속 FK 는 [상속 구조] 진단·상속 FK 보정에서 다루며, 같은 구성의 FK 를 따로 만들지 않습니다.",
+                                    entityName(rel.r.childEntityId()), entityName(rel.r.parentEntityId()))));
+                    continue;
+                }
                 Fk exact = foreignKeysByChildTable.getOrDefault(x.child.tableId(), List.of()).stream()
-                        .filter(fk -> !claimedForeignKeys.contains(fk.id()) && Objects.equals(fk.parentTableId(), x.parent.tableId()) && sameOrdered(fk, x.columns))
+                        .filter(fk -> !claimedForeignKeys.contains(fk.id()) && !inheritanceFk(fk) && Objects.equals(fk.parentTableId(), x.parent.tableId()) && sameOrdered(fk, x.columns))
                         .findFirst().orElse(null);
                 if (exact != null) {
                     claimedForeignKeys.add(exact.id());
-                    result.put(rel.r.relationshipId(), relationshipRow(rel, x, CheckStatus.MATCH, "FK_MATCH", exact, List.of(), null));
+                    // 사후 무효 (DEC-09 · M7-AK-D12) : FK 가 참조하는 부모 컬럼이 지금 PK·UNIQUE·고유 인덱스가 아니면 일치로 두지 않는다 (FK 는 지우지 않는다)
+                    Set<Long> parentColumns = x.columns.stream().map(p -> p[1].id()).collect(Collectors.toSet());
+                    result.put(rel.key, referenceableKey(x.parent.tableId(), parentColumns)
+                            ? relationshipRow(rel, x, CheckStatus.MATCH, "FK_MATCH", exact, List.of(), null)
+                            : relationshipRow(rel, x, CheckStatus.MISMATCH, "FK_KEY_INVALID", exact, List.of(),
+                            Messages.get("FK 가 참조하는 부모 컬럼이 지금 부모 테이블의 PK·UNIQUE 가 아닙니다 (참조 키가 나중에 바뀌었습니다 — FK 는 지우지 않으며 DDL 은 이 FK 를 만들지 않습니다).")));
                 }
             }
             // 2단계 : 나머지
             for (Rel rel : rels) {
-                if (result.containsKey(rel.r.relationshipId())) continue;
-                result.put(rel.r.relationshipId(), judgeRelationship(rel));
+                if (result.containsKey(rel.key)) continue;
+                result.put(rel.key, judgeRelationship(rel));
             }
             return new ArrayList<>(result.values());
         }
@@ -207,18 +385,22 @@ public final class ModelStructureQualityJudge {
             EntityRow child;
             EntityRow parent;
             String pairState;
+            com.lexorma.data.logical.service.ReferenceKeys.Resolution key;
             List<Col[]> columns; // [자식, 부모], 모두 정해졌을 때만
             final List<Col[]> partial = new ArrayList<>();
         }
 
         Expected expected(Rel rel) {
             Expected x = new Expected();
-            x.child = entityById.get(rel.r.childEntityId());
+            x.child = entityById.get(rel.child);
             x.parent = entityById.get(rel.r.parentEntityId());
-            List<Long> key = primaryKey.getOrDefault(in.rootOf().apply(rel.r.parentEntityId()), List.of());
+            // 짝 해석 (LogicalRelationshipPairs 와 같은 규칙 — ReferenceKeys) : 유효 주 식별자 = 루트의 주 식별자, 보조 식별자 = 부모 자체의 것 (상속 참여 무관 — M7-INH-01)
+            Long root = in.rootOf().apply(rel.r.parentEntityId());
             List<Long> parents = rel.pairs.stream().map(PairRow::parentAttributeId).toList();
-            x.pairState = rel.pairs.isEmpty() ? "NONE" : key.isEmpty() ? "PARENT_KEY_MISSING" : !key.containsAll(parents) ? "PARENT_KEY_MISMATCH"
-                    : parents.size() == key.size() ? "COMPLETE" : "PARTIAL";
+            Long[] primaryId = primaryIdentifier.get(root);
+            x.key = com.lexorma.data.logical.service.ReferenceKeys.resolve(parents, primaryId == null ? null : primaryId[0], primaryIdentifierName.get(root),
+                    primaryKey.getOrDefault(root, List.of()), com.lexorma.data.logical.service.ReferenceKeys.referenceable(rel.r.parentEntityId(), id -> alternateKeys.getOrDefault(id, List.of())));
+            x.pairState = x.key.status();
             boolean all = x.child != null && x.parent != null && x.child.tableId() != null && x.parent.tableId() != null;
             for (PairRow p : rel.pairs) {
                 Col childCol = x.child == null ? null : columnFor(x.child.entityId(), p.childAttributeId());
@@ -228,6 +410,17 @@ public final class ModelStructureQualityJudge {
             }
             if (all && "COMPLETE".equals(x.pairState)) x.columns = x.partial;
             return x;
+        }
+
+        /** 일반 관계의 기대 쌍 = 자식(서브타입)의 상속 FK 쌍 (부모 = 직계 슈퍼타입, 순서까지 같다) */
+        boolean overlapsInheritance(Rel rel, Expected x) {
+            if (!Objects.equals(in.supertypeOf().apply(rel.child), rel.r.parentEntityId())) return false;
+            List<Col[]> pairs = inheritancePairs.get(rel.child);
+            if (pairs == null || pairs.size() != x.columns.size()) return false;
+            for (int i = 0; i < pairs.size(); i++) {
+                if (!Objects.equals(pairs.get(i)[0].id(), x.columns.get(i)[0].id()) || !Objects.equals(pairs.get(i)[1].id(), x.columns.get(i)[1].id())) return false;
+            }
+            return true;
         }
 
         static boolean sameOrdered(Fk fk, List<Col[]> expected) {
@@ -246,12 +439,13 @@ public final class ModelStructureQualityJudge {
         Row judgeRelationship(Rel rel) {
             Expected x = expected(rel);
             if (x.child == null || x.parent == null || x.child.tableId() == null || x.parent.tableId() == null) {
-                String side = x.child == null || x.child.tableId() == null ? entityName(rel.r.childEntityId()) : entityName(rel.r.parentEntityId());
+                String side = x.child == null || x.child.tableId() == null ? entityName(rel.child) : entityName(rel.r.parentEntityId());
                 return relationshipRow(rel, x, CheckStatus.UNMAPPED, "ENTITY_UNMAPPED", null, List.of(),
                         Messages.get("엔터티 {0} 이(가) 물리 테이블에 매핑되지 않아 FK 와 비교할 수 없습니다.", side));
             }
+            // 상속 FK 후보는 일반 관계의 후보가 아니다 (D-INH-11, I-3) — 상속 구조 진단이 본다
             List<Fk> between = foreignKeysByChildTable.getOrDefault(x.child.tableId(), List.of()).stream()
-                    .filter(fk -> !claimedForeignKeys.contains(fk.id()) && Objects.equals(fk.parentTableId(), x.parent.tableId())).toList();
+                    .filter(fk -> !claimedForeignKeys.contains(fk.id()) && !inheritanceFk(fk) && Objects.equals(fk.parentTableId(), x.parent.tableId())).toList();
             if (!"COMPLETE".equals(x.pairState)) {
                 between.forEach(fk -> claimedForeignKeys.add(fk.id())); // 이 관계와 관련된 FK — 물리 전용으로 따로 보이지 않는다
                 String code = switch (x.pairState) {
@@ -273,10 +467,10 @@ public final class ModelStructureQualityJudge {
                 return relationshipRow(rel, x, CheckStatus.UNMAPPED, "ATTRIBUTE_UNMAPPED", between.size() == 1 ? between.get(0) : null, between,
                         Messages.get("관계 속성 짝의 일부 속성이 물리 컬럼에 매핑되지 않아 FK 와 비교할 수 없습니다."));
             }
-            List<Fk> fromChild = foreignKeysByChildTable.getOrDefault(x.child.tableId(), List.of()).stream().filter(fk -> !claimedForeignKeys.contains(fk.id())).toList();
+            List<Fk> fromChild = foreignKeysByChildTable.getOrDefault(x.child.tableId(), List.of()).stream().filter(fk -> !claimedForeignKeys.contains(fk.id()) && !inheritanceFk(fk)).toList();
             // 같은 FK 가 이미 다른 관계에 정확히 대응했다
             boolean shared = foreignKeysByChildTable.getOrDefault(x.child.tableId(), List.of()).stream()
-                    .anyMatch(fk -> claimedForeignKeys.contains(fk.id()) && Objects.equals(fk.parentTableId(), x.parent.tableId()) && sameOrdered(fk, x.columns));
+                    .anyMatch(fk -> claimedForeignKeys.contains(fk.id()) && !inheritanceFk(fk) && Objects.equals(fk.parentTableId(), x.parent.tableId()) && sameOrdered(fk, x.columns));
             Set<String> expectedPairs = x.columns.stream().map(p -> p[0].id() + ">" + p[1].id()).collect(Collectors.toSet());
             Set<Long> expectedChild = x.columns.stream().map(p -> p[0].id()).collect(Collectors.toSet());
             Fk order = between.stream().filter(fk -> fk.columns().size() == x.columns.size() && pairSet(fk.columns()).equals(expectedPairs)).findFirst().orElse(null);
@@ -307,16 +501,26 @@ public final class ModelStructureQualityJudge {
             }
             // FK 가 없다 : 물리 생성이 FK 를 만들 수 있는 모양일 때만 FK 누락으로 본다 (부모 컬럼 = 부모 테이블 PK, 자기 키만 잇는 자기 참조가 아님 — 생성 판정과 같은 기준)
             Set<Long> parentColumns = x.columns.stream().map(p -> p[1].id()).collect(Collectors.toSet());
-            boolean selfKeyOnly = Objects.equals(rel.r.parentEntityId(), rel.r.childEntityId())
+            boolean selfKeyOnly = Objects.equals(rel.r.parentEntityId(), rel.child)
                     && rel.pairs.stream().allMatch(p -> p.parentAttributeId().equals(p.childAttributeId()));
             Set<Long> pk = pkByTable.getOrDefault(x.parent.tableId(), Set.of());
-            if (selfKeyOnly || pk.isEmpty() || !pk.equals(parentColumns)) {
+            // 보조 식별자 참조 (M7-AK-D10) : 짝이 보조 식별자 전체를 가리키면 FK 가 없는 것을 누락으로 본다 — 부모 UNIQUE 가 있는지는 FK 보정이 따로 본다 (없으면 'UNIQUE 를 먼저 보정')
+            boolean alternate = x.key != null && x.key.alternate();
+            if (selfKeyOnly || (!alternate && (pk.isEmpty() || !pk.equals(parentColumns)))) {
                 return relationshipRow(rel, x, CheckStatus.NOT_COMPARABLE, "FK_NOT_EXPECTED", null, List.of(), selfKeyOnly
                         ? Messages.get("자기 참조 관계의 자식 속성이 부모 키 속성 자신이라 물리 FK 를 만들 대상이 아닙니다.")
                         : Messages.get("관계 속성 짝의 부모 컬럼이 부모 테이블의 PK 와 같지 않아 물리 FK 를 만들 대상이 아닙니다 (FK 가 없는 것을 오류로 보지 않습니다)."));
             }
             return relationshipRow(rel, x, CheckStatus.UNMAPPED, "FK_MISSING", null, List.of(),
                     Messages.get("관계 속성 짝에 대응하는 물리 FK 가 없습니다. 논리 → 물리 생성이나 물리 모델에서 FK 를 만들 수 있습니다 (자동으로 만들지 않습니다)."));
+        }
+
+        /** FK 가 참조할 수 있는 키인가 (DDL {@code TableDdlGenerator.referencesKey} 와 같은 범위) : PK 전체 · UNIQUE 제약조건 · 컬럼 단위 고유값 · 고유 인덱스 (컬럼 집합) */
+        boolean referenceableKey(Long tableId, Set<Long> columns) {
+            Set<Long> pk = pkByTable.getOrDefault(tableId, Set.of());
+            if (!pk.isEmpty() && pk.equals(columns)) return true;
+            if (uniquesByTable.getOrDefault(tableId, List.of()).stream().anyMatch(u -> new HashSet<>(u.ids()).equals(columns))) return true;
+            return uniqueIndexKeys.getOrDefault(tableId, List.of()).stream().anyMatch(columns::equals);
         }
 
         Row relationshipRow(Rel rel, Expected x, CheckStatus status, String code, Fk fk, List<Fk> candidates, String reason) {
@@ -335,15 +539,18 @@ public final class ModelStructureQualityJudge {
                     columns.add(new StructureColumn(i + 1, null, null, null, null, null, null, null, null, f.childId(), f.childName(), f.parentId(), f.parentName()));
                 }
             }
-            EntityRow child = x.child != null ? x.child : entityById.get(rel.r.childEntityId());
+            EntityRow child = x.child != null ? x.child : entityById.get(rel.child);
             EntityRow parent = x.parent != null ? x.parent : entityById.get(rel.r.parentEntityId());
             String name = Objects.requireNonNullElse(rel.r.relationshipName(), "");
-            String logical = entityName(rel.r.parentEntityId()) + " → " + entityName(rel.r.childEntityId()) + (name.isEmpty() ? "" : " : " + name)
+            String logical = entityName(rel.r.parentEntityId()) + " → " + entityName(rel.r.childEntityId())
+                    + (rel.child.equals(rel.r.childEntityId()) ? "" : " [" + entityName(rel.child) + "]") + (name.isEmpty() ? "" : " : " + name)
                     + (rel.pairs.isEmpty() ? "" : " (" + rel.pairs.stream().map(p -> p.parentAttributeName() + " → " + p.childAttributeName()).collect(Collectors.joining(", ")) + ")");
+            var key = x.key == null ? null : x.key.key();
             Structure structure = new Structure(CheckType.RELATIONSHIP, code, rel.r.relationshipId(), name.isEmpty() ? null : name,
                     parent == null ? null : parent.entityId(), parent == null ? null : parent.entityName(), parent == null ? null : parent.tableId(), parent == null ? null : parent.tableName(),
-                    fk == null ? null : fk.id(), fk == null ? null : fk.name(), columns, candidates.stream().map(Fk::text).toList());
-            return row(child, "R" + rel.r.relationshipId(), CheckType.RELATIONSHIP, status, logical, fk == null ? (candidates.isEmpty() ? "-" : String.join(" / ", candidates.stream().map(Fk::text).toList())) : fk.text(),
+                    fk == null ? null : fk.id(), fk == null ? null : fk.name(), columns, candidates.stream().map(Fk::text).toList(),
+                    x.key == null || x.key.type() == null ? null : x.key.type().name(), key == null ? null : key.identifierId(), key == null ? null : key.identifierName());
+            return row(child, "R" + rel.key, CheckType.RELATIONSHIP, status, logical, fk == null ? (candidates.isEmpty() ? "-" : String.join(" / ", candidates.stream().map(Fk::text).toList())) : fk.text(),
                     reason, inheritance(rel.r.parentEntityId(), rel.r.childEntityId()), structure);
         }
 
@@ -352,37 +559,49 @@ public final class ModelStructureQualityJudge {
         List<Row> alternateKeys() {
             Map<Long, List<IdentifierRow>> byIdentifier = in.identifiers().stream().filter(i -> !Boolean.TRUE.equals(i.primary()))
                     .collect(Collectors.groupingBy(IdentifierRow::identifierId, LinkedHashMap::new, Collectors.toList()));
-            Map<Long, Row> result = new LinkedHashMap<>();
-            Map<Long, List<Col>> expected = new HashMap<>();
+            // 판정 문맥 : 보조 식별자를 정의한 엔터티 — C형 분산 엔터티(루트·중간)의 것은 말단 테이블마다 (D-AC-08 11.2 — 상속받은 AK 도 말단 UNIQUE 를 기대한다)
+            Map<String, Row> result = new LinkedHashMap<>();
+            Map<String, List<Col>> expected = new HashMap<>();
+            Map<String, Long> contextOf = new LinkedHashMap<>();
+            Map<String, List<IdentifierRow>> rowsOf = new LinkedHashMap<>();
             for (Map.Entry<Long, List<IdentifierRow>> entry : byIdentifier.entrySet()) {
-                IdentifierRow first = entry.getValue().get(0);
+                Long owner = entry.getValue().get(0).entityId();
+                List<Long> contexts = "DISTRIBUTED".equals(in.strategies().roleOf(owner)) ? in.strategies().leavesOf().apply(owner) : List.of(owner);
+                for (Long ctx : contexts) {
+                    String key = ctx.equals(owner) ? String.valueOf(entry.getKey()) : entry.getKey() + ":" + ctx;
+                    contextOf.put(key, ctx);
+                    rowsOf.put(key, entry.getValue());
+                }
+            }
+            for (Map.Entry<String, Long> entry : contextOf.entrySet()) {
+                List<IdentifierRow> idRows = rowsOf.get(entry.getKey());
+                Long ctx = entry.getValue();
                 List<Col> cols = new ArrayList<>();
-                for (IdentifierRow r : entry.getValue()) cols.add(columnFor(first.entityId(), r.attributeId()));
+                for (IdentifierRow r : idRows) cols.add(columnFor(ctx, r.attributeId()));
                 expected.put(entry.getKey(), cols);
-                EntityRow e = entityById.get(first.entityId());
+                EntityRow e = entityById.get(ctx);
                 if (e == null || e.tableId() == null || cols.contains(null)) continue;
                 List<Long> ids = cols.stream().map(Col::id).toList();
                 Uq exact = uniquesByTable.getOrDefault(e.tableId(), List.of()).stream().filter(u -> !claimedUniques.contains(u.key()) && u.ids().equals(ids)).findFirst().orElse(null);
                 if (exact != null) {
                     claimedUniques.add(exact.key());
-                    result.put(entry.getKey(), alternateKeyRow(entry.getValue(), cols, CheckStatus.MATCH, "UNIQUE_MATCH", exact, List.of(), null));
+                    result.put(entry.getKey(), alternateKeyRow(idRows, cols, CheckStatus.MATCH, "UNIQUE_MATCH", exact, List.of(), null, ctx, entry.getKey()));
                 }
             }
-            for (Map.Entry<Long, List<IdentifierRow>> entry : byIdentifier.entrySet()) {
+            for (Map.Entry<String, Long> entry : contextOf.entrySet()) {
                 if (result.containsKey(entry.getKey())) continue;
-                result.put(entry.getKey(), judgeAlternateKey(entry.getValue(), expected.get(entry.getKey())));
+                result.put(entry.getKey(), judgeAlternateKey(rowsOf.get(entry.getKey()), expected.get(entry.getKey()), entry.getValue(), entry.getKey()));
             }
             return new ArrayList<>(result.values());
         }
 
-        Row judgeAlternateKey(List<IdentifierRow> rows, List<Col> cols) {
-            IdentifierRow first = rows.get(0);
-            EntityRow e = entityById.get(first.entityId());
+        Row judgeAlternateKey(List<IdentifierRow> rows, List<Col> cols, Long ctx, String key) {
+            EntityRow e = entityById.get(ctx);
             if (e == null || e.tableId() == null) {
-                return alternateKeyRow(rows, cols, CheckStatus.UNMAPPED, "ENTITY_UNMAPPED", null, List.of(), Messages.get("엔터티가 물리 테이블에 매핑되지 않아 UNIQUE 와 비교할 수 없습니다."));
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.UNMAPPED, "ENTITY_UNMAPPED", null, List.of(), Messages.get("엔터티가 물리 테이블에 매핑되지 않아 UNIQUE 와 비교할 수 없습니다."));
             }
             if (cols.contains(null)) {
-                return alternateKeyRow(rows, cols, CheckStatus.UNMAPPED, "ATTRIBUTE_UNMAPPED", null, List.of(),
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.UNMAPPED, "ATTRIBUTE_UNMAPPED", null, List.of(),
                         Messages.get("보조 식별자의 일부 속성이 물리 컬럼에 매핑되지 않아 UNIQUE 와 비교할 수 없습니다."));
             }
             List<Long> ids = cols.stream().map(Col::id).toList();
@@ -391,7 +610,7 @@ public final class ModelStructureQualityJudge {
             Uq order = available.stream().filter(u -> u.ids().size() == ids.size() && new HashSet<>(u.ids()).equals(idSet)).findFirst().orElse(null);
             if (order != null) {
                 claimedUniques.add(order.key());
-                return alternateKeyRow(rows, cols, CheckStatus.MISMATCH, "UNIQUE_ORDER", order, List.of(), Messages.get("UNIQUE 의 컬럼 순서가 보조 식별자의 속성 순서와 다릅니다."));
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.MISMATCH, "UNIQUE_ORDER", order, List.of(), Messages.get("UNIQUE 의 컬럼 순서가 보조 식별자의 속성 순서와 다릅니다."));
             }
             int best = 0;
             List<Uq> bestList = new ArrayList<>();
@@ -406,7 +625,7 @@ public final class ModelStructureQualityJudge {
             }
             if (bestList.size() > 1) {
                 bestList.forEach(u -> claimedUniques.add(u.key()));
-                return alternateKeyRow(rows, cols, CheckStatus.NOT_COMPARABLE, "UNIQUE_AMBIGUOUS", null, bestList,
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.NOT_COMPARABLE, "UNIQUE_AMBIGUOUS", null, bestList,
                         Messages.get("보조 식별자와 일부 컬럼이 겹치는 UNIQUE 가 여러 개라 어느 것에 대응하는지 정할 수 없습니다."));
             }
             if (bestList.size() == 1) {
@@ -419,19 +638,23 @@ public final class ModelStructureQualityJudge {
                     case "UNIQUE_COLUMNS_EXTRA" -> Messages.get("UNIQUE 에 보조 식별자에 없는 컬럼이 더 있습니다.");
                     default -> Messages.get("UNIQUE 의 컬럼 구성이 보조 식별자와 다릅니다.");
                 };
-                return alternateKeyRow(rows, cols, CheckStatus.MISMATCH, code, u, List.of(), reason);
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.MISMATCH, code, u, List.of(), reason);
             }
             if (idSet.equals(pkByTable.getOrDefault(e.tableId(), Set.of()))) {
-                return alternateKeyRow(rows, cols, CheckStatus.NOT_COMPARABLE, "ALTERNATE_KEY_IS_PRIMARY_KEY", null, List.of(),
+                return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.NOT_COMPARABLE, "ALTERNATE_KEY_IS_PRIMARY_KEY", null, List.of(),
                         Messages.get("보조 식별자의 컬럼이 테이블 PK 와 같아 UNIQUE 와 따로 비교하지 않습니다."));
             }
-            return alternateKeyRow(rows, cols, CheckStatus.UNMAPPED, "UNIQUE_MISSING", null, List.of(),
+            return alternateKeyRowIn(ctx, key, rows, cols, CheckStatus.UNMAPPED, "UNIQUE_MISSING", null, List.of(),
                     Messages.get("보조 식별자에 대응하는 UNIQUE 제약조건이 없습니다 (UNIQUE 인덱스는 비교하지 않습니다, 자동으로 만들지 않습니다)."));
         }
 
-        Row alternateKeyRow(List<IdentifierRow> rows, List<Col> cols, CheckStatus status, String code, Uq uq, List<Uq> candidates, String reason) {
+        Row alternateKeyRowIn(Long ctx, String key, List<IdentifierRow> rows, List<Col> cols, CheckStatus status, String code, Uq uq, List<Uq> candidates, String reason) {
+            return alternateKeyRow(rows, cols, status, code, uq, candidates, reason, ctx, key);
+        }
+
+        Row alternateKeyRow(List<IdentifierRow> rows, List<Col> cols, CheckStatus status, String code, Uq uq, List<Uq> candidates, String reason, Long ctx, String key) {
             IdentifierRow first = rows.get(0);
-            EntityRow e = entityById.get(first.entityId());
+            EntityRow e = entityById.get(ctx);
             List<StructureColumn> columns = new ArrayList<>();
             for (int i = 0; i < rows.size(); i++) {
                 IdentifierRow r = rows.get(i);
@@ -446,10 +669,11 @@ public final class ModelStructureQualityJudge {
                     columns.add(new StructureColumn(i + 1, null, null, null, null, null, null, null, null, physical.id(), physical.name(), null, null));
                 }
             }
-            String logical = first.identifierName() + " (" + rows.stream().map(IdentifierRow::attributeName).collect(Collectors.joining(", ")) + ")";
+            String logical = first.identifierName() + " (" + rows.stream().map(IdentifierRow::attributeName).collect(Collectors.joining(", ")) + ")"
+                    + (ctx.equals(first.entityId()) ? "" : " [" + entityName(first.entityId()) + " → " + entityName(ctx) + "]");
             Structure structure = new Structure(CheckType.ALTERNATE_KEY, code, first.identifierId(), first.identifierName(), null, null, null, null,
                     uq == null ? null : uq.physicalId(), uq == null ? null : uq.name(), columns, candidates.stream().map(Uq::text).toList());
-            return row(e, "A" + first.identifierId(), CheckType.ALTERNATE_KEY, status, logical,
+            return row(e, "A" + key, CheckType.ALTERNATE_KEY, status, logical,
                     uq == null ? (candidates.isEmpty() ? "-" : String.join(" / ", candidates.stream().map(Uq::text).toList())) : uq.text(), reason,
                     inheritance(first.entityId()), structure);
         }
@@ -463,8 +687,8 @@ public final class ModelStructureQualityJudge {
                 EntityRow child = entityByTable.get(fk.childTableId());
                 EntityRow parent = entityByTable.get(fk.parentTableId());
                 if (child == null) continue;
-                // 상속 FK (서브타입 테이블 → 직계 슈퍼타입 테이블) : [상속 구조] 진단이 본다
-                if (parent != null && Objects.equals(in.supertypeOf().apply(child.entityId()), parent.entityId())) continue;
+                // 상속 FK 후보 (서브타입 테이블의 상속 PK 컬럼 집합 FK) : [상속 구조] 진단이 본다. 같은 두 테이블 사이의 다른 일반 FK 는 여기서 진단한다 (D-INH-11, I-4)
+                if (inheritanceFk(fk)) continue;
                 List<StructureColumn> columns = new ArrayList<>();
                 for (int i = 0; i < fk.columns().size(); i++) {
                     FkCol f = fk.columns().get(i);

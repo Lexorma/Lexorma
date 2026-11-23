@@ -1,5 +1,7 @@
 # 논리 모델 슈퍼타입·서브타입 (Supertype/Subtype) — M-6 후속 5차
 
+> **2026-11-22 네 번째 Flyway 합침 (사용자 결정)** : 이 문서의 마이그레이션 V3 는 `V0__init.sql`(스키마 — 끝의 '예전 증분 V3 (… 네 번째 합침)' 구간)·`V1__seed_data.sql`(예제 — 같은 이름의 구간)로 합쳐져 지금 파일로는 없다. 아래의 V3 파일명·업그레이드 검증은 기록용이다 ([completed-work.md](../completed-work.md) 마이그레이션 기록).
+
 - 상태 : **구현 완료** (2026-11-20, V3 `V3__logical_subtype.sql`), **M-6 최종 보완** (2026-11-20, D-51·D-52, 0.7절), **최종 정책 확정 — M-6 완료** (2026-11-20, D-17 세부·D-53, 0.8절). 후속은 0.6절과 `pending-work.md` [M-7]·[AI-MCP]·[M-8-LAYOUT]·[UI-1].
 - 관련 : [logical-model-m6.md](logical-model-m6.md) (13장 부분 조회, 14장 평행 관계선, 15장 서버 페이징), [logical-subject-area.md](logical-subject-area.md) (후속 4차, 같은 잠금·소속 구조의 선례), [logical-physical-mapping-m7.md](logical-physical-mapping-m7.md) (12~17장 생성·속성 짝·FK), [model-change-history-m9.md](model-change-history-m9.md), [model-version-erd-m10.md](model-version-erd-m10.md), [model-exchange-dec22.md](model-exchange-dec22.md), [standardization-quality-rules-m5.md](standardization-quality-rules-m5.md), [db-naming-standard.md](../reference/db-naming-standard.md), [list-query-policy.md](../reference/list-query-policy.md), [data-modeling-roadmap.md](../reference/data-modeling-roadmap.md) (D-07 : 서브타입은 M-6 후속).
 - 문서 구성 : **0장이 확정 정책과 실제 구현**이다. 1장 이후는 설계 단계(결정 전)의 분석·대안 기록이며, 0장과 다른 곳은 0장이 우선한다 (예 : 최소 구성원 0 → 2, 이웃 탐색 옵션 → 항상 포함, 그룹 생성 시 엔터티 등록 연결 없음, 이력 유형 이름 `SUBTYPE_GROUP`).

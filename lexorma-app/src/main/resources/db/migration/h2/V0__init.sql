@@ -12,7 +12,10 @@
 --   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 (체크섬·버전이 다르다) — 새로 만든다.
 -- 2026-11-18 (세 번째) : 그 뒤의 증분 V2~V7 (AI 설명 평가 판정 이력 DEC-27, 프로젝트 AI 설정 DEC-18, 출처 컬럼 매핑 DEC-06, 출처 VIEW 정의 DEC-16,
 --   내장 MCP DEC-31, 논리 관계 속성 짝 M-7) 을 다시 이 파일에 합쳤다. 모두 새 테이블이라 맨 끝 '예전 증분 Vn' 구간에 그 순서대로 있다.
---   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 — 새로 만든다. 다음 스키마 변경은 V2 다.
+--   V2 이상이 적용된 DB 는 이어서 쓸 수 없다 — 새로 만든다.
+-- 2026-11-22 (네 번째, 사용자 결정) : 그 뒤의 증분 V2~V5 (논리 주제 영역 M-6, 슈퍼타입·서브타입 M-6, 상속 PK 컬럼 매핑 M-7, 컬럼 데이터 무결성 M7-U09) 를
+--   다시 이 파일에 합쳤다. 맨 끝 '예전 증분 Vn (… 네 번째 합침)' 구간에 그 순서대로 있다 (V5 의 TB_COL 필수값·CK_COL_01·생성 컬럼·UX_COL_01 은 ALTER 그대로,
+--   예전 V5 의 사전 검사는 새 설치에서 할 일이 없어 뺐다). V2~V5 가 적용된 DB 는 이어서 쓸 수 없다 — 새로 만든다. 다음 스키마 변경은 V2 다.
 --   TABLE·VIEW 이름은 스키마 안에서 하나다 (UX_TBL_01·UX_VIEW_01 = SCHM_SN + 이름, 같은 스키마의 TABLE·VIEW 교차 중복은 서비스가 스키마 이름 공간 잠금 안에서 막는다).
 -- =====================================================================
 
@@ -2820,3 +2823,272 @@ comment on column TB_LGCL_REL_ATRB.REG_DT is '등록 일시';
 comment on column TB_LGCL_REL_ATRB.MDFCN_DT is '수정 일시';
 comment on column TB_LGCL_REL_ATRB.RGTR_ID is '등록자 아이디';
 comment on column TB_LGCL_REL_ATRB.MDFR_ID is '수정자 아이디';
+
+-- ---------- 예전 증분 V2 (논리 주제 영역 M-6 후속 4차, 2026-11-22 네 번째 합침) ----------
+-- 예전 증분 V2 : 논리 모델 주제 영역 (M-6 후속 4차, 2026-11-20 — docs/completed/logical-subject-area.md)
+-- 논리 모델 안의 업무 분류. 영역은 상위 영역(UP_SBJ_AREA_SN)으로 최대 3단계 계층을 이루고(최상위 = 1단계, 서비스가 검사),
+-- 엔터티는 소속 테이블(TB_LGCL_SBJ_AREA_ENTT)로 영역 하나에만 속한다 (엔터티당 0~1건, 행이 없으면 미분류).
+-- 소속을 엔터티 행에 두지 않는다 : 분류를 바꿔도 엔터티의 수정 일시(DEC-08 기준값)·승인 상태가 바뀌지 않는다.
+-- 주제 영역별 ERD 배치(TB_LGCL_SBJ_AREA_LYT)는 사용자 × 영역 1건이고 모델 전체 배치(TB_LGCL_ERD_LYT)와 따로 저장한다.
+-- 정합성 : 모델·영역·엔터티의 존재·자기 부모 금지·엔터티 단일 소속은 DB 가 막고, 같은 모델·같은 프로젝트·깊이·순환·같은 상위 아래 이름 중복(대소문자 무시)은
+--   논리 모델 행을 잠근 뒤 서비스가 검사한다 (논리 관계의 양 끝 엔터티와 같은 방식). UX_LGCL_SBJ_AREA_01 은 대소문자가 같은 이름만, 상위가 있는 영역만 막는다
+--   (NULL 상위는 서로 다른 값으로 본다 — 최상위 영역의 중복은 서비스 검사가 막는다).
+-- 기존 논리 모델·엔터티는 그대로 미분류다 : 기본 영역을 만들거나 엔터티를 분류하지 않고, 기존 배치를 복제하지 않는다.
+-- 예제(프로젝트 0)에 새 테이블을 단어·용어 → 물리 → 논리 → 매핑 → 관계(+ 속성 짝) → 제약조건 → 인덱스 → 업무 설명 순서로 넣는다 (예전 증분 V7 과 같은 규칙).
+-- 단어 : 주제(SBJ)·영역(AREA)은 공공데이터 공통표준단어에 없어 Lexorma 기관 표준단어로 정했다 (2026-11-20 사용자 결정, 공통표준 AREA = 면적),
+--   상위(UP)는 공통표준단어 그대로. 예제 주제 영역 데이터는 만들지 않는다 (D-18).
+
+create sequence SQ_LGCL_SBJ_AREA start with 1 increment by 50;
+create table TB_LGCL_SBJ_AREA (
+    LGCL_SBJ_AREA_SN bigint not null,
+    PRJ_SN bigint not null,
+    LGCL_MDL_SN bigint not null,
+    UP_SBJ_AREA_SN bigint,
+    SBJ_AREA_NM varchar(255) not null,
+    SBJ_AREA_EXPLN varchar(1000),
+    SORT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint CK_LGCL_SBJ_AREA_01 check (UP_SBJ_AREA_SN <> LGCL_SBJ_AREA_SN),
+    constraint PK_LGCL_SBJ_AREA primary key (LGCL_SBJ_AREA_SN)
+);
+create sequence SQ_LGCL_SBJ_AREA_ENTT start with 1 increment by 50;
+create table TB_LGCL_SBJ_AREA_ENTT (
+    LGCL_SBJ_AREA_ENTT_SN bigint not null,
+    PRJ_SN bigint not null,
+    LGCL_MDL_SN bigint not null,
+    LGCL_SBJ_AREA_SN bigint not null,
+    LGCL_ENTT_SN bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_LGCL_SBJ_AREA_ENTT primary key (LGCL_SBJ_AREA_ENTT_SN)
+);
+create sequence SQ_LGCL_SBJ_AREA_LYT start with 1 increment by 50;
+create table TB_LGCL_SBJ_AREA_LYT (
+    LGCL_SBJ_AREA_LYT_SN bigint not null,
+    PRJ_SN bigint not null,
+    LGCL_MDL_SN bigint not null,
+    LGCL_SBJ_AREA_SN bigint not null,
+    ACNT_SN bigint not null,
+    NODE_PSTN_CN text not null,
+    SCRN_X_CRDNT double precision not null,
+    SCRN_Y_CRDNT double precision not null,
+    SCRN_MGNF double precision not null,
+    VER_NO bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_LGCL_SBJ_AREA_LYT primary key (LGCL_SBJ_AREA_LYT_SN)
+);
+create unique index UX_LGCL_SBJ_AREA_01 on TB_LGCL_SBJ_AREA (LGCL_MDL_SN, UP_SBJ_AREA_SN, SBJ_AREA_NM);
+create index IX_LGCL_SBJ_AREA_01 on TB_LGCL_SBJ_AREA (UP_SBJ_AREA_SN);
+create unique index UX_LGCL_SBJ_AREA_ENTT_01 on TB_LGCL_SBJ_AREA_ENTT (LGCL_ENTT_SN);
+create index IX_LGCL_SBJ_AREA_ENTT_01 on TB_LGCL_SBJ_AREA_ENTT (LGCL_SBJ_AREA_SN, LGCL_ENTT_SN);
+create index IX_LGCL_SBJ_AREA_ENTT_02 on TB_LGCL_SBJ_AREA_ENTT (LGCL_MDL_SN);
+create unique index UX_LGCL_SBJ_AREA_LYT_01 on TB_LGCL_SBJ_AREA_LYT (LGCL_SBJ_AREA_SN, ACNT_SN);
+alter table TB_LGCL_SBJ_AREA add constraint FK_LGCL_SBJ_AREA_01 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
+alter table TB_LGCL_SBJ_AREA add constraint FK_LGCL_SBJ_AREA_02 foreign key (UP_SBJ_AREA_SN) references TB_LGCL_SBJ_AREA;
+alter table TB_LGCL_SBJ_AREA_ENTT add constraint FK_LGCL_SBJ_AREA_ENTT_01 foreign key (LGCL_SBJ_AREA_SN) references TB_LGCL_SBJ_AREA;
+alter table TB_LGCL_SBJ_AREA_ENTT add constraint FK_LGCL_SBJ_AREA_ENTT_02 foreign key (LGCL_ENTT_SN) references TB_LGCL_ENTT;
+alter table TB_LGCL_SBJ_AREA_ENTT add constraint FK_LGCL_SBJ_AREA_ENTT_03 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
+alter table TB_LGCL_SBJ_AREA_LYT add constraint FK_LGCL_SBJ_AREA_LYT_01 foreign key (LGCL_SBJ_AREA_SN) references TB_LGCL_SBJ_AREA;
+alter table TB_LGCL_SBJ_AREA_LYT add constraint FK_LGCL_SBJ_AREA_LYT_02 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
+comment on table TB_LGCL_SBJ_AREA is '논리 주제 영역';
+comment on column TB_LGCL_SBJ_AREA.LGCL_SBJ_AREA_SN is '논리 주제 영역 일련번호';
+comment on column TB_LGCL_SBJ_AREA.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_LGCL_SBJ_AREA.LGCL_MDL_SN is '논리 모델 일련번호';
+comment on column TB_LGCL_SBJ_AREA.UP_SBJ_AREA_SN is '상위 주제 영역 일련번호';
+comment on column TB_LGCL_SBJ_AREA.SBJ_AREA_NM is '주제 영역 명';
+comment on column TB_LGCL_SBJ_AREA.SBJ_AREA_EXPLN is '주제 영역 설명';
+comment on column TB_LGCL_SBJ_AREA.SORT_ORD is '정렬 순서';
+comment on column TB_LGCL_SBJ_AREA.REG_DT is '등록 일시';
+comment on column TB_LGCL_SBJ_AREA.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_SBJ_AREA.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_SBJ_AREA.MDFR_ID is '수정자 아이디';
+comment on table TB_LGCL_SBJ_AREA_ENTT is '논리 주제 영역 엔터티';
+comment on column TB_LGCL_SBJ_AREA_ENTT.LGCL_SBJ_AREA_ENTT_SN is '논리 주제 영역 엔터티 일련번호';
+comment on column TB_LGCL_SBJ_AREA_ENTT.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_LGCL_SBJ_AREA_ENTT.LGCL_MDL_SN is '논리 모델 일련번호';
+comment on column TB_LGCL_SBJ_AREA_ENTT.LGCL_SBJ_AREA_SN is '논리 주제 영역 일련번호';
+comment on column TB_LGCL_SBJ_AREA_ENTT.LGCL_ENTT_SN is '논리 엔터티 일련번호';
+comment on column TB_LGCL_SBJ_AREA_ENTT.REG_DT is '등록 일시';
+comment on column TB_LGCL_SBJ_AREA_ENTT.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_SBJ_AREA_ENTT.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_SBJ_AREA_ENTT.MDFR_ID is '수정자 아이디';
+comment on table TB_LGCL_SBJ_AREA_LYT is '논리 주제 영역 레이아웃';
+comment on column TB_LGCL_SBJ_AREA_LYT.LGCL_SBJ_AREA_LYT_SN is '논리 주제 영역 레이아웃 일련번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.LGCL_MDL_SN is '논리 모델 일련번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.LGCL_SBJ_AREA_SN is '논리 주제 영역 일련번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.ACNT_SN is '계정 일련번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.NODE_PSTN_CN is '노드 위치 내용';
+comment on column TB_LGCL_SBJ_AREA_LYT.SCRN_X_CRDNT is '화면 X 좌표';
+comment on column TB_LGCL_SBJ_AREA_LYT.SCRN_Y_CRDNT is '화면 Y 좌표';
+comment on column TB_LGCL_SBJ_AREA_LYT.SCRN_MGNF is '화면 배율';
+comment on column TB_LGCL_SBJ_AREA_LYT.VER_NO is '버전 번호';
+comment on column TB_LGCL_SBJ_AREA_LYT.REG_DT is '등록 일시';
+comment on column TB_LGCL_SBJ_AREA_LYT.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_SBJ_AREA_LYT.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_SBJ_AREA_LYT.MDFR_ID is '수정자 아이디';
+
+
+-- ---------- 예전 증분 V3 (슈퍼타입·서브타입 M-6 후속 5차, 2026-11-22 네 번째 합침) ----------
+-- 예전 증분 V3 : 논리 모델 슈퍼타입·서브타입 (M-6 후속 5차, 2026-11-20 — docs/completed/logical-subtype.md)
+-- 슈퍼타입 엔터티는 서브타입 그룹(TB_LGCL_SBTYP_GROUP)을 여러 개 가질 수 있고, 그룹은 서브타입(TB_LGCL_SBTYP) 2개 이상으로 이루어진다 (최소 2개는 서비스가 검사).
+-- 단일 상속 : 엔터티 하나는 서브타입 행 하나에만 (UX_LGCL_SBTYP_01) — 직접 슈퍼타입 하나, 그룹 하나. 최대 깊이(루트 = 1단계, 3단계까지)·자기 상속·순환·같은 모델·
+--   같은 프로젝트·그룹명 중복(같은 슈퍼타입 안, 대소문자 무시)은 논리 모델 행을 잠근 뒤 서비스가 검사한다 (주제 영역과 같은 분담).
+-- 분류 정책은 그룹마다 필수값이고 DB 기본값이 없다 (사용자가 고른다) : 중복 가능 여부(DPCN_PSBLTY_YN — Y = Overlapping, N = Disjoint),
+--   완전 여부(TOTL_YN — Y = Total, N = Partial). 분류 속성(CLSF_ATRB_SN, 선택)은 슈퍼타입의 유효 속성(직접 또는 조상에서 상속)의 원본 속성 ID, 분류 값(CLSF_VL)은 메타데이터 문자열이다.
+-- 상속 속성·식별자는 저장하지 않는다 (원본 엔터티의 행을 조회 때 계산한다). 상속은 엔터티 행을 바꾸지 않는다 (수정 일시·승인 상태 그대로).
+-- 기존 논리 모델·엔터티에는 서브타입 그룹을 만들지 않는다. 예제(프로젝트 0)에도 그룹 데이터는 만들지 않는다.
+-- 예제(프로젝트 0)에 새 테이블을 단어·용어 → 물리 → 논리 → 매핑 → 관계(+ 속성 짝) → 인덱스 → 업무 설명 순서로 넣는다 (V2 와 같은 규칙).
+-- 단어 (2026-11-20 사용자 결정 D-49) : 슈퍼타입(SPRTYP)·서브타입(SBTYP)·완전(TOTL)은 Lexorma 기관 표준단어 (공통표준단어에 없다 — static/excel/dataPortal.xlsx 로 확인).
+--   그룹(GROUP)·분류(CLSF)·값(VL)·속성(ATRB)은 예제 사전에 이미 있다. 중복(DPCN)·가능(PSBLTY)은 공통표준단어, 중복_가능_여부(DPCN_PSBLTY_YN)는 공통표준용어 그대로
+--   (같은 날 사용자 결정 — 처음 정한 DPLCT_ALWNC_YN 은 공통표준 중복 = DPCN 과 달라 바꿨다). 도메인은 컬럼이 BOOLEAN 이라 자체 도메인 여부B (필수_여부 와 같은 규칙).
+
+create sequence SQ_LGCL_SBTYP_GROUP start with 1 increment by 50;
+create table TB_LGCL_SBTYP_GROUP (
+    LGCL_SBTYP_GROUP_SN bigint not null,
+    PRJ_SN bigint not null,
+    LGCL_MDL_SN bigint not null,
+    SPRTYP_ENTT_SN bigint not null,
+    SBTYP_GROUP_NM varchar(255) not null,
+    SBTYP_GROUP_EXPLN varchar(1000),
+    DPCN_PSBLTY_YN boolean not null,
+    TOTL_YN boolean not null,
+    CLSF_ATRB_SN bigint,
+    SORT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_LGCL_SBTYP_GROUP primary key (LGCL_SBTYP_GROUP_SN)
+);
+create sequence SQ_LGCL_SBTYP start with 1 increment by 50;
+create table TB_LGCL_SBTYP (
+    LGCL_SBTYP_SN bigint not null,
+    PRJ_SN bigint not null,
+    LGCL_MDL_SN bigint not null,
+    LGCL_SBTYP_GROUP_SN bigint not null,
+    SBTYP_ENTT_SN bigint not null,
+    CLSF_VL varchar(255),
+    SORT_ORD integer not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_LGCL_SBTYP primary key (LGCL_SBTYP_SN)
+);
+create unique index UX_LGCL_SBTYP_GROUP_01 on TB_LGCL_SBTYP_GROUP (SPRTYP_ENTT_SN, SBTYP_GROUP_NM);
+create index IX_LGCL_SBTYP_GROUP_01 on TB_LGCL_SBTYP_GROUP (LGCL_MDL_SN);
+create index IX_LGCL_SBTYP_GROUP_02 on TB_LGCL_SBTYP_GROUP (CLSF_ATRB_SN);
+create unique index UX_LGCL_SBTYP_01 on TB_LGCL_SBTYP (SBTYP_ENTT_SN);
+create index IX_LGCL_SBTYP_01 on TB_LGCL_SBTYP (LGCL_SBTYP_GROUP_SN, SORT_ORD);
+create index IX_LGCL_SBTYP_02 on TB_LGCL_SBTYP (LGCL_MDL_SN);
+alter table TB_LGCL_SBTYP_GROUP add constraint FK_LGCL_SBTYP_GROUP_01 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
+alter table TB_LGCL_SBTYP_GROUP add constraint FK_LGCL_SBTYP_GROUP_02 foreign key (SPRTYP_ENTT_SN) references TB_LGCL_ENTT;
+alter table TB_LGCL_SBTYP_GROUP add constraint FK_LGCL_SBTYP_GROUP_03 foreign key (CLSF_ATRB_SN) references TB_LGCL_ATRB;
+alter table TB_LGCL_SBTYP add constraint FK_LGCL_SBTYP_01 foreign key (LGCL_SBTYP_GROUP_SN) references TB_LGCL_SBTYP_GROUP;
+alter table TB_LGCL_SBTYP add constraint FK_LGCL_SBTYP_02 foreign key (SBTYP_ENTT_SN) references TB_LGCL_ENTT;
+alter table TB_LGCL_SBTYP add constraint FK_LGCL_SBTYP_03 foreign key (LGCL_MDL_SN) references TB_LGCL_MDL;
+
+comment on table TB_LGCL_SBTYP_GROUP is '논리 서브타입 그룹';
+comment on column TB_LGCL_SBTYP_GROUP.LGCL_SBTYP_GROUP_SN is '논리 서브타입 그룹 일련번호';
+comment on column TB_LGCL_SBTYP_GROUP.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_LGCL_SBTYP_GROUP.LGCL_MDL_SN is '논리 모델 일련번호';
+comment on column TB_LGCL_SBTYP_GROUP.SPRTYP_ENTT_SN is '슈퍼타입 엔터티 일련번호';
+comment on column TB_LGCL_SBTYP_GROUP.SBTYP_GROUP_NM is '서브타입 그룹 명';
+comment on column TB_LGCL_SBTYP_GROUP.SBTYP_GROUP_EXPLN is '서브타입 그룹 설명';
+comment on column TB_LGCL_SBTYP_GROUP.DPCN_PSBLTY_YN is '중복 가능 여부';
+comment on column TB_LGCL_SBTYP_GROUP.TOTL_YN is '완전 여부';
+comment on column TB_LGCL_SBTYP_GROUP.CLSF_ATRB_SN is '분류 속성 일련번호';
+comment on column TB_LGCL_SBTYP_GROUP.SORT_ORD is '정렬 순서';
+comment on column TB_LGCL_SBTYP_GROUP.REG_DT is '등록 일시';
+comment on column TB_LGCL_SBTYP_GROUP.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_SBTYP_GROUP.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_SBTYP_GROUP.MDFR_ID is '수정자 아이디';
+comment on table TB_LGCL_SBTYP is '논리 서브타입';
+comment on column TB_LGCL_SBTYP.LGCL_SBTYP_SN is '논리 서브타입 일련번호';
+comment on column TB_LGCL_SBTYP.PRJ_SN is '프로젝트 일련번호';
+comment on column TB_LGCL_SBTYP.LGCL_MDL_SN is '논리 모델 일련번호';
+comment on column TB_LGCL_SBTYP.LGCL_SBTYP_GROUP_SN is '논리 서브타입 그룹 일련번호';
+comment on column TB_LGCL_SBTYP.SBTYP_ENTT_SN is '서브타입 엔터티 일련번호';
+comment on column TB_LGCL_SBTYP.CLSF_VL is '분류 값';
+comment on column TB_LGCL_SBTYP.SORT_ORD is '정렬 순서';
+comment on column TB_LGCL_SBTYP.REG_DT is '등록 일시';
+comment on column TB_LGCL_SBTYP.MDFCN_DT is '수정 일시';
+comment on column TB_LGCL_SBTYP.RGTR_ID is '등록자 아이디';
+comment on column TB_LGCL_SBTYP.MDFR_ID is '수정자 아이디';
+
+
+-- ---------- 예전 증분 V4 (상속 PK 컬럼 매핑 M-7 3차, 2026-11-22 네 번째 합침) ----------
+-- 예전 증분 V4 : 서브타입 식별자 컬럼 매핑 (M-7 3차, 2026-11-20 — docs/completed/subtype-physical-transformation.md 30장, M7-D40·D43)
+-- B형(엔터티마다 테이블) 물리 변환에서 서브타입 테이블의 상속 PK 컬럼 ↔ 루트 주 식별자 속성(원본 속성 ID)을 연결한다.
+-- 기존 엔터티 테이블 매핑(1:1)·속성 컬럼 매핑(속성 1 : 컬럼 1, UX_ATRB_COL_MPNG_01·02)은 바꾸지 않는다 : 같은 루트 속성이 여러 서브타입 테이블의 컬럼과 연결되므로
+--   원본 속성 단독 UNIQUE 는 두지 않고 (엔터티 테이블 매핑, 원본 속성) 조합과 컬럼을 각각 UNIQUE 로 둔다.
+-- 컬럼이 속성 컬럼 매핑과 이 매핑에 함께 쓰이지 않는 것(교차 중복)·원본 속성이 서브타입의 유효 주 식별자인 것·컬럼이 매핑된 테이블의 것은 서비스가
+--   논리 모델 행 → 테이블 행 잠금 안에서 검사한다 (DB 제약으로 표현할 수 없다). 정합성(물리 PK·타입·FK 일치)은 저장하지 않고 조회 때 계산한다.
+-- 기존 데이터에서 매핑을 추정해 넣지 않는다 (이 테이블은 비어 있게 만든다). 예제(프로젝트 0)에도 매핑 행은 만들지 않는다.
+-- 이름 (표준 사전 확인 2026-11-20) : 서브타입(SBTYP, V3 기관 표준단어)·식별자(IDNTFR, 기관 표준단어 — 공통표준에는 식별 IDNTF 만 있고 식별자는 없다,
+--   TB_LGCL_IDNTFR 와 같은 단어)·컬럼(COL)·매핑(MPNG)·일련번호(SN) 는 예제 사전에 있다. 새 용어는 서브타입_식별자_컬럼_매핑_일련번호 하나뿐이다.
+-- 예제(프로젝트 0)에 새 테이블을 용어 → 물리 → 논리 → 매핑 → 관계(+ 속성 짝) → 인덱스 → 업무 설명 순서로 넣는다 (V2·V3 와 같은 규칙).
+
+create sequence SQ_SBTYP_IDNTFR_COL_MPNG start with 1 increment by 50;
+create table TB_SBTYP_IDNTFR_COL_MPNG (
+    SBTYP_IDNTFR_COL_MPNG_SN bigint not null,
+    ENTT_TBL_MPNG_SN bigint not null,
+    LGCL_ATRB_SN bigint not null,
+    COL_SN bigint not null,
+    REG_DT timestamp(6),
+    MDFCN_DT timestamp(6),
+    RGTR_ID varchar(255),
+    MDFR_ID varchar(255),
+    constraint PK_SBTYP_IDNTFR_COL_MPNG primary key (SBTYP_IDNTFR_COL_MPNG_SN)
+);
+create unique index UX_SBTYP_IDNTFR_COL_MPNG_01 on TB_SBTYP_IDNTFR_COL_MPNG (ENTT_TBL_MPNG_SN, LGCL_ATRB_SN);
+create unique index UX_SBTYP_IDNTFR_COL_MPNG_02 on TB_SBTYP_IDNTFR_COL_MPNG (COL_SN);
+create index IX_SBTYP_IDNTFR_COL_MPNG_01 on TB_SBTYP_IDNTFR_COL_MPNG (LGCL_ATRB_SN);
+alter table TB_SBTYP_IDNTFR_COL_MPNG add constraint FK_SBTYP_IDNTFR_COL_MPNG_01 foreign key (ENTT_TBL_MPNG_SN) references TB_ENTT_TBL_MPNG;
+alter table TB_SBTYP_IDNTFR_COL_MPNG add constraint FK_SBTYP_IDNTFR_COL_MPNG_02 foreign key (LGCL_ATRB_SN) references TB_LGCL_ATRB;
+alter table TB_SBTYP_IDNTFR_COL_MPNG add constraint FK_SBTYP_IDNTFR_COL_MPNG_03 foreign key (COL_SN) references TB_COL;
+
+comment on table TB_SBTYP_IDNTFR_COL_MPNG is '서브타입 식별자 컬럼 매핑';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.SBTYP_IDNTFR_COL_MPNG_SN is '서브타입 식별자 컬럼 매핑 일련번호';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.ENTT_TBL_MPNG_SN is '엔터티 테이블 매핑 일련번호';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.LGCL_ATRB_SN is '논리 속성 일련번호';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.COL_SN is '컬럼 일련번호';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.REG_DT is '등록 일시';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.MDFCN_DT is '수정 일시';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.RGTR_ID is '등록자 아이디';
+comment on column TB_SBTYP_IDNTFR_COL_MPNG.MDFR_ID is '수정자 아이디';
+
+
+-- ---------- 예전 증분 V5 (컬럼 데이터 무결성 M7-U09, 2026-11-22 네 번째 합침) ----------
+-- 예전 증분 V5 : 물리 컬럼 데이터 무결성 (M-7, 2026-11-22 — docs/completed/column-name-uniqueness-m7.md, M7-U01~U07 · M7-U09 통합)
+-- 미배포 상태에서 V5(컬럼명 UNIQUE)·V6(필수값)·V7(유니코드 정규화)을 하나로 합친 최종본이다 (M7-U09, 15장). V0~V4 는 그대로다.
+-- 최종 구조 : TB_COL.TBL_SN · COL_NM NOT NULL, CK_COL_01 (빈 이름 = 빈 문자열 또는 ASCII 공백류 U+0020·탭·LF·VT·FF·CR 만 — 서버 ColumnNameKey.isBlankName 과 같다),
+--   생성 컬럼 COL_NM_CMPR_VL varchar(765) = 앞뒤 공백(U+0020) 제거 + 로캘 중립 Unicode 확장 대문자 (ß → SS, ﬁ → FI, σ·ς → Σ — 서버 ColumnNameKey.of 와 같은 뜻),
+--   UNIQUE UX_COL_01 (TBL_SN, COL_NM_CMPR_VL). 실제 컬럼명(COL_NM)은 바꾸지 않는다. 생성 컬럼은 기술 컬럼이다 (애플리케이션은 쓰지도 매핑하지도 않는다).
+--   H2 : H2 의 UPPER 는 String.toUpperCase() 라 JVM 기본 로캘을 따른다 (터키어 로캘이면 i → İ). 그래서 H2 자체의 org.h2.util.StringUtils.toUpperEnglish
+--   (= toUpperCase(Locale.ENGLISH), 대소문자 변환은 Locale.ROOT 와 같다)를 별칭 FN_UPPER_ROOT 로 쓴다 — 애플리케이션 클래스가 아니라 H2 jar 안의 함수다.
+-- 순서 : ① 별칭 (있으면 그대로) ② 사전 검사 하나로 필수값 위반 · 새 기준 중복 · 비교 값 765자 초과를 모두 세어 처음 50개 목록과 함께 표 변경 전에 멈춘다
+--   (데이터를 지우거나 고치지 않는다. H2 는 DDL 이 바로 확정되므로 이때 남는 것은 ① 의 별칭뿐이다 — 정리 → repair → 다시 실행) ③ DDL ④ 예제 메타데이터.
+-- 예제(프로젝트 0) : 도메인 값V765 · 용어 컬럼_명_비교_값 → TB_COL 컬럼 → 엔터티 속성 → 속성 매핑 → 제약조건 UX_COL_01 · CK_COL_01 → 업무 설명,
+--   TB_COL.TBL_SN·COL_NM 필수. 예제 모델은 생성 컬럼을 표현하지 못한다 (예제에는 일반 컬럼으로 보이고 업무 설명에 생성 컬럼임을 적는다).
+-- (예전 ② 사전 검사는 빈 새 설치에서 할 일이 없어 뺐다 — 예제 데이터는 이 제약을 지킨 채 V1 이 넣는다)
+
+-- ①
+create alias if not exists FN_UPPER_ROOT deterministic for 'org.h2.util.StringUtils.toUpperEnglish';
+
+-- ③ DDL
+alter table TB_COL alter column TBL_SN set not null;
+alter table TB_COL alter column COL_NM set not null;
+alter table TB_COL add constraint CK_COL_01 check (trim(translate(COL_NM, chr(9) || chr(10) || chr(11) || chr(12) || chr(13), '     ')) <> '');
+alter table TB_COL add column COL_NM_CMPR_VL varchar(765) generated always as (FN_UPPER_ROOT(trim(COL_NM)));
+alter table TB_COL add constraint UX_COL_01 unique (TBL_SN, COL_NM_CMPR_VL);
+comment on column TB_COL.COL_NM_CMPR_VL is '컬럼 명 비교 값';

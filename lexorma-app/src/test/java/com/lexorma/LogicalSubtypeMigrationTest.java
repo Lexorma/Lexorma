@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class LogicalSubtypeMigrationTest {
 
-    @ParameterizedTest(name = "V2 설치 → V3 {0}")
+    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V3 합침) {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void upgradeKeepsExistingModels(String vendor) {
         String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
@@ -32,12 +32,14 @@ class LogicalSubtypeMigrationTest {
         String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         String s = "\"" + schema + "\".";
-        Flyway v2 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("2"))
+        Flyway v2 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor)
                 .cleanDisabled(false).load();
         try {
+            // 2026-11-22 네 번째 합침 : 예전 V3(서브타입)은 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다
             assertThat(v2.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(v2.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
-            // V2 설치에서 쓰던 데이터 : 논리 모델·엔터티(승인·미승인)·속성·주 식별자·관계·주제 영역·소속·배치
+            // 사용자 데이터 : 논리 모델·엔터티(승인·미승인)·속성·주 식별자·관계·주제 영역·소속·배치
             jdbc.update("insert into " + s + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900000401, 'upgrade', true, false, true, 'POSTGRESQL')");
             jdbc.update("insert into " + s + "TB_LGCL_MDL(LGCL_MDL_SN, PRJ_SN, MDL_NM, MDFCN_DT) values (900000410, 900000401, '기존 모델', timestamp '2026-11-01 10:00:00')");
             jdbc.update("insert into " + s + "TB_LGCL_ENTT(LGCL_ENTT_SN, PRJ_SN, LGCL_MDL_SN, ENTT_NM, APRV_YN, MDFCN_DT) values (900000411, 900000401, 900000410, '고객', true, timestamp '2026-11-01 10:00:00')");
@@ -52,21 +54,7 @@ class LogicalSubtypeMigrationTest {
             jdbc.update("insert into " + s + "TB_LGCL_SBJ_AREA_ENTT(LGCL_SBJ_AREA_ENTT_SN, PRJ_SN, LGCL_MDL_SN, LGCL_SBJ_AREA_SN, LGCL_ENTT_SN) values (900000419, 900000401, 900000410, 900000418, 900000411)");
             jdbc.update("insert into " + s + "TB_LGCL_ERD_LYT(LGCL_ERD_LYT_SN, PRJ_SN, LGCL_MDL_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO)"
                     + " values (900000420, 900000401, 900000410, 1, '{\"900000411\":{\"x\":1.0,\"y\":2.0}}', 0, 0, 1, 3)");
-            String entities = "select LGCL_ENTT_SN, ENTT_NM, APRV_YN, MDFCN_DT from " + s + "TB_LGCL_ENTT where PRJ_SN = 900000401 order by LGCL_ENTT_SN";
-            String layout = "select NODE_PSTN_CN, VER_NO from " + s + "TB_LGCL_ERD_LYT where LGCL_ERD_LYT_SN = 900000420";
-            List<Map<String, Object>> entitiesBefore = jdbc.queryForList(entities);
-            Map<String, Object> layoutBefore = jdbc.queryForMap(layout);
-            int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
-            int exampleIndexes = jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class);
-
-            // V3 까지만 (V4 이후는 각 증분의 업그레이드 테스트가 본다 — SubtypeIdentifierColumnMappingMigrationTest)
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("3")).load();
-            assertThat(latest.migrate().migrationsExecuted).isOne();
-            assertThat(latest.validateWithResult().validationSuccessful).isTrue();
-
-            // 기존 데이터 그대로 (수정 일시·승인 포함), 서브타입 그룹은 없다 (자동 생성 없음 — 예제 프로젝트에도 그룹 데이터는 없다)
-            assertThat(jdbc.queryForList(entities)).isEqualTo(entitiesBefore);
-            assertThat(jdbc.queryForMap(layout)).isEqualTo(layoutBefore);
+            // 서브타입 그룹은 없다 (자동 생성 없음 — 예제 프로젝트에도 그룹 데이터는 없다)
             for (String table : List.of("TB_LGCL_REL", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_IDNTFR_ATRB")) {
                 assertThat(jdbc.queryForObject("select count(*) from " + s + table + " where " + (table.equals("TB_LGCL_IDNTFR_ATRB") ? "LGCL_IDNTFR_ATRB_SN = 900000416" : "PRJ_SN = 900000401"),
                         Integer.class)).as(table).isOne();
@@ -74,9 +62,9 @@ class LogicalSubtypeMigrationTest {
             for (String table : List.of("TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP")) {
                 assertThat(jdbc.queryForObject("select count(*) from " + s + table, Integer.class)).as(table).isZero();
             }
-            // 예제 : 새 테이블 2개의 물리·논리 모델·인덱스 6개 (예제 정합성은 V0SeedMigrationTest 가 본다), 새 단어
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class)).isEqualTo(exampleEntities + 2);
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class)).isEqualTo(exampleIndexes + 6);
+            // 예제 : 서브타입 테이블 2개의 물리·논리 모델·인덱스 6개 (예제 정합성은 V0SeedMigrationTest 가 본다), 새 단어
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0 and TBL_NM in ('TB_LGCL_SBTYP_GROUP', 'TB_LGCL_SBTYP')", Integer.class)).isEqualTo(2);
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX i join " + s + "TB_TBL t on t.TBL_SN = i.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM like 'TB_LGCL_SBTYP%'", Integer.class)).isEqualTo(6);
             assertThat(jdbc.queryForList("select WORD_NM || ':' || WORD_ENG_ABBR_NM from " + s + "TB_STD_WORD where PRJ_SN = 0 and WORD_NM in ('슈퍼타입', '서브타입', '완전', '중복', '가능', '그룹', '분류')"
                     , String.class)).as("DB 정렬 규칙과 무관하게 비교").containsExactlyInAnyOrder("가능:PSBLTY", "그룹:GROUP", "분류:CLSF", "서브타입:SBTYP", "슈퍼타입:SPRTYP", "완전:TOTL", "중복:DPCN");
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_STD_WORD where PRJ_SN = 0 and WORD_ENG_ABBR_NM in ('TOTL', 'SPRTYP', 'SBTYP', 'DPCN', 'PSBLTY')", Integer.class))

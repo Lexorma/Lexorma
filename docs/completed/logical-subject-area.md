@@ -1,5 +1,7 @@
 # 논리 모델 주제 영역 (Subject Area) — M-6 후속 4차
 
+> **2026-11-22 네 번째 Flyway 합침 (사용자 결정)** : 이 문서의 마이그레이션 V2 는 `V0__init.sql`(스키마 — 끝의 '예전 증분 V2 (… 네 번째 합침)' 구간)·`V1__seed_data.sql`(예제 — 같은 이름의 구간)로 합쳐져 지금 파일로는 없다. 아래의 V2 파일명·업그레이드 검증은 기록용이다 ([completed-work.md](../completed-work.md) 마이그레이션 기록).
+
 - 상태 : **구현·검증 완료** (2026-11-20). 1단계 설계(2026-11-19, 같은 파일의 이전 판 `docs/ongoing/logical-subject-area.md`)에서 사용자가 D-01~D-27 을 확정한 뒤 구현했다. 남은 일은 §21.
 - 관련 : [logical-model-m6.md](logical-model-m6.md) (13장 부분 조회, 14장 평행 관계선, 15장 서버 페이징), [list-query-policy.md](../reference/list-query-policy.md), [ui-motion-guide.md](../reference/ui-motion-guide.md), [db-naming-standard.md](../reference/db-naming-standard.md), [model-exchange-dec22.md](model-exchange-dec22.md)
 - 코드 : `lexorma-data` `logical/` (`LogicalSubjectAreaService`, `LogicalSubjectAreaRestController`, `LogicalSubjectArea`·`LogicalSubjectAreaEntity`·`LogicalSubjectAreaLayout`, `LogicalModelQueryRepository` 범위 조건), `history/record/ModelChangeRecorder`, `exchange/`, `version/`; 화면 `lexorma-web/src/features/logical/` (`SubjectAreaPanel.tsx`, `subjectArea.ts`, `LogicalModelPage.tsx`, `LogicalErdPage.tsx`, `entityDetail.tsx`); 마이그레이션 `V2__logical_subject_area.sql` (PostgreSQL·H2 같은 내용)

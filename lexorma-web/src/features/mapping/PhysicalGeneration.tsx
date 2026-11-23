@@ -14,16 +14,44 @@ export const GENERATION_MAX_ENTITIES = 100;
 const ENTITY_PAGE_SIZE = 20;
 interface ColumnPlan { attributeId: number; attributeName: string; columnName: string; dataType: string; maxLength: number | null; precision: number | null; scale: number | null; pk: boolean; nullable: boolean; refTableName: string | null;
   /** 상속 PK 컬럼이면 루트 엔터티 (M-7 2차) */
-  inheritedFromEntityId?: number | null }
+  inheritedFromEntityId?: number | null;
+  /** 매핑 종류 (M-7 상속 A·C) : DIRECT · MERGED(A형 통합) · INHERITED_KEY(상속 PK) · INHERITED_ATTRIBUTE(C형 조상 속성 복제) */
+  mappingKind?: MappingKind | null; sourceEntityId?: number | null; sourceEntityName?: string | null; logicalRequired?: boolean; classification?: boolean }
+type MappingKind = 'DIRECT' | 'MERGED' | 'INHERITED_KEY' | 'INHERITED_ATTRIBUTE';
+/** 상속 변환 전략 (M-7 상속 A·C) : B형이 기본 */
+export type Strategy = 'TABLE_PER_TYPE' | 'SINGLE_TABLE' | 'TABLE_PER_CONCRETE';
+export const STRATEGIES: { value: Strategy; label: string; description: string }[] = [
+  { value: 'TABLE_PER_TYPE', label: t('B형 · 슈퍼타입·서브타입 개별 테이블'), description: t('엔터티마다 테이블, 서브타입은 상속 PK 로 직계 상위 테이블을 참조합니다 (기본).') },
+  { value: 'SINGLE_TABLE', label: t('A형 · 단일 테이블 통합'), description: t('계층 전체를 루트 테이블 하나로 만들고 분류 속성으로 유형을 구분합니다. 배타(Disjoint) 상속만, 분류 속성·값이 필요합니다.') },
+  { value: 'TABLE_PER_CONCRETE', label: t('C형 · 말단 서브타입별 테이블'), description: t('말단 서브타입마다 테이블을 만들고 조상 속성을 복제합니다. 모든 그룹이 배타·완전(Disjoint·Total)이어야 합니다.') },
+];
+const strategyLabel = (value: string | null | undefined) => STRATEGIES.find((s) => s.value === value)?.label ?? value ?? '';
+interface EntityRef { entityId: number; entityName: string }
+interface StrategyPlan {
+  rootEntityId: number; rootEntityName: string; strategy: Strategy; status: 'READY' | 'BLOCKED'; entities: number; tables: number; columns: number; uniques: number;
+  foreignKeys: number; excludedForeignKeys: number; missingEntities: EntityRef[]; mergedEntities: EntityRef[]; distributedEntities: EntityRef[]; errors: string[]; warnings: string[];
+}
+interface ConversionPlan {
+  groupId: number; groupName: string; supertypeEntityName: string; rootEntityId: number; strategy: Strategy; tableName: string | null;
+  classificationAttributeName: string | null; classificationColumnName: string | null; values: { entityId: number; entityName: string; value: string | null }[];
+}
+const MAPPING_KINDS: Record<MappingKind, { label: string; variant: 'accent' | 'done' | 'attention' | '' }> = {
+  DIRECT: { label: '', variant: '' },
+  MERGED: { label: t('통합'), variant: 'done' },
+  INHERITED_KEY: { label: t('상속 PK'), variant: 'accent' },
+  INHERITED_ATTRIBUTE: { label: t('상속 속성 복제'), variant: 'attention' },
+};
 interface AttributeChoice { attributeId: number; attributeName: string; primary: boolean; excluded: boolean; excludeRequested: boolean; foreignKey: boolean }
 interface TablePlan {
-  entityId: number; entityName: string; status: 'CREATE' | 'SKIP' | 'ERROR' | 'UNSUPPORTED'; tableName: string | null; schemaName: string; columns: ColumnPlan[]; errors: string[]; warnings: string[];
+  entityId: number; entityName: string; status: 'CREATE' | 'SKIP' | 'ERROR' | 'UNSUPPORTED' | 'MERGED' | 'DISTRIBUTED'; tableName: string | null; schemaName: string; columns: ColumnPlan[]; errors: string[]; warnings: string[];
   attributes: AttributeChoice[];
   /** 슈퍼타입·서브타입 B형 계획 (M-7 2차, 참여하지 않으면 null) */
   inheritance?: InheritancePlan | null;
 }
 type InheritanceRole = 'ROOT' | 'INTERMEDIATE' | 'SUBTYPE';
-interface InheritancePlan { strategy: string; role: InheritanceRole; level: number; parentEntityId: number | null; parentEntityName: string | null; rootEntityId: number; rootEntityName: string; groupId: number | null; groupName: string | null; reasons: string[] }
+interface InheritancePlan { strategy: string; role: InheritanceRole; level: number; parentEntityId: number | null; parentEntityName: string | null; rootEntityId: number; rootEntityName: string; groupId: number | null; groupName: string | null; reasons: string[];
+  /** M-7 상속 A·C : DIRECT · MERGED · DISTRIBUTED, tableEntities = 이 테이블에 들어가는 엔터티(A형 루트) 또는 분산되는 말단(C형) */
+  physicalRole?: 'DIRECT' | 'MERGED' | 'DISTRIBUTED'; tableEntities?: EntityRef[] }
 interface InheritanceForeignKeyPlan {
   childEntityId: number; childEntityName: string; parentEntityId: number; parentEntityName: string; groupId: number; status: 'READY' | 'BLOCKED'; reason: string | null;
   fkType: 'SINGLE' | 'COMPOSITE' | null; parentTableName: string | null; parentTableId: number | null; childTableName: string | null; constraintName: string | null; columns: FkColumn[];
@@ -31,19 +59,28 @@ interface InheritanceForeignKeyPlan {
 interface RequiredAncestor { entityId: number; entityName: string; reason: string; requiredBy: number[] }
 /** 조상 하나의 쓰임 (M-7 4차) : SELECTED 이번에 만든다 · REUSE 유효한 기존 테이블 재사용 · REVIEW 기존 매핑 구조가 맞지 않음(함께 선택해도 해결 안 됨) · MISSING 선택 필요 */
 interface AncestorUse { entityId: number; entityName: string; state: 'SELECTED' | 'REUSE' | 'REVIEW' | 'MISSING'; reason: string | null; mappingId: number | null; tableName: string | null; requiredBy: number[] }
-interface ConstraintWarning { groupId: number; groupName: string; supertypeEntityId: number; supertypeEntityName: string; constraint: 'DISJOINT' | 'TOTAL'; guarantee: string; message: string }
+interface ConstraintWarning { groupId: number | null; groupName: string | null; supertypeEntityId: number; supertypeEntityName: string; constraint: ConstraintCode; guarantee: string; message: string }
+type ConstraintCode = 'DISJOINT' | 'TOTAL' | 'CLASSIFICATION_VALUE' | 'SUBTYPE_SCOPE' | 'GLOBAL_KEY';
+const CONSTRAINT_LABELS: Record<ConstraintCode, string> = {
+  DISJOINT: t('배타 미보장'), TOTAL: t('완전 미보장'), CLASSIFICATION_VALUE: t('분류 값 범위 미보장'), SUBTYPE_SCOPE: t('유형별 적용 범위 미보장'), GLOBAL_KEY: t('테이블 간 유일성 미보장'),
+};
 const INHERITANCE_ROLES: Record<InheritanceRole, string> = { ROOT: t('루트 슈퍼타입'), INTERMEDIATE: t('중간 슈퍼타입'), SUBTYPE: tc('상속 역할', '서브타입') };
 export interface GenerationResult {
   tables: number; columns: number; tableIds: number[]; versionId: number | null; versionName: string | null; foreignKeys: number;
   /** M-7 3차 : 만든 상속 FK 수, 저장한 상속 PK 매핑 수 */
   inheritanceForeignKeys?: number; inheritedKeyMappings?: number;
+  /** M7-AK-01 : 만든 보조 식별자 UNIQUE 수 */
+  uniques?: number;
+  /** M-7 상속 A·C : C형 상속 일반 속성 매핑 수, 변환 기록 수, 전략상 FK 를 만들지 않은 관계 */
+  inheritedAttributeMappings?: number; conversions?: number; excludedRelationshipIds?: number[];
 }
 type IdentifierCode = 'IDENTIFIER_LENGTH_EXCEEDED' | 'IDENTIFIER_INVALID_CHARACTER' | 'IDENTIFIER_NOT_RECOMMENDED' | 'CONSTRAINT_NAME_TRUNCATED' | 'CONSTRAINT_NAME_COLLISION';
 interface IdentifierIssue {
   entityId: number | null; attributeId: number | null; code: IdentifierCode; severity: 'ERROR' | 'WARNING'; kind: string; name: string; ddlName: string | null;
   length: number | null; maxLength: number | null; basis: string; message: string; guide: string; related: string[];
 }
-type RelationReason = 'ATTRIBUTE_PAIRS_MISSING' | 'ATTRIBUTE_PAIRS_INCOMPLETE' | 'ATTRIBUTE_PAIRS_INVALID' | 'COLUMN_UNAVAILABLE' | 'PARENT_KEY_NOT_TABLE_KEY' | 'SELF_KEY_ONLY' | 'TYPE_INCOMPATIBLE' | 'CHILD_COLUMN_IN_USE' | 'SELF_REFERENCE' | 'MULTIPLE_RELATIONSHIPS' | 'COMPOSITE_PARENT_KEY' | 'PARENT_KEY_MISSING' | 'PARENT_TABLE_MISSING' | 'INHERITED_KEY_MAPPING_MISSING';
+type RelationReason = 'ATTRIBUTE_PAIRS_MISSING' | 'ATTRIBUTE_PAIRS_INCOMPLETE' | 'ATTRIBUTE_PAIRS_INVALID' | 'COLUMN_UNAVAILABLE' | 'PARENT_KEY_NOT_TABLE_KEY' | 'SELF_KEY_ONLY' | 'TYPE_INCOMPATIBLE' | 'CHILD_COLUMN_IN_USE' | 'SELF_REFERENCE' | 'MULTIPLE_RELATIONSHIPS' | 'COMPOSITE_PARENT_KEY' | 'PARENT_KEY_MISSING' | 'PARENT_TABLE_MISSING' | 'INHERITED_KEY_MAPPING_MISSING'
+  | 'UNIQUE_ORDER_DIFFERS' | 'PARENT_UNIQUE_MISSING' | 'SUBTYPE_SCOPE_NOT_ENFORCED' | 'SUPERTYPE_DISTRIBUTED' | 'STRATEGY_STRUCTURE_MISMATCH' | 'INHERITED_RELATIONSHIP';
 interface RelationPlan {
   relationshipId: number; relationshipName: string | null; parentEntityId: number; parentEntityName: string; childEntityId: number; childEntityName: string;
   fkCreated: boolean; reasons: RelationReason[]; message: string; approved: boolean | null;
@@ -52,8 +89,16 @@ interface RelationPlan {
   /** FK 생성 계획 (M-7 보강 4차) */
   fkStatus: FkStatus; fkType: FkType | null; parentTableName: string | null; parentTableId: number | null; childTableName: string | null;
   constraintName: string | null; refTableName: string | null; columns: FkColumn[];
+  /** 짝이 가리키는 부모 식별자 (M7-AK-03) : PRIMARY · ALTERNATE (보조 식별자 UNIQUE 참조 — 단일도 미승인 사용자 관계) */
+  keyType?: 'PRIMARY' | 'ALTERNATE' | null; keyIdentifierName?: string | null;
 }
-type FkStatus = 'READY' | 'NO_PAIRS' | 'PARTIAL_PAIRS' | 'IDENTIFIER_MISMATCH' | 'PARENT_TABLE_UNAVAILABLE' | 'COLUMN_UNAVAILABLE' | 'UNSUPPORTED' | 'CONFLICT';
+/** 보조 식별자 → UNIQUE 계획 (M7-AK-01) : CREATE 만 만든다. SKIP 사유 PRIMARY_KEY_DUPLICATE · DUPLICATE_ALTERNATE_KEY · COLUMN_UNAVAILABLE, 경고 NULLABLE_COLUMNS */
+interface UniquePlan {
+  entityId: number; entityName: string; identifierId: number; identifierName: string; tableName: string | null; constraintName: string | null; columns: string[];
+  status: 'CREATE' | 'SKIP'; reason: 'PRIMARY_KEY_DUPLICATE' | 'DUPLICATE_ALTERNATE_KEY' | 'COLUMN_UNAVAILABLE' | null;
+  duplicateOfIdentifierId: number | null; duplicateOfIdentifierName: string | null; warnings: string[]; message: string;
+}
+type FkStatus = 'READY' | 'NO_PAIRS' | 'PARTIAL_PAIRS' | 'IDENTIFIER_MISMATCH' | 'PARENT_TABLE_UNAVAILABLE' | 'COLUMN_UNAVAILABLE' | 'UNSUPPORTED' | 'CONFLICT' | 'STRATEGY_EXCLUDED';
 type FkType = 'SINGLE' | 'SELF_SINGLE' | 'COMPOSITE' | 'SELF_COMPOSITE';
 interface FkColumn { order: number; parentAttributeId: number; parentColumnName: string; childAttributeId: number; childColumnName: string }
 const FK_TYPES: Record<FkType, string> = {
@@ -62,13 +107,17 @@ const FK_TYPES: Record<FkType, string> = {
 const FK_STATUS: Record<FkStatus, string> = {
   READY: t('FK 생성'), NO_PAIRS: t('속성 짝 없음'), PARTIAL_PAIRS: t('속성 짝 일부'), IDENTIFIER_MISMATCH: t('부모 식별자 불일치'),
   PARENT_TABLE_UNAVAILABLE: t('부모 테이블 없음'), COLUMN_UNAVAILABLE: t('컬럼 없음'), UNSUPPORTED: t('표현할 수 없음'), CONFLICT: t('다른 FK 와 충돌'),
+  STRATEGY_EXCLUDED: t('전략상 생성 제외'),
 };
 interface Plan {
   tables: TablePlan[]; creatable: boolean; planToken: string; dbType: string; identifiers: IdentifierIssue[]; relations: RelationPlan[];
   /** 지금 반영할 수 있는지 (M-7 2차) — 상속 구조 엔터티를 만드는 계획은 유효해도 반영하지 않는다 */
   executable?: boolean; executionBlockedReason?: string | null;
   inheritanceForeignKeys?: InheritanceForeignKeyPlan[]; requiredAncestors?: RequiredAncestor[]; constraintWarnings?: ConstraintWarning[];
+  uniques?: UniquePlan[];
   ancestors?: AncestorUse[];
+  /** M-7 상속 A·C : 계층별 전략 요약, 그룹 변환 기록 계획 */
+  strategies?: StrategyPlan[]; conversions?: ConversionPlan[];
 }
 
 const IDENTIFIER_CODES: Record<IdentifierCode, string> = {
@@ -91,8 +140,14 @@ const RELATION_REASONS: Record<RelationReason, string> = {
   MULTIPLE_RELATIONSHIPS: t('같은 부모의 관계 여러 개'),
   COMPOSITE_PARENT_KEY: t('부모 복합 식별자'),
   PARENT_KEY_MISSING: t('부모 주 식별자 없음'),
+  UNIQUE_ORDER_DIFFERS: t('보조 식별자 순서와 다름'),
+  PARENT_UNIQUE_MISSING: t('기존 부모 UNIQUE 없음'),
   PARENT_TABLE_MISSING: t('부모 테이블 없음'),
   INHERITED_KEY_MAPPING_MISSING: t('부모 상속 PK 매핑 없음'),
+  SUBTYPE_SCOPE_NOT_ENFORCED: t('A형 서브타입 참조 (범위 미보장)'),
+  SUPERTYPE_DISTRIBUTED: t('C형 분산 엔터티 참조'),
+  STRATEGY_STRUCTURE_MISMATCH: t('변환 기록 불일치'),
+  INHERITED_RELATIONSHIP: t('말단 테이블마다 복제'),
 };
 /** 상속 FK 를 만들 수 없는 사유 (M-7 2·3차 — 서버 코드) */
 const INHERITANCE_REASONS: Record<string, string> = {
@@ -143,6 +198,10 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
   const total = list.data?.recordsTotal ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / ENTITY_PAGE_SIZE));
   const [picked, setPicked] = useState<Map<number, string>>(new Map());
+  /** 상속 계층 루트 → 전략 (M-7 상속 A·C) : 고른 루트만 보낸다. 없으면 B형 */
+  const [strategies, setStrategies] = useState<Map<number, Strategy>>(new Map());
+  /** 고른 엔터티 중 상속 계층 루트 (목록 행의 상속 역할로 안다) */
+  const [roots, setRoots] = useState<Map<number, string>>(new Map());
   const [schemaId, setSchemaId] = useState(String(schemas.find((s) => s.isDefault)?.id ?? ''));
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
@@ -159,7 +218,8 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
   const sequence = useRef(0);
   const body = (entityIds: number[], exclude: Set<number>, planToken?: string) =>
     ({ entityIds, schemaId: schemaId ? Number(schemaId) : null, planToken: planToken ?? null,
-      excludedAttributeIds: [...exclude].filter((id) => entityIds.includes(owners.get(id) ?? -1)) });
+      excludedAttributeIds: [...exclude].filter((id) => entityIds.includes(owners.get(id) ?? -1)),
+      strategies: [...strategies].filter(([id, value]) => entityIds.includes(id) && value !== 'TABLE_PER_TYPE').map(([rootEntityId, strategy]) => ({ rootEntityId, strategy })) });
 
   const preview = async (entityIds = [...picked.keys()], exclude = excluded) => {
     const mine = ++sequence.current;
@@ -191,6 +251,22 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
     }
     discardPlan();
     setPicked((prev) => { const next = new Map(prev); if (next.has(row.entityId)) next.delete(row.entityId); else next.set(row.entityId, row.entityName); return next; });
+    if (row.inheritance?.role === 'ROOT' && row.inheritance.supertype) setRoots((prev) => new Map(prev).set(row.entityId, row.entityName));
+  };
+  const chooseStrategy = (rootId: number, value: Strategy) => { discardPlan(); setStrategies((prev) => new Map(prev).set(rootId, value)); };
+  const pickedRoots = [...roots].filter(([id]) => picked.has(id));
+  // 계층 전체 함께 선택 (D-AC-03) : A·C 는 계층 전체가 필요하다 — 미리보기가 알려 준 빠진 엔터티를 사용자가 누를 때만 더한다 (100개 제한 그대로)
+  const missingTree = (plan?.strategies ?? []).flatMap((sp) => sp.missingEntities).filter((e) => !picked.has(e.entityId));
+  const includeTree = () => {
+    const after = picked.size + missingTree.length;
+    if (after > GENERATION_MAX_ENTITIES) {
+      setNotice(t('계층 전체를 함께 고르면 {0}개가 되어 최대 {1}개를 넘습니다. 아무것도 추가하지 않았습니다.', after, GENERATION_MAX_ENTITIES));
+      return;
+    }
+    const next = new Map(picked);
+    missingTree.forEach((e) => next.set(e.entityId, e.entityName));
+    setPicked(next);
+    void preview([...next.keys()], excluded);
   };
   const unpick = (id: number) => { discardPlan(); setPicked((prev) => { const next = new Map(prev); next.delete(id); return next; }); };
   const clearPicked = () => { discardPlan(); setPicked(new Map()); setExcluded(new Set()); };
@@ -225,6 +301,8 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
     void preview([...next.keys()], excluded);
   };
   const createCount = plan ? plan.tables.filter((tp) => tp.status === 'CREATE').length : 0;
+  const mergedCount = plan ? plan.tables.filter((tp) => tp.status === 'MERGED').length : 0;
+  const distributedCount = plan ? plan.tables.filter((tp) => tp.status === 'DISTRIBUTED').length : 0;
   const skipCount = plan ? plan.tables.filter((tp) => tp.status === 'SKIP').length : 0;
   const columnCount = plan ? plan.tables.filter((tp) => tp.status === 'CREATE').reduce((sum, tp) => sum + tp.columns.length, 0) : 0;
   const nameOf = (id: number) => plan?.tables.find((x) => x.entityId === id)?.entityName ?? picked.get(id) ?? String(id);
@@ -280,7 +358,68 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
           </ul>
         </details>
       )}
+      {pickedRoots.length > 0 && (
+        <section className="gen-section" aria-label={t('상속 계층 변환 전략')}>
+          <h4>{t('상속 계층 변환 전략')}</h4>
+          <p className="gh-muted">{t('고른 상속 계층의 루트마다 물리 변환 전략을 고릅니다. 한 계층에는 전략 하나만 쓰며, A·C형은 계층 전체(루트·중간·말단)를 함께 골라야 합니다.')}</p>
+          <ul className="gen-issues">
+            {pickedRoots.map(([id, name]) => {
+              const value = strategies.get(id) ?? 'TABLE_PER_TYPE';
+              return (
+                <li key={id}>
+                  <label>
+                    <strong>{name}</strong>{' '}
+                    <select className="form-control gen-strategy" aria-label={t('{0} 의 변환 전략', name)} value={value} disabled={busy}
+                      onChange={(e) => chooseStrategy(id, e.target.value as Strategy)}>
+                      {STRATEGIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </label>
+                  <div className="gh-muted">{STRATEGIES.find((s) => s.value === value)?.description}</div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
       {notice && <div className="ai-dict-callout is-warn" role="alert">{notice}</div>}
+      {plan && (plan.strategies?.length ?? 0) > 0 && (
+        <section className="gen-section" aria-label={t('변환 전략 계획')}>
+          <h4>{t('변환 전략 계획')}</h4>
+          <ul className="gen-issues">
+            {plan.strategies!.map((sp) => (
+              <li key={sp.rootEntityId}>
+                <Label variant={sp.status === 'READY' ? 'success' : 'danger'}>{sp.status === 'READY' ? t('생성 가능') : t('생성 불가')}</Label>{' '}
+                <strong>{sp.rootEntityName}</strong> · {strategyLabel(sp.strategy)}
+                <div className="gh-muted">{t('논리 엔터티 {0}개 → 테이블 {1}개 · 컬럼 {2}개 · UNIQUE {3}개 · FK {4}개 · 전략상 제외 FK {5}개',
+                  sp.entities, sp.tables, sp.columns, sp.uniques, sp.foreignKeys, sp.excludedForeignKeys)}</div>
+                {sp.mergedEntities.length > 0 && <div className="gh-muted">{t('통합되는 엔터티 : {0}', sp.mergedEntities.map((e) => e.entityName).join(', '))}</div>}
+                {sp.distributedEntities.length > 0 && <div className="gh-muted">{t('분산되는 엔터티 (테이블 없음) : {0}', sp.distributedEntities.map((e) => e.entityName).join(', '))}</div>}
+                {sp.errors.length > 0 && <ul className="gen-errors">{sp.errors.map((m) => <li key={m}>{m}</li>)}</ul>}
+              </li>
+            ))}
+          </ul>
+          {missingTree.length > 0 && (
+            <div className="gen-tree-pick">
+              <button type="button" className="btn" disabled={busy} onClick={includeTree}>{t('계층 전체 함께 선택 ({0}개)', missingTree.length)}</button>
+              <span className="gh-muted">{t('추가 후 {0} / {1}개 · 다시 미리보기만 하며 생성하지 않습니다.', picked.size + missingTree.length, GENERATION_MAX_ENTITIES)}</span>
+            </div>
+          )}
+          {(plan.conversions ?? []).filter((c) => c.strategy === 'SINGLE_TABLE').length > 0 && (
+            <div>
+              <h5>{t('A형 분류 컬럼')}</h5>
+              <ul className="gen-issues">
+                {plan.conversions!.filter((c) => c.strategy === 'SINGLE_TABLE').map((c) => (
+                  <li key={c.groupId}>
+                    <strong>{c.groupName}</strong> ({c.supertypeEntityName}) · <span className="gh-mono">{c.tableName ?? '-'}.{c.classificationColumnName ?? '-'}</span>
+                    <div className="gh-muted">{c.values.map((v) => `${v.entityName} = ${v.value ?? '-'}`).join(' · ')}</div>
+                  </li>
+                ))}
+              </ul>
+              <p className="gh-muted">{t('분류 값 CHECK·유형별 필수 CHECK 는 만들지 않습니다 (DB 에서 강제되지 않습니다).')}</p>
+            </div>
+          )}
+        </section>
+      )}
       {plan && (
         <div style={{ overflowX: 'auto' }}>
           {plan.tables.map((tp) => {
@@ -291,11 +430,14 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
               <details key={tp.entityId} className="gen-table" open={plan.tables.length <= 5 || tp.status === 'ERROR'}>
                 <summary><strong>{tp.entityName}</strong> → <span className={`gh-mono${flagged(null) ? ' gen-ident-flag' : ''}`}>{tp.tableName ?? '-'}</span>{' '}
                   {/* UNSUPPORTED (M-6 후속 5차) : 슈퍼타입·서브타입 구조 — 만들지 않지만 다른 엔터티의 생성은 막지 않는다 */}
-                  <Label variant={tp.status === 'CREATE' ? 'success' : tp.status === 'SKIP' || tp.status === 'UNSUPPORTED' ? 'attention' : 'danger'}>
-                    {tp.status === 'CREATE' ? t('생성') : tp.status === 'SKIP' ? t('건너뜀') : tp.status === 'UNSUPPORTED' ? t('미지원 (상속 구조)') : t('오류')}
+                  <Label variant={tp.status === 'CREATE' ? 'success' : tp.status === 'SKIP' || tp.status === 'UNSUPPORTED' ? 'attention' : tp.status === 'MERGED' || tp.status === 'DISTRIBUTED' ? 'done' : 'danger'}>
+                    {tp.status === 'CREATE' ? t('생성') : tp.status === 'SKIP' ? t('건너뜀') : tp.status === 'UNSUPPORTED' ? t('미지원 (상속 구조)')
+                      : tp.status === 'MERGED' ? t('통합 (테이블 없음)') : tp.status === 'DISTRIBUTED' ? t('분산 (테이블 없음)') : t('오류')}
                   </Label>
-                  {tp.inheritance && <> <Label variant="done">{INHERITANCE_ROLES[tp.inheritance.role]}</Label>{tp.inheritance.parentEntityName && <span className="gh-muted"> {t('상위 {0}', tp.inheritance.parentEntityName)}</span>}</>}
-                  {tp.columns.length > 0 && <span className="gh-muted"> · {t('상속 PK {0} · 직접 속성 {1}', tp.columns.filter((c) => c.inheritedFromEntityId != null).length, tp.columns.filter((c) => c.inheritedFromEntityId == null).length)}</span>}
+                  {tp.inheritance && <> <Label variant="done">{INHERITANCE_ROLES[tp.inheritance.role]}</Label>{tp.inheritance.strategy && tp.inheritance.strategy !== 'TABLE_PER_TYPE' && <> <Label>{strategyLabel(tp.inheritance.strategy)}</Label></>}
+                    {tp.inheritance.parentEntityName && <span className="gh-muted"> {t('상위 {0}', tp.inheritance.parentEntityName)}</span>}</>}
+                  {tp.columns.length > 0 && <span className="gh-muted"> · {t('컬럼 {0}개 (상속 PK {1} · 통합 {2} · 상속 속성 복제 {3})', tp.columns.length, tp.columns.filter((c) => c.inheritedFromEntityId != null).length,
+                    tp.columns.filter((c) => c.mappingKind === 'MERGED').length, tp.columns.filter((c) => c.mappingKind === 'INHERITED_ATTRIBUTE').length)}</span>}
                 </summary>
                 {[...tp.errors, ...tp.warnings].length > 0 && <ul className="gh-muted">{[...tp.errors, ...tp.warnings].map((m) => <li key={m}>{m}</li>)}</ul>}
                 {tp.attributes.length > 0 && (
@@ -317,10 +459,14 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
                 )}
                 {tp.columns.length > 0 && (
                   <table className="term-relink-table">
-                    <thead><tr><th>{t('속성')}</th><th>{t('컬럼')}</th><th>{t('데이터 타입')}</th><th>PK</th><th>NULL</th>{showRef && <th>{t('참조 테이블')}</th>}</tr></thead>
+                    <thead><tr><th>{t('속성')}</th><th>{t('정의 엔터티')}</th><th>{t('컬럼')}</th><th>{t('데이터 타입')}</th><th>PK</th><th>NULL</th>{showRef && <th>{t('참조 테이블')}</th>}</tr></thead>
                     <tbody>{tp.columns.map((c) => (
                       <tr key={c.attributeId} className={flagged(c.attributeId) ? 'gen-ident-row' : undefined}>
-                        <td>{c.attributeName}{c.inheritedFromEntityId != null && <> <Label variant="accent">{t('상속 PK')}</Label></>}</td><td className="gh-mono">{c.columnName}</td><td className="gh-mono">{typeText(c)}</td><td>{c.pk ? 'Y' : ''}</td><td>{c.nullable ? 'Y' : 'N'}</td>
+                        <td>{c.attributeName}{c.mappingKind && c.mappingKind !== 'DIRECT' ? <> <Label variant={MAPPING_KINDS[c.mappingKind].variant}>{MAPPING_KINDS[c.mappingKind].label}</Label></>
+                          : c.inheritedFromEntityId != null && <> <Label variant="accent">{t('상속 PK')}</Label></>}
+                          {c.classification && <> <Label variant="accent">{t('분류')}</Label></>}
+                          {c.logicalRequired && c.nullable && <> <Label variant="attention" title={t('논리적으로 필수지만 통합 테이블에서는 NULL 을 허용합니다 (유형 안의 필수 조건은 DB 에서 강제되지 않습니다).')}>{t('필수 → NULL 허용')}</Label></>}</td>
+                        <td>{c.sourceEntityName ?? tp.entityName}</td><td className="gh-mono">{c.columnName}</td><td className="gh-mono">{typeText(c)}</td><td>{c.pk ? 'Y' : ''}</td><td>{c.nullable ? 'Y' : 'N'}</td>
                         {showRef && <td className="gh-mono">{c.refTableName ?? ''}</td>}
                       </tr>
                     ))}</tbody>
@@ -377,7 +523,7 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
             <section className="gen-section" aria-label={t('물리로 보장되지 않는 상속 제약')}>
               <h4>{t('물리로 보장되지 않는 상속 제약')}</h4>
               <p className="gh-muted">{t('경고만 하며 생성을 막지 않습니다. PK·FK 외의 제약(트리거·CHECK·구분 컬럼 복제)은 만들지 않습니다.')}</p>
-              <ul className="gen-issues">{plan.constraintWarnings!.map((w) => <li key={`${w.groupId}-${w.constraint}`}><Label variant="attention">{w.constraint === 'DISJOINT' ? t('배타 미보장') : t('완전 미보장')}</Label> {w.message}</li>)}</ul>
+              <ul className="gen-issues">{plan.constraintWarnings!.map((w, n) => <li key={`${w.groupId}-${w.constraint}-${n}`}><Label variant="attention">{CONSTRAINT_LABELS[w.constraint] ?? w.constraint}</Label> {w.message}</li>)}</ul>
             </section>
           )}
           {plan.identifiers.length > 0 && (
@@ -397,22 +543,42 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
               </ul>
             </section>
           )}
+          {(plan.uniques?.length ?? 0) > 0 && (
+            <section className="gen-section" aria-label={t('보조 식별자 UNIQUE')}>
+              <h4>{t('보조 식별자 UNIQUE')}</h4>
+              <p className="gh-muted">{t('새로 만드는 테이블에만 보조 식별자마다 명시적 UNIQUE 제약조건을 식별자 속성 순서대로 미승인으로 만듭니다. 주 식별자와 같은 구성, 같은 구성의 다른 보조 식별자는 하나만 만듭니다. NULL 허용 컬럼은 경고만 합니다.')}</p>
+              <ul className="gen-issues">
+                {plan.uniques!.map((u) => (
+                  <li key={`${u.identifierId}-${u.entityId}`}>
+                    <Label variant={u.status === 'CREATE' ? 'success' : 'attention'}>{u.status === 'CREATE' ? t('UNIQUE 생성') : t('만들지 않음')}</Label>{' '}
+                    <strong>{u.entityName}</strong> · {u.identifierName}
+                    {u.status === 'CREATE' && <div className="gen-fk"><span className="gh-mono">{u.constraintName} ({u.columns.join(', ')})</span></div>}
+                    <div className="gh-muted">{u.message}</div>
+                    {u.warnings.includes('NULLABLE_COLUMNS') && <div className="gh-muted">{t('NULL 허용 컬럼이 있습니다. NULL 값은 UNIQUE 로 중복을 막지 못하며 필수 여부는 바꾸지 않습니다.')}</div>}
+                    {u.warnings.includes('ORACLE_COMPOSITE_NULL') && <div className="gh-muted">{t('Oracle 은 일부 컬럼만 NULL 인 복합 UNIQUE 의 중복을 다른 DBMS 와 다르게 판단합니다.')}</div>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {plan.relations.length > 0 && (
             <section className="gen-section" aria-label={t('논리 관계 FK')}>
               <h4>{t('논리 관계 FK')}</h4>
               <p className="gh-muted">{t('논리 관계에 지정한 속성 짝이 완성된 관계만 FK 를 만듭니다 (일반 단일 FK 는 자식 컬럼의 참조 테이블, 자기 참조·복합 FK 는 관계로). 만들 수 없는 관계는 사유와 함께 FK 없이 만듭니다. 속성 짝은 논리 모델 관리·논리 ERD 의 관계에서 지정합니다.')}</p>
               <ul className="gen-issues">
                 {plan.relations.map((r) => (
-                  <li key={r.relationshipId}>
+                  <li key={`${r.relationshipId}-${r.childEntityId}`}>
                     <Label variant={r.fkCreated ? 'success' : 'attention'}>{r.fkCreated ? FK_STATUS.READY : t('FK 미생성')}</Label>{' '}
                     {r.fkType && <><Label>{FK_TYPES[r.fkType]}</Label>{' '}</>}
+                    {r.keyType === 'ALTERNATE' && <><Label variant="accent">{t('보조 식별자 참조')}</Label>{' '}</>}
                     <strong>{r.parentEntityName}</strong> → <strong>{r.childEntityName}</strong>{r.relationshipName && <span className="gh-muted"> ({r.relationshipName})</span>}
                     {r.approved === false && <> <Label variant="attention">{t('승인 전')}</Label></>}
                     {!r.fkCreated && <div className="gh-muted">{FK_STATUS[r.fkStatus] ?? r.fkStatus} · {r.message}</div>}
                     {r.fkCreated && (
                       <div className="gen-fk">
                         <span className="gh-mono">{r.childTableName} ({r.columns.map((c) => c.childColumnName).join(', ')}) → {r.parentTableName} ({r.columns.map((c) => c.parentColumnName).join(', ')})</span>
-                        <div className="gh-muted">{t('제약조건명')} <span className="gh-mono">{r.constraintName}</span>{r.parentTableId != null && <> · {t('기존 부모 테이블')}</>}</div>
+                        <div className="gh-muted">{t('제약조건명')} <span className="gh-mono">{r.constraintName}</span>{r.parentTableId != null && <> · {t('기존 부모 테이블')}</>}
+                          {r.keyType === 'ALTERNATE' && <> · {t('보조 식별자 {0} 의 UNIQUE 참조 · 미승인 사용자 관계', r.keyIdentifierName ?? '-')}</>}</div>
                       </div>
                     )}
                     <div className="gen-reasons">{r.reasons.map((reason) => <Label key={reason}>{RELATION_REASONS[reason] ?? reason}</Label>)}</div>
@@ -433,7 +599,8 @@ export function PhysicalGeneration({ modelId, schemas, onDone, onReview }: {
       {plan && !stale && (
         <p className="gh-muted gen-summary">{t('만들 테이블 {0}개 · 컬럼 {1}개 · 건너뜀 {2}개 · 오류 엔터티 {3}개 · 상속 FK {4}개 · 관계 FK {5}개 (FK 없이 만드는 관계 {6}개). 생성 직전 모델 버전을 남깁니다.',
           createCount, columnCount, skipCount, errorEntities.length, (plan.inheritanceForeignKeys ?? []).filter((k) => k.status === 'READY').length,
-          plan.relations.filter((r) => r.fkCreated).length, plan.relations.filter((r) => !r.fkCreated).length)}</p>
+          plan.relations.filter((r) => r.fkCreated).length, plan.relations.filter((r) => !r.fkCreated).length)}
+          {(mergedCount > 0 || distributedCount > 0) && <> {t('통합 엔터티 {0}개 · 분산 엔터티 {1}개 (자기 테이블 없음).', mergedCount, distributedCount)}</>}</p>
       )}
       {!plan && picked.size > 0 && !busy && !error && <p className="gh-muted" role="status">{t('선택이 바뀌었습니다. 미리보기로 계획을 확인한 뒤 생성할 수 있습니다.')}</p>}
       {error && <div className="ai-dict-callout is-error" role="alert">{error}</div>}

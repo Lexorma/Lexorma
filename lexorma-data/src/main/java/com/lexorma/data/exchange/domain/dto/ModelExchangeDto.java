@@ -14,15 +14,18 @@ import java.util.Map;
  * (원본 속성·식별자와 그룹으로 다시 만든다). 서브타입이 부모인 관계의 속성 짝은 루트의 주 식별자 속성 번호를 가리킨다.
  * 버전 6 (M-7 3차, M7-D43) : 상속 PK 매핑(SUBTYPE_KEY_MAPPING — 서브타입 엔터티 매핑 · 루트 주 식별자 속성 · 서브타입 테이블 컬럼 번호). 가져올 때 새 매핑·속성·컬럼에 다시 잇고,
  * 파일 안에서 참조·중복·속성 매핑과의 교차 중복을 확인한다 (어기면 파일 전체를 거절한다). 형식 1~5 파일에는 들어갈 수 없다.
+ * 버전 7 (M-7 상속 A·C, D-AC-14) : 상속 그룹 변환 기록(SUBTYPE_CONVERSION — 그룹·전략·A형 통합 테이블·분류 컬럼)과 C형 상속 일반 속성 매핑(SUBTYPE_ATTR_MAPPING — 말단 엔터티 매핑 ·
+ * 조상 속성 · 말단 테이블 컬럼). A형 서브타입 속성은 루트 매핑 아래 COLUMN_MAPPING 이다. 변환 기록과 매핑 구조가 모순되면 파일 전체를 거절한다. 형식 1~6 파일에는 들어갈 수 없고,
+ * 그 파일은 예전 뜻 그대로 가져온다 (기록이 없다고 B형 생성 완료로 보지 않는다).
  * 버전 1·2·3·4 파일도 그대로 가져온다 (VIEW·배치·속성 짝·주제 영역·서브타입이 없을 뿐이다 — 그 버전에 없는 내용이 들어 있으면 거절한다. 주제 영역·서브타입을 자동으로 만들지 않는다).
  * 넣지 않는 것 : 승인 상태, 원본 DB 연결·원본 카탈로그·원본 DB 에서 수집한 VIEW 정의(DEC-16), 비밀번호·키·토큰, 감사 컬럼·사용자·감사 로그.
  */
 public final class ModelExchangeDto {
 
     public static final String FORMAT = "lexorma-model";
-    public static final int FORMAT_VERSION = 6;
-    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 (관계 속성 짝 없음), 3 (주제 영역 없음), 4 (서브타입 없음), 5 (상속 PK 매핑 없음), 6 */
-    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2, 3, 4, 5, 6);
+    public static final int FORMAT_VERSION = 7;
+    /** 가져올 수 있는 형식 버전 : 1 (VIEW·배치 없음), 2 (관계 속성 짝 없음), 3 (주제 영역 없음), 4 (서브타입 없음), 5 (상속 PK 매핑 없음), 6 (상속 A·C 없음), 7 */
+    public static final java.util.Set<Integer> SUPPORTED_VERSIONS = java.util.Set.of(1, 2, 3, 4, 5, 6, 7);
 
     private ModelExchangeDto() {
     }

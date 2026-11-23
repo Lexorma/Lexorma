@@ -53,6 +53,13 @@ public interface PhysicalModelService {
 
     PhysicalModelDto.Constraint saveConstraint(AccountDto accountDto, PhysicalModelDto.Constraint constraint);
 
+    /**
+     * 논리 → 물리 생성·누락 UNIQUE 보정 전용 UNIQUE (M7-AK-01·02) : {@link #saveConstraint} 의 UNIQUE 와 같은 검사(PK·고유값 컬럼과 같은 구성, 같은 컬럼 집합의 UNIQUE·고유 인덱스,
+     * 테이블 안 이름)를 거쳐 <b>미승인</b>으로 만든다 (승인 여부를 로그인 사용자로 정하지 않는다 — M7-AK-D08). 테이블 행 잠금은 부르는 쪽이 이미 잡았다
+     */
+    com.lexorma.data.physical.domain.entity.TableConstraint createGeneratedUnique(Long projectId, com.lexorma.data.table.domain.entity.TableInfo table,
+                                                                             java.util.List<com.lexorma.data.column.domain.entity.ColumnInfo> columns, String name);
+
     void delete(AccountDto accountDto, Kind kind, Long id);
 
     void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval);

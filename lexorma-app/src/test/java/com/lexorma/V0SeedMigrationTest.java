@@ -30,13 +30,13 @@ class V0SeedMigrationTest {
             // V0 (스키마·COMMENT) + V1 (초기 데이터 : 기본 데이터, 예제 데이터 사전·물리 모델·논리 모델·매핑·인덱스).
             // 2026-11-13 에 예전 V2~V6, 2026-11-15 Flyway 초기화 때 예전 V2~V10 을, 같은 날 두 번째로 그 뒤의 V2~V5(AI 설명 품질 평가·안내 공지의 AI 절·예제 업무 설명·예제 코드 용어 정의)를,
             // 2026-11-18 세 번째로 그 뒤의 증분 V2~V7(판정 변경 이력·프로젝트 AI 설정·출처 컬럼 매핑·출처 VIEW 정의·내장 MCP·논리 관계 속성 짝)을 V0·V1 로 합쳤다.
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(6); // V0·V1 (2026-11-18 세 번째 합침) + V2 (주제 영역, M-6 후속 4차) + V3 (서브타입, M-6 후속 5차) + V4 (서브타입 식별자 컬럼 매핑, M-7 3차) + V5 (컬럼 데이터 무결성, M-7 — 미배포 V5·V6·V7 통합)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3); // V0·V1 (2026-11-22 네 번째 합침 — 예전 V2 주제 영역 · V3 서브타입 · V4 서브타입 식별자 컬럼 매핑 · V5 컬럼 데이터 무결성 포함)
             var jdbc = new JdbcTemplate(dataSource);
-            // V0·V2·V3·V4 의 create index 152개(컬럼 217개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
+            // V0·V2·V3·V4 의 create index 159개(컬럼 225개)가 모두 승인된 USER 예제 인덱스로 들어가고 임시 테이블은 남지 않는다.
             // create index 를 추가하면 V1 에 예제 인덱스도 넣고 이 수를 고친다.
             String idx = "\"" + schema + "\".TB_TBL_IDX";
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(152);
-            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(217);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + " where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and APRV_YN = true", Integer.class)).isEqualTo(159);
+            assertThat(jdbc.queryForObject("select count(*) from " + idx + "_COL x join " + idx + " i on i.IDX_SN = x.IDX_SN where i.PRJ_SN = 0", Integer.class)).isEqualTo(225);
             assertThat(jdbc.queryForObject("select count(*) from INFORMATION_SCHEMA.TABLES where upper(TABLE_NAME) = 'TMP_IDX_SEED'", Integer.class)).isZero();
             // 초기 데이터에 예전 프로젝트 이름이 없다
             assertThat(oldNames(jdbc, "\"" + schema + "\".")).isZero();

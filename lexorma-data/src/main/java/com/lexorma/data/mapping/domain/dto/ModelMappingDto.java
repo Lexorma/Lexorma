@@ -22,7 +22,14 @@ public final class ModelMappingDto {
      */
     public record EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
                             Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
-                            Long attributeCount, Long mappedAttributeCount, Inheritance inheritance) {
+                            Long attributeCount, Long mappedAttributeCount, Inheritance inheritance, Physical physical) {
+        public EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
+                         Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
+                         Long attributeCount, Long mappedAttributeCount, Inheritance inheritance) {
+            this(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
+                    attributeCount, mappedAttributeCount, inheritance, null);
+        }
+
         /** 조회 투영 (상속 요약은 목록 서비스가 페이지 단위로 채운다 — M-7 4차) */
         public EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
                          Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
@@ -33,8 +40,57 @@ public final class ModelMappingDto {
 
         public EntityRow withInheritance(Inheritance value) {
             return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    attributeCount, mappedAttributeCount, value);
+                    attributeCount, mappedAttributeCount, value, physical);
         }
+
+        /** A형 루트 : 통합 테이블에 들어간 계층 전체의 직접 속성 수 (통합 속성 매핑이 루트 매핑 아래에 있으므로 분모도 같은 범위) */
+        public EntityRow withAttributeCount(Long value) {
+            return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
+                    value, mappedAttributeCount, inheritance, physical);
+        }
+
+        public EntityRow withPhysical(Physical value) {
+            return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
+                    attributeCount, mappedAttributeCount, inheritance, value);
+        }
+    }
+
+    /**
+     * 엔터티의 물리 매핑 문맥 (M-7 상속 A·C, D-AC-16 — 조회 때 계산). kind : DIRECT(직접 매핑) · MERGED(A형 통합 — 루트 통합 테이블) · DISTRIBUTED(C형 분산 — 말단 테이블들) · UNMAPPED.
+     * strategy : SINGLE_TABLE · TABLE_PER_CONCRETE (A·C 계층만, 아니면 null), valid : 통합·분산이 실제 매핑으로 성립하는지 (A형 = 루트가 기록의 통합 테이블에 매핑, C형 = 아래 말단이 모두 매핑 —
+     * 아니면 미매핑으로 센다). tables : 통합 테이블(1) 또는 분산 엔터티의 말단 테이블 (이동용 — 대표 하나를 고르지 않는다), reason : 성립하지 않는 사유
+     */
+    public record Physical(String kind, String strategy, boolean valid, Long rootEntityId, String rootEntityName, List<PhysicalTable> tables, String reason) {
+    }
+
+    public record PhysicalTable(Long entityId, String entityName, Long mappingId, Long schemaId, Long tableId, String tableName) {
+    }
+
+    /** C형 상속 일반 속성 매핑 저장. mappingId = 말단 엔터티 매핑, attributeId = 조상 일반 속성(원본). 변경(id 있음)은 columnId 만 바꾼다 */
+    public record SubtypeAttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+    }
+
+    /**
+     * C형 상속 일반 속성 매핑 1행 (조상 일반 속성마다 — 루트 → 직계 부모 순서, 그 뒤 지금 조상 속성이 아닌 기존 매핑(current false)). check : OK · UNMAPPED · OTHER_TABLE · STALE
+     */
+    public record SubtypeAttributeRow(Long id, boolean current, Long attributeId, String attributeName, Long ownerEntityId, String ownerEntityName, Long columnId, String columnName,
+                                      String dataType, Integer maxLength, String attributeTermName, String attributeDataType, Boolean required, Boolean notNull, String check) {
+    }
+
+    /** C형 말단 매핑의 상속 일반 속성 매핑 상세. concrete false 면 지금 C형 계층의 말단이 아니다 (기존 매핑은 해제만) */
+    public record SubtypeAttributeDetail(EntityRow mapping, boolean concrete, String strategy, List<SubtypeAttributeRow> attributes, String message) {
+    }
+
+    /** 변환 기록 1행 */
+    public record Conversion(Long id, Long groupId, String groupName, Long supertypeEntityId, String supertypeEntityName, String strategy, Long tableId, String tableName,
+                             Long classificationColumnId, String classificationColumnName) {
+    }
+
+    /**
+     * 상속 계층 하나의 변환 기록 (D-AC-18). kind : SINGLE_TABLE · TABLE_PER_CONCRETE · INCONSISTENT. dependencies : 기록 삭제를 막는 매핑 (엔터티 매핑·속성 매핑·상속 PK·상속 일반 속성 —
+     * 먼저 해제한다), deletable : dependencies 가 없다
+     */
+    public record ConversionTree(Long rootEntityId, String rootEntityName, String kind, List<Conversion> conversions, List<String> dependencies, boolean deletable) {
     }
 
     /**
@@ -60,7 +116,11 @@ public final class ModelMappingDto {
 
     /** 매핑된 엔터티의 속성 1행. 매핑하지 않은 속성은 mappingId·column 이 null 이다. 표준 용어는 비교용 조회 값이다 */
     public record AttributeRow(Long mappingId, Long attributeId, String attributeName, Long attributeTermId, String attributeTermName,
-                               Long columnId, String columnName, Long columnTermId, String columnTermName) {
+                               Long columnId, String columnName, Long columnTermId, String columnTermName, Long ownerEntityId, String ownerEntityName) {
+        public AttributeRow(Long mappingId, Long attributeId, String attributeName, Long attributeTermId, String attributeTermName,
+                            Long columnId, String columnName, Long columnTermId, String columnTermName) {
+            this(mappingId, attributeId, attributeName, attributeTermId, attributeTermName, columnId, columnName, columnTermId, columnTermName, null, null);
+        }
     }
 
     /** 매핑 후보 컬럼 : 매핑된 테이블의 컬럼 중 아직 속성에 연결하지 않은 것 */
@@ -75,11 +135,30 @@ public final class ModelMappingDto {
     }
 
     /** 논리 모델별 매핑 현황. 미매핑 = 전체 - 매핑 */
+    /**
+     * 매핑률 (D-AC-16) : (직접 매핑 + 유효한 통합 매핑) ÷ (전체 - 유효한 분산 엔터티). mappedEntities = 직접 + 통합, totalEntities = 전체 - 분산, unmapped = 그 차.
+     * directEntities·mergedEntities·distributedEntities·logicalEntities 는 구분 수 (logicalEntities = 전체 논리 엔터티). 속성도 같은 규칙 (분산 엔터티의 속성은 분모에서 뺀다)
+     */
     public record Status(Long modelId, String modelName, Long totalEntities, Long mappedEntities, Long unmappedEntities,
-                         Long totalAttributes, Long mappedAttributes, Long unmappedAttributes) {
+                         Long totalAttributes, Long mappedAttributes, Long unmappedAttributes, Long logicalEntities, Long directEntities, Long mergedEntities,
+                         Long distributedEntities) {
         public Status(Long modelId, String modelName, Long totalEntities, Long mappedEntities, Long totalAttributes, Long mappedAttributes) {
             this(modelId, modelName, totalEntities, mappedEntities, totalEntities - mappedEntities,
-                    totalAttributes, mappedAttributes, totalAttributes - mappedAttributes);
+                    totalAttributes, mappedAttributes, totalAttributes - mappedAttributes, totalEntities, mappedEntities, 0L, 0L);
+        }
+
+        public Status(Long modelId, String modelName, Long totalEntities, Long mappedEntities, Long unmappedEntities,
+                      Long totalAttributes, Long mappedAttributes, Long unmappedAttributes) {
+            this(modelId, modelName, totalEntities, mappedEntities, unmappedEntities, totalAttributes, mappedAttributes, unmappedAttributes, totalEntities, mappedEntities, 0L, 0L);
+        }
+
+        /** 통합·분산 반영 (분산 엔터티 수·그 속성 수를 분모에서 빼고, 통합 엔터티를 매핑에 더한다) */
+        public Status withStrategies(long merged, long distributed, long distributedAttributes) {
+            long total = logicalEntities - distributed;
+            long mapped = directEntities + merged;
+            long attributes = totalAttributes - distributedAttributes;
+            return new Status(modelId, modelName, total, mapped, total - mapped, attributes, mappedAttributes, attributes - mappedAttributes, logicalEntities, directEntities,
+                    merged, distributed);
         }
     }
 
@@ -138,6 +217,10 @@ public final class ModelMappingDto {
     }
 
     /** level : OK · ERROR · MISSING · UNKNOWN · WARNING */
-    public record StructureCheck(String code, String level, String message) {
+    /** detail : 기계 판정용 상세 코드 (M7-INH-03 — PARENT_FK 의 INHERITANCE_FK_MISSING·_COLUMNS·_ORDER·_TARGET·_DUPLICATE 등, 없으면 null). 화면은 문구를 해석하지 않는다 */
+    public record StructureCheck(String code, String level, String message, String detail) {
+        public StructureCheck(String code, String level, String message) {
+            this(code, level, message, null);
+        }
     }
 }

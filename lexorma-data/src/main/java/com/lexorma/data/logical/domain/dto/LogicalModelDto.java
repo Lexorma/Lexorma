@@ -156,9 +156,14 @@ public final class LogicalModelDto {
 
     /**
      * 관계의 속성 짝과 판정 ({@code LogicalRelationshipPairs}). status : NONE · PARENT_KEY_MISSING · PARENT_KEY_MISMATCH · PARTIAL · COMPLETE,
-     * warnings : ORDER_DIFFERS · SELF_KEY_REUSED · IDENTIFYING_CHILD_NOT_KEY · REQUIRED_CHILD_NULLABLE, parentKeySize : 부모 주 식별자 속성 수
+     * warnings : ORDER_DIFFERS · SELF_KEY_REUSED · IDENTIFYING_CHILD_NOT_KEY · REQUIRED_CHILD_NULLABLE, parentKeySize : 참조 식별자 속성 수 (해석되지 않으면 부모 주 식별자 속성 수).
+     * keyType : 짝이 가리키는 부모 식별자 PRIMARY · ALTERNATE (M7-AK-D09 — 해석되지 않으면 null), keyIdentifierId·keyIdentifierName : 그 식별자 (상속 주 식별자면 null 일 수 있다)
      */
-    public record PairState(String status, List<String> warnings, List<AttributePair> pairs, int parentKeySize) {
+    public record PairState(String status, List<String> warnings, List<AttributePair> pairs, int parentKeySize, String keyType, Long keyIdentifierId,
+                            String keyIdentifierName) {
+        public PairState(String status, List<String> warnings, List<AttributePair> pairs, int parentKeySize) {
+            this(status, warnings, pairs, parentKeySize, null, null, null);
+        }
     }
 
     /** 짝 하나의 입력 (순서는 목록 순서) */
@@ -173,10 +178,25 @@ public final class LogicalModelDto {
     public record PairCandidate(Long attributeId, String attributeName, boolean primary, Integer keyOrder, Boolean isRequired) {
     }
 
-    /** 관계 속성 짝 조회·저장 응답 : 부모 후보 = 부모 주 식별자 속성(순서대로), 자식 후보 = 자식 엔터티의 모든 속성 */
+    /**
+     * 짝이 참조할 수 있는 부모 식별자 (M7-AK-D09) : 주 식별자(상속 주 식별자 포함) · 부모 자체의 보조 식별자. attributeIds·attributeNames = 식별자 순서.
+     * 화면의 입력 보조용 (식별자 ID 는 저장하지 않는다 — 저장된 짝의 부모 속성 집합으로 다시 해석한다).
+     * ownerEntityId·ownerEntityName : 식별자를 정의한 엔터티 (M7-INH-02 — 서브타입 부모의 주 식별자는 루트, 보조 식별자는 부모 자신). 상속받은 보조 식별자는 후보에 없다 (D-INH-05)
+     */
+    public record ParentKey(Long identifierId, String identifierName, String keyType, List<Long> attributeIds, List<String> attributeNames, Long ownerEntityId,
+                            String ownerEntityName) {
+        public ParentKey(Long identifierId, String identifierName, String keyType, List<Long> attributeIds, List<String> attributeNames) {
+            this(identifierId, identifierName, keyType, attributeIds, attributeNames, null, null);
+        }
+    }
+
+    /**
+     * 관계 속성 짝 조회·저장 응답 : 부모 후보 = 부모 주 식별자 속성(순서대로) + 부모 자체의 보조 식별자 속성, 자식 후보 = 자식 엔터티의 모든 속성.
+     * parentKeys : 참조할 수 있는 부모 식별자 (주 식별자 먼저, 보조 식별자는 식별자 ID 순)
+     */
     public record RelationshipPairs(Long relationshipId, java.time.LocalDateTime modifiedAt, Long parentEntityId, String parentEntityName, Long childEntityId,
                                     String childEntityName, Boolean isIdentifying, PairState state, List<PairCandidate> parentCandidates,
-                                    List<PairCandidate> childCandidates) {
+                                    List<PairCandidate> childCandidates, List<ParentKey> parentKeys) {
     }
 
     // ------------------------------------------------------------------ 논리 ERD

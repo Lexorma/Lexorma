@@ -130,6 +130,8 @@ public class PhysicalGenerationService {
     private final SubtypePlanContexts subtypeContexts;
     private final SubtypeIdentifierColumnMappingRepository subtypeKeys;
     private final com.lexorma.data.physical.repository.TableRelationRepository relationRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
+    private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributes;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -197,6 +199,7 @@ public class PhysicalGenerationService {
         Map<Long, Map<Long, ColumnInfo>> createdColumns = new HashMap<>();
         int columnCount = 0;
         int inheritedMappings = 0;
+        int inheritedAttributeMappings = 0;
         for (PhysicalGenerationDto.TablePlan item : plan.tables()) {
             if (!"CREATE".equals(item.status())) continue;
             LogicalEntity entity = byId.get(item.entityId());
@@ -210,8 +213,9 @@ public class PhysicalGenerationService {
             int order = 0;
             for (PhysicalGenerationDto.ColumnPlan c : item.columns()) {
                 boolean inherited = c.inheritedFromEntityId() != null;
-                // 상속 PK 컬럼의 원본 = 루트 주 식별자 속성 (계획을 만들 때 읽은 행 — 이 엔터티의 속성이 아니다)
-                LogicalAttribute attribute = inherited ? entityManager.find(LogicalAttribute.class, c.attributeId()) : attributes.get(c.attributeId());
+                String kind = c.mappingKind() == null ? (inherited ? "INHERITED_KEY" : "DIRECT") : c.mappingKind();
+                // 상속 PK 컬럼의 원본 = 루트 주 식별자 속성, A형 통합 컬럼 = 같은 계층 다른 엔터티의 속성, C형 복제 컬럼 = 조상 속성 (계획을 만들 때 읽은 행 — 이 엔터티의 속성이 아니다)
+                LogicalAttribute attribute = "DIRECT".equals(kind) ? attributes.get(c.attributeId()) : entityManager.find(LogicalAttribute.class, c.attributeId());
                 if (attribute == null) throw new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("생성 계획"));
                 ColumnInfo column = columns.save(ColumnInfo.builder().projectId(projectId).tableInfo(table).tableName(table.getTableName())
                         .columnName(c.columnName()).columnDesc(attribute.getAttributeName()).dataType(c.dataType()).maxLength(c.maxLength())
@@ -221,19 +225,44 @@ public class PhysicalGenerationService {
                         .standardTerms(attribute.getStandardTerm()).sortOrder(++order).isApproval(false).build());
                 table.getColumns().add(column);
                 own.put(attribute.getId(), column);
-                if (inherited) {
+                switch (kind) {
                     // 상속 PK 매핑 (M7-D45) : 직접 속성 매핑에는 넣지 않는다 (속성 1 : 컬럼 1 UNIQUE 를 그대로 둔다)
-                    subtypeKeys.save(SubtypeIdentifierColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
-                    inheritedMappings++;
-                } else {
-                    attributeMappings.save(AttributeColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
+                    case "INHERITED_KEY" -> {
+                        subtypeKeys.save(SubtypeIdentifierColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
+                        inheritedMappings++;
+                    }
+                    // C형 상속 일반 속성 매핑 (D-AC-02) : 같은 원본 속성을 말단마다 따로 — 직접 매핑을 여러 번 만들지 않는다
+                    case "INHERITED_ATTRIBUTE" -> {
+                        subtypeAttributes.save(com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
+                        inheritedAttributeMappings++;
+                    }
+                    // 직접 속성 매핑 : A형 통합(MERGED) 컬럼도 루트 매핑 아래 (원본 속성 1 : 컬럼 1 그대로 — 계층 소속은 계획이 확인했다)
+                    default -> attributeMappings.save(AttributeColumnMapping.builder().mapping(mapping).attribute(attribute).column(column).build());
                 }
                 columnCount++;
             }
             created.add(table.getId());
             createdTables.put(entity.getId(), table);
             createdColumns.put(entity.getId(), own);
+            // A형 : 통합 테이블에 들어간 구성원 문맥도 같은 테이블·컬럼 (FK·UNIQUE·검증이 엔터티 문맥으로 찾는다)
+            if (item.inheritance() != null && item.inheritance().tableEntities() != null) {
+                item.inheritance().tableEntities().forEach(ref -> {
+                    createdTables.put(ref.entityId(), table);
+                    createdColumns.put(ref.entityId(), own);
+                });
+            }
         }
+
+        // 보조 식별자 UNIQUE (M7-AK-01) : 테이블·컬럼을 모두 만든 뒤, FK 보다 먼저 (보조 식별자를 참조하는 FK 의 대상 키). 명시적 UNIQUE 제약조건 · 미승인 (M7-AK-D01·D08)
+        int uniques = 0;
+        columns.flush();
+        for (PhysicalGenerationDto.UniquePlan unique : plan.uniques()) {
+            if (!"CREATE".equals(unique.status()) || !createdTables.containsKey(unique.entityId())) continue;
+            TableInfo table = createdTables.get(unique.entityId());
+            physicalModelService.createGeneratedUnique(projectId, table, unique.columns().stream().map(name -> columnNamed(table, name)).toList(), unique.constraintName());
+            uniques++;
+        }
+        entityManager.flush();
 
         // FK (4차) : 모든 테이블·컬럼을 만든 뒤 (순환·자기 참조도 대상이 먼저 있다). 단일 FK(관계·상속)는 컬럼의 참조 테이블명으로 이미 넣었다 (아래 참조 동기화가 관계로 만든다)
         int foreignKeys = 0;
@@ -260,7 +289,8 @@ public class PhysicalGenerationService {
             for (PhysicalGenerationDto.RelationPlan relation : plan.relations()) {
                 if (!relation.fkCreated()) continue;
                 foreignKeys++;
-                if ("SINGLE".equals(relation.fkType())) continue;
+                // 일반 단일 PK 참조만 참조 테이블명 (기존 P2). 보조 식별자 참조는 단일도 사용자 관계 (M7-AK-D11 — 승인된 P2 예외)
+                if ("SINGLE".equals(relation.fkType()) && !"ALTERNATE".equals(relation.keyType())) continue;
                 TableInfo child = createdTables.get(relation.childEntityId());
                 TableInfo parent = relation.parentTableId() == null ? createdTables.get(relation.parentEntityId()) : tables.findById(relation.parentTableId()).orElseThrow();
                 List<ColumnInfo> childColumns = relation.columns().stream().map(c -> createdColumns.get(relation.childEntityId()).get(c.childAttributeId())).toList();
@@ -276,7 +306,24 @@ public class PhysicalGenerationService {
         // 하나라도 없으면 전체를 되돌린다 (조용히 빠뜨리지 않는다)
         physicalModelService.syncReferenceRelations(projectId, created);
         verifyForeignKeys(projectId, plan, createdTables, createdColumns);
-        return new PhysicalGenerationDto.Result(created.size(), columnCount, created, version.id(), version.versionName(), foreignKeys, inheritanceForeignKeys, inheritedMappings);
+        // 변환 기록 (D-AC-02) : 그룹마다 — A형은 통합 테이블·분류 컬럼, C형은 전략만. 같은 트랜잭션 (실패하면 테이블·매핑·버전과 함께 되돌린다)
+        int conversions = 0;
+        for (PhysicalGenerationDto.ConversionPlan conversion : plan.conversions()) {
+            boolean single = AlternativeInheritancePlanner.SINGLE_TABLE.equals(conversion.strategy());
+            TableInfo table = single ? createdTables.get(conversion.rootEntityId()) : null;
+            ColumnInfo classification = single ? createdColumns.get(conversion.rootEntityId()).get(conversion.classificationAttributeId()) : null;
+            if (single && (table == null || classification == null)) throw new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("생성 계획"));
+            conversionRepository.save(com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion.builder().projectId(projectId)
+                    .group(entityManager.getReference(com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup.class, conversion.groupId()))
+                    .strategy(com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion.Strategy.valueOf(conversion.strategy()))
+                    .table(table).classificationColumn(classification).build());
+            conversions++;
+        }
+        entityManager.flush();
+        List<Long> excludedRelationships = plan.relations().stream().filter(r -> "STRATEGY_EXCLUDED".equals(r.fkStatus())).map(PhysicalGenerationDto.RelationPlan::relationshipId)
+                .distinct().toList();
+        return new PhysicalGenerationDto.Result(created.size(), columnCount, created, version.id(), version.versionName(), foreignKeys, inheritanceForeignKeys, inheritedMappings,
+                uniques, inheritedAttributeMappings, conversions, excludedRelationships);
     }
 
     /** 기존 부모 테이블의 컬럼 (계획의 컬럼명 — 테이블 안에서 하나) */
@@ -337,6 +384,23 @@ public class PhysicalGenerationService {
         }
     }
 
+    /** 계획이 닿는 상속 계층의 루트 : 고른 엔터티와 그 관계(부모·자식) 상대 엔터티가 참여하는 계층 */
+    private Set<Long> touchedRoots(Set<Long> chosenIds, Set<Long> modelIds, LogicalHierarchy inheritance) {
+        Set<Long> touched = new HashSet<>(chosenIds);
+        for (Long modelId : modelIds) {
+            for (LogicalRelationship r : relationships.findAllByModelId(modelId)) {
+                Long source = r.getSourceEntity().getId(), target = r.getTargetEntity().getId();
+                if (chosenIds.contains(source) || chosenIds.contains(target)) {
+                    touched.add(source);
+                    touched.add(target);
+                }
+            }
+        }
+        Set<Long> roots = new HashSet<>();
+        touched.stream().filter(id -> inheritance.participates(id) && !inheritance.cyclic(id)).forEach(id -> roots.add(inheritance.root(id)));
+        return roots;
+    }
+
     /** referenced : 계획이 쓰는 기존 테이블 ID (반영이 잠근다 — 상속 조상 테이블, 상속 FK·관계 FK 의 기존 부모 테이블) */
     private PhysicalGenerationDto.Plan computePlan(AccountDto account, PhysicalGenerationDto.Request request, Set<Long> referenced) {
         Long projectId = account.getProjectId();
@@ -354,10 +418,18 @@ public class PhysicalGenerationService {
         Map<Long, Optional<EntityTableMapping>> mappingByEntity = new HashMap<>();
         chosen.forEach(e -> mappingByEntity.put(e.getId(), Optional.empty()));
         entityMappings.findAllByEntityIds(mappingByEntity.keySet()).forEach(m -> mappingByEntity.put(m.getEntity().getId(), Optional.of(m)));
-        LogicalHierarchy inheritance = subtypeService.hierarchyOf(chosen.stream().map(e -> e.getModel().getId()).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new)));
-        // 상속 구조 참여 엔터티 (M-7 2차) : 일반 엔터티와 같은 규칙으로 SKIP(이미 매핑) · 이름을 정하고, 아래에서 B형(엔터티마다 테이블) 계획을 더한다
-        SubtypePlanContext subtypes = subtypeContext(projectId, db, chosen, inheritance, mappingByEntity);
+        Set<Long> modelIds = chosen.stream().map(e -> e.getModel().getId()).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        LogicalHierarchy inheritance = subtypeService.hierarchyOf(modelIds);
+        // 상속 A·C형 (M-7 상속 A·C, D-AC-15) : 요청의 계층별 전략 (생략 = B형). 기존 변환 기록은 요청 밖 계층의 전략 (부모 참조 제외·혼합 차단)
+        Set<Long> chosenIds = new HashSet<>();
+        chosen.forEach(e -> chosenIds.add(e.getId()));
+        Map<Long, String> requestedStrategies = AlternativeInheritancePlanner.requested(request.strategies(), chosenIds, inheritance);
+        InheritanceConversions existingConversions = InheritanceConversions.ofRows(inheritance, conversionRepository.findAllByModelIds(projectId, modelIds));
+        AlternativeInheritancePlanner alternative = alternativePlanner(projectId, db, schema, requestedStrategies, inheritance, chosen);
+        // 상속 구조 참여 엔터티 (M-7 2차) : 일반 엔터티와 같은 규칙으로 SKIP(이미 매핑) · 이름을 정하고, 아래에서 B형(엔터티마다 테이블) 계획을 더한다 (A·C 계층 구성원은 B형 판정에서 뺀다)
+        SubtypePlanContext subtypes = subtypeContext(projectId, db, chosen, inheritance, mappingByEntity, alternative::member);
         for (LogicalEntity entity : chosen) {
+            if (alternative.member(entity.getId())) continue; // A·C 계층 : 이름·매핑 검사는 계층 계획에서 (이미 매핑돼 있어도 SKIP 하지 않고 계층 전체를 막는다 — D-AC-12)
             var existing = mappingByEntity.get(entity.getId());
             if (existing.isPresent()) {
                 tableNameByEntity.put(entity.getId(), existing.get().getTable().getTableName());
@@ -370,9 +442,11 @@ public class PhysicalGenerationService {
             generated.put(entity.getId(), name);
             if (name.valid()) tableNameByEntity.put(entity.getId(), name.tableName().toUpperCase(Locale.ROOT));
         }
+        alternative.names(name -> tableDesignService.generateTableName(name, account), tableNameByEntity, generated);
 
+        // 같은 테이블명 : 실제 테이블 단위로 센다 (A형 통합 테이블은 구성원이 여럿이어도 하나)
         Map<String, Integer> nameUse = new HashMap<>();
-        tableNameByEntity.forEach((id, name) -> { if (!skipped.containsKey(id)) nameUse.merge(name, 1, Integer::sum); });
+        tableNameByEntity.forEach((id, name) -> { if (!skipped.containsKey(id) && id.equals(alternative.tableEntity(id))) nameUse.merge(name, 1, Integer::sum); });
         List<PhysicalGenerationDto.TablePlan> result = new ArrayList<>();
         // 스키마는 이름으로 (기본 스키마는 처음 조회 때 만들어질 수 있다). v2 : FK 추론 중단 + DBMS·식별자 진단·관계 계획 (M-7 보강 1차),
         // v3 : 정규화된 속성 선택·컬럼 순서 (2차), v4 : 관계는 속성 짝 상태로 (3차), v5 : FK 생성 계획 — 짝·컬럼·유형·이름·부모 테이블 (4차)
@@ -380,25 +454,52 @@ public class PhysicalGenerationService {
         // v7 : B형 상속 계획 — 역할·부모·루트·그룹(구성·제약·분류 속성·수정 시각)·루트 주 식별자·상속 PK·상속 FK·기존 조상 테이블과 매핑 (M-7 2차).
         //      3차에 같은 v7 로 근거를 더했다 : 기존 조상의 PK 컬럼·키 컬럼(수정 시각)·상속 PK 매핑·부모 FK, 관계 FK 기존 부모의 컬럼·PK — 토큰은 저장하지 않는 미리보기 ↔ 반영
         //      비교값이라 2차 토큰은 그대로 409 가 된다 (형식 번호를 올려도 결과가 같다)
-        StringBuilder canonical = new StringBuilder("v7|").append(schema.getSchemaName()).append('|').append(db).append('|');
+        // v8 : 보조 식별자 UNIQUE 계획 · 짝이 가리키는 부모 식별자(PRIMARY · ALTERNATE)와 기존 부모의 UNIQUE (M7-AK-01·03)
+        // v9 : 상속 A·C형 — 계층별 전략, 그룹(배타·완전·분류 속성·분류 값·수정 시각), 통합·복제 컬럼, 변환 기록 계획, 전략상 제외 FK·복제 FK, 기존 변환 기록 (M-7 상속 A·C)
+        StringBuilder canonical = new StringBuilder("v9|").append(schema.getSchemaName()).append('|').append(db).append('|');
+        requestedStrategies.forEach((root, strategy) -> canonical.append("st").append(root).append(strategy).append(';'));
+        // 기존 변환 기록 : 이 계획이 닿는 계층(고른 엔터티·그 관계 상대 엔터티가 속한 계층)의 것만 — 같은 모델의 무관한 계층을 만들었다고 대기 중인 계획을 409 로 만들지 않는다
+        // (AC-C18, 2026-11-23). 닿는 계층의 기록이 계획을 바꾸면 테이블·관계 상태도 함께 바뀌어 토큰에 들어간다
+        Set<Long> touchedRoots = touchedRoots(chosenIds, modelIds, inheritance);
+        existingConversions.records().stream().filter(r -> existingConversions.orphan(r) || inheritance.cyclic(inheritance.group(r.groupId()).supertypeId())
+                        || touchedRoots.contains(inheritance.root(inheritance.group(r.groupId()).supertypeId())))
+                .sorted(Comparator.comparing(InheritanceConversions.Record::id))
+                .forEach(r -> canonical.append("xc").append(r.id()).append(r.groupId()).append(r.strategy()).append(r.tableId()).append(r.classificationColumnId()).append(';'));
         // 관계 → FK 계획을 테이블보다 먼저 정한다 : READY 관계의 자식 속성은 반드시 만든다 (P7), 일반 단일 FK 는 자식 컬럼의 참조 테이블명이 된다
-        List<PhysicalGenerationDto.RelationPlan> relationPlans = relationPlans(db, schema, chosen, skipped.keySet(), tableNameByEntity, mappingByEntity, canonical, subtypes, referenced);
+        List<PhysicalGenerationDto.RelationPlan> relationPlans = relationPlans(db, schema, chosen, skipped.keySet(), tableNameByEntity, mappingByEntity, canonical, subtypes, referenced,
+                alternative, existingConversions);
         Set<Long> planned = new HashSet<>();
-        chosen.stream().filter(e -> !skipped.containsKey(e.getId())).forEach(e -> planned.add(e.getId()));
+        chosen.stream().filter(e -> !skipped.containsKey(e.getId()) && !alternative.member(e.getId())).forEach(e -> planned.add(e.getId()));
         List<PhysicalGenerationDto.InheritanceForeignKeyPlan> inheritanceKeys = inheritanceForeignKeys(db, schema, chosen, planned, tableNameByEntity, subtypes, canonical, referenced);
         Map<Long, PhysicalGenerationDto.InheritanceForeignKeyPlan> inheritanceByChild = new HashMap<>();
         inheritanceKeys.forEach(k -> inheritanceByChild.put(k.childEntityId(), k));
         Map<Long, String> inheritedRefTable = new HashMap<>(); // 단일 상속 PK 의 상속 FK : 서브타입 상속 PK 컬럼의 참조 테이블명
         inheritanceKeys.stream().filter(k -> "READY".equals(k.status()) && "SINGLE".equals(k.fkType())).forEach(k -> inheritedRefTable.put(k.childEntityId(), k.refTableName()));
         Map<Long, PhysicalGenerationDto.RequiredAncestor> required = new TreeMap<>();
+        List<PhysicalGenerationDto.UniquePlan> uniquePlans = new ArrayList<>();
         Map<Long, Set<Long>> foreignKeyAttributes = new HashMap<>();
         Map<Long, String> refTableByAttribute = new HashMap<>();
+        Map<String, String> alternativeRefTables = new HashMap<>(); // A·C : 테이블 문맥 엔터티:속성 → 참조 테이블명 (C형 복제 컬럼은 말단마다)
         relationPlans.stream().filter(PhysicalGenerationDto.RelationPlan::fkCreated).forEach(r -> {
             r.columns().forEach(c -> foreignKeyAttributes.computeIfAbsent(r.childEntityId(), id -> new HashSet<>()).add(c.childAttributeId()));
-            if (r.refTableName() != null) refTableByAttribute.put(r.columns().get(0).childAttributeId(), r.refTableName());
+            if (r.refTableName() == null) return;
+            if (alternative.member(r.childEntityId())) alternativeRefTables.put(alternative.tableEntity(r.childEntityId()) + ":" + r.columns().get(0).childAttributeId(), r.refTableName());
+            else refTableByAttribute.put(r.columns().get(0).childAttributeId(), r.refTableName());
         });
+        // A·C 계층 계획 (테이블·컬럼·UNIQUE·변환 기록) — 일반·B형 계획과 같은 이름 충돌 검사
+        List<AlternativeInheritancePlanner.TreePlan> treePlans = alternative.plan(chosenIds, excludeRequested, foreignKeyAttributes, alternativeRefTables, tableNameByEntity, generated,
+                root -> alternativeUse(projectId, root, alternative, existingConversions, mappingByEntity),
+                name -> namespace.conflict(schema.getId(), name, null, null) == null ? null
+                        : Messages.get("스키마 {0} 에 같은 이름의 테이블·VIEW {1} 가 있습니다. 덮어쓰지 않습니다.", schema.getSchemaName(), name),
+                nameUse, canonical);
+        Map<Long, PhysicalGenerationDto.TablePlan> alternativeTables = new HashMap<>();
+        treePlans.forEach(t -> alternativeTables.putAll(t.tables()));
         for (LogicalEntity entity : chosen) {
             canonical.append(entity.getId()).append('@').append(entity.modifiedAt()).append(';');
+            if (alternative.member(entity.getId())) {
+                result.add(alternativeTables.get(entity.getId()));
+                continue;
+            }
             if (skipped.containsKey(entity.getId())) {
                 PhysicalGenerationDto.TablePlan skip = skipped.get(entity.getId());
                 result.add(subtypes.participates(entity.getId()) ? withInheritance(skip, inheritancePlan(entity, subtypes, List.of())) : skip);
@@ -414,8 +515,17 @@ public class PhysicalGenerationService {
 
             List<LogicalAttribute> ordered = columnOrder(entity);
             Set<Long> primary = primaryAttributeIds(entity);
+            List<com.lexorma.data.logical.service.ReferenceKeys.Key> alternates = LogicalRelationshipPairs.alternateKeys(entity);
+            Set<Long> alternateAttributes = new HashSet<>();
+            alternates.forEach(k -> alternateAttributes.addAll(k.attributeIds()));
             boolean subtype = subtypes.isSubtype(entity.getId());
             if (primary.isEmpty() && !subtype) warnings.add(Messages.get("주 식별자가 없어 PK 없이 만듭니다."));
+            // 혼합 전략 차단 (D-AC-11) : 이미 A·C 로 기록된 계층의 엔터티를 B형으로 더하지 않는다
+            if (existingConversions.alternative(entity.getId())) {
+                errors.add(Messages.get("엔터티 {0} 의 상속 계층은 이미 {1} 로 만들어졌습니다. 한 상속 계층에 다른 변환 전략을 섞을 수 없습니다.", entity.getEntityName(),
+                        existingConversions.kind(entity.getId()) == InheritanceConversions.Kind.INCONSISTENT ? Messages.get("맞지 않는 변환 기록")
+                                : AlternativeInheritancePlanner.strategyLabel(existingConversions.kind(entity.getId()).name())));
+            }
             if (!Boolean.TRUE.equals(entity.getIsApproval())) warnings.add(Messages.get("엔터티 {0} 이(가) 승인 전입니다.", entity.getEntityName()));
 
             // 속성 선택 (P7) : 주 식별자 속성과 만들 FK 의 자식 속성은 제외할 수 없다 — 요청해도 만든다
@@ -425,9 +535,11 @@ public class PhysicalGenerationService {
                 boolean requested = excludeRequested.contains(attribute.getId());
                 boolean isPrimary = primary.contains(attribute.getId());
                 boolean isForeignKey = fkAttributes.contains(attribute.getId());
+                boolean isAlternate = alternateAttributes.contains(attribute.getId());
                 if (requested && isPrimary) warnings.add(Messages.get("주 식별자 속성 {0} 은(는) 제외할 수 없어 포함했습니다.", attribute.getAttributeName()));
                 else if (requested && isForeignKey) warnings.add(Messages.get("FK 속성 {0} 은(는) 제외할 수 없어 포함했습니다.", attribute.getAttributeName()));
-                choices.add(new PhysicalGenerationDto.AttributeChoice(attribute.getId(), attribute.getAttributeName(), isPrimary, requested && !isPrimary && !isForeignKey,
+                else if (requested && isAlternate) warnings.add(Messages.get("보조 식별자 속성 {0} 은(는) 제외할 수 없어 포함했습니다 (UNIQUE 구성 컬럼).", attribute.getAttributeName()));
+                choices.add(new PhysicalGenerationDto.AttributeChoice(attribute.getId(), attribute.getAttributeName(), isPrimary, requested && !isPrimary && !isForeignKey && !isAlternate,
                         requested, isForeignKey));
             }
             Set<Long> excluded = new HashSet<>();
@@ -510,20 +622,76 @@ public class PhysicalGenerationService {
             if (!subtype && entity.getAttributes().isEmpty()) errors.add(Messages.get("속성이 없는 엔터티는 만들 수 없습니다."));
             else if (!subtype && excluded.size() == entity.getAttributes().size()) errors.add(Messages.get("모든 속성을 제외해 만들 컬럼이 없습니다."));
             String status = errors.isEmpty() ? "CREATE" : "ERROR";
+            uniquePlans.addAll(uniquePlans(entity, tableName, alternates, primary, columnPlans, canonical));
             canonical.append(status).append(tableName).append(columnPlans).append(inheritanceReasons).append(';');
             result.add(new PhysicalGenerationDto.TablePlan(entity.getId(), entity.getEntityName(), status, tableName, schema.getSchemaName(), columnPlans, errors, warnings,
                     choices, subtypes.participates(entity.getId()) ? inheritancePlan(entity, subtypes, inheritanceReasons) : null));
         }
         List<PhysicalGenerationDto.ConstraintWarning> constraintWarnings = constraintWarnings(chosen, planned, subtypes, canonical);
+        List<PhysicalGenerationDto.StrategyPlan> strategyPlans = new ArrayList<>();
+        List<PhysicalGenerationDto.ConversionPlan> conversionPlans = new ArrayList<>();
+        for (AlternativeInheritancePlanner.TreePlan tree : treePlans) {
+            uniquePlans.addAll(tree.uniques());
+            constraintWarnings.addAll(tree.warnings());
+            conversionPlans.addAll(tree.conversions());
+            strategyPlans.add(strategyPlan(tree, relationPlans, alternative, subtypes));
+        }
         required.values().forEach(r -> canonical.append("ra").append(r.entityId()).append(r.requiredBy()).append(';'));
-        List<PhysicalGenerationDto.IdentifierIssue> identifiers = identifierIssues(projectId, db, schema, result, relationPlans, inheritanceKeys);
+        List<PhysicalGenerationDto.IdentifierIssue> identifiers = identifierIssues(projectId, db, schema, result, relationPlans, inheritanceKeys, uniquePlans, alternative::tableEntity);
         canonical.append("id").append(DbIdentifierRules.VERSION).append('|');
         identifiers.forEach(i -> canonical.append(i.code()).append(i.kind()).append(i.entityId()).append(i.attributeId()).append(i.name()).append(i.ddlName())
                 .append(i.related()).append(';'));
         boolean creatable = result.stream().noneMatch(t -> "ERROR".equals(t.status())) && result.stream().anyMatch(t -> "CREATE".equals(t.status()));
         // 반영 가능 (M-7 3차) : 상속 생성도 반영한다 — creatable 과 같다 (2차의 INHERITANCE_GENERATION_NOT_AVAILABLE 차단을 푼다)
         return new PhysicalGenerationDto.Plan(result, creatable, sha256(canonical.toString()), db.name(), identifiers, relationPlans,
-                creatable, null, inheritanceKeys, new ArrayList<>(required.values()), constraintWarnings, ancestorUses(chosen, skipped.keySet(), planned, subtypes));
+                creatable, null, inheritanceKeys, new ArrayList<>(required.values()), constraintWarnings, ancestorUses(chosen, skipped.keySet(), planned, subtypes), uniquePlans,
+                strategyPlans, conversionPlans);
+    }
+
+    /**
+     * 보조 식별자 → UNIQUE 계획 (M7-AK-01) : 엔터티 자체의 보조 식별자마다 (식별자 ID 순 — 같은 컬럼 집합은 첫 식별자가 대표, M7-AK-D05). 구성 순서 = 식별자 속성 순서 (D02).
+     * 주 식별자와 같은 집합·이미 앞 식별자가 만든 집합은 만들지 않는다 (D04). nullable 컬럼이 있으면 경고만 (D03). 이름 = UNIQUE 등록의 기본 이름 (DbIdentifierRules.uniqueName)
+     */
+    private static List<PhysicalGenerationDto.UniquePlan> uniquePlans(LogicalEntity entity, String tableName, List<com.lexorma.data.logical.service.ReferenceKeys.Key> alternates,
+                                                                      Set<Long> primary, List<PhysicalGenerationDto.ColumnPlan> columnPlans, StringBuilder canonical) {
+        Map<Long, PhysicalGenerationDto.ColumnPlan> byAttribute = new HashMap<>();
+        columnPlans.stream().filter(c -> c.inheritedFromEntityId() == null).forEach(c -> byAttribute.put(c.attributeId(), c));
+        Map<Set<Long>, com.lexorma.data.logical.service.ReferenceKeys.Key> seen = new HashMap<>();
+        List<PhysicalGenerationDto.UniquePlan> plans = new ArrayList<>();
+        for (com.lexorma.data.logical.service.ReferenceKeys.Key key : alternates) {
+            Set<Long> set = new HashSet<>(key.attributeIds());
+            List<PhysicalGenerationDto.ColumnPlan> members = key.attributeIds().stream().map(byAttribute::get).toList();
+            List<String> names = members.stream().map(c -> c == null ? null : c.columnName()).toList();
+            String status = "CREATE";
+            String reason = null;
+            com.lexorma.data.logical.service.ReferenceKeys.Key duplicateOf = null;
+            List<String> warnings = new ArrayList<>();
+            String message;
+            if (members.contains(null) || tableName == null) {
+                status = "SKIP";
+                reason = "COLUMN_UNAVAILABLE";
+                message = Messages.get("보조 식별자 {0} 의 구성 컬럼을 만들 수 없어 UNIQUE 를 만들지 않습니다 (테이블의 오류를 먼저 고쳐주세요).", key.identifierName());
+            } else if (set.equals(primary)) {
+                status = "SKIP";
+                reason = "PRIMARY_KEY_DUPLICATE";
+                message = Messages.get("보조 식별자 {0} 의 구성이 주 식별자(PK)와 같아 UNIQUE 를 따로 만들지 않습니다.", key.identifierName());
+            } else if (seen.containsKey(set)) {
+                status = "SKIP";
+                reason = "DUPLICATE_ALTERNATE_KEY";
+                duplicateOf = seen.get(set);
+                message = Messages.get("보조 식별자 {0} 의 구성이 보조 식별자 {1} 과(와) 같아 UNIQUE 하나만 만듭니다 ({1} 기준).", key.identifierName(), duplicateOf.identifierName());
+            } else {
+                seen.put(set, key);
+                if (members.stream().anyMatch(PhysicalGenerationDto.ColumnPlan::nullable)) warnings.add("NULLABLE_COLUMNS");
+                message = Messages.get("보조 식별자 {0} 을(를) UNIQUE 로 만듭니다 (미승인).", key.identifierName());
+            }
+            String name = "CREATE".equals(status) ? DbIdentifierRules.uniqueName(tableName, names) : null;
+            canonical.append('u').append(key.identifierId()).append(key.attributeIds()).append(status).append(reason).append(name).append(warnings).append(';');
+            plans.add(new PhysicalGenerationDto.UniquePlan(entity.getId(), entity.getEntityName(), key.identifierId(), key.identifierName(), tableName, name,
+                    names.stream().filter(Objects::nonNull).toList(), status, reason, duplicateOf == null ? null : duplicateOf.identifierId(),
+                    duplicateOf == null ? null : duplicateOf.identifierName(), warnings, message));
+        }
+        return plans;
     }
 
     /** 고른 서브타입(건너뛰는 것 제외)의 조상마다 쓰임 (M-7 4차). 판정은 위에서 이미 한 {@link SubtypePlanContext#ancestor} 결과를 다시 쓴다 (새 조회 없음) */
@@ -566,7 +734,8 @@ public class PhysicalGenerationService {
      */
     private List<PhysicalGenerationDto.RelationPlan> relationPlans(DbType db, SchemaInfo schema, List<LogicalEntity> chosen, Set<Long> skipped,
                                                                    Map<Long, String> tableNameByEntity, Map<Long, Optional<EntityTableMapping>> mappingByEntity,
-                                                                   StringBuilder canonical, SubtypePlanContext subtypes, Set<Long> referenced) {
+                                                                   StringBuilder canonical, SubtypePlanContext subtypes, Set<Long> referenced,
+                                                                   AlternativeInheritancePlanner alternative, InheritanceConversions existing) {
         LogicalHierarchy inheritance = subtypes.hierarchy();
         Map<Long, List<LogicalRelationship>> byModel = new HashMap<>();
         List<PhysicalGenerationDto.RelationPlan> plans = new ArrayList<>();
@@ -579,7 +748,7 @@ public class PhysicalGenerationService {
         }
         Set<Long> chosenIds = new HashSet<>();
         chosen.forEach(e -> chosenIds.add(e.getId()));
-        Set<Long> usedChildAttributes = new HashSet<>();
+        Set<String> usedChildAttributes = new HashSet<>(); // 자식 문맥 엔터티:속성 (C형 복제 컬럼은 말단마다 따로)
         // 기존 서브타입 부모 (M-7 3차) : 상속 PK 매핑으로 부모 문맥의 컬럼을 정한다 — 그런 부모를 한꺼번에 읽어 둔다 (관계마다 따로 읽지 않는다)
         Set<Long> subtypeParents = new java.util.TreeSet<>();
         for (Long modelId : modelIds) {
@@ -590,17 +759,38 @@ public class PhysicalGenerationService {
             }
         }
         if (!subtypeParents.isEmpty()) subtypes.prepare(subtypeParents);
-        for (LogicalEntity child : chosen) {
-            if (skipped.contains(child.getId())) continue;
-            List<LogicalRelationship> incoming = byModel.computeIfAbsent(child.getModel().getId(), relationships::findAllByModelId).stream()
-                    .filter(r -> r.getTargetEntity().getId().equals(child.getId()))
+        Map<Long, LogicalEntity> chosenById = new HashMap<>();
+        chosen.forEach(e -> chosenById.put(e.getId(), e));
+        for (LogicalEntity logicalChild : chosen) {
+            if (skipped.contains(logicalChild.getId())) continue;
+            List<LogicalRelationship> incoming = byModel.computeIfAbsent(logicalChild.getModel().getId(), relationships::findAllByModelId).stream()
+                    .filter(r -> r.getTargetEntity().getId().equals(logicalChild.getId()))
                     .sorted(Comparator.comparing(LogicalRelationship::getId)).toList();
+            // 자식 문맥 (M-7 상속 A·C) : C형 루트·중간이 자식이면 그 아래 말단 테이블마다 FK 를 복제한다 (D-AC-17). 그 밖에는 엔터티 자신 (A형 구성원은 통합 테이블 — 문맥 엔터티 그대로)
+            for (Long contextId : alternative.childContexts(logicalChild.getId())) {
+            LogicalEntity child = chosenById.getOrDefault(contextId, logicalChild);
+            boolean replicated = !contextId.equals(logicalChild.getId());
             for (LogicalRelationship relationship : incoming) {
                 LogicalEntity parent = relationship.getSourceEntity();
-                boolean self = parent.getId().equals(child.getId());
+                // 물리 자기 참조 : 같은 엔터티이거나 (A형) 같은 통합 테이블
+                boolean self = parent.getId().equals(child.getId()) || (alternative.member(parent.getId()) && alternative.member(child.getId())
+                        && Objects.equals(alternative.tableEntity(parent.getId()), alternative.tableEntity(child.getId())));
                 // 짝 판정은 유효 주 식별자로 (서브타입 부모는 루트의 주 식별자 — 상속 구조는 아래에서 UNSUPPORTED 가 된다)
+                // 보조 식별자 참조 (M7-AK-D09 · M7-INH-02) : 부모 자체의 보조 식별자 (상속 참여 무관 — ReferenceKeys.referenceable, 조상의 것은 넣지 않는다 D-INH-05).
+                // 부모가 서브타입이어도 그 자체 보조 식별자 속성은 부모 테이블의 직접 컬럼이다 (아래 직접 매핑 경로)
                 LogicalModelDto.PairState pairState = LogicalRelationshipPairs.evaluate(relationship, pairsByRelationship.getOrDefault(relationship.getId(), List.of()),
-                        e -> LogicalRelationshipPairs.primaryKeyIds(inheritance.parent(e.getId()) == null ? e : subtypes.entity(inheritance.root(e.getId()))));
+                        new LogicalRelationshipPairs.KeyLookup() {
+                            @Override
+                            public List<Long> primary(LogicalEntity e) {
+                                return LogicalRelationshipPairs.primaryKeyIds(inheritance.parent(e.getId()) == null ? e : subtypes.entity(inheritance.root(e.getId())));
+                            }
+
+                            @Override
+                            public List<com.lexorma.data.logical.service.ReferenceKeys.Key> alternates(LogicalEntity e) {
+                                return com.lexorma.data.logical.service.ReferenceKeys.referenceable(e.getId(), id -> LogicalRelationshipPairs.alternateKeys(e));
+                            }
+                        });
+                boolean alternate = "ALTERNATE".equals(pairState.keyType());
                 List<LogicalRelationshipAttribute> pairs = pairsByRelationship.getOrDefault(relationship.getId(), List.of()).stream()
                         .sorted(Comparator.comparing(LogicalRelationshipAttribute::getSortOrder)).toList();
                 String childTable = tableNameByEntity.get(child.getId());
@@ -617,6 +807,12 @@ public class PhysicalGenerationService {
                     case "IDENTIFIER_MISMATCH" -> "ATTRIBUTE_PAIRS_INVALID";
                     default -> null;
                 };
+                // 전략상 만들지 않는 FK (D-AC-09·10) : A형 루트가 아닌 엔터티 참조, C형 분산 엔터티 참조 — 임의의 테이블로 바꾸지 않는다
+                String strategyExclusion = alternative.parentExclusion(parent.getId(), existing);
+                if (reason == null && strategyExclusion != null) {
+                    status = "STRATEGY_EXCLUDED";
+                    reason = strategyExclusion;
+                }
                 // 부모 테이블 : 이번에 만들 테이블 → 이미 매핑된 테이블
                 boolean parentNew = chosenIds.contains(parent.getId()) && !skipped.contains(parent.getId());
                 TableInfo parentExisting = parentNew ? null : mappingByEntity.computeIfAbsent(parent.getId(), entityMappings::findByEntity_Id)
@@ -665,7 +861,20 @@ public class PhysicalGenerationService {
                         columns.add(new PhysicalGenerationDto.FkColumn(i + 1, pair.getParentAttribute().getId(), parentColumn.getColumnName(), pair.getChildAttribute().getId(),
                                 childSpec.columnName()));
                     }
-                    if (reason == null && !parentNew) {
+                    if (reason == null && alternate) {
+                        // 보조 식별자 참조 (M7-AK-D10) : FK 컬럼 순서(짝 순서) = UNIQUE 구성 순서여야 한다. 새 부모는 이 계획이 대표 식별자 순서로 UNIQUE 를 만들고,
+                        // 기존 부모는 그 순서의 UNIQUE 제약조건(또는 단일 고유값 컬럼)이 이미 있어야 한다 — 기존 테이블에 UNIQUE 를 더하지 않는다 (D06, 먼저 UNIQUE 보정)
+                        List<Long> keyOrder = LogicalRelationshipPairs.alternateKeys(parent).stream().filter(k -> k.identifierId().equals(pairState.keyIdentifierId()))
+                                .findFirst().map(com.lexorma.data.logical.service.ReferenceKeys.Key::attributeIds).orElse(List.of());
+                        if (!keyOrder.equals(pairs.stream().map(p -> p.getParentAttribute().getId()).toList())) {
+                            status = "UNSUPPORTED";
+                            reason = "UNIQUE_ORDER_DIFFERS";
+                        } else if (!parentNew && !existingUnique(parentExisting, parentColumns, canonical)) {
+                            status = "UNSUPPORTED";
+                            reason = "PARENT_UNIQUE_MISSING";
+                        }
+                    }
+                    if (reason == null && !parentNew && !alternate) {
                         parentExisting.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getId).sorted()
                                 .forEach(id -> canonical.append("pk").append(id));
                         Set<String> tableKey = new HashSet<>(parentExisting.getColumns().stream().filter(c -> Boolean.TRUE.equals(c.getIsPk())).map(ColumnInfo::getColumnName).toList());
@@ -688,7 +897,7 @@ public class PhysicalGenerationService {
                             }
                         }
                     }
-                    if (reason == null && pairs.stream().anyMatch(p -> usedChildAttributes.contains(p.getChildAttribute().getId()))) {
+                    if (reason == null && pairs.stream().anyMatch(p -> usedChildAttributes.contains(child.getId() + ":" + p.getChildAttribute().getId()))) {
                         status = "CONFLICT";
                         reason = "CHILD_COLUMN_IN_USE";
                     }
@@ -700,11 +909,11 @@ public class PhysicalGenerationService {
                 String constraintName = null;
                 if (ready) {
                     if (parentExisting != null) referenced.add(parentExisting.getId());
-                    pairs.forEach(p -> usedChildAttributes.add(p.getChildAttribute().getId()));
+                    pairs.forEach(p -> usedChildAttributes.add(child.getId() + ":" + p.getChildAttribute().getId()));
                     String firstChild = columns.get(0).childColumnName();
                     // SINGLE 은 DDL 이 FK_자식_컬럼 으로 만들고, TableRelation 은 관계 등록과 같은 기본 이름을 쓴다 — 둘 다 같은 꼴이다
                     constraintName = DbIdentifierRules.foreignKeyName(childTable == null ? "" : childTable, firstChild);
-                    if ("SINGLE".equals(fkType)) {
+                    if ("SINGLE".equals(fkType) && !alternate) {
                         boolean sameSchema = parentNew || parentExisting.getSchema() == null || Objects.equals(parentExisting.getSchema().getId(), schema.getId());
                         refTableName = sameSchema ? parentTable : parentExisting.getSchema().getSchemaName() + "." + parentTable;
                     }
@@ -714,6 +923,7 @@ public class PhysicalGenerationService {
 
                 List<String> reasons = new ArrayList<>();
                 if (reason != null) reasons.add(reason);
+                if (replicated) reasons.add("INHERITED_RELATIONSHIP");
                 if (self) reasons.add("SELF_REFERENCE");
                 if (incoming.stream().filter(r -> r.getSourceEntity().getId().equals(parent.getId())).count() > 1) reasons.add("MULTIPLE_RELATIONSHIPS");
                 if (pairState.parentKeySize() > 1) reasons.add("COMPOSITE_PARENT_KEY");
@@ -722,24 +932,53 @@ public class PhysicalGenerationService {
 
                 // 계획 근거 : 관계 ID·방향, 상태·유형, 짝(속성 ID)·컬럼명, 부모 테이블(새 / 기존 ID), FK 이름·참조 테이블명 — 메시지·표시 이름은 넣지 않는다
                 canonical.append('r').append(relationship.getId()).append(parent.getId()).append('>').append(child.getId()).append(status).append(fkType).append(reasons)
+                        .append(pairState.keyType()).append(pairState.keyIdentifierId())
                         .append(parentNew ? "new" : parentExisting == null ? "-" : "t" + parentExisting.getId()).append(constraintName).append(refTableName);
                 pairs.forEach(p -> canonical.append('p').append(p.getParentAttribute().getId()).append('>').append(p.getChildAttribute().getId()).append('#').append(p.getSortOrder()));
                 columns.forEach(c -> canonical.append('c').append(c.parentColumnName()).append('<').append(c.childColumnName()));
                 canonical.append(';');
                 plans.add(new PhysicalGenerationDto.RelationPlan(relationship.getId(), relationship.getRelationshipName(), parent.getId(), parent.getEntityName(),
-                        child.getId(), child.getEntityName(), ready, reasons, relationMessage(status, reason, fkType, parent, child), relationship.getIsApproval(),
+                        child.getId(), child.getEntityName(), ready, reasons, relationMessage(status, reason, fkType, parent, child, alternate ? pairState.keyIdentifierName() : null),
+                        relationship.getIsApproval(),
                         pairState.status(), pairState.warnings(), pairState.pairs(), status, fkType, parentTable, parentExisting == null ? null : parentExisting.getId(),
-                        childTable, constraintName, refTableName, columns));
+                        childTable, constraintName, refTableName, columns, pairState.keyType(), pairState.keyIdentifierName()));
+            }
             }
         }
         return plans;
     }
 
-    private static String relationMessage(String status, String reason, String fkType, LogicalEntity parent, LogicalEntity child) {
+    /**
+     * 기존 부모 테이블에 FK 컬럼 순서 그대로의 UNIQUE 가 있는가 (M7-AK-D10) : UNIQUE 제약조건(구성 순서 일치) 또는 단일 고유값 컬럼(PK 아님). 고유 인덱스는 보지 않는다
+     * (보조 식별자 진단과 같은 범위). 계획 근거에 그 테이블의 UNIQUE 구성을 넣는다 (미리보기 뒤 바뀌면 반영이 409)
+     */
+    private boolean existingUnique(TableInfo parent, List<ColumnInfo> parentColumns, StringBuilder canonical) {
+        List<Long> wanted = parentColumns.stream().map(ColumnInfo::getId).toList();
+        boolean found = false;
+        for (com.lexorma.data.physical.domain.entity.TableConstraint constraint : entityManager.createQuery(
+                        "select distinct c from TableConstraint c left join fetch c.columns where c.tableInfo.id = :tableId and c.constraintType = :type order by c.id",
+                        com.lexorma.data.physical.domain.entity.TableConstraint.class)
+                .setParameter("tableId", parent.getId()).setParameter("type", com.lexorma.data.physical.domain.entity.TableConstraint.Type.UNIQUE).getResultList()) {
+            List<Long> ids = constraint.getColumns().stream().sorted(Comparator.comparing(com.lexorma.data.physical.domain.entity.TableConstraintColumn::getColumnOrder))
+                    .map(c -> c.getColumn().getId()).toList();
+            canonical.append("uq").append(constraint.getId()).append(ids);
+            if (ids.equals(wanted)) found = true;
+        }
+        if (parentColumns.size() == 1) {
+            ColumnInfo only = parentColumns.get(0);
+            canonical.append("uc").append(only.getId()).append(only.getIsUnique()).append(only.getIsPk());
+            if (Boolean.TRUE.equals(only.getIsUnique()) && !Boolean.TRUE.equals(only.getIsPk())) found = true;
+        }
+        return found;
+    }
+
+    private static String relationMessage(String status, String reason, String fkType, LogicalEntity parent, LogicalEntity child, String alternateKey) {
         String p = parent.getEntityName();
         String c = child.getEntityName();
         return switch (status) {
-            case "READY" -> Messages.get("관계 {0} → {1} : FK 를 만듭니다 ({2}).", p, c, fkTypeLabel(fkType));
+            case "READY" -> alternateKey != null
+                    ? Messages.get("관계 {0} → {1} : 보조 식별자 {3} 의 UNIQUE 를 참조하는 FK 를 미승인 사용자 관계로 만듭니다 ({2}).", p, c, fkTypeLabel(fkType), alternateKey)
+                    : Messages.get("관계 {0} → {1} : FK 를 만듭니다 ({2}).", p, c, fkTypeLabel(fkType));
             case "NO_PAIRS" -> Messages.get("관계 {0} → {1} : 부모 식별자 ↔ 자식 속성 짝이 지정되지 않아 FK 를 만들지 않습니다.", p, c);
             case "PARTIAL_PAIRS" -> Messages.get("관계 {0} → {1} : 속성 짝이 부모 주 식별자의 일부만 이어 FK 를 만들지 않습니다.", p, c);
             case "IDENTIFIER_MISMATCH" -> Messages.get("관계 {0} → {1} : 속성 짝이 지금 부모 주 식별자와 맞지 않아 FK 를 만들지 않습니다. 관계의 속성 짝을 고쳐주세요.", p, c);
@@ -748,9 +987,18 @@ public class PhysicalGenerationService {
                     ? Messages.get("관계 {0} → {1} : 부모 {0} 의 기존 테이블에 상속 PK 매핑이 없어 상속 PK 컬럼을 정할 수 없습니다. FK 없이 만듭니다.", p, c)
                     : Messages.get("관계 {0} → {1} : 짝의 부모·자식 컬럼을 정할 수 없어(용어·도메인 없음, 부모 속성 매핑 없음) FK 를 만들지 않습니다.", p, c);
             case "CONFLICT" -> Messages.get("관계 {0} → {1} : 자식 속성이 다른 관계의 FK 에 이미 쓰여 FK 를 만들지 않습니다.", p, c);
+            case "STRATEGY_EXCLUDED" -> switch (reason) {
+                case "SUBTYPE_SCOPE_NOT_ENFORCED" -> Messages.get("관계 {0} → {1} : {0} 은(는) A형 통합 테이블의 서브타입이라 일반 FK 로는 그 유형만 참조한다는 의미를 지킬 수 없어 FK 를 만들지 않습니다 (필요하면 직접 등록하세요).", p, c);
+                case "SUPERTYPE_DISTRIBUTED" -> Messages.get("관계 {0} → {1} : {0} 은(는) C형으로 여러 말단 테이블에 분산되어 FK 하나로 참조할 수 없어 FK 를 만들지 않습니다.", p, c);
+                default -> Messages.get("관계 {0} → {1} : {0} 의 상속 변환 기록이 맞지 않아 FK 를 만들지 않습니다.", p, c);
+            };
             default -> switch (reason) {
                 case "SELF_KEY_ONLY" -> Messages.get("관계 {0} → {1} : 자기 참조인데 자식 속성이 부모 키 속성 자신이라 FK 를 만들지 않습니다.", p, c);
                 case "TYPE_INCOMPATIBLE" -> Messages.get("관계 {0} → {1} : 부모·자식 컬럼의 데이터 타입이 FK 로 연결할 수 없는 조합이라 FK 를 만들지 않습니다.", p, c);
+                case "UNIQUE_ORDER_DIFFERS" -> Messages.get("관계 {0} → {1} : 속성 짝 순서가 부모 보조 식별자({2})의 속성 순서와 달라 FK 를 만들지 않습니다 (FK 컬럼 순서 = UNIQUE 순서).", p, c,
+                        alternateKey == null ? "-" : alternateKey);
+                case "PARENT_UNIQUE_MISSING" -> Messages.get("관계 {0} → {1} : 기존 부모 테이블에 보조 식별자({2})와 같은 순서의 UNIQUE 가 없어 FK 를 만들지 않습니다 (기존 테이블은 고치지 않습니다 — 정합성 비교에서 UNIQUE 를 먼저 보정하세요).",
+                        p, c, alternateKey == null ? "-" : alternateKey);
                 default -> Messages.get("관계 {0} → {1} : 기존 부모 테이블의 PK 가 짝의 부모 컬럼과 달라 FK 를 만들지 않습니다 (기존 테이블은 고치지 않습니다).", p, c);
             };
         };
@@ -767,7 +1015,7 @@ public class PhysicalGenerationService {
     }
 
     /** 속성으로 만들 컬럼 (화면의 컬럼 등록과 같은 해석). error 가 있으면 만들 수 없다 */
-    private record ColumnSpec(String columnName, String dataType, Integer maxLength, Integer precision, Integer scale, String error) {
+    record ColumnSpec(String columnName, String dataType, Integer maxLength, Integer precision, Integer scale, String error) {
         ColumnInfo transientColumn() {
             return ColumnInfo.builder().columnName(columnName).dataType(dataType).maxLength(maxLength).precision(precision == null ? null : BigDecimal.valueOf(precision))
                     .scale(scale).build();
@@ -780,7 +1028,7 @@ public class PhysicalGenerationService {
      * 약어가 없거나 비었으면 지금처럼 오류 (단어 조합으로 대신하지 않는다).
      * 도메인 : 타입명에 길이를 적었으면 그것, 아니면 길이·소수점 칸 (0 은 없음)
      */
-    private static ColumnSpec columnSpec(LogicalAttribute attribute) {
+    static ColumnSpec columnSpec(LogicalAttribute attribute) {
         StandardTerm term = attribute.getStandardTerm();
         if (term == null) {
             return new ColumnSpec(null, null, null, null, null, Messages.get("속성 {0} 에 표준 용어가 없습니다. 논리 모델에서 표준 용어를 먼저 연결해주세요.", attribute.getAttributeName()));
@@ -806,7 +1054,8 @@ public class PhysicalGenerationService {
      */
     private List<PhysicalGenerationDto.IdentifierIssue> identifierIssues(Long projectId, DbType db, SchemaInfo schema, List<PhysicalGenerationDto.TablePlan> plans,
                                                                        List<PhysicalGenerationDto.RelationPlan> relations,
-                                                                       List<PhysicalGenerationDto.InheritanceForeignKeyPlan> inheritanceKeys) {
+                                                                       List<PhysicalGenerationDto.InheritanceForeignKeyPlan> inheritanceKeys,
+                                                                       List<PhysicalGenerationDto.UniquePlan> uniques, java.util.function.Function<Long, Long> tableEntity) {
         // 상속 PK 컬럼은 여러 테이블에서 같은 원본 속성 ID 를 쓰므로(M-7 2차) 임시 ID 를 따로 준다 — 진단 결과의 속성 ID 는 원본 속성으로 되돌린다
         long[] nextTemp = {-1_000_000_000_000_000L};
         Map<Long, Long> tempAttribute = new HashMap<>();
@@ -816,13 +1065,13 @@ public class PhysicalGenerationService {
         Map<Long, String> names = new HashMap<>();
         existing.tables().forEach(t -> names.put(t.id(), t.name()));
         for (PhysicalGenerationDto.TablePlan plan : plans) {
-            if ("SKIP".equals(plan.status()) || plan.tableName() == null) continue;
+            if ("SKIP".equals(plan.status()) || "MERGED".equals(plan.status()) || "DISTRIBUTED".equals(plan.status()) || plan.tableName() == null) continue;
             tables.add(new DbIdentifierCheck.Table(-plan.entityId(), schema.getId(), plan.tableName()));
             names.put(-plan.entityId(), plan.tableName());
             // 일반 단일 FK(참조 테이블명) 컬럼은 DDL 이 FK_테이블_컬럼 이름을 만든다
             plan.columns().forEach(c -> {
                 long id = -c.attributeId();
-                if (c.inheritedFromEntityId() != null) {
+                if (c.inheritedFromEntityId() != null || "INHERITED_ATTRIBUTE".equals(c.mappingKind())) {
                     id = nextTemp[0]--;
                     tempAttribute.put(id, c.attributeId());
                 }
@@ -831,11 +1080,14 @@ public class PhysicalGenerationService {
         }
         // TableRelation 으로 만들 FK (자기 참조·복합) : 저장된 이름과 같이 본다
         List<DbIdentifierCheck.StoredName> stored = new ArrayList<>(existing.storedNames());
-        relations.stream().filter(r -> r.fkCreated() && !"SINGLE".equals(r.fkType()))
-                .forEach(r -> stored.add(new DbIdentifierCheck.StoredName(DbIdentifierRules.Kind.FOREIGN_KEY, -r.relationshipId(), -r.childEntityId(), r.constraintName())));
+        relations.stream().filter(r -> r.fkCreated() && !("SINGLE".equals(r.fkType()) && !"ALTERNATE".equals(r.keyType())))
+                .forEach(r -> stored.add(new DbIdentifierCheck.StoredName(DbIdentifierRules.Kind.FOREIGN_KEY, nextTemp[0]--, -tableEntity.apply(r.childEntityId()), r.constraintName())));
         // 복합 상속 FK (TableRelation 으로 만들 것) 도 같은 이름 공간
         inheritanceKeys.stream().filter(k -> "READY".equals(k.status()) && "COMPOSITE".equals(k.fkType()) && k.constraintName() != null)
                 .forEach(k -> stored.add(new DbIdentifierCheck.StoredName(DbIdentifierRules.Kind.FOREIGN_KEY, nextTemp[0]--, -k.childEntityId(), k.constraintName())));
+        // 보조 식별자 UNIQUE (M7-AK-01) : 같은 이름 공간 (PostgreSQL 은 인덱스와 같은 스키마 이름 공간)
+        uniques.stream().filter(u -> "CREATE".equals(u.status()) && u.constraintName() != null)
+                .forEach(u -> stored.add(new DbIdentifierCheck.StoredName(DbIdentifierRules.Kind.UNIQUE, nextTemp[0]--, -u.entityId(), u.constraintName())));
         DbIdentifierCheck.Model model = new DbIdentifierCheck.Model(existing.schemas(), tables, columns, stored);
         List<PhysicalGenerationDto.IdentifierIssue> result = new ArrayList<>();
         for (DbIdentifierCheck.Finding finding : DbIdentifierCheck.check(db, model)) {
@@ -853,16 +1105,96 @@ public class PhysicalGenerationService {
         return result;
     }
 
+    // ------------------------------------------------------------------ 상속 A·C형 (M-7 상속 A·C)
+
+    /** 요청 A·C 계층의 계획기 : 계층 구성원·그룹·구성원 행을 한 번에 읽는다 (A·C 를 고르지 않으면 조회 없음) */
+    private AlternativeInheritancePlanner alternativePlanner(Long projectId, DbType db, SchemaInfo schema, Map<Long, String> requested, LogicalHierarchy hierarchy,
+                                                             List<LogicalEntity> chosen) {
+        Map<Long, LogicalEntity> known = new HashMap<>();
+        chosen.forEach(e -> known.put(e.getId(), e));
+        Map<Long, com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup> groups = new HashMap<>();
+        Map<Long, List<com.lexorma.data.logical.domain.entity.LogicalSubtype>> members = new HashMap<>();
+        if (!requested.isEmpty()) {
+            Set<Long> treeIds = new java.util.TreeSet<>();
+            requested.keySet().forEach(root -> treeIds.addAll(hierarchy.subtree(root)));
+            List<Long> missing = treeIds.stream().filter(id -> !known.containsKey(id)).toList();
+            if (!missing.isEmpty()) entities.findAllByIds(missing, projectId).forEach(e -> known.put(e.getId(), e));
+            Set<Long> groupIds = AlternativeInheritancePlanner.groupIds(requested, hierarchy);
+            if (!groupIds.isEmpty()) {
+                subtypeGroups.findWithEntities(groupIds).forEach(g -> groups.put(g.getId(), g));
+                subtypeMembers.findWithEntities(groupIds).forEach(m -> members.computeIfAbsent(m.getGroup().getId(), k -> new ArrayList<>()).add(m));
+            }
+        }
+        return AlternativeInheritancePlanner.create(requested, hierarchy, db, schema, known::get, groups, members);
+    }
+
+    /**
+     * A·C 계층의 기존 사용 (D-AC-12 — 계층 전체가 미매핑이어야 한다) : 엔터티 매핑, 계층 속성의 속성·상속 PK·상속 일반 속성 매핑, 변환 기록. 하나라도 있으면 오류 메시지 (생성 차단)
+     */
+    private List<String> alternativeUse(Long projectId, Long rootId, AlternativeInheritancePlanner alternative, InheritanceConversions existing,
+                                        Map<Long, Optional<EntityTableMapping>> mappingByEntity) {
+        List<String> errors = new ArrayList<>();
+        List<Long> tree = alternative.tree(rootId).members();
+        Set<Long> unknown = new HashSet<>(tree);
+        unknown.removeAll(mappingByEntity.keySet());
+        List<String> mapped = new ArrayList<>();
+        mappingByEntity.forEach((id, m) -> { if (tree.contains(id) && m.isPresent()) mapped.add(m.get().getEntity().getEntityName() + " → " + m.get().getTable().getTableName()); });
+        if (!unknown.isEmpty()) entityMappings.findAllByEntityIds(unknown).forEach(m -> mapped.add(m.getEntity().getEntityName() + " → " + m.getTable().getTableName()));
+        if (!mapped.isEmpty()) errors.add(Messages.get("상속 계층에 이미 매핑된 엔터티가 있어 새 변환 전략으로 만들 수 없습니다 (기존 물리 모델을 바꾸지 않습니다) : {0}", String.join(", ", mapped)));
+        long attributeUse = 0;
+        for (String type : List.of("AttributeColumnMapping", "SubtypeIdentifierColumnMapping", "SubtypeAttributeColumnMapping")) {
+            attributeUse += entityManager.createQuery("select count(m) from " + type + " m where m.attribute.entity.id in :ids", Long.class).setParameter("ids", tree).getSingleResult();
+        }
+        if (attributeUse > 0) errors.add(Messages.get("상속 계층의 속성 중 이미 컬럼에 매핑된 것이 있어 새 변환 전략으로 만들 수 없습니다 (매핑 {0}건).", attributeUse));
+        if (existing.hasRecords(rootId)) errors.add(Messages.get("상속 계층에 이미 변환 기록이 있어 다시 만들 수 없습니다. 기존 매핑과 변환 기록을 먼저 해제해주세요."));
+        return errors;
+    }
+
+    /** 계층 하나의 전략 요약 (미리보기 — 실제 계획 수) */
+    private static PhysicalGenerationDto.StrategyPlan strategyPlan(AlternativeInheritancePlanner.TreePlan tree, List<PhysicalGenerationDto.RelationPlan> relations,
+                                                                   AlternativeInheritancePlanner alternative, SubtypePlanContext subtypes) {
+        AlternativeInheritancePlanner.Tree t = tree.tree();
+        int tablesCount = 0;
+        int columnsCount = 0;
+        List<String> errors = new ArrayList<>(tree.errors());
+        List<PhysicalGenerationDto.EntityRef> merged = new ArrayList<>();
+        List<PhysicalGenerationDto.EntityRef> distributed = new ArrayList<>();
+        for (PhysicalGenerationDto.TablePlan plan : tree.tables().values()) {
+            if ("CREATE".equals(plan.status())) {
+                tablesCount++;
+                columnsCount += plan.columns().size();
+            }
+            if ("ERROR".equals(plan.status())) plan.errors().stream().filter(e -> !errors.contains(e)).forEach(errors::add);
+            if ("MERGED".equals(plan.status())) merged.add(new PhysicalGenerationDto.EntityRef(plan.entityId(), plan.entityName()));
+            if ("DISTRIBUTED".equals(plan.status()) || ("ERROR".equals(plan.status()) && plan.tableName() == null && !t.single())) {
+                distributed.add(new PhysicalGenerationDto.EntityRef(plan.entityId(), plan.entityName()));
+            }
+        }
+        int uniquesCount = (int) tree.uniques().stream().filter(u -> "CREATE".equals(u.status())).count();
+        int fks = 0;
+        int excluded = 0;
+        for (PhysicalGenerationDto.RelationPlan r : relations) {
+            boolean touches = t.members().contains(r.childEntityId()) || t.members().contains(r.parentEntityId());
+            if (!touches) continue;
+            if (r.fkCreated() && t.members().contains(r.childEntityId())) fks++;
+            if ("STRATEGY_EXCLUDED".equals(r.fkStatus())) excluded++;
+        }
+        return new PhysicalGenerationDto.StrategyPlan(t.rootId(), tree.tables().get(t.rootId()).entityName(), t.strategy(), errors.isEmpty() ? "READY" : "BLOCKED",
+                t.members().size(), tablesCount, columnsCount, uniquesCount, fks, excluded, tree.missing(), merged, distributed, errors, tree.warningCodes());
+    }
+
     // ------------------------------------------------------------------ 슈퍼타입·서브타입 B형 계획 (M-7 2차)
 
     /**
      * 상속 계획에 쓰는 정보를 한 번에 읽는다 : 고른 상속 참여 엔터티의 조상(루트 포함) 엔터티·매핑, 매핑된 루트의 주 식별자 직접 매핑, 매핑된 서브타입의 상속 PK 매핑과
      * 그 테이블의 관계({@link SubtypePlanContext#prepare}), 관련 그룹. 일반 엔터티만 고르면 조회가 늘지 않는다 (계층이 비었거나 참여 엔터티가 없으면 바로 끝)
      */
-    private SubtypePlanContext subtypeContext(Long projectId, DbType db, List<LogicalEntity> chosen, LogicalHierarchy hierarchy, Map<Long, Optional<EntityTableMapping>> mappingByEntity) {
+    private SubtypePlanContext subtypeContext(Long projectId, DbType db, List<LogicalEntity> chosen, LogicalHierarchy hierarchy, Map<Long, Optional<EntityTableMapping>> mappingByEntity,
+                                              java.util.function.Predicate<Long> alternativeMember) {
         Map<Long, LogicalEntity> known = new HashMap<>();
         chosen.forEach(e -> known.put(e.getId(), e));
-        List<LogicalEntity> participants = chosen.stream().filter(e -> hierarchy.participates(e.getId())).toList();
+        // A·C 계층 구성원은 B형 판정(조상·상속 PK·상속 FK)에서 뺀다 (M-7 상속 A·C)
+        List<LogicalEntity> participants = chosen.stream().filter(e -> hierarchy.participates(e.getId()) && !alternativeMember.test(e.getId())).toList();
         // 관련 그룹 : 고른 참여 엔터티가 구성원이거나 슈퍼타입인 그룹
         Set<Long> groupIds = new java.util.TreeSet<>();
         participants.forEach(e -> {
@@ -1031,7 +1363,7 @@ public class PhysicalGenerationService {
     }
 
     /** 주 식별자 속성 (없으면 빈 집합) */
-    private static Set<Long> primaryAttributeIds(LogicalEntity entity) {
+    static Set<Long> primaryAttributeIds(LogicalEntity entity) {
         Set<Long> ids = new LinkedHashSet<>();
         entity.getIdentifiers().stream().filter(i -> Boolean.TRUE.equals(i.getIsPrimary())).findFirst()
                 .ifPresent(i -> i.getAttributes().forEach(a -> ids.add(a.getAttribute().getId())));
@@ -1106,7 +1438,7 @@ public class PhysicalGenerationService {
         }
     }
 
-    private static CustomException invalid(String message, Object... args) {
+    static CustomException invalid(String message, Object... args) {
         return new CustomException(ErrorCode.INVALID_PHYSICAL_MODEL, message, args);
     }
 }

@@ -16,9 +16,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 통합 V5 의 컬럼 필수값 (M7-U05 · M7-U09, docs/completed/column-name-uniqueness-m7.md 10·15장) : TBL_SN·COL_NM NOT NULL + CK_COL_01 (빈 이름 = 빈 문자열 또는 ASCII 공백류만).
- * V4 → V5 업그레이드가 기존 데이터(비영문·탭이 섞인 이름·NBSP 만인 이름 포함)를 그대로 두고, 제약에 걸리는 데이터가 있으면 목록 오류로 표 변경 전에 멈추며
- * 정리 뒤 다시 실행된다 (정규화·중복은 ColumnNameUniqueMigrationTest · ColumnNameUnicodeMigrationTest). H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL).
+ * 컬럼 필수값 (M7-U05 · M7-U09, docs/completed/column-name-uniqueness-m7.md 10·15장) : TBL_SN·COL_NM NOT NULL + CK_COL_01 (빈 이름 = 빈 문자열 또는 ASCII 공백류만).
+ * 2026-11-22 네 번째 합침으로 예전 V5 는 V0·V1 에 있다 — 새 설치(V0·V1)의 제약과 예제를 본다 (예전 V4 → V5 업그레이드·사전 검사는 경로가 없어 뺐다).
+ * 정규화·중복은 ColumnNameUniqueMigrationTest · ColumnNameUnicodeMigrationTest. H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL).
  */
 class ColumnRequiredValuesMigrationTest {
 
@@ -58,26 +58,19 @@ class ColumnRequiredValuesMigrationTest {
                 + " and upper(CONSTRAINT_NAME) = 'CK_COL_01' and CONSTRAINT_TYPE = 'CHECK'", Integer.class, db.schema());
     }
 
-    @ParameterizedTest(name = "V4 → V5 필수값 {0}")
+    @ParameterizedTest(name = "새 설치 필수값 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeKeepsDataAndEnforces(String vendor) {
-        Db db = install(vendor, "4", 5);
+    void freshInstallEnforces(String vendor) {
+        Db db = install(vendor, null, 3);
         try {
             column(db, 900000920, 900000910L, "CUST_NO");
             column(db, 900000921, 900000910L, "고객번호");
             column(db, 900000922, 900000910L, "A\tB");      // 가운데 탭 : 빈 이름이 아니다
-            column(db, 900000923, 900000910L, " ");     // NBSP 만 : 기존 허용 범위 그대로 (빈 이름으로 보지 않는다)
+            column(db, 900000923, 900000910L, "\u00A0");     // NBSP 만 : 빈 이름으로 보지 않는다
             column(db, 900000924, 900000910L, "顧客番号");
-            List<Map<String, Object>> before = db.jdbc().queryForList("select COL_SN, TBL_SN, COL_NM, APRV_YN, MDFCN_DT from " + db.s() + "TB_COL where PRJ_SN = 900000901 order by COL_SN");
-            List<Map<String, Object>> checksums = db.jdbc().queryForList("select \"version\", \"checksum\" from " + db.s() + "\"flyway_schema_history\" where \"version\" is not null order by \"installed_rank\"");
-            assertThat(nullable(db, "TBL_SN")).isEqualTo("YES");
-
-            assertThat(db.flyway(null).migrate().migrationsExecuted).isOne();
-            assertThat(db.flyway(null).validateWithResult().validationSuccessful).isTrue();
-            assertThat(db.jdbc().queryForList("select \"version\", \"checksum\" from " + db.s() + "\"flyway_schema_history\" where \"version\" is not null and \"version\" <> '5' order by \"installed_rank\""))
-                    .as("V0~V4 체크섬 그대로").isEqualTo(checksums);
-            assertThat(db.jdbc().queryForList("select COL_SN, TBL_SN, COL_NM, APRV_YN, MDFCN_DT from " + db.s() + "TB_COL where PRJ_SN = 900000901 order by COL_SN"))
-                    .as("기존 컬럼·ID·이름 그대로").isEqualTo(before);
+            column(db, 900000925, 900000910L, "cust_nm");
+            assertThat(db.jdbc().queryForList("select COL_NM_CMPR_VL from " + db.s() + "TB_COL where COL_SN in (900000920, 900000925) order by COL_SN", String.class))
+                    .containsExactly("CUST_NO", "CUST_NM");
             assertThat(nullable(db, "TBL_SN")).isEqualTo("NO");
             assertThat(nullable(db, "COL_NM")).isEqualTo("NO");
             assertThat(checks(db)).isOne();
@@ -86,7 +79,7 @@ class ColumnRequiredValuesMigrationTest {
                 assertThatThrownBy(() -> column(db, 900000930, (Long) bad[0], (String) bad[1])).as(String.valueOf(bad[1])).isInstanceOf(org.springframework.dao.DataAccessException.class);
             }
             column(db, 900000931, 900000910L, "A B");
-            column(db, 900000932, 900000910L, "　");
+            column(db, 900000932, 900000910L, "\u3000");
             assertThatThrownBy(() -> column(db, 900000933, 900000910L, " cust_no ")).hasMessageContaining(vendor.equals("h2") ? "UX_COL_01" : "ux_col_01");
             // 예제 : TB_COL.TBL_SN·COL_NM NULL 불가·필수, 논리 속성 필수, 예제 CHECK
             assertThat(db.jdbc().queryForList("select COL_NM || ':' || case when NULL_ALWNC_YN then 'Y' else 'N' end || ':' || case when ESNTL_YN then 'Y' else 'N' end from " + db.s() + "TB_COL where PRJ_SN = 0 and TBL_NM = 'TB_COL' and COL_NM in ('TBL_SN', 'COL_NM') order by COL_NM", String.class))
@@ -95,54 +88,6 @@ class ColumnRequiredValuesMigrationTest {
                     + db.s() + "TB_COL c on c.COL_SN = m.COL_SN where c.PRJ_SN = 0 and c.TBL_NM = 'TB_COL' and c.COL_NM in ('TBL_SN', 'COL_NM') and a.ESNTL_YN = true", Integer.class)).isEqualTo(2);
             assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "TB_TBL_CNSTRT k join " + db.s() + "TB_TBL t on t.TBL_SN = k.TBL_SN where k.PRJ_SN = 0 and t.TBL_NM = 'TB_COL' and k.CNSTRT_NM = 'CK_COL_01'", Integer.class)).isOne();
             assertThat(db.flyway(null).migrate().migrationsExecuted).isZero();
-        } finally {
-            db.flyway(null).clean();
-        }
-    }
-
-    @ParameterizedTest(name = "V4 → V5 소문자 이름 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeFromV4(String vendor) {
-        Db db = install(vendor, "4", 5);
-        try {
-            column(db, 900000940, 900000910L, "CUST_NO");
-            column(db, 900000941, 900000910L, "cust_nm");
-            assertThat(db.flyway(null).migrate().migrationsExecuted).isOne();
-            assertThat(db.jdbc().queryForList("select COL_NM || '=' || COL_NM_CMPR_VL from " + db.s() + "TB_COL where PRJ_SN = 900000901 order by COL_SN", String.class))
-                    .containsExactly("CUST_NO=CUST_NO", "cust_nm=CUST_NM");
-            assertThat(nullable(db, "COL_NM")).isEqualTo("NO");
-            assertThat(checks(db)).isOne();
-        } finally {
-            db.flyway(null).clean();
-        }
-    }
-
-    @ParameterizedTest(name = "필수값이 빠진 V4 → V5 실패 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void invalidDataStopsSafely(String vendor) {
-        Db db = install(vendor, "4", 5);
-        try {
-            column(db, 900000950, null, "ORPHAN");
-            column(db, 900000951, 900000910L, null);
-            column(db, 900000952, 900000910L, "");
-            column(db, 900000953, 900000910L, " \t ");
-            column(db, 900000954, 900000910L, "OK_NAME");
-            List<Map<String, Object>> before = db.jdbc().queryForList("select COL_SN, TBL_SN, COL_NM from " + db.s() + "TB_COL where PRJ_SN = 900000901 order by COL_SN");
-
-            assertThatThrownBy(() -> db.flyway(null).migrate()).hasStackTraceContaining("V5 컬럼 무결성 사전 검사").hasStackTraceContaining("필수값 위반 4건").hasStackTraceContaining("새 기준 중복 0개 그룹")
-                    .hasStackTraceContaining("[필수값] COL_SN=900000950").hasStackTraceContaining("[필수값] COL_SN=900000953");
-            assertThat(db.jdbc().queryForList("select COL_SN, TBL_SN, COL_NM from " + db.s() + "TB_COL where PRJ_SN = 900000901 order by COL_SN")).as("데이터 그대로").isEqualTo(before);
-            assertThat(nullable(db, "TBL_SN")).as("스키마 그대로").isEqualTo("YES");
-            assertThat(nullable(db, "COL_NM")).isEqualTo("YES");
-            assertThat(checks(db)).isZero();
-            assertThat(db.jdbc().queryForObject("select count(*) from " + db.s() + "\"flyway_schema_history\" where \"version\" = '5' and \"success\" = true", Integer.class)).isZero();
-
-            // 사람이 정리한 뒤 (여기서는 테스트가 만든 행) repair → 다시 실행
-            db.jdbc().update("delete from " + db.s() + "TB_COL where COL_SN in (900000950, 900000951, 900000952, 900000953)");
-            db.flyway(null).repair();
-            assertThat(db.flyway(null).migrate().migrationsExecuted).isOne();
-            assertThat(nullable(db, "COL_NM")).isEqualTo("NO");
-            assertThat(db.jdbc().queryForObject("select COL_NM from " + db.s() + "TB_COL where COL_SN = 900000954", String.class)).isEqualTo("OK_NAME");
         } finally {
             db.flyway(null).clean();
         }

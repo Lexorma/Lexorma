@@ -27,7 +27,7 @@ class SubtypeIdentifierColumnMappingMigrationTest {
     private static final String[] KEPT = {"TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_ATRB", "TB_LGCL_IDNTFR", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP", "TB_TBL", "TB_COL",
             "TB_ENTT_TBL_MPNG", "TB_ATRB_COL_MPNG", "TB_LGCL_ERD_LYT", "TB_MDL_CHG_HSTRY", "TB_MDL_VER"};
 
-    @ParameterizedTest(name = "V3 설치 → V4 {0}")
+    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V4 합침) {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void upgradeKeepsExistingData(String vendor) {
         String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
@@ -36,12 +36,14 @@ class SubtypeIdentifierColumnMappingMigrationTest {
         String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         String s = "\"" + schema + "\".";
-        Flyway v3 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("3"))
+        Flyway v3 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor)
                 .cleanDisabled(false).load();
         try {
-            assertThat(v3.migrate().migrationsExecuted).isEqualTo(4);
+            // 2026-11-22 네 번째 합침 : 예전 V4(상속 PK 컬럼 매핑)는 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다
+            assertThat(v3.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(v3.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
-            // V3 설치에서 쓰던 데이터 : 루트·서브타입(그룹)·엔터티 매핑·속성 매핑·물리 테이블·컬럼(PK·참조)·배치·이력·버전
+            // 사용자 데이터 : 루트·서브타입(그룹)·엔터티 매핑·속성 매핑·물리 테이블·컬럼(PK·참조)·배치·이력·버전
             jdbc.update("insert into " + s + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900000501, 'upgrade', true, false, true, 'POSTGRESQL')");
             jdbc.update("insert into " + s + "TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, BSC_YN) values (900000502, 900000501, 'DEFAULT', true)");
             jdbc.update("insert into " + s + "TB_LGCL_MDL(LGCL_MDL_SN, PRJ_SN, MDL_NM, MDFCN_DT) values (900000510, 900000501, '기존 모델', timestamp '2026-11-01 10:00:00')");
@@ -67,23 +69,11 @@ class SubtypeIdentifierColumnMappingMigrationTest {
             jdbc.update("insert into " + s + "TB_MDL_CHG_HSTRY(MDL_CHG_HSTRY_SN, PRJ_SN, CHG_GROUP_ID, TRGT_TYPE_CD, TRGT_SN, TRGT_NM, CHG_TYPE_CD, CHG_SRC_CD, USER_ID, CHG_DT)"
                     + " values (900000532, 900000501, 'g1', 'SUBTYPE_GROUP', 900000517, '구분', 'CREATE', 'USER', 'u', timestamp '2026-11-01 10:00:00')");
             jdbc.update("insert into " + s + "TB_MDL_VER(MDL_VER_SN, PRJ_SN, VER_NM, FRMT_VER_NO, MDL_CNT_CN, MDL_CN, RGTR_ID, REG_DT) values (900000533, 900000501, 'v3', 8, '{}', '{}', 'u', timestamp '2026-11-01 10:00:00')");
-            Map<String, List<Map<String, Object>>> before = snapshot(jdbc, s);
-            List<Map<String, Object>> checksums = jdbc.queryForList("select \"version\", \"checksum\" from " + s + "\"flyway_schema_history\" where \"version\" is not null order by \"installed_rank\"");
-            int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
-            int exampleIndexes = jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class);
-
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("4")).load();
-            assertThat(latest.migrate().migrationsExecuted).isOne();
-            assertThat(latest.validateWithResult().validationSuccessful).isTrue();
-            assertThat(jdbc.queryForList("select \"version\", \"checksum\" from " + s + "\"flyway_schema_history\" where \"version\" is not null and \"version\" <> '4' order by \"installed_rank\""))
-                    .as("V0~V3 체크섬 그대로").isEqualTo(checksums);
-
-            // 기존 데이터 그대로 (값·수정 일시·승인 포함), 새 테이블은 비어 있다 (상속 구조에서 추정해 넣지 않는다)
-            assertThat(snapshot(jdbc, s)).isEqualTo(before);
+            // 새 테이블은 비어 있다 (상속 구조에서 추정해 넣지 않는다 — 예제에도 매핑 행 없음)
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_SBTYP_IDNTFR_COL_MPNG", Integer.class)).isZero();
-            // 예제 : 새 테이블 1개의 물리·논리 모델·인덱스 3개, 새 용어 1개 (새 단어 없음)
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class)).isEqualTo(exampleEntities + 1);
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX where PRJ_SN = 0", Integer.class)).isEqualTo(exampleIndexes + 3);
+            // 예제 : TB_SBTYP_IDNTFR_COL_MPNG 의 물리·논리 모델·인덱스 3개, 새 용어 1개 (새 단어 없음)
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_IDX i join " + s + "TB_TBL t on t.TBL_SN = i.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM = 'TB_SBTYP_IDNTFR_COL_MPNG'", Integer.class)).isEqualTo(3);
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT e join " + s + "TB_ENTT_TBL_MPNG m on m.LGCL_ENTT_SN = e.LGCL_ENTT_SN join " + s + "TB_TBL t on t.TBL_SN = m.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM = 'TB_SBTYP_IDNTFR_COL_MPNG'", Integer.class)).isOne();
             assertThat(jdbc.queryForList("select c.COL_NM from " + s + "TB_COL c join " + s + "TB_TBL t on t.TBL_SN = c.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM = 'TB_SBTYP_IDNTFR_COL_MPNG' and c.STD_TRM_SN is null",
                     String.class)).as("예제 컬럼은 모두 표준 용어에 연결").isEmpty();
             assertThat(jdbc.queryForObject("select TRM_ENG_ABBR_NM from " + s + "TB_STD_TRM where PRJ_SN = 0 and TRM_NM = '서브타입_식별자_컬럼_매핑_일련번호'", String.class)).isEqualTo("SBTYP_IDNTFR_COL_MPNG_SN");
@@ -109,17 +99,5 @@ class SubtypeIdentifierColumnMappingMigrationTest {
         } finally {
             v3.clean(); // UUID 로 만든 검증 전용 스키마만 정리한다
         }
-    }
-
-    private static Map<String, List<Map<String, Object>>> snapshot(JdbcTemplate jdbc, String s) {
-        Map<String, List<Map<String, Object>>> result = new java.util.LinkedHashMap<>();
-        for (String table : KEPT) {
-            String where = table.equals("TB_LGCL_ATRB") ? "LGCL_ENTT_SN in (select LGCL_ENTT_SN from " + s + "TB_LGCL_ENTT where PRJ_SN = 900000501)"
-                    : table.equals("TB_LGCL_IDNTFR") ? "LGCL_ENTT_SN in (select LGCL_ENTT_SN from " + s + "TB_LGCL_ENTT where PRJ_SN = 900000501)"
-                    : table.equals("TB_ATRB_COL_MPNG") ? "ENTT_TBL_MPNG_SN in (select ENTT_TBL_MPNG_SN from " + s + "TB_ENTT_TBL_MPNG where PRJ_SN = 900000501)"
-                    : "PRJ_SN = 900000501";
-            result.put(table, jdbc.queryForList("select * from " + s + table + " where " + where + " order by 1"));
-        }
-        return result;
     }
 }

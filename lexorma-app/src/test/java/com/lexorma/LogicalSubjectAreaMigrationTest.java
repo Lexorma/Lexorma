@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class LogicalSubjectAreaMigrationTest {
 
-    @ParameterizedTest(name = "V1 설치 → V2 {0}")
+    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V2 합침) {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void upgradeKeepsExistingModelsUnclassified(String vendor) {
         String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
@@ -32,35 +32,23 @@ class LogicalSubjectAreaMigrationTest {
         String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
         var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
         String s = "\"" + schema + "\".";
-        Flyway v1 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("1"))
-                .cleanDisabled(false).load();
+        Flyway v1 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
         try {
-            assertThat(v1.migrate().migrationsExecuted).isEqualTo(2);
+            // 2026-11-22 네 번째 합침 : 예전 V2(주제 영역)는 V0·V1 에 있다 — 새 설치의 제약·예제를 본다 (예전 V1 → V2 업그레이드 검증은 더 이상 경로가 없다)
+            assertThat(v1.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(v1.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
-            // V1 설치에서 쓰던 데이터 : 사용자 프로젝트의 논리 모델·엔터티(승인)·배치
             jdbc.update("insert into " + s + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900000301, 'upgrade', true, false, true, 'POSTGRESQL')");
             jdbc.update("insert into " + s + "TB_LGCL_MDL(LGCL_MDL_SN, PRJ_SN, MDL_NM, MDFCN_DT) values (900000310, 900000301, '기존 모델', timestamp '2026-11-01 10:00:00')");
             jdbc.update("insert into " + s + "TB_LGCL_ENTT(LGCL_ENTT_SN, PRJ_SN, LGCL_MDL_SN, ENTT_NM, APRV_YN, MDFCN_DT) values (900000311, 900000301, 900000310, '고객', true, timestamp '2026-11-01 10:00:00')");
             jdbc.update("insert into " + s + "TB_LGCL_ENTT(LGCL_ENTT_SN, PRJ_SN, LGCL_MDL_SN, ENTT_NM, APRV_YN, MDFCN_DT) values (900000312, 900000301, 900000310, '주문', false, timestamp '2026-11-01 10:00:00')");
-            jdbc.update("insert into " + s + "TB_LGCL_ERD_LYT(LGCL_ERD_LYT_SN, PRJ_SN, LGCL_MDL_SN, ACNT_SN, NODE_PSTN_CN, SCRN_X_CRDNT, SCRN_Y_CRDNT, SCRN_MGNF, VER_NO)"
-                    + " values (900000313, 900000301, 900000310, 1, '{\"900000311\":{\"x\":1.0,\"y\":2.0}}', 0, 0, 1, 3)");
-            List<Map<String, Object>> entitiesBefore = jdbc.queryForList("select LGCL_ENTT_SN, ENTT_NM, APRV_YN, MDFCN_DT from " + s + "TB_LGCL_ENTT where PRJ_SN = 900000301 order by LGCL_ENTT_SN");
-            Map<String, Object> layoutBefore = jdbc.queryForMap("select NODE_PSTN_CN, VER_NO, MDFCN_DT from " + s + "TB_LGCL_ERD_LYT where LGCL_ERD_LYT_SN = 900000313");
-            int exampleEntities = jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class);
 
-            // V2 까지만 올린다 (V3 서브타입은 LogicalSubtypeMigrationTest 가 본다 — 이 검사의 예제 엔터티 수 +3 은 V2 의 것)
-            Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).target(MigrationVersion.fromVersion("2")).load();
-            assertThat(latest.migrate().migrationsExecuted).isOne();
-            assertThat(latest.validateWithResult().validationSuccessful).isTrue();
-
-            // 기존 데이터 그대로, 주제 영역·소속·영역 배치는 없다 (기본 영역·자동 분류·배치 복제 없음 — 예제 프로젝트에도 주제 영역 데이터는 없다, D-18)
-            assertThat(jdbc.queryForList("select LGCL_ENTT_SN, ENTT_NM, APRV_YN, MDFCN_DT from " + s + "TB_LGCL_ENTT where PRJ_SN = 900000301 order by LGCL_ENTT_SN")).isEqualTo(entitiesBefore);
-            assertThat(jdbc.queryForMap("select NODE_PSTN_CN, VER_NO, MDFCN_DT from " + s + "TB_LGCL_ERD_LYT where LGCL_ERD_LYT_SN = 900000313")).isEqualTo(layoutBefore);
+            // 새 설치에는 주제 영역·소속·영역 배치가 없다 (예제 프로젝트에도 주제 영역 데이터는 없다, D-18)
             for (String table : List.of("TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT")) {
                 assertThat(jdbc.queryForObject("select count(*) from " + s + table, Integer.class)).as(table).isZero();
             }
-            // 예제 : 새 테이블 3개의 물리·논리 모델이 더해졌다 (예제 정합성은 V0SeedMigrationTest 가 본다)
-            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_ENTT where PRJ_SN = 0", Integer.class)).isEqualTo(exampleEntities + 3);
+            // 예제 : 새 테이블 3개의 물리·논리 모델 (예제 정합성은 V0SeedMigrationTest 가 본다)
+            assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_TBL where PRJ_SN = 0 and TBL_NM in ('TB_LGCL_SBJ_AREA', 'TB_LGCL_SBJ_AREA_ENTT', 'TB_LGCL_SBJ_AREA_LYT')", Integer.class)).isEqualTo(3);
             assertThat(jdbc.queryForList("select WORD_NM || ':' || WORD_ENG_ABBR_NM from " + s + "TB_STD_WORD where PRJ_SN = 0 and WORD_NM in ('주제', '영역', '상위') order by WORD_NM",
                     String.class)).containsExactly("상위:UP", "영역:AREA", "주제:SBJ");
             assertThat(jdbc.queryForList("select c.COL_NM from " + s + "TB_COL c join " + s + "TB_TBL t on t.TBL_SN = c.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM like 'TB_LGCL_SBJ_AREA%' and c.STD_TRM_SN is null",

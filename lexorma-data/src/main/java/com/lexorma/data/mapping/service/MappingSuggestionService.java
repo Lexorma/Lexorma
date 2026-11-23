@@ -279,7 +279,12 @@ public class MappingSuggestionService {
         Map<Long, List<AttributeLinkRow>> attributes = group(repository.attributeLinks(found), AttributeLinkRow::entityId);
         List<Long> mapped = links.stream().filter(l -> l.mappingId() != null).map(EntityLink::entityId).toList();
         Map<Long, List<AttributeLinkRow>> inherited = group(repository.inheritedKeyLinksByEntity(mapped), AttributeLinkRow::entityId);
-        Judged judged = mapped.isEmpty() ? Judged.EMPTY : judge(qualityService.modelRows(projectId, model.modelId(), model.modelName()));
+        Map<Long, List<AttributeLinkRow>> copied = group(repository.inheritedAttributeLinksByEntity(mapped), AttributeLinkRow::entityId);
+        // 물리 문맥 (M-7 상속 A·C, D-AC-16) : A형 통합·C형 분산 엔터티를 미매핑으로 보이지 않는다 (유효한 것만 — 맞지 않으면 그대로 미매핑)
+        Map<Long, ModelMappingDto.Physical> physical = mappingService.physicalOf(projectId, model.modelId(),
+                links.stream().map(l -> new Long[]{l.entityId(), l.mappingId(), l.tableId()}).toList());
+        boolean anyContext = physical.values().stream().anyMatch(p -> p.valid() && !"DIRECT".equals(p.kind()));
+        Judged judged = mapped.isEmpty() && !anyContext ? Judged.EMPTY : judge(qualityService.modelRows(projectId, model.modelId(), model.modelName()));
 
         List<EntityOverlay> result = new ArrayList<>(links.size());
         for (EntityLink l : links) {
@@ -287,13 +292,19 @@ public class MappingSuggestionService {
             boolean isMapped = l.mappingId() != null;
             List<AttributeLink> links2 = own.stream().filter(a -> a.columnId() != null)
                     .map(a -> link(a.attributeId(), a.attributeName(), a.columnId(), a.columnName(), LinkKind.DIRECT, judged.attributeRows(a.attributeId()))).toList();
-            List<AttributeLink> keys = inherited.getOrDefault(l.entityId(), List.of()).stream()
-                    .map(a -> link(a.attributeId(), a.attributeName(), a.columnId(), a.columnName(), LinkKind.INHERITED_KEY, judged.inheritanceRows(l.entityId()))).toList();
+            List<AttributeLink> keys = new ArrayList<>(inherited.getOrDefault(l.entityId(), List.of()).stream()
+                    .map(a -> link(a.attributeId(), a.attributeName(), a.columnId(), a.columnName(), LinkKind.INHERITED_KEY, judged.inheritanceRows(l.entityId()))).toList());
+            copied.getOrDefault(l.entityId(), List.of()).forEach(a -> keys.add(link(a.attributeId(), a.attributeName(), a.columnId(), a.columnName(), LinkKind.INHERITED_ATTRIBUTE,
+                    judged.inheritanceRows(l.entityId()))));
             List<Row> rows = judged.byEntity().getOrDefault(l.entityId(), List.of());
+            ModelMappingDto.Physical p = physical.get(l.entityId());
+            boolean context = p != null && p.valid() && ("MERGED".equals(p.kind()) || "DISTRIBUTED".equals(p.kind()));
+            MappingStatus mappingStatus = isMapped ? MappingStatus.MAPPED : context ? MappingStatus.valueOf(p.kind()) : MappingStatus.UNMAPPED;
+            boolean judgedEntity = isMapped || context;
             result.add(new EntityOverlay(l.entityId(), isMapped, l.mappingId(), l.schemaId(), l.schemaName(), l.tableId(), l.tableName(),
-                    isMapped ? worst(rows) : OverlayStatus.UNMAPPED, own.size(), links2.size(), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE),
-                    links2, keys, isMapped ? MappingStatus.MAPPED : MappingStatus.UNMAPPED, isMapped ? quality(rows) : CheckStatus.UNMAPPED,
-                    isMapped ? entityIssues(rows) : List.of()));
+                    judgedEntity ? worst(rows) : OverlayStatus.UNMAPPED, own.size(), links2.size(), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE),
+                    links2, keys, mappingStatus, judgedEntity ? quality(rows) : CheckStatus.UNMAPPED, judgedEntity ? entityIssues(rows) : List.of(),
+                    p == null ? null : p.strategy(), p == null ? List.of() : p.tables()));
         }
         return result;
     }
@@ -305,10 +316,16 @@ public class MappingSuggestionService {
         List<Long> mapped = links.stream().filter(l -> l.mappingId() != null).map(TableLink::tableId).toList();
         Map<Long, List<ColumnLinkRow>> direct = group(repository.columnLinks(mapped), ColumnLinkRow::tableId);
         Map<Long, List<ColumnLinkRow>> inherited = group(repository.inheritedKeyLinksByTable(mapped), ColumnLinkRow::tableId);
+        Map<Long, List<ColumnLinkRow>> copied = group(repository.inheritedAttributeLinksByTable(mapped), ColumnLinkRow::tableId);
         // 테이블이 여러 논리 모델에 매핑될 수 있다 : 모델마다 정합성 판정 1번 (테이블마다가 아니다)
         Map<Long, Judged> judgedByModel = new HashMap<>();
         links.stream().filter(l -> l.mappingId() != null).map(l -> Map.entry(l.modelId(), l.modelName())).distinct()
                 .forEach(e -> judgedByModel.put(e.getKey(), judge(qualityService.modelRows(projectId, e.getKey(), e.getValue()))));
+
+        // 물리 문맥 (A형 통합 테이블 표시) : 모델마다 한 번
+        Map<Long, Map<Long, ModelMappingDto.Physical>> physicalByModel = new HashMap<>();
+        links.stream().filter(l -> l.mappingId() != null).collect(java.util.stream.Collectors.groupingBy(TableLink::modelId)).forEach((modelId, list) ->
+                physicalByModel.put(modelId, mappingService.physicalOf(projectId, modelId, list.stream().map(l -> new Long[]{l.entityId(), l.mappingId(), l.tableId()}).toList())));
 
         List<TableOverlay> result = new ArrayList<>(links.size());
         for (TableLink l : links) {
@@ -324,10 +341,15 @@ public class MappingSuggestionService {
                     LinkKind.DIRECT, judged.attributeRows(c.attributeId()))));
             inherited.getOrDefault(l.tableId(), List.of()).forEach(c -> columns.add(link(c.attributeId(), c.attributeName(), c.columnId(), c.columnName(),
                     LinkKind.INHERITED_KEY, judged.inheritanceRows(l.entityId()))));
+            copied.getOrDefault(l.tableId(), List.of()).forEach(c -> columns.add(link(c.attributeId(), c.attributeName(), c.columnId(), c.columnName(),
+                    LinkKind.INHERITED_ATTRIBUTE, judged.inheritanceRows(l.entityId()))));
             List<Row> rows = judged.byEntity().getOrDefault(l.entityId(), List.of());
+            // A형 통합 테이블 (M-7 상속 A) : 루트 매핑 + 통합된 구성원 (노드에는 수만, 상세는 목록으로 — 이름을 무제한 나열하지 않는다)
+            ModelMappingDto.Physical root = physicalByModel.getOrDefault(l.modelId(), Map.of()).get(l.entityId());
+            List<ModelMappingDto.PhysicalTable> merged = root == null || !"SINGLE_TABLE".equals(root.strategy()) ? List.of() : mappingService.mergedInto(projectId, l.modelId(), l.entityId());
             result.add(new TableOverlay(l.tableId(), true, l.mappingId(), l.modelId(), l.modelName(), l.entityId(), l.entityName(), worst(rows), columnCount,
                     columns.size(), count(rows, CheckStatus.MISMATCH), count(rows, CheckStatus.NOT_COMPARABLE), columns,
-                    MappingStatus.MAPPED, quality(rows), entityIssues(rows)));
+                    MappingStatus.MAPPED, quality(rows), entityIssues(rows), root == null ? null : root.strategy(), merged));
         }
         return result;
     }

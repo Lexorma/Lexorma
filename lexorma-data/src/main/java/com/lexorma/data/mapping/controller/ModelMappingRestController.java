@@ -37,6 +37,9 @@ public class ModelMappingRestController {
     private final PhysicalNameRecommendationService recommendationService;
     private final com.lexorma.data.mapping.service.PhysicalGenerationService generationService;
     private final com.lexorma.data.mapping.service.PhysicalNameRenameService renameService;
+    private final com.lexorma.data.mapping.service.ForeignKeyCorrectionService foreignKeyCorrectionService;
+    private final com.lexorma.data.mapping.service.UniqueCorrectionService uniqueCorrectionService;
+    private final com.lexorma.data.mapping.service.InheritanceForeignKeyCorrectionService inheritanceForeignKeyCorrectionService;
 
     @Operation(summary = "논리 → 물리 생성 미리보기 (DEC-10)", description = "고른 엔터티로 만들 테이블·컬럼·PK 계획과 막는 문제·경고, 논리 관계별 FK 미생성 사유(relations), DBMS 식별자 진단(identifiers), planToken. 모델 객체를 저장하지 않는다 (기본 스키마가 없으면 다른 화면처럼 만든다)")
     @PreAuthorize("hasRole('USER')")
@@ -153,6 +156,59 @@ public class ModelMappingRestController {
     @DeleteMapping("/subtypeKey/{id}")
     public ResponseEntity<Map<String, Object>> deleteSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
         modelMappingService.deleteSubtypeKeyMapping(accountDto, id);
+        return ResponseEntity.ok(DONE);
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 조회 (M-7 상속 C)", description = "C형 말단 엔터티 매핑의 상속 일반 속성 매핑 : 조상 일반 속성마다 1행(없으면 컬럼 null), 지금 조상 속성이 아닌 기존 매핑(current false)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeAttributes")
+    public ResponseEntity<ModelMappingDto.SubtypeAttributeDetail> selectSubtypeAttributes(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "mappingId") Long mappingId) {
+        return ResponseEntity.ok(modelMappingService.selectSubtypeAttributes(accountDto, mappingId));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 후보 컬럼 (M-7 상속 C)", description = "매핑된 테이블의 컬럼 중 속성·상속 PK·상속 일반 속성 매핑에 쓰이지 않은 것. currentId 의 컬럼은 후보로 둔다")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{mappingId}/subtypeAttributes/candidates")
+    public ResponseEntity<Map<String, Object>> selectSubtypeAttributeCandidates(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                @PathVariable(name = "mappingId") Long mappingId,
+                                                                                @RequestParam(value = "page") int page,
+                                                                                @RequestParam(value = "size") int size,
+                                                                                @RequestParam(value = "sort", required = false) String sort,
+                                                                                @RequestParam(value = "searchQuery", required = false) String searchQuery,
+                                                                                @RequestParam(value = "currentId", required = false) Long currentId) {
+        return PageableUtil.getGridPageableMap(modelMappingService.selectSubtypeAttributeCandidates(accountDto, mappingId, currentId, searchQuery,
+                PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.mapping.repository.ModelMappingQueryRepository.KEY_COLUMN_SORT_FIELDS)));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 등록·변경 (M-7 상속 C)", description = "mappingId(C형 말단 엔터티 매핑)의 조상 일반 속성(attributeId)과 그 테이블의 컬럼을 연결한다. 변경(id 있음)은 컬럼만 바꾼다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/subtypeAttribute")
+    public ResponseEntity<ModelMappingDto.SubtypeAttributeMapping> saveSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                               @RequestBody ModelMappingDto.SubtypeAttributeMapping mapping) {
+        return ResponseEntity.ok(modelMappingService.saveSubtypeAttributeMapping(accountDto, mapping));
+    }
+
+    @Operation(summary = "C형 상속 일반 속성 매핑 해제 (M-7 상속 C)", description = "매핑만 지운다. 물리 컬럼·논리 속성은 그대로")
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/subtypeAttribute/{id}")
+    public ResponseEntity<Map<String, Object>> deleteSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
+        modelMappingService.deleteSubtypeAttributeMapping(accountDto, id);
+        return ResponseEntity.ok(DONE);
+    }
+
+    @Operation(summary = "상속 변환 기록 (M-7 상속 A·C)", description = "논리 모델의 상속 계층별 변환 기록(A형 통합 테이블·분류 컬럼, C형)과 기록 삭제를 막는 매핑")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/conversions")
+    public ResponseEntity<List<ModelMappingDto.ConversionTree>> selectConversions(@AuthenticationPrincipal AccountDto accountDto, @RequestParam(value = "modelId") Long modelId) {
+        return ResponseEntity.ok(modelMappingService.selectConversions(accountDto, modelId));
+    }
+
+    @Operation(summary = "상속 변환 기록 삭제 (M-7 상속 A·C, D-AC-18)", description = "상속 계층(루트 엔터티)의 변환 기록을 지운다. 관련 매핑이 남아 있으면 409 가 아니라 RELATION_EXISTS 로 거절한다 (매핑을 먼저 해제). "
+            + "물리 테이블·컬럼·FK·UNIQUE·논리 엔터티는 지우지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/conversions/{rootEntityId}")
+    public ResponseEntity<Map<String, Object>> deleteConversions(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "rootEntityId") Long rootEntityId) {
+        modelMappingService.deleteConversions(accountDto, rootEntityId);
         return ResponseEntity.ok(DONE);
     }
 
@@ -298,5 +354,82 @@ public class ModelMappingRestController {
     public ResponseEntity<com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Result> rename(@RequestBody com.lexorma.data.mapping.domain.dto.PhysicalNameRenameDto.Request request,
                                                                                                   @AuthenticationPrincipal AccountDto accountDto) {
         return ResponseEntity.ok(renameService.apply(accountDto, request));
+    }
+    @Operation(summary = "누락 FK 보정 가능 여부 (M7-FK-01)", description = "정합성 비교의 논리 관계(relationshipIds, 같은 모델, 최대 100개 — 목록 한 쪽)마다 FK 를 만들 수 있는지와 막는 사유. 조회 전용 (계획 토큰 없음)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/quality/foreignKey/status")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Item>> foreignKeyStatus(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                  @RequestParam(value = "modelId") Long modelId,
+                                                                                                                  @RequestParam(value = "relationshipIds") List<Long> relationshipIds) {
+        return ResponseEntity.ok(foreignKeyCorrectionService.status(accountDto, modelId, relationshipIds));
+    }
+
+    @Operation(summary = "누락 FK 보정 미리보기 (M7-FK-01)", description = "고른 논리 관계(FK 누락)의 만들 FK 구성(부모·자식 테이블, 컬럼 쌍·순서, 표현, 이름, 승인 상태)과 보정 가능 여부·사유, planToken. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/foreignKey/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Plan> foreignKeyPreview(@RequestBody com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Request request,
+                                                                                                             @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(foreignKeyCorrectionService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "누락 FK 보정 적용 (M7-FK-01)", description = "미리보기의 planToken 과 같은 계획이고 고른 관계를 모두 보정할 수 있을 때만, 직전 모델 버전(FKFIX-요청 ID)을 남긴 뒤 미승인 FK 를 만든다. "
+            + "기존 FK·컬럼·PK 는 바꾸지 않는다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 관계가 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/foreignKey/apply")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Result> foreignKeyApply(@RequestBody com.lexorma.data.mapping.domain.dto.ForeignKeyCorrectionDto.Request request,
+                                                                                                             @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(foreignKeyCorrectionService.apply(accountDto, request));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 가능 여부 (M7-AK-02)", description = "정합성 비교의 보조 식별자(identifierIds, 같은 모델, 최대 100개 — 목록 한 쪽)마다 UNIQUE 를 만들 수 있는지와 막는 사유·경고. 조회 전용 (계획 토큰 없음)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/quality/unique/status")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Item>> uniqueStatus(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                          @RequestParam(value = "modelId") Long modelId,
+                                                                                                          @RequestParam(value = "identifierIds") List<Long> identifierIds) {
+        return ResponseEntity.ok(uniqueCorrectionService.status(accountDto, modelId, identifierIds));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 미리보기 (M7-AK-02)", description = "고른 보조 식별자(UNIQUE 누락)의 만들 UNIQUE 구성(테이블, 컬럼·순서, 이름, 미승인)과 보정 가능 여부·사유·NULL 경고, planToken. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/unique/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Plan> uniquePreview(@RequestBody com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Request request,
+                                                                                                     @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(uniqueCorrectionService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "누락 UNIQUE 보정 적용 (M7-AK-02)", description = "미리보기의 planToken 과 같은 계획이고 고른 보조 식별자를 모두 보정할 수 있을 때만, 직전 모델 버전(UKFIX-요청 ID)을 남긴 뒤 미승인 UNIQUE 제약조건을 만든다. "
+            + "기존 UNIQUE·고유 인덱스·컬럼은 바꾸지 않고 원본 DB 도 바꾸지 않는다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 식별자가 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/unique/apply")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Result> uniqueApply(@RequestBody com.lexorma.data.mapping.domain.dto.UniqueCorrectionDto.Request request,
+                                                                                                     @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(uniqueCorrectionService.apply(accountDto, request));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 가능 여부 (M7-INH-03)", description = "정합성 비교 [상속 구조]의 서브타입(entityIds, 같은 모델, 최대 100개 — 목록 한 쪽)마다 직계 슈퍼타입을 참조하는 상속 FK 를 만들 수 있는지와 막는 사유·선행 보정 대상. 조회 전용 (계획 토큰 없음)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/quality/inheritanceFk/status")
+    public ResponseEntity<List<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Item>> inheritanceFkStatus(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                                              @RequestParam(value = "modelId") Long modelId,
+                                                                                                                              @RequestParam(value = "entityIds") List<Long> entityIds) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.status(accountDto, modelId, entityIds));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 미리보기 (M7-INH-03)", description = "고른 서브타입의 만들 상속 FK(자식·부모 테이블, 컬럼 쌍·순서, 미승인 USER 관계, 이름)와 보정 가능 여부·사유, planToken. 아무것도 바꾸지 않는다")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/inheritanceFk/preview")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Plan> inheritanceFkPreview(@RequestBody com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Request request,
+                                                                                                                         @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.preview(accountDto, request));
+    }
+
+    @Operation(summary = "누락 상속 FK 보정 적용 (M7-INH-03)", description = "미리보기의 planToken 과 같은 계획이고 고른 서브타입을 모두 보정할 수 있을 때만, 직전 모델 버전(INHFIX-요청 ID)을 남긴 뒤 미승인 상속 FK 를 만든다. "
+            + "기존 테이블·컬럼·FK 는 바꾸지 않는다. 그 사이 바뀌었거나 다른 사용자가 바꾸는 중이면 409, 막힌 서브타입이 있으면 400, 하나라도 실패하면 전체 롤백")
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/quality/inheritanceFk/apply")
+    public ResponseEntity<com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Result> inheritanceFkApply(@RequestBody com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Request request,
+                                                                                                                         @AuthenticationPrincipal AccountDto accountDto) {
+        return ResponseEntity.ok(inheritanceForeignKeyCorrectionService.apply(accountDto, request));
     }
 }

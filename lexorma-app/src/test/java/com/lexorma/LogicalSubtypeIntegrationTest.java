@@ -411,7 +411,7 @@ class LogicalSubtypeIntegrationTest {
         byte[] bytes = json.writeValueAsBytes(exchange.export(f.member()));
         assertThat(bytes.length).as("기존 요청 한도 30MB 안").isLessThan(30 * 1024 * 1024);
         ModelExchangeDto.Document document = json.readValue(bytes, ModelExchangeDto.Document.class);
-        assertThat(document.formatVersion()).isEqualTo(6);
+        assertThat(document.formatVersion()).isEqualTo(7);
         assertThat(document.model().get("SUBTYPE_GROUP")).extracting(i -> ((List<?>) i.state().get("subtypes")).size()).containsExactlyInAnyOrder(2, 500, 999, 1000, 1001, 2000, 2);
 
         GenerationFixture targetFixture = fixture("st-x-large-import");
@@ -915,7 +915,7 @@ class LogicalSubtypeIntegrationTest {
         assertThat(count("select count(*) from TB_MDL_CHG_HSTRY where PRJ_SN = ? and TRGT_TYPE_CD = 'LOGICAL_ATTRIBUTE'", project)).as("상속 속성 이력 없음").isEqualTo(attributeHistory);
 
         ModelVersionDto.Summary after = versions.create(member, new ModelVersionDto.Create("st-after-" + System.nanoTime(), null));
-        assertThat(after.formatVersion()).isEqualTo(9);
+        assertThat(after.formatVersion()).isEqualTo(10);
         assertThat(after.counts().get("SUBTYPE_GROUP").asInt()).isOne();
         // 과거 버전의 독립성 : 버전을 만든 뒤 상속 구조·원본 속성·식별자를 바꿔도 저장된 버전 내용(상속 정의 포함)은 그대로
         String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, after.id());
@@ -967,7 +967,7 @@ class LogicalSubtypeIntegrationTest {
         String modelName = jdbc.queryForObject("select MDL_NM from TB_LGCL_MDL where LGCL_MDL_SN = ?", String.class, f.modelId);
 
         ModelExchangeDto.Document document = exchange.export(source);
-        assertThat(document.formatVersion()).isEqualTo(6);
+        assertThat(document.formatVersion()).isEqualTo(7);
         assertThat(document.model().get("SUBTYPE_GROUP")).hasSize(2);
 
         GenerationFixture targetFixture = fixture("st-import");

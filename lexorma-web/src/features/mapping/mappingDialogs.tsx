@@ -10,6 +10,7 @@ import { termLabel } from '../column/terms';
 import { useSchemas } from '../schema/schemas';
 import type { ColumnCandidate, MappingAttribute, MappingDetail, MappingRow, TableCandidate } from './model';
 import { InheritanceRoleLabel, needsSubtypeKeys, SubtypeKeySection } from './subtypeKeys';
+import { InheritedAttributeSection, PhysicalKindLabel } from './inheritanceStrategy';
 import { AttributeSuggestionSection, TableSuggestionList } from './suggestions';
 
 const CANDIDATE_PAGE_SIZE = 10;
@@ -229,6 +230,8 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
         <span aria-hidden>↔</span>
         <Mono>{mapping.schemaName}.{mapping.tableName}</Mono>
         <InheritanceRoleLabel value={mapping.inheritance} />
+        {mapping.physical?.strategy && <Label variant="done">{mapping.physical.strategy === 'SINGLE_TABLE' ? t('A형 통합 테이블') : t('C형 말단 테이블')}</Label>}
+        <PhysicalKindLabel value={mapping.physical} />
         <span className="gh-muted">{mapping.modelName}</span>
       </div>
 
@@ -279,7 +282,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
                   return (
                     <tr key={a.attributeId}>
                       <td className="text-center">{index + 1}</td>
-                      <td>{a.attributeName}</td>
+                      <td>{a.attributeName}{a.ownerEntityName && a.ownerEntityId !== mapping.entityId && <div className="gh-muted">{t('정의 : {0} (통합)', a.ownerEntityName)}</div>}</td>
                       <td>{term(a.attributeTermName)}</td>
                       <td>
                         {canEdit ? (
@@ -330,6 +333,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
         <SubtypeKeySection mappingId={mappingId} canEdit={canEdit} onChanged={changed}
           onNavigate={(path) => { controls.close(); navigate(path); }} />
       )}
+      {mapping.physical?.strategy === 'TABLE_PER_CONCRETE' && <InheritedAttributeSection mappingId={mappingId} canEdit={canEdit} onChanged={changed} />}
 
       <div className="gh-dialog-actions">
         {onQuality && <button type="button" className="btn" onClick={() => { controls.close(); onQuality(mapping); }}>{t('정합성 비교 보기')}</button>}

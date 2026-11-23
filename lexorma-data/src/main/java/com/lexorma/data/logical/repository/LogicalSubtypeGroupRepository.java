@@ -34,4 +34,8 @@ public interface LogicalSubtypeGroupRepository extends JpaRepository<LogicalSubt
     /** 고른 그룹의 슈퍼타입·분류 속성(정의 엔터티 포함)을 함께 */
     @Query("select g from LogicalSubtypeGroup g join fetch g.supertypeEntity left join fetch g.classificationAttribute a left join fetch a.entity where g.id in :ids")
     List<LogicalSubtypeGroup> findWithEntities(@Param("ids") Collection<Long> ids);
+
+    /** 모델의 그룹 → 분류 속성 [그룹 ID, 분류 속성 ID] (M-7 상속 A — 분류 컬럼 정합성) */
+    @Query("select g.id, a.id from LogicalSubtypeGroup g left join g.classificationAttribute a where g.model.id = :modelId")
+    List<Object[]> findClassificationByModelId(@Param("modelId") Long modelId);
 }

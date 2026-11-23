@@ -42,6 +42,8 @@ export const TARGET_TYPES: [string, string][] = [
   ['SUBJECT_AREA_ENTITY', t('주제 영역 소속')],
   ['SUBTYPE_GROUP', t('서브타입 그룹')],
   ['SUBTYPE_KEY_MAPPING', t('상속 PK 매핑')],
+  ['SUBTYPE_CONVERSION', t('상속 변환 기록')],
+  ['SUBTYPE_ATTR_MAPPING', t('상속 일반 속성 매핑')],
 ];
 
 export const ACTIONS: [string, string][] = [
@@ -90,6 +92,7 @@ const FIELD_LABELS: Record<string, string> = {
   parent: t('상위 주제 영역'), areaName: t('주제 영역명'), areaDescription: t('주제 영역 설명'), subjectArea: t('주제 영역'),
   supertypeEntity: t('슈퍼타입'), groupName: t('그룹명'), groupDescription: t('설명 (분류 기준)'), overlapping: t('중복 가능 여부 (Overlapping)'), total: t('완전 여부 (Total)'),
   classificationAttribute: t('분류 속성'), subtypes: t('서브타입'), subtypeEntity: t('서브타입 엔터티'), classificationValue: t('분류 값'),
+  group: t('서브타입 그룹'), strategy: t('변환 전략'), classificationColumn: t('분류 컬럼'),
   table: t('테이블'), mapping: t('엔터티 매핑'), attribute: t('속성'), column: t('컬럼'), sourceColumn: t('원본 컬럼'), targetColumn: t('대상 컬럼'), columnOrder: t('순서'),
 };
 

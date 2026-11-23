@@ -62,6 +62,8 @@ import static org.assertj.core.groups.Tuple.tuple;
 class LogicalModelIntegrationTest {
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired StandardTermRepository termRepository;
     @Autowired StandardDomainRepository domainRepository;
@@ -94,9 +96,9 @@ class LogicalModelIntegrationTest {
 
         // 엔터티가 있으면 삭제할 수 없다
         Entity customer = service.saveEntity(admin, new Entity(null, sales.id(), "고객", null, null, null, null));
-        rejected(() -> service.deleteModel(admin, sales.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteModel(admin, sales.id(), null, null), ErrorCode.RELATION_EXISTS);
         deleteEntity(admin, customer.id());
-        service.deleteModel(admin, sales.id());
+        service.deleteModel(admin, sales.id(), null, null);
         assertThat(service.selectModels(admin)).extracting(Model::modelName).containsExactly("인사");
 
         // 다른 프로젝트 : 같은 이름을 쓸 수 있고, 남의 모델은 조회·수정·삭제할 수 없다
@@ -105,7 +107,7 @@ class LogicalModelIntegrationTest {
         assertThat(service.selectModels(other)).hasSize(1);
         rejected(() -> service.selectModel(other, hr.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveModel(other, new Model(hr.id(), "탈취", null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteModel(other, hr.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteModel(other, hr.id(), null, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveEntity(other, new Entity(null, hr.id(), "침입", null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.selectGraph(other, hr.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         assertThat(service.selectModel(admin, hr.id()).modelName()).isEqualTo("인사");
@@ -125,12 +127,12 @@ class LogicalModelIntegrationTest {
         assertThat(service.saveEntity(admin, new Entity(null, second.id(), "고객", null, null, null, null)).id()).as("다른 모델의 같은 엔터티명").isNotNull();
         // 수정 : 승인된 엔터티 자체는 승인 취소 후에만 바꾼다. 모델은 바뀌지 않는다
         rejected(() -> service.saveEntity(admin, new Entity(customer.id(), null, "구매 고객", null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        service.updateEntityApproval(admin, customer.id(), false);
+        service.updateEntityApproval(admin, customer.id(), false, null);
         Entity renamed = service.saveEntity(admin, new Entity(customer.id(), second.id(), "구매 고객", null, null, null, null));
         assertThat(renamed.modelId()).isEqualTo(model.id());
         assertThat(service.selectEntities(admin, model.id())).extracting(Entity::entityName).containsExactly("구매 고객");
         // 아래 속성 변경은 승인된 엔터티에 승인 권한자가 하는 것이다 (승인 상태 그대로 편집)
-        service.updateEntityApproval(admin, customer.id(), true);
+        service.updateEntityApproval(admin, customer.id(), true, null);
 
         // 표준 용어 : 도메인은 용어를 거쳐 보인다
         StandardDomain domain = domainRepository.save(StandardDomain.builder().projectId(projectId).commonStandardDomainName("명V100").dataType("VARCHAR").dataLength(100).isApproval(true).build());
@@ -162,7 +164,7 @@ class LogicalModelIntegrationTest {
         // 논리 속성이 쓰는 용어는 지울 수 없다
         rejected(() -> termService.deleteDataDictionaryStandardTerms(List.of(StandardTermDto.builder().id(term.getId()).build()), admin), ErrorCode.RELATION_EXISTS);
 
-        service.deleteAttribute(admin, grade.id());
+        service.deleteAttribute(admin, grade.id(), null);
         assertThat(service.selectEntity(admin, customer.id()).attributes()).extracting(Attribute::attributeName).containsExactly("고객번호", "성명");
 
         // 다른 프로젝트 : 남의 엔터티·속성·용어를 쓸 수 없다
@@ -174,8 +176,8 @@ class LogicalModelIntegrationTest {
         rejected(() -> service.saveEntity(other, new Entity(customer.id(), null, "탈취", null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveAttribute(other, new Attribute(null, customer.id(), "침입", null, null, null, null, null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveAttribute(other, new Attribute(no.id(), null, "침입", null, null, null, null, null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteAttribute(other, no.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteEntity(other, customer.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteAttribute(other, no.id(), null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteEntity(other, customer.id(), null, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         assertThat(service.selectEntity(admin, customer.id()).attributes()).hasSize(2);
     }
 
@@ -211,9 +213,9 @@ class LogicalModelIntegrationTest {
         assertThat(service.saveIdentifier(admin, new Identifier(pk.id(), null, "주문 상품 식별자", true, List.of(orderNo, lineNo), null)).attributeIds()).containsExactly(orderNo, lineNo);
 
         // 식별자에 쓰인 속성은 식별자에서 먼저 빼야 지울 수 있다
-        rejected(() -> service.deleteAttribute(admin, barcode), ErrorCode.RELATION_EXISTS);
-        service.deleteIdentifier(admin, alternate.id());
-        service.deleteAttribute(admin, barcode);
+        rejected(() -> service.deleteAttribute(admin, barcode, null), ErrorCode.RELATION_EXISTS);
+        service.deleteIdentifier(admin, alternate.id(), null);
+        service.deleteAttribute(admin, barcode, null);
         assertThat(service.selectEntity(admin, item.id()).identifiers()).extracting(Identifier::identifierName).containsExactly("주문 상품 식별자");
 
         // DB 제약 : 같은 식별자에 같은 속성을 두 번 넣을 수 없다
@@ -270,39 +272,39 @@ class LogicalModelIntegrationTest {
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
 
         // 관계가 있는 엔터티는 삭제할 수 없다 (자기 참조 포함) → 관계를 정리한 뒤 삭제
-        service.updateEntityApproval(admin, project.id(), false);
-        service.updateEntityApproval(admin, dept.id(), false);
-        rejected(() -> service.deleteEntity(admin, project.id()), ErrorCode.RELATION_EXISTS);
-        service.deleteRelationship(admin, assigned.id());
-        service.deleteEntity(admin, project.id());
-        rejected(() -> service.deleteEntity(admin, dept.id()), ErrorCode.RELATION_EXISTS);
+        service.updateEntityApproval(admin, project.id(), false, null);
+        service.updateEntityApproval(admin, dept.id(), false, null);
+        rejected(() -> service.deleteEntity(admin, project.id(), null, null), ErrorCode.RELATION_EXISTS);
+        service.deleteRelationship(admin, assigned.id(), null);
+        service.deleteEntity(admin, project.id(), null, null);
+        rejected(() -> service.deleteEntity(admin, dept.id(), null, null), ErrorCode.RELATION_EXISTS);
 
         // 승인 : 승인된 관계·엔터티 자체는 승인 취소 전에는 바꿀 수 없다. 승인된 엔터티의 속성·식별자는 승인 권한자만 바꾼다
         service.updateRelationshipApproval(admin, belongs.id(), true, null);
         rejected(() -> service.saveRelationship(admin, relationship(belongs.id(), model, "소속", dept, employee, true, 1, 1, 0, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.deleteRelationship(admin, belongs.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
-        service.updateEntityApproval(admin, employee.id(), true);
+        rejected(() -> service.deleteRelationship(admin, belongs.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        service.updateEntityApproval(admin, employee.id(), true, null);
         rejected(() -> service.saveEntity(admin, new Entity(employee.id(), null, "직원", null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.deleteEntity(admin, employee.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> service.deleteEntity(admin, employee.id(), null, null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         Attribute badge = service.saveAttribute(admin, new Attribute(null, employee.id(), "사번", null, null, null, null, null, null, null, null));
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, admin.getProjectId(), "920", "ROLE_USER");
         rejected(() -> service.saveAttribute(user, new Attribute(null, employee.id(), "입사일", null, null, null, null, null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.saveAttribute(user, new Attribute(badge.id(), null, "사원번호", null, null, null, null, null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.reorderAttributes(user, employee.id(), List.of(badge.id())), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.saveIdentifier(user, new Identifier(null, employee.id(), "사원 식별자", true, List.of(badge.id()), null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.deleteAttribute(user, badge.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> service.deleteAttribute(user, badge.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         // 승인 권한이 없는 사용자가 등록한 엔터티·관계는 승인 대기로 들어간다
         Entity pending = service.saveEntity(user, new Entity(null, model.id(), "직급", null, null, null, null));
         assertThat(pending.isApproval()).isFalse();
         assertThat(service.saveRelationship(user, relationship(null, model, "직급 부여", pending, pending, false, 0, 1, 0, null)).isApproval()).isFalse();
         SecurityTestSupport.loginAs(projectRepository, admin.getProjectId(), admin.getId(), "ROLE_ADMIN");
-        service.updateEntityApproval(admin, employee.id(), false);
+        service.updateEntityApproval(admin, employee.id(), false, null);
         assertThat(service.saveEntity(admin, new Entity(employee.id(), null, "직원", null, null, null, null)).entityName()).isEqualTo("직원");
 
         // 다른 프로젝트 : 관계를 보거나 바꿀 수 없다
         AccountDto other = loginAsAdmin("m6-relationship-other");
         rejected(() -> service.selectRelationships(other, model.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteRelationship(other, parent.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteRelationship(other, parent.id(), null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.updateRelationshipApproval(other, belongs.id(), false, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         Model theirs = service.saveModel(other, new Model(null, "조직", null));
         Entity theirEntity = service.saveEntity(other, new Entity(null, theirs.id(), "부서", null, null, null, null));
@@ -403,7 +405,7 @@ class LogicalModelIntegrationTest {
         deleteEntity(admin, b.id());
         assertThat(service.selectLayout(admin, model.id()).nodes()).containsOnlyKeys(a.id());
         deleteEntity(admin, a.id());
-        service.deleteModel(admin, model.id());
+        service.deleteModel(admin, model.id(), null, null);
         assertThat(jdbc.queryForObject("select count(*) from TB_LGCL_ERD_LYT where LGCL_MDL_SN = ?", Integer.class, model.id())).isZero();
         assertThat(jdbc.queryForObject("select count(*) from TB_LGCL_ERD_LYT where LGCL_MDL_SN = ?", Integer.class, otherModel.id())).isEqualTo(1);
     }
@@ -420,12 +422,12 @@ class LogicalModelIntegrationTest {
         assertThat(controller.selectModels(viewer).getBody()).hasSize(1);
         assertThat(controller.selectGraph(viewer, model.id()).getBody().entities()).hasSize(1);
         assertThatThrownBy(() -> controller.saveModel(viewer, new Model(null, "조회자", null))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteEntity(viewer, entity.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteEntity(viewer, entity.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, entity.id()), currentBase.entityComposition(viewer, entity.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.reorderAttributes(viewer, entity.id(), List.of())).isInstanceOf(AccessDeniedException.class);
 
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "901", "ROLE_USER");
         assertThat(controller.saveEntity(user, new Entity(null, model.id(), "사용자 엔터티", null, null, null, null)).getBody().id()).isNotNull();
-        rejected(() -> controller.updateEntityApproval(user, entity.id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);
+        rejected(() -> controller.updateEntityApproval(user, entity.id(), true, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, entity.id())), ErrorCode.APPROVAL_PERMISSION_DENIED);
 
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "902", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.selectModels(notApproved)).isInstanceOf(AccessDeniedException.class);
@@ -452,10 +454,10 @@ class LogicalModelIntegrationTest {
 
         // 엔터티 삭제 ↔ 그 엔터티로 관계 생성 : 어느 쪽이 먼저든 고아 관계가 남지 않는다
         Entity target = service.saveEntity(admin, new Entity(null, model.id(), "삭제 대상", null, null, null, null));
-        service.updateEntityApproval(admin, target.id(), false); // 승인된 엔터티는 지울 수 없으므로 승인 취소해 둔다
+        service.updateEntityApproval(admin, target.id(), false, null); // 승인된 엔터티는 지울 수 없으므로 승인 취소해 둔다
         List<String> results = concurrently(2, i -> {
             if (i == 0) {
-                service.deleteEntity(admin, target.id());
+                service.deleteEntity(admin, target.id(), null, null);
                 return "deleted";
             }
             return "related " + service.saveRelationship(admin, relationship(null, model, "엇갈림", entity, target, false, 0, 1, 0, null)).id();
@@ -470,8 +472,8 @@ class LogicalModelIntegrationTest {
 
     /** 승인 권한자가 등록한 엔터티는 승인 상태라 승인 취소 후에 지운다 */
     private void deleteEntity(AccountDto account, Long entityId) {
-        service.updateEntityApproval(account, entityId, false);
-        service.deleteEntity(account, entityId);
+        service.updateEntityApproval(account, entityId, false, null);
+        service.deleteEntity(account, entityId, null, null);
     }
 
     private static void rejected(ThrowingCallable call, ErrorCode expected) {

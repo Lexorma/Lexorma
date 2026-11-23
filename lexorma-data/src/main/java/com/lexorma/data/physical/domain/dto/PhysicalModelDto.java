@@ -167,10 +167,15 @@ public final class PhysicalModelDto {
 
     /** constraintType : UNIQUE(columns 필수) / CHECK(checkExpression 필수) */
     public record Constraint(Long id, Long tableId, String constraintName, String constraintType, String checkExpression,
-                             List<ColumnRef> columns, Boolean isApproval) {
+                             List<ColumnRef> columns, Boolean isApproval, LocalDateTime modifiedAt) {
+        /** modifiedAt : 응답 전용 수정 기준값 (M8-C2 — 삭제·승인 요청이 돌려준다). 등록 요청은 보내지 않는다 */
+        public Constraint(Long id, Long tableId, String constraintName, String constraintType, String checkExpression, List<ColumnRef> columns, Boolean isApproval) {
+            this(id, tableId, constraintName, constraintType, checkExpression, columns, isApproval, null);
+        }
+
         public static Constraint fromEntity(TableConstraint c) {
             return new Constraint(c.getId(), c.getTableInfo().getId(), c.getConstraintName(), c.getConstraintType().name(),
-                    c.getCheckExpression(), c.getColumns().stream().map(col -> ColumnRef.of(col.getColumn())).toList(), c.getIsApproval());
+                    c.getCheckExpression(), c.getColumns().stream().map(col -> ColumnRef.of(col.getColumn())).toList(), c.getIsApproval(), c.modifiedAt());
         }
     }
 

@@ -307,9 +307,12 @@ public class PhysicalViewService {
     }
 
     @Transactional
-    public void updateApproval(AccountDto accountDto, Long id, boolean isApproval) {
+    public void updateApproval(AccountDto accountDto, Long id, boolean isApproval, java.time.LocalDateTime modifiedAt) {
         if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
         PhysicalView view = lockView(accountDto.getProjectId(), id);
+        // M8-C2 (M8-D02) : 승인 상태를 바꿀 때만 승인자가 본 VIEW(상세의 updated)와 비교한다 — 다르면 409. 이미 그 상태면 바꾸지 않는다
+        if (Boolean.TRUE.equals(view.getIsApproval()) == isApproval) return;
+        com.lexorma.common.jpa.ModelBase.verify(view, modifiedAt, view.getViewName());
         // 승인 대기 요청은 승인된 정의를 기준으로 만든 것이라, 승인을 취소하면 요청 없이 직접 고칠 수 있게 되어 요청과 어긋난다
         if (!isApproval && requestRepository.existsByView_IdAndStatus(id, ViewChangeRequest.Status.REQUESTED)) {
             throw invalid("승인 대기 중인 변경 요청이 있습니다. 먼저 승인하거나 반려해주세요.");
@@ -318,12 +321,14 @@ public class PhysicalViewService {
     }
 
     @Transactional
-    public void delete(AccountDto accountDto, Long id) {
+    public void delete(AccountDto accountDto, Long id, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         PhysicalView current = viewRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalViewService::notFound);
         namespace.lock(projectId, true, current.getSchema().getId()); // 이 VIEW 를 새로 참조하는 등록·승인과 직렬화
         PhysicalView view = lockView(projectId, id);
         if (Boolean.TRUE.equals(view.getIsApproval())) throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        // M8-C2 (M8-D01) : 화면이 본 VIEW(상세·목록의 updated)와 같을 때만 지운다. 출력 컬럼·참조 객체는 정의의 일부라 수정 때 VIEW 의 수정 일시가 바뀐다
+        com.lexorma.common.jpa.ModelBase.verify(view, modifiedAt, view.getViewName());
         List<String> referencing = viewRepository.findNamesReferencingView(id);
         if (!referencing.isEmpty()) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "VIEW {0} 이(가) 이 VIEW 를 참조합니다. 그 VIEW 의 참조 객체에서 먼저 빼주세요.", String.join(", ", referencing));

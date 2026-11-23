@@ -366,7 +366,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         // 같은 컬럼이 직접 속성 매핑에 쓰이면 상속 PK 매핑에 쓸 수 없다 (교차 중복)
         error(() -> link(f, org, partyNo, orgColumn), ErrorCode.SAVED_DATA_EXISTS);
         long direct = jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, orgColumn);
-        mappings.deleteAttributeMapping(f.user, direct);
+        mappings.deleteAttributeMapping(f.user, direct, null);
         link(f, org, partyNo, orgColumn);
         assertThat(keys(f, org).status()).as("일반 엔터티일 때 만든 컬럼은 PK 가 아니다").isEqualTo("PARENT_KEY_MISMATCH");
         jdbc.update("update TB_COL set PK_YN = true, NULL_ALWNC_YN = false where COL_SN = ?", orgColumn);
@@ -399,7 +399,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         group(g, root, "구분", true, false, mid, other);
         long midTable = g.table(mid);
         long midColumn = column(midTable, "M_PTY_NO");
-        mappings.deleteAttributeMapping(g.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, midColumn));
+        mappings.deleteAttributeMapping(g.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, midColumn), null);
         link(g, mid, a, midColumn);
         assertThat(keys(g, mid)).satisfies(d -> {
             assertThat(d.complete()).isFalse();
@@ -435,7 +435,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         // 후보 : 속성 매핑에 쓰인 컬럼은 빠진다
         assertThat(mappings.selectSubtypeKeyCandidates(f.user, mappingId(company), null, null, PageRequest.of(0, 20)).getContent()).isEmpty();
         error(() -> link(f, company, customerNo, refColumn), ErrorCode.SAVED_DATA_EXISTS);
-        mappings.deleteAttributeMapping(f.user, refDirect);
+        mappings.deleteAttributeMapping(f.user, refDirect, null);
         assertThat(mappings.selectSubtypeKeyCandidates(f.user, mappingId(company), null, "corp", PageRequest.of(0, 20)).getContent())
                 .extracting(ModelMappingDto.KeyColumnCandidate::columnId).containsExactly(refColumn);
         // 잘못된 요청
@@ -455,7 +455,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         error(() -> mappings.saveAttributeMapping(f.user, new ModelMappingDto.AttributeMapping(null, mappingId(company), ref, refColumn)), ErrorCode.SAVED_DATA_EXISTS);
         // 변경 : 컬럼만 — 속성 매핑에 쓰인 컬럼은 안 되고, 해제 뒤에는 된다. 같은 컬럼으로 다시 저장하면 이력 없음
         error(() -> mappings.saveSubtypeKeyMapping(f.user, new ModelMappingDto.SubtypeKeyMapping(saved.id(), null, null, bizColumn)), ErrorCode.SAVED_DATA_EXISTS);
-        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, bizColumn));
+        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, bizColumn), null);
         assertThat(mappings.selectSubtypeKeyCandidates(f.user, mappingId(company), saved.id(), null, PageRequest.of(0, 20)).getContent())
                 .extracting(ModelMappingDto.KeyColumnCandidate::columnId).containsExactlyInAnyOrder(refColumn, bizColumn);
         mappings.saveSubtypeKeyMapping(f.user, new ModelMappingDto.SubtypeKeyMapping(saved.id(), null, customerName, bizColumn));
@@ -469,7 +469,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         assertThat(keys(f, company).status()).isEqualTo("PARENT_KEY_MISMATCH");
         // 승인 상태는 매핑과 무관하다 (속성 매핑과 같은 계약) — 승인된 테이블에도 등록·해제할 수 있다
         jdbc.update("update TB_TBL set APRV_YN = true where TBL_SN = ?", corp);
-        mappings.deleteSubtypeKeyMapping(f.user, saved.id());
+        mappings.deleteSubtypeKeyMapping(f.user, saved.id(), null);
         assertThat(keyMappings(company)).isEmpty();
         assertThat(history(f, "SUBTYPE_KEY_MAPPING", "DELETE")).isOne();
         assertThat(jdbc.queryForObject("select count(*) from TB_COL where TBL_SN = ?", Integer.class, corp)).as("컬럼은 그대로").isEqualTo(2);
@@ -479,7 +479,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         ModelMappingDto.SubtypeKeyMapping again = link(f, company, customerNo, refColumn);
         error(() -> mappings.selectSubtypeKeys(other.user, mappingId(company)), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         error(() -> mappings.saveSubtypeKeyMapping(other.user, new ModelMappingDto.SubtypeKeyMapping(null, mappingId(company), customerNo, bizColumn)), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
-        error(() -> mappings.deleteSubtypeKeyMapping(other.user, again.id()), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
+        error(() -> mappings.deleteSubtypeKeyMapping(other.user, again.id(), null), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         error(() -> mappings.selectSubtypeKeyCandidates(other.user, mappingId(company), null, null, PageRequest.of(0, 20)), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         assertThat(keyMappings(company)).hasSize(1);
     }
@@ -500,7 +500,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         long corp = f.table(company);
         long keyColumn = column(corp, "CUST_NO");
 
-        error(() -> mappings.deleteEntityMapping(f.user, mappingId(company)), ErrorCode.RELATION_EXISTS);
+        error(() -> mappings.deleteEntityMapping(f.user, mappingId(company), null), ErrorCode.RELATION_EXISTS);
         error(() -> mappings.saveEntityMapping(f.user, new ModelMappingDto.EntityMapping(mappingId(company), company, f.table(person))), ErrorCode.INVALID_MODEL_MAPPING);
         ColumnInfoDto target = new ColumnInfoDto();
         target.setId(keyColumn);
@@ -511,7 +511,7 @@ class SubtypePhysicalGenerationIntegrationTest {
         bulk.setDeletedIds(List.of(keyColumn));
         error(() -> columns.saveColumnsBulk(f.user, bulk), ErrorCode.RELATION_EXISTS);
         jdbc.update("update TB_TBL set APRV_YN = false where TBL_SN = ?", corp);
-        error(() -> logical.deleteAttribute(f.user, customerNo), ErrorCode.RELATION_EXISTS);
+        error(() -> logical.deleteAttribute(f.user, customerNo, null), ErrorCode.RELATION_EXISTS);
         assertThat(keyMappings(company)).hasSize(1);
 
         // 물리 PK 변경 → 매핑 그대로, 불일치
@@ -541,10 +541,10 @@ class SubtypePhysicalGenerationIntegrationTest {
         assertThat(detached.keys()).hasSize(1);
         assertThat(jdbc.queryForObject("select count(*) from TB_TBL where TBL_SN = ?", Integer.class, corp)).as("테이블을 지우지 않는다").isOne();
         error(() -> link(f, company, extra, keyColumn), ErrorCode.INVALID_MODEL_MAPPING); // 서브타입이 아니면 새로 등록할 수 없다
-        mappings.deleteSubtypeKeyMapping(f.user, detached.keys().getFirst().id());
+        mappings.deleteSubtypeKeyMapping(f.user, detached.keys().getFirst().id(), null);
         assertThat(keyMappings(company)).isEmpty();
         // 해제 뒤에는 엔터티 매핑을 해제할 수 있다 (상속 PK 매핑을 자동으로 지우지 않는다 — 먼저 해제한 것이다)
-        mappings.deleteEntityMapping(f.user, mappingId(company));
+        mappings.deleteEntityMapping(f.user, mappingId(company), null);
         assertThat(entityMappings.findByEntity_Id(company)).isEmpty();
     }
 
@@ -598,7 +598,7 @@ class SubtypePhysicalGenerationIntegrationTest {
 
         // 상속 PK 매핑 해제 → 등록 (같은 컬럼이어도 매핑 ID 가 바뀐다)
         long linkId = jdbc.queryForObject("select SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG where COL_SN = ?", Long.class, orgKey);
-        mappings.deleteSubtypeKeyMapping(f.user, linkId);
+        mappings.deleteSubtypeKeyMapping(f.user, linkId, null);
         String t2 = generation.preview(f.user, f.request(chosen)).planToken();
         assertThat(t2).isNotEqualTo(t1);
         link(f, org, partyNo, orgKey);

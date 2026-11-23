@@ -37,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class LogicalModelManagementIntegrationTest {
 
     @Autowired ApplicationContext context;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired LogicalModelService logical;
     @Autowired LogicalModelRestController controller;
     @Autowired EntityManagerFactory emf;
@@ -128,14 +130,14 @@ class LogicalModelManagementIntegrationTest {
         assertThat(rows.get(m.team).relationshipCount()).isEqualTo(1);
         assertThat(logical.selectSummary(m.f.user, m.f.modelId).relationshipCount()).isEqualTo(9);
 
-        logical.deleteRelationship(m.f.user, added.id());
-        logical.deleteRelationship(m.f.user, logical.selectEntityRelationships(m.f.user, m.employee).getFirst().id()); // 자기 참조
+        logical.deleteRelationship(m.f.user, added.id(), null);
+        logical.deleteRelationship(m.f.user, logical.selectEntityRelationships(m.f.user, m.employee).getFirst().id(), null); // 자기 참조
         rows = byId(rows(m.f, null, 0, 100, null));
         assertThat(rows.get(m.employee).relationshipCount()).isZero();
         assertThat(rows.get(m.team).relationshipCount()).isZero();
         assertThat(logical.selectSummary(m.f.user, m.f.modelId).relationshipCount()).isEqualTo(7);
-        logical.updateEntityApproval(m.f.user, m.team, false); // 승인 권한자가 만든 엔터티는 바로 승인된다 — 삭제는 승인취소 뒤
-        logical.deleteEntity(m.f.user, m.team);
+        logical.updateEntityApproval(m.f.user, m.team, false, null); // 승인 권한자가 만든 엔터티는 바로 승인된다 — 삭제는 승인취소 뒤
+        logical.deleteEntity(m.f.user, m.team, null, null);
         assertThat(logical.selectSummary(m.f.user, m.f.modelId).entityCount()).isEqualTo(4);
         assertThat(rows(m.f, null, 0, 100, null).getTotalElements()).isEqualTo(4);
     }
@@ -178,7 +180,7 @@ class LogicalModelManagementIntegrationTest {
         long b = logical.saveEntity(f.user, new LogicalModelDto.Entity(null, f.modelId, "나", "같은 설명", null, null, null)).id();
         long a = logical.saveEntity(f.user, new LogicalModelDto.Entity(null, f.modelId, "가", "같은 설명", null, null, null)).id();
         long c = logical.saveEntity(f.user, new LogicalModelDto.Entity(null, f.modelId, "다", "앞 설명", null, null, null)).id();
-        logical.updateEntityApproval(f.user, c, false);
+        logical.updateEntityApproval(f.user, c, false, null);
         assertThat(ids(rows(f, null, 0, 10, "entityName,asc"))).containsExactly(a, b, c);
         assertThat(ids(rows(f, null, 0, 10, "entityName,desc"))).containsExactly(c, b, a);
         assertThat(ids(rows(f, null, 0, 10, "entityDescription,asc"))).as("같은 설명(가·나)은 ID 순, 앞 설명은 뒤").containsExactly(b, a, c);
@@ -414,6 +416,6 @@ class LogicalModelManagementIntegrationTest {
         assertThat(controller.selectEntityRelationships(viewer, m.customer).getBody()).hasSize(6);
         assertThatThrownBy(() -> controller.saveEntity(viewer, new LogicalModelDto.Entity(null, m.f.modelId, "새 엔터티", null, null, null, null)))
                 .isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteRelationship(viewer, m.paired.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteRelationship(viewer, m.paired.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalRelationship.class, m.paired.id()))).isInstanceOf(AccessDeniedException.class);
     }
 }

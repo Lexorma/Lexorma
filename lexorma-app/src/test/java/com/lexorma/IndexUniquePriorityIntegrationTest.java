@@ -84,7 +84,7 @@ class IndexUniquePriorityIntegrationTest {
         login(admin, "ROLE_ADMIN");
         assertThat(physicalModelService.selectIndex(admin, pending.id()).replacedColumnIndexes()).containsExactly("IX_TB_UQB_C_CD");
 
-        physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, pending.id(), true);
+        physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, pending.id(), true, null);
 
         assertThat(indexes(b)).containsExactly("USER:UX_UQ:Y:true").isEqualTo(indexes(a));
         assertThat(ddl(admin, b).replace("TB_UQB", "T")).isEqualTo(ddl(admin, a).replace("TB_UQA", "T"));
@@ -129,9 +129,9 @@ class IndexUniquePriorityIntegrationTest {
         PhysicalModelDto.Index ux = physicalModelService.saveIndex(admin, request(t, "UX_C", true, c));
         assertThat(indexes(t)).containsExactly("USER:UX_C:Y:true");
 
-        physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, ux.id(), false);
+        physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, ux.id(), false, null);
         assertThat(indexes(t)).as("승인 취소 → 대신하지 않는다").containsExactlyInAnyOrder("USER:UX_C:N:true", "COLUMN:IX_TB_UQS_C_CD:N:false");
-        physicalModelService.delete(admin, PhysicalModelService.Kind.INDEX, ux.id());
+        physicalModelService.delete(admin, PhysicalModelService.Kind.INDEX, ux.id(), null);
         assertThat(indexes(t)).containsExactly("COLUMN:IX_TB_UQS_C_CD:N:false");
 
         PhysicalModelDto.Index again = physicalModelService.saveIndex(admin, request(t, "UX_C", true, c));
@@ -215,7 +215,7 @@ class IndexUniquePriorityIntegrationTest {
         AccountDto user = userOf(a);
         PhysicalModelDto.Index pending = physicalModelService.saveIndex(user, request(t, "UX_C", true, c));
         AccountDto b = loginAsAdmin("uq-iso-b");
-        assertThatThrownBy(() -> physicalModelService.updateApproval(b, PhysicalModelService.Kind.INDEX, pending.id(), true))
+        assertThatThrownBy(() -> physicalModelService.updateApproval(b, PhysicalModelService.Kind.INDEX, pending.id(), true, null))
                 .isInstanceOf(CustomException.class).satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_PHYSICAL_MODEL));
         assertThat(indexes(t)).containsExactlyInAnyOrder("USER:UX_C:N:true", "COLUMN:IX_TB_UQI_C_CD:N:false");
     }

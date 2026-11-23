@@ -22,7 +22,10 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api, enc } from '../../lib/api';
+import { api, enc, isConflict } from '../../lib/api';
+import { openLayoutConflict, type Positions } from './layoutConflict';
+import { deleteTables, keySnapshot, physicalKeyGuarded } from '../table/physicalConflicts';
+import { cascadeText, type Deletion } from '../../lib/deletion';
 import { cancelLayout, gridLayout, runLayout, type LayoutEdge, type LayoutNode } from './layout';
 import { relationEdges } from './edges';
 import { physicalEdgeTypes } from './FkEdge';
@@ -163,6 +166,8 @@ function ErdWorkspace() {
 
   // 좌표 = 저장된 배치 + 이번 화면에서 바꾼 것. pending : 아직 저장하지 않은 좌표 (범위를 바꿔도 유지)
   const savedVersion = useRef<number | null>(null);
+  // 배치 충돌 비교의 기준 (불러온 배치 — 409 복구 뒤에는 그때의 최신 배치, M8-C3)
+  const layoutBase = useRef<Positions>({});
   const positions = useRef(new Map<string, XY>());
   const pending = useRef(new Map<string, XY>());
   // 저장된 위치가 없어 화면이 자동으로 놓은 테이블 : 저장할 때 함께 보내지만 사용자가 바꾼 것이 아니므로 세지 않는다
@@ -252,6 +257,7 @@ function ErdWorkspace() {
       appliedLayout.current = layout.data;
       savedVersion.current = layout.data.version;
       positions.current = new Map(Object.entries(layout.data.nodes));
+      layoutBase.current = { ...layout.data.nodes };
       pending.current.clear();
       autoPlaced.current.clear();
       setPendingCount(0);
@@ -456,18 +462,49 @@ function ErdWorkspace() {
     try {
       const result = await api<ErdLayout>('/api/erd/layout', {
         method: 'PUT',
+        conflict: 'handled', // 409 는 배치 충돌 복구 대화상자가 다룬다 (M8-C3) — 공통 알림을 겹쳐 띄우지 않는다
         body: { version: savedVersion.current, nodes: Object.fromEntries(pending.current), viewport: flow.getViewport() },
       });
       savedVersion.current = result.version;
+      layoutBase.current = { ...result.nodes };
       pending.current.clear();
       autoPlaced.current.clear();
       setPendingCount(0);
       setMessage(t('배치를 저장했습니다.'));
-    } catch {
-      setMessage(t('배치를 저장하지 못했습니다.'));
+    } catch (error) {
+      if (isConflict(error)) await recoverLayout();
+      else setMessage(t('배치를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
+  }
+
+  /** 409 (같은 사용자의 다른 탭이 먼저 저장) : 옮긴 위치를 버리지 않고 최신 배치와 비교해 고른 뒤 최신 버전으로 다시 준비한다 (저장은 사용자가) */
+  async function recoverLayout() {
+    let latest: ErdLayout;
+    try {
+      latest = await api<ErdLayout>('/api/erd/layout', { silent: true });
+    } catch {
+      setMessage(t('최신 배치를 불러오지 못했습니다. 옮긴 위치는 그대로 있습니다. 잠시 뒤 다시 저장해 주세요.'));
+      return;
+    }
+    // 자동 배치(저장된 좌표가 없어 화면이 정한 위치)는 사용자 이동이 아니다 : 비교에서 빼고, 최신 배치에 그 노드 위치가 있으면 최신을 쓴다 (없으면 저장 대기 그대로)
+    const mine: Positions = Object.fromEntries([...pending.current].filter(([id]) => !autoPlaced.current.has(id)));
+    const names = new Map((graph.data?.tables ?? []).map((tb) => [String(tb.id), tb.tableName]));
+    setMessage(t('다른 탭에서 배치를 먼저 저장했습니다. 옮긴 위치는 유지됩니다.'));
+    openLayoutConflict(dialog, {
+      base: layoutBase.current, mine, shown: new Set(nodes.map((n) => n.id)), latest: { version: latest.version, nodes: latest.nodes },
+      name: (id) => names.get(id) ?? `#${id}`,
+      onResolve: ({ version, keep, adopt, base }) => {
+        savedVersion.current = version;
+        layoutBase.current = { ...base };
+        Object.entries(adopt).forEach(([id, p]) => { positions.current.set(id, p); pending.current.delete(id); autoPlaced.current.delete(id); });
+        Object.entries(keep).forEach(([id, p]) => { positions.current.set(id, p); pending.current.set(id, p); });
+        setNodes((current) => current.map((n) => (adopt[n.id] ? { ...n, position: adopt[n.id] } : n)));
+        setPendingCount(pending.current.size - autoPlaced.current.size); // 자동 배치는 "저장하지 않은 배치" 수에 세지 않는다 (기존 규칙)
+        setMessage(t('최신 배치 기준으로 다시 준비했습니다. 확인한 뒤 [배치 저장] 을 눌러 주세요.'));
+      },
+    });
   }
 
   const reloadSaved = () => {
@@ -582,15 +619,26 @@ function ErdWorkspace() {
     });
   };
 
+  // 삭제 확인 조회 (M8-C2) : ERD 조회에는 수정 일시가 없어 확인 대화상자를 열 때 읽은 기준값과 함께 지워질 인덱스·제약조건·관계 구성을 보낸다
   const removeTable = (table: { id: number; schemaId: number; tableName: string }) => {
-    dialog.confirm(t('{0}.{1} 테이블을 삭제하시겠습니까? 컬럼·관계·매핑이 남아 있으면 삭제되지 않습니다.', schemaLabel(table.schemaId), table.tableName), async () => {
-      // 삭제할 수 없으면(컬럼·승인·논리 엔터티 매핑) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다
-      const response = await api<{ result: boolean }>('/api/deleteTable', { method: 'DELETE', body: [{ id: table.id }] });
-      if (!response.result) return;
+    api<Deletion[]>(`/api/deleteTable/preview?tableIds=${table.id}`).then(([deletion]) => {
+      if (!deletion) return;
+      const cascade = cascadeText(deletion);
+      const question = t('{0}.{1} 테이블을 삭제하시겠습니까? 컬럼·관계·매핑이 남아 있으면 삭제되지 않습니다.', schemaLabel(table.schemaId), table.tableName);
+      dialog.confirm(cascade ? `${question} ${cascade}` : question, () => deleteTable(table.id, deletion));
+    }, () => undefined);
+  };
+
+  const deleteTable = async (tableId: number, deletion: Deletion) => {
+    // 삭제할 수 없으면(컬럼·승인·논리 엔터티 매핑) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다.
+    // 확인한 뒤 바뀌었으면 409 → 최신 구성을 보여 주고 다시 확인 (M8-C3 — 자동 재삭제 없음)
+    const deleted = async () => {
       setSelectedId(null);
       setMessage(t('테이블을 삭제했습니다.'));
       await refresh();
-    });
+    };
+    const table = graph.data?.tables.find((x) => x.id === tableId);
+    if (await deleteTables(dialog, [{ id: tableId, tableName: table?.tableName ?? deletion.name, modifiedAt: deletion.modifiedAt }], [deletion], () => void refresh(), () => void deleted())) await deleted();
   };
 
   const openKeys = (table: ErdGraph['tables'][number]) => {
@@ -623,21 +671,25 @@ function ErdWorkspace() {
     });
   };
 
+  /** ERD 가 가진 관계 = 화면이 본 상태 (충돌 검토의 "확인했던 값") */
+  const relationSeen = (relation: ErdRelation) => keySnapshot({ outgoingRelations: [relation], indexes: [], constraints: [] }, 'relation', relation.id);
+
   const removeRelation = (relation: ErdRelation) => {
     const pairs = relation.columns.map((p) => `${p.sourceColumnName} → ${p.targetColumnName}`).join(', ');
     dialog.confirm(t('{0} 관계를 삭제하시겠습니까? ({1} → {2} : {3}) 테이블과 컬럼은 바뀌지 않습니다.', relation.relationName ?? '', relation.sourceTableName, relation.targetTableName, pairs), async () => {
-      await api(`/api/physical/relation/${relation.id}`, { method: 'DELETE' });
-      setSelectedRelation(null);
-      setMessage(t('관계를 삭제했습니다.'));
-      await refresh();
+      const ok = await physicalKeyGuarded(dialog, 'relation', relation.sourceTableId, relation.id, relationSeen(relation), undefined, refresh);
+      if (ok) {
+        setSelectedRelation(null);
+        setMessage(t('관계를 삭제했습니다.'));
+      }
     });
   };
 
   const toggleRelationApproval = (relation: ErdRelation) => {
     const approved = !!relation.isApproval;
     dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
-      await api(`/api/physical/relation/${relation.id}/approval/${!approved}`, { method: 'PATCH' });
-      await refresh();
+      // 409 면 최신 관계를 보여 주고 사용자가 다시 승인한다 (M8-C3 — 자동 재시도 없음)
+      await physicalKeyGuarded(dialog, 'relation', relation.sourceTableId, relation.id, relationSeen(relation), !approved, refresh);
     });
   };
 

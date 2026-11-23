@@ -190,7 +190,7 @@ class SubtypePreservationIntegrationTest {
         if (partial) {
             long deptKey = jdbc.queryForObject("select SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG where ENTT_TBL_MPNG_SN = ? and LGCL_ATRB_SN = ?", Long.class,
                     mappingId(dept), orgCd);
-            mappings.deleteSubtypeKeyMapping(f.user, deptKey);
+            mappings.deleteSubtypeKeyMapping(f.user, deptKey, null);
         }
         return new Scenario(f, customer, customerNo, company, person, party, partyNo, orgCd, org, human, dept, team, product);
     }
@@ -311,7 +311,7 @@ class SubtypePreservationIntegrationTest {
         keys.forEach(k -> assertThat(directColumns).doesNotContain(k.path("state").path("columnId").asLong()));
         // 버전을 만든 뒤 매핑을 바꿔도 저장된 버전은 그대로
         String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, version);
-        mappings.deleteSubtypeKeyMapping(f.user, jdbc.queryForObject("select SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mappingId(gap)));
+        mappings.deleteSubtypeKeyMapping(f.user, jdbc.queryForObject("select SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mappingId(gap)), null);
         assertThat(jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, version)).isEqualTo(stored);
         assertThat(keyTriples(snapshotItems(user, version, "SUBTYPE_KEY_MAPPING"))).isEqualTo(before);
 
@@ -373,10 +373,10 @@ class SubtypePreservationIntegrationTest {
         // 기업의 직접 속성 매핑을 풀어 그 컬럼(BIZ_NO)을 상속 PK 매핑의 새 컬럼으로 쓴다 (변경)
         long companyTable = f.table(s.company());
         long bizColumn = column(companyTable, "BIZ_NO");
-        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, bizColumn));
+        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, bizColumn), null);
         long companyKey = jdbc.queryForObject("select SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mappingId(s.company()));
         mappings.saveSubtypeKeyMapping(f.user, new ModelMappingDto.SubtypeKeyMapping(companyKey, null, null, bizColumn));
-        mappings.deleteSubtypeKeyMapping(f.user, orgCdKey); // 복합 PK 일부 해제
+        mappings.deleteSubtypeKeyMapping(f.user, orgCdKey, null); // 복합 PK 일부 해제
         long v2 = versions.create(user, new ModelVersionDto.Create("c2", null)).id();
         ModelVersionDto.Comparison c = versions.compare(user, v1, v2);
         assertThat(c.byType().get("SUBTYPE_KEY_MAPPING")).containsEntry("MODIFIED", 1).containsEntry("REMOVED", 1).containsEntry("ADDED", 0);
@@ -843,7 +843,7 @@ class SubtypePreservationIntegrationTest {
                 SecurityTestSupport.loginAs(context.getBean(com.lexorma.core.project.repository.ProjectRepository.class), source.getProjectId(), source.getId(), "ROLE_ADMIN");
                 try {
                     tx.executeWithoutResult(st -> {
-                        mappings.deleteSubtypeKeyMapping(source, companyKey);
+                        mappings.deleteSubtypeKeyMapping(source, companyKey, null);
                         held.countDown();
                         try {
                             release.await(30, TimeUnit.SECONDS);
@@ -872,7 +872,7 @@ class SubtypePreservationIntegrationTest {
             long bizColumn = column(tf.table(targetScenario.company()), "BIZ_NO");
             long direct = jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, bizColumn);
             long bizAttribute = jdbc.queryForObject("select LGCL_ATRB_SN from TB_ATRB_COL_MPNG where ATRB_COL_MPNG_SN = ?", Long.class, direct);
-            mappings.deleteAttributeMapping(tf.user, direct);
+            mappings.deleteAttributeMapping(tf.user, direct, null);
             ModelExchangeDto.Document renamed = renameModel(document, "가져온 모델");
             ModelExchangeDto.Plan plan = exchange.plan(target, new ModelExchangeDto.PlanRequest(target.getProjectId(), renamed, null));
             CountDownLatch heldDirect = new CountDownLatch(1);

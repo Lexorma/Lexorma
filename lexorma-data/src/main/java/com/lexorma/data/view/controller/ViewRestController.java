@@ -98,20 +98,24 @@ public class ViewRestController {
         return ResponseEntity.ok(viewService.update(accountDto, id, request));
     }
 
-    @Operation(summary = "VIEW 삭제", description = "승인된 VIEW 와 다른 VIEW 가 참조하는 VIEW 는 삭제할 수 없다")
+    @Operation(summary = "VIEW 삭제", description = "승인된 VIEW 와 다른 VIEW 가 참조하는 VIEW 는 삭제할 수 없다. modifiedAt(목록·상세의 updated) 필수 — 없으면 400, 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> delete(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
-        viewService.delete(accountDto, id);
+    public ResponseEntity<Map<String, Object>> delete(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        viewService.delete(accountDto, id, modifiedAt);
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "VIEW 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만. 승인 대기 변경 요청이 있으면 승인 취소 불가")
+    @Operation(summary = "VIEW 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만. 승인 대기 변경 요청이 있으면 승인 취소 불가. modifiedAt(상세·목록의 updated) 필수 — "
+            + "그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/{id}/approval/{isApproval}")
     public ResponseEntity<Map<String, Object>> approval(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id,
-                                                        @PathVariable(name = "isApproval") boolean isApproval) {
-        viewService.updateApproval(accountDto, id, isApproval);
+                                                        @PathVariable(name = "isApproval") boolean isApproval, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        viewService.updateApproval(accountDto, id, isApproval, modifiedAt);
         return ResponseEntity.ok(Map.of("result", true));
     }
 

@@ -198,6 +198,11 @@ public class LogicalSubjectAreaService {
         areaRepository.delete(area);
     }
 
+    /** 모델의 주제 영역 전체 (모델 삭제의 구성 기준값 — M8-C2. 삭제는 모델 행을 잠근 뒤 부른다) */
+    List<LogicalSubjectArea> areasOf(Long modelId) {
+        return areaRepository.findAllByModelId(modelId);
+    }
+
     /** 논리 모델 삭제 (LogicalModelService.deleteModel 이 모델을 잠그고 엔터티가 없음을 확인한 뒤) : 영역 배치 → 영역(하위부터). 소속은 엔터티가 없으므로 없다 */
     void deleteForModel(Long modelId) {
         areaLayoutRepository.deleteByModelId(modelId);

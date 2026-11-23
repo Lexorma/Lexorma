@@ -4,6 +4,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError, enc } from '../../lib/api';
+import { useConflictRecovery } from '../../components/conflict/ConflictRecovery';
 import { t } from '../../lib/i18n';
 import { useSchemas } from '../schema/schemas';
 import type { TableDdl } from '../table/TableDdl';
@@ -49,6 +50,29 @@ export function ViewForm({ detail, onSaved, onCancel }: {
   const [external, setExternal] = useState({ referenceType: 'TABLE' as ViewReference['referenceType'], schemaName: '', objectName: '' });
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<{ ddl?: TableDdl; error?: string } | null>(null);
+  type Values = { schemaId: string; name: string; korName: string; description: string; sql: string; columns: ViewColumn[]; references: ViewReference[] };
+  const valuesOf = (d?: ViewDetail): Values => ({
+    schemaId: d?.view.schemaId ? String(d.view.schemaId) : '', name: d?.view.viewName ?? '', korName: d?.view.viewKorName ?? '', description: d?.view.viewDescription ?? '',
+    sql: d?.view.definition ?? '', columns: d?.view.columns ?? [], references: d?.view.references ?? [],
+  });
+  // 409 복구 (M8-C3, 수정만) : VIEW 상세의 최신(확정) 정의와 비교. 출력 컬럼·참조 객체는 요약 비교
+  const recovery = useConflictRecovery<Values>({
+    initial: valuesOf(detail),
+    base: detail?.updated,
+    fields: [
+      { key: 'schemaId', label: t('스키마'), get: (v) => v.schemaId },
+      { key: 'name', label: t('VIEW명'), get: (v) => v.name },
+      { key: 'korName', label: t('한글명'), get: (v) => v.korName },
+      { key: 'description', label: t('설명'), get: (v) => v.description },
+      { key: 'sql', label: t('정의 SQL'), get: (v) => v.sql, show: (v) => <pre className="conflict-pre">{v.sql}</pre> },
+      { key: 'columns', label: t('출력 컬럼'), get: (v) => v.columns.map((c) => [c.columnName, c.columnKorName ?? '', c.dataType ?? '', c.columnDescription ?? '']), show: (v) => v.columns.map((c) => c.columnName).join(', ') },
+      { key: 'references', label: t('참조 객체'), get: (v) => v.references.map(referenceName), show: (v) => v.references.map(referenceName).join(', ') },
+    ],
+    load: async () => {
+      const latest = await api<ViewDetail>(`/api/physical/view/${enc(detail?.id)}`, { silent: true });
+      return { values: valuesOf(latest), base: latest.updated ?? null };
+    },
+  });
 
   // 참조 객체 후보 : 입력이 멈춘 뒤 한 번 조회 (조회 키 = 확정된 검색어라 늦게 온 이전 응답이 덮지 않는다)
   useEffect(() => {
@@ -71,7 +95,7 @@ export function ViewForm({ detail, onSaved, onCancel }: {
 
   const body = () => ({
     // 수정 : 화면이 읽은 수정 일시 (DEC-13 낙관적 충돌 검사 — 그 사이 다른 사용자가 고쳤으면 409, 입력은 그대로 남는다)
-    baseModifiedAt: detail?.updated ?? null,
+    baseModifiedAt: recovery.base,
     schemaId: schemaId ? Number(schemaId) : null,
     viewName: name.trim(),
     viewKorName: korName.trim() || null,
@@ -119,9 +143,16 @@ export function ViewForm({ detail, onSaved, onCancel }: {
     dialog.confirm(confirm, async () => {
       setSaving(true);
       try {
-        onSaved(editing
-          ? await api<ViewSaveResult>(`/api/physical/view/${enc(detail!.id)}`, { method: 'PUT', body: body() })
-          : await api<ViewSaveResult>('/api/physical/view', { method: 'POST', body: body() }));
+        let result: ViewSaveResult;
+        try {
+          result = editing
+            ? await api<ViewSaveResult>(`/api/physical/view/${enc(detail!.id)}`, { method: 'PUT', body: body(), conflict: 'handled' })
+            : await api<ViewSaveResult>('/api/physical/view', { method: 'POST', body: body() });
+        } catch (error) {
+          if (editing && recovery.catchConflict(error, { schemaId, name, korName, description, sql, columns, references })) return;
+          throw error;
+        }
+        onSaved(result);
       } finally {
         setSaving(false);
       }
@@ -147,6 +178,15 @@ export function ViewForm({ detail, onSaved, onCancel }: {
 
   return (
     <form className="edit-form index-form view-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('schemaId')) setSchemaId(latest.schemaId);
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('korName')) setKorName(latest.korName);
+        if (!picks.has('description')) setDescription(latest.description);
+        if (!picks.has('sql')) setSql(latest.sql);
+        if (!picks.has('columns')) setColumns(latest.columns);
+        if (!picks.has('references')) setReferences(latest.references);
+      })}
       {editing && (
         <div className="dict-detail-status">
           <Label variant={approved ? 'success' : 'attention'} dot>{approved ? t('승인') : t('승인 대기')}</Label>
@@ -286,7 +326,7 @@ export function ViewForm({ detail, onSaved, onCancel }: {
 
       <div className="gh-dialog-actions">
         <button type="button" className="btn" onClick={onCancel}>{t('닫기')}</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? t('저장 중…') : submitLabel}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving || recovery.blocked}>{saving ? t('저장 중…') : submitLabel}</button>
       </div>
     </form>
   );

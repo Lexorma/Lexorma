@@ -338,7 +338,7 @@ class ForeignKeyCorrectionIntegrationTest {
         tables.updateTable(table, x.f().user);
         assertThat(jdbc.queryForObject("select cast(APRV_YN as varchar(5)) from TB_TBL_REL where REL_SN = ?", String.class, created)).isEqualToIgnoringCase("false");
         // 승인 절차 : 승인 권한자가 승인하면 승인된다 (보정이 승인을 우회하지 않는다)
-        physicalModelService.updateApproval(x.f().user, PhysicalModelService.Kind.RELATION, created, true);
+        physicalModelService.updateApproval(x.f().user, PhysicalModelService.Kind.RELATION, created, true, null);
         assertThat(jdbc.queryForObject("select cast(APRV_YN as varchar(5)) from TB_TBL_REL where REL_SN = ?", String.class, created)).isEqualToIgnoringCase("true");
     }
 

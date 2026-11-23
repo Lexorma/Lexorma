@@ -243,7 +243,7 @@ class AlternateKeyConcurrencyIntegrationTest {
         ForeignKeyCorrectionDto.Plan plan = fkCorrection.preview(x.f().user, new ForeignKeyCorrectionDto.Request(x.f().modelId, List.of(x.relEmail()), null));
         assertThat(plan.applicable()).as(String.valueOf(plan.items())).isTrue();
         long uk = uniqueId(x.customer());
-        String[] r = holdThen(() -> { physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, uk); return null; },
+        String[] r = holdThen(() -> { physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, uk, null); return null; },
                 () -> fkCorrection.apply(x.f().user, new ForeignKeyCorrectionDto.Request(x.f().modelId, List.of(x.relEmail()), plan.planToken())), 5000);
         System.out.println("[M7-AK] C04 : " + String.join(" / ", r));
         assertThat(r[0]).isEqualTo("OK");
@@ -263,7 +263,7 @@ class AlternateKeyConcurrencyIntegrationTest {
             jdbc.update("delete from TB_TBL_REL where REL_SN = ?", id);
         }
         long uk = uniqueId(x.customer());
-        String[] r = holdThen(() -> { physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, uk); return null; },
+        String[] r = holdThen(() -> { physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, uk, null); return null; },
                 () -> physicalModelService.saveConstraint(x.f().user, unique(x)), 1500);
         System.out.println("[M7-AK] C05 : " + String.join(" / ", r));
         assertThat(r[0]).isEqualTo("OK");

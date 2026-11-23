@@ -66,6 +66,8 @@ class LogicalErdEditIntegrationTest {
     private static final Viewport VIEWPORT = new Viewport(0, 0, 1);
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -109,9 +111,9 @@ class LogicalErdEditIntegrationTest {
         // ---- 승인 정책 : 승인 권한자가 만든 엔터티는 승인 상태다. 엔터티명·설명 변경과 삭제는 승인취소 후에
         assertThat(graphEntity(admin, model, "등급").isApproval()).isTrue();
         rejected(() -> service.saveEntity(admin, new Entity(grade.id(), model.id(), "회원 등급", "설명", null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.deleteEntity(admin, grade.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> service.deleteEntity(admin, grade.id(), null, null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         assertThat(entityNames(admin, model)).contains("등급");
-        service.updateEntityApproval(admin, grade.id(), false);
+        service.updateEntityApproval(admin, grade.id(), false, null);
 
         // ---- 엔터티 수정 : 노드에 보이는 이름·설명이 바뀌고 배치는 그대로다
         service.saveEntity(admin, new Entity(grade.id(), model.id(), "회원 등급", "회원의 등급", null, null, null));
@@ -140,19 +142,19 @@ class LogicalErdEditIntegrationTest {
 
         // ---- 삭제 보호 : 식별자에 쓰인 속성, 관계에 쓰인 엔터티, 매핑된 엔터티·속성 → 거절되고 ERD 는 그대로다
         Identifier identifier = service.saveIdentifier(admin, new Identifier(null, grade.id(), "등급 식별자", true, List.of(no), null));
-        rejected(() -> service.deleteAttribute(admin, no), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteAttribute(admin, no, null), ErrorCode.RELATION_EXISTS);
         assertThat(attribute(admin, model, "회원 등급", "등급번호").primaryIdentifier()).isTrue();
-        service.updateEntityApproval(admin, member.id(), false);
+        service.updateEntityApproval(admin, member.id(), false, null);
         Relationship relationship = service.saveRelationship(admin, new Relationship(null, model.id(), "보유", null, grade.id(), null, member.id(), null, false, 1, 1, 0, null, null, null));
-        rejected(() -> service.deleteEntity(admin, grade.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteEntity(admin, grade.id(), null, null), ErrorCode.RELATION_EXISTS);
         TableInfo table = table(projectId, "TB_MBR_GRD");
         ColumnInfo column = column(projectId, table, "GRD_MEMO", null);
         EntityMapping mapping = mappingService.saveEntityMapping(admin, new EntityMapping(null, grade.id(), table.getId()));
         AttributeMapping attributeMapping = mappingService.saveAttributeMapping(admin, new AttributeMapping(null, mapping.id(), memo, column.getId()));
-        rejected(() -> service.deleteAttribute(admin, memo), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteAttribute(admin, memo, null), ErrorCode.RELATION_EXISTS);
         service.updateRelationshipApproval(admin, relationship.id(), false, null); // 승인 권한자가 만든 관계는 승인 상태다
-        service.deleteRelationship(admin, relationship.id());
-        rejected(() -> service.deleteEntity(admin, grade.id()), ErrorCode.RELATION_EXISTS);
+        service.deleteRelationship(admin, relationship.id(), null);
+        rejected(() -> service.deleteEntity(admin, grade.id(), null, null), ErrorCode.RELATION_EXISTS);
         assertThat(graphEntity(admin, model, "회원 등급").attributes()).extracting(GraphAttribute::id).containsExactly(memo, name, no);
 
         // ---- 표준 용어를 바꿔도 물리 컬럼·매핑은 그대로고, 물리명 추천은 다음 조회에 바뀐 용어로 계산된다 (M-7)
@@ -167,19 +169,19 @@ class LogicalErdEditIntegrationTest {
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, projectId, "930", "ROLE_VIEWER");
         assertThat(controller.selectGraph(viewer, model.id()).getBody().entities()).hasSize(3);
         assertThatThrownBy(() -> controller.saveEntity(viewer, new Entity(null, model.id(), "뷰어 엔터티", null, null, null, null))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteEntity(viewer, order.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteEntity(viewer, order.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, order.id()), currentBase.entityComposition(viewer, order.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveAttribute(viewer, new Attribute(null, grade.id(), "뷰어 속성", null, null, false, null, null, null, null, null))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteAttribute(viewer, name)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteAttribute(viewer, name, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalAttribute.class, name))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.reorderAttributes(viewer, grade.id(), List.of(no, name, memo))).isInstanceOf(AccessDeniedException.class);
         assertThat(controller.saveLayout(viewer, model.id(), new Layout(null, Map.of(grade.id(), new Point(1, 2)), VIEWPORT)).getBody().version()).isNotNull();
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "931", "ROLE_USER");
         Entity userEntity = controller.saveEntity(user, new Entity(null, model.id(), "사용자 엔터티", null, null, null, null)).getBody();
         assertThat(userEntity.isApproval()).as("승인 권한이 없는 사용자가 만든 엔터티는 승인 대기").isFalse();
         Long userAttribute = controller.saveAttribute(user, new Attribute(null, userEntity.id(), "속성", null, null, false, null, memberNo.getId(), null, null, null)).getBody().id();
-        controller.deleteAttribute(user, userAttribute);
-        controller.deleteEntity(user, userEntity.id());
+        controller.deleteAttribute(user, userAttribute, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalAttribute.class, userAttribute));
+        controller.deleteEntity(user, userEntity.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, userEntity.id()), currentBase.entityComposition(user, userEntity.id()));
         rejected(() -> controller.saveAttribute(user, new Attribute(null, order.id(), "승인된 엔터티의 속성", null, null, false, null, null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> controller.deleteEntity(user, order.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> controller.deleteEntity(user, order.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, order.id()), currentBase.entityComposition(user, order.id())), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "932", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.selectGraph(notApproved, model.id())).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveEntity(notApproved, new Entity(null, model.id(), "미승인", null, null, null, null))).isInstanceOf(AccessDeniedException.class);
@@ -189,21 +191,21 @@ class LogicalErdEditIntegrationTest {
         rejected(() -> service.selectGraph(other, model.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> entity(other, model, "침입"), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveEntity(other, new Entity(grade.id(), model.id(), "침입", null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteEntity(other, grade.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteEntity(other, grade.id(), null, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveAttribute(other, new Attribute(null, grade.id(), "침입", null, null, false, null, null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteAttribute(other, name), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteAttribute(other, name, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.reorderAttributes(other, grade.id(), List.of(no, name, memo)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
 
         // ---- 삭제 : 참조를 정리한 뒤에만 지워지고, ERD 조회와 배치 조회에서 빠진다 (다른 노드의 위치는 그대로)
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
         assertThat(entityNames(admin, model)).containsExactlyInAnyOrder("회원", "주문", "회원 등급");
-        mappingService.deleteAttributeMapping(admin, attributeMapping.id());
-        mappingService.deleteEntityMapping(admin, mapping.id());
-        service.deleteAttribute(admin, memo);
-        service.deleteIdentifier(admin, identifier.id());
-        service.deleteAttribute(admin, no);
+        mappingService.deleteAttributeMapping(admin, attributeMapping.id(), null);
+        mappingService.deleteEntityMapping(admin, mapping.id(), null);
+        service.deleteAttribute(admin, memo, null);
+        service.deleteIdentifier(admin, identifier.id(), null);
+        service.deleteAttribute(admin, no, null);
         assertThat(graphEntity(admin, model, "회원 등급").attributes()).extracting(GraphAttribute::name).containsExactly("등급 이름");
-        service.deleteEntity(admin, grade.id());
+        service.deleteEntity(admin, grade.id(), null, null);
         Graph graph = service.selectGraph(admin, model.id());
         assertThat(graph.entities()).extracting(GraphEntity::name).containsExactlyInAnyOrder("회원", "주문");
         assertThat(graph.relationships()).isEmpty();
@@ -254,7 +256,7 @@ class LogicalErdEditIntegrationTest {
 
         // ---- 관계 수정 : 승인된 관계는 승인취소 후에. 이름·유형·참여 수·방향을 바꿀 수 있다
         rejected(() -> relation(admin, model, orders.id(), "주문", member.id(), order.id(), true, 1, 1, 1, null), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.deleteRelationship(admin, orders.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> service.deleteRelationship(admin, orders.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         service.updateRelationshipApproval(admin, orders.id(), false, null);
         Relationship changed = relation(admin, model, orders.id(), "주문 소유", member.id(), order.id(), true, 1, 1, 1, 5);
         assertThat(changed).extracting(Relationship::id, Relationship::relationshipName, Relationship::isIdentifying, Relationship::targetMin, Relationship::targetMax, Relationship::cardinality)
@@ -282,8 +284,8 @@ class LogicalErdEditIntegrationTest {
         // 식별자를 바꿔도 관계의 식별 여부는 그대로다 (서로 자동으로 맞추지 않는다)
         assertThat(service.selectGraph(admin, model.id()).relationships()).filteredOn(r -> r.id().equals(details.id())).extracting(Relationship::isIdentifying).containsExactly(true);
         // 식별자를 지워도 속성은 남는다
-        service.deleteIdentifier(admin, alternate.id());
-        service.deleteIdentifier(admin, primary.id());
+        service.deleteIdentifier(admin, alternate.id(), null);
+        service.deleteIdentifier(admin, primary.id(), null);
         assertThat(graphEntity(admin, model, "주문상세").attributes()).extracting(GraphAttribute::name, GraphAttribute::identifier)
                 .containsExactly(tuple("주문번호", false), tuple("상품번호", false), tuple("수량", false));
         assertThat(service.selectLayout(admin, model.id())).as("식별자 변경은 배치를 바꾸지 않는다").isEqualTo(saved);
@@ -293,18 +295,18 @@ class LogicalErdEditIntegrationTest {
         assertThat(controller.selectGraph(viewer, model.id()).getBody().relationships()).hasSize(5);
         assertThat(controller.selectEntity(viewer, item.id()).getBody().identifiers()).isEmpty();
         assertThatThrownBy(() -> controller.saveRelationship(viewer, new Relationship(null, model.id(), "뷰어", null, member.id(), null, order.id(), null, false, 1, 1, 0, null, null, null))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteRelationship(viewer, self.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteRelationship(viewer, self.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalRelationship.class, self.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveIdentifier(viewer, new Identifier(null, item.id(), "뷰어", false, List.of(itemQuantity), null))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteIdentifier(viewer, 1L)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteIdentifier(viewer, 1L, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalIdentifier.class, 1L))).isInstanceOf(AccessDeniedException.class);
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "941", "ROLE_USER");
         Relationship byUser = controller.saveRelationship(user, new Relationship(null, model.id(), "사용자 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null)).getBody();
         assertThat(byUser.isApproval()).as("승인 권한이 없는 사용자가 만든 관계는 승인 대기").isFalse();
         assertThat(controller.saveRelationship(user, new Relationship(byUser.id(), model.id(), "사용자 관계 수정", null, order.id(), null, item.id(), null, true, 1, 1, 1, null, null, null, byUser.modifiedAt())).getBody().isIdentifying()).isTrue();
         rejected(() -> controller.saveRelationship(user, new Relationship(details.id(), model.id(), "승인된 관계", null, order.id(), null, item.id(), null, false, 1, 1, 0, null, null, null, details.modifiedAt())), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> controller.deleteRelationship(user, details.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        rejected(() -> controller.deleteRelationship(user, details.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalRelationship.class, details.id())), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         rejected(() -> controller.saveIdentifier(user, new Identifier(null, item.id(), "사용자 식별자", false, List.of(itemQuantity), null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> controller.updateRelationshipApproval(user, byUser.id(), true, null), ErrorCode.APPROVAL_PERMISSION_DENIED);
-        controller.deleteRelationship(user, byUser.id());
+        controller.deleteRelationship(user, byUser.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalRelationship.class, byUser.id()));
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "942", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.saveRelationship(notApproved, new Relationship(null, model.id(), "미승인", null, member.id(), null, order.id(), null, false, 1, 1, 0, null, null, null))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveIdentifier(notApproved, new Identifier(null, item.id(), "미승인", false, List.of(itemQuantity), null))).isInstanceOf(AccessDeniedException.class);
@@ -316,15 +318,15 @@ class LogicalErdEditIntegrationTest {
         rejected(() -> relation(other, model, null, "침입", member.id(), order.id(), false, 1, 1, 0, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> relation(other, theirs, null, "침입", theirEntity.id(), member.id(), false, 1, 1, 0, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> relation(other, theirs, self.id(), "침입", theirEntity.id(), theirEntity.id(), false, 1, 1, 0, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.deleteRelationship(other, self.id()), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.deleteRelationship(other, self.id(), null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveIdentifier(other, new Identifier(null, item.id(), "침입", false, List.of(itemQuantity), null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveIdentifier(other, new Identifier(null, theirEntity.id(), "침입", false, List.of(itemQuantity), null)), ErrorCode.INVALID_LOGICAL_MODEL);
 
         // ---- 관계 삭제 : 그 관계만 지워지고 엔터티·속성·배치는 그대로다
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        service.deleteRelationship(admin, orders.id());
+        service.deleteRelationship(admin, orders.id(), null);
         service.updateRelationshipApproval(admin, details.id(), false, null);
-        service.deleteRelationship(admin, details.id());
+        service.deleteRelationship(admin, details.id(), null);
         Graph graph = service.selectGraph(admin, model.id());
         assertThat(graph.relationships()).extracting(Relationship::id).containsExactlyInAnyOrder(recommends.id(), reverse.id(), self.id());
         assertThat(graph.entities()).extracting(GraphEntity::name).containsExactlyInAnyOrder("회원", "주문", "주문상세");

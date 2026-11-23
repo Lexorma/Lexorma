@@ -8,6 +8,7 @@ import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
+import { detailGuarded, indexSnapshot } from '../table/physicalConflicts';
 import { formatDateTime } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useSchemas } from '../schema/schemas';
@@ -169,9 +170,8 @@ function IndexDetailView({ indexId, onChanged, onNavigate, onClose, setTitle }: 
   };
   const remove = () => {
     dialog.confirm(t('{0} 인덱스를 삭제하시겠습니까?', index.indexName), async () => {
-      await api(`/api/physical/index/${enc(index.id)}`, { method: 'DELETE' });
-      onChanged();
-      onClose();
+      // M8-C2 기준값, M8-C3 : 409 면 최신 인덱스를 보여 주고 다시 삭제할지 묻는다
+      await detailGuarded(dialog, 'index', index.id, indexSnapshot(detail.data!), undefined, onChanged, onClose);
     });
   };
   const toggleApproval = () => {
@@ -180,8 +180,11 @@ function IndexDetailView({ indexId, onChanged, onNavigate, onClose, setTitle }: 
       : replaced.length ? t('인덱스를 승인하시겠습니까? 승인하면 이 UNIQUE 인덱스가 같은 컬럼의 컬럼 인덱스 {0} 을(를) 대신하며 그 인덱스는 삭제됩니다.', replaced.join(', '))
       : t('인덱스를 승인하시겠습니까?');
     dialog.confirm(message, async () => {
-      await api(`/api/physical/index/${enc(index.id)}/approval/${!approved}`, { method: 'PATCH' });
-      changed();
+      try {
+        await detailGuarded(dialog, 'index', index.id, indexSnapshot(detail.data!), !approved, changed);
+      } catch {
+        changed(); // 그 밖의 오류 : 공통 알림 뒤 최신 상세를 다시 읽는다
+      }
     });
   };
   const process = (request: ChangeRequest, approve: boolean) => {

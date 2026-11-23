@@ -112,14 +112,14 @@ class SchemaManagementIntegrationTest {
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_SCHEMA_NAME));
         assertThat(schemaService.saveSchema(admin, new SchemaDto(defaultSchema.id(), SchemaInfo.DEFAULT_NAME, "설명 변경", null)).schemaDescription())
                 .isEqualTo("설명 변경");
-        assertThatThrownBy(() -> schemaService.deleteSchema(admin, defaultSchema.id()))
+        assertThatThrownBy(() -> schemaService.deleteSchema(admin, defaultSchema.id(), null))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DATA_CANNOT_BE_DELETED));
 
         // 삭제 : 테이블이 있으면 거절 (테이블은 그대로), 비어 있으면 삭제
-        assertThatThrownBy(() -> schemaService.deleteSchema(admin, sales.id()))
+        assertThatThrownBy(() -> schemaService.deleteSchema(admin, sales.id(), null))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.RELATION_EXISTS));
         assertThat(tableInfoRepository.findById(order.getId())).isPresent();
-        schemaService.deleteSchema(admin, empty.id());
+        schemaService.deleteSchema(admin, empty.id(), null);
         assertThat(schemaService.selectSchemas(admin)).extracting(SchemaDto::schemaName).containsExactly(SchemaInfo.DEFAULT_NAME, "sales_v2");
     }
 
@@ -188,7 +188,7 @@ class SchemaManagementIntegrationTest {
                     .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_PERMISSION_DENIED));
             assertThatThrownBy(() -> schemaService.saveSchema(member, new SchemaDto(aSales.id(), "renamed", null, null)))
                     .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_PERMISSION_DENIED));
-            assertThatThrownBy(() -> schemaService.deleteSchema(member, aSales.id()))
+            assertThatThrownBy(() -> schemaService.deleteSchema(member, aSales.id(), null))
                     .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_PERMISSION_DENIED));
         }
 
@@ -198,7 +198,7 @@ class SchemaManagementIntegrationTest {
         assertThat(schemaService.selectSchemas(b)).extracting(SchemaDto::id).doesNotContain(aSales.id());
         assertThatThrownBy(() -> schemaService.saveSchema(b, new SchemaDto(aSales.id(), "hijack", null, null)))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_IS_NOT_DEFINED));
-        assertThatThrownBy(() -> schemaService.deleteSchema(b, aSales.id()))
+        assertThatThrownBy(() -> schemaService.deleteSchema(b, aSales.id(), null))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_IS_NOT_DEFINED));
         assertThat(names(aSales.id(), null, null, b)).as("다른 프로젝트 스키마 ID 로 테이블 조회").isEmpty();
         assertThatThrownBy(() -> tableDesignService.selectTable(aTable.getId(), b))

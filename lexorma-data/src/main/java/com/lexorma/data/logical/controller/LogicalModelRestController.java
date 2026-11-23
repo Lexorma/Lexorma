@@ -52,11 +52,22 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveModel(accountDto, model));
     }
 
-    @Operation(summary = "논리 모델 삭제", description = "엔터티가 있는 모델은 삭제할 수 없다")
+    @Operation(summary = "논리 모델 삭제 확인 (M8-C2)", description = "삭제 확인 화면용 : 지금 기준값(modifiedAt), 함께 지워질 주제 영역 수(cascade), 구성 기준값(composition)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/model/{modelId}/deletion")
+    public ResponseEntity<com.lexorma.common.jpa.ModelComposition.Deletion> selectModelDeletion(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId) {
+        return ResponseEntity.ok(logicalModelService.selectModelDeletion(accountDto, modelId));
+    }
+
+    @Operation(summary = "논리 모델 삭제", description = "엔터티가 있는 모델은 삭제할 수 없다. modifiedAt(화면이 읽은 모델의 수정 일시)·composition(삭제 확인 조회의 구성 기준값) 필수 — "
+            + "없으면 400 MODEL_BASE_REQUIRED, 그 사이 모델이나 함께 지워질 주제 영역이 바뀌었으면 409 MODEL_CONFLICT (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/model/{modelId}")
-    public ResponseEntity<Map<String, Object>> deleteModel(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId) {
-        logicalModelService.deleteModel(accountDto, modelId);
+    public ResponseEntity<Map<String, Object>> deleteModel(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "modelId") Long modelId,
+                                                           @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt, @RequestParam(value = "composition", required = false) String composition) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        com.lexorma.common.jpa.ModelComposition.require(composition);
+        logicalModelService.deleteModel(accountDto, modelId, modifiedAt, composition);
         return ResponseEntity.ok(DONE);
     }
 
@@ -188,21 +199,35 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveEntity(accountDto, entity));
     }
 
-    @Operation(summary = "엔터티 삭제", description = "관계에 쓰인 엔터티·승인된 엔터티는 삭제할 수 없다. 속성·식별자는 함께 삭제된다")
+    @Operation(summary = "엔터티 삭제 확인 (M8-C2)", description = "삭제 확인 화면용 : 지금 기준값(modifiedAt), 함께 지워질 속성·식별자 수(cascade), 구성 기준값(composition)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/entity/{entityId}/deletion")
+    public ResponseEntity<com.lexorma.common.jpa.ModelComposition.Deletion> selectEntityDeletion(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "entityId") Long entityId) {
+        return ResponseEntity.ok(logicalModelService.selectEntityDeletion(accountDto, entityId));
+    }
+
+    @Operation(summary = "엔터티 삭제", description = "관계에 쓰인 엔터티·승인된 엔터티는 삭제할 수 없다. 속성·식별자는 함께 삭제된다. modifiedAt(화면이 읽은 엔터티의 수정 일시)·"
+            + "composition(삭제 확인 조회의 구성 기준값) 필수 — 없으면 400, 그 사이 엔터티나 속성·식별자가 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/entity/{entityId}")
-    public ResponseEntity<Map<String, Object>> deleteEntity(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "entityId") Long entityId) {
-        logicalModelService.deleteEntity(accountDto, entityId);
+    public ResponseEntity<Map<String, Object>> deleteEntity(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "entityId") Long entityId,
+                                                            @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt, @RequestParam(value = "composition", required = false) String composition) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        com.lexorma.common.jpa.ModelComposition.require(composition);
+        logicalModelService.deleteEntity(accountDto, entityId, modifiedAt, composition);
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "엔터티 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능")
+    @Operation(summary = "엔터티 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능. modifiedAt(화면이 읽은 엔터티의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/entity/{entityId}/approval/{isApproval}")
     public ResponseEntity<Map<String, Object>> updateEntityApproval(@AuthenticationPrincipal AccountDto accountDto,
                                                                     @PathVariable(name = "entityId") Long entityId,
-                                                                    @PathVariable(name = "isApproval") boolean isApproval) {
-        logicalModelService.updateEntityApproval(accountDto, entityId, isApproval);
+                                                                    @PathVariable(name = "isApproval") boolean isApproval,
+                                                                    @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        logicalModelService.updateEntityApproval(accountDto, entityId, isApproval, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -223,11 +248,13 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveAttribute(accountDto, attribute));
     }
 
-    @Operation(summary = "속성 삭제", description = "식별자에 쓰인 속성은 삭제할 수 없다")
+    @Operation(summary = "속성 삭제", description = "식별자에 쓰인 속성은 삭제할 수 없다. modifiedAt(화면이 읽은 속성의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/attribute/{attributeId}")
-    public ResponseEntity<Map<String, Object>> deleteAttribute(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "attributeId") Long attributeId) {
-        logicalModelService.deleteAttribute(accountDto, attributeId);
+    public ResponseEntity<Map<String, Object>> deleteAttribute(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "attributeId") Long attributeId,
+                                                               @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        logicalModelService.deleteAttribute(accountDto, attributeId, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -257,11 +284,13 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveIdentifier(accountDto, identifier));
     }
 
-    @Operation(summary = "식별자 삭제")
+    @Operation(summary = "식별자 삭제", description = "modifiedAt(화면이 읽은 식별자의 수정 일시) 필수 — 그 사이 이름·구성이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/identifier/{identifierId}")
-    public ResponseEntity<Map<String, Object>> deleteIdentifier(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "identifierId") Long identifierId) {
-        logicalModelService.deleteIdentifier(accountDto, identifierId);
+    public ResponseEntity<Map<String, Object>> deleteIdentifier(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "identifierId") Long identifierId,
+                                                                @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        logicalModelService.deleteIdentifier(accountDto, identifierId, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -326,11 +355,13 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(logicalModelService.saveRelationshipPairs(accountDto, relationshipId, request));
     }
 
-    @Operation(summary = "관계 삭제", description = "승인된 관계는 삭제할 수 없다")
+    @Operation(summary = "관계 삭제", description = "승인된 관계는 삭제할 수 없다. modifiedAt(화면이 읽은 관계의 수정 일시) 필수 — 그 사이 관계나 속성 짝이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/relationship/{relationshipId}")
-    public ResponseEntity<Map<String, Object>> deleteRelationship(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "relationshipId") Long relationshipId) {
-        logicalModelService.deleteRelationship(accountDto, relationshipId);
+    public ResponseEntity<Map<String, Object>> deleteRelationship(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "relationshipId") Long relationshipId,
+                                                                  @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        logicalModelService.deleteRelationship(accountDto, relationshipId, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 

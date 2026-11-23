@@ -545,7 +545,7 @@ class InheritanceConcurrencyIntegrationTest {
     Object deleteOrgKeyMapping(Fx x) {
         Long id = jdbc.queryForObject("select k.SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG k join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = k.ENTT_TBL_MPNG_SN"
                 + " where m.LGCL_ENTT_SN = ?", Long.class, x.e().get("조직"));
-        mappingService.deleteSubtypeKeyMapping(x.f().user, id);
+        mappingService.deleteSubtypeKeyMapping(x.f().user, id, null);
         return null;
     }
 
@@ -681,7 +681,7 @@ class InheritanceConcurrencyIntegrationTest {
     }
 
     Object deleteUnique(Ak a) {
-        physical.delete(a.f().user, PhysicalModelService.Kind.CONSTRAINT, a.unique());
+        physical.delete(a.f().user, PhysicalModelService.Kind.CONSTRAINT, a.unique(), null);
         return null;
     }
 

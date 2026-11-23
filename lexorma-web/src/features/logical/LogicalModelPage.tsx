@@ -6,7 +6,11 @@ import { useToast } from '../../components/toast/ToastProvider';
 import { Label, SkeletonRows } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api, ApiError } from '../../lib/api';
+import { api } from '../../lib/api';
+import { runWithReview } from '../../components/conflict/conflictActions';
+import { approveRelationshipGuarded, deleteRelationshipGuarded, deletionSnapshot, loadDeletion } from './conflictSnapshots';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { baseQuery, cascadeText, withDeletion } from '../../lib/deletion';
 import { t, tc } from '../../lib/i18n';
 import { EntityForm, useEntityDetail } from './entityDetail';
 import { AreaForm, ClassifyForm, SubjectAreaPanel, useAreaRemoval, type ClassifyTarget } from './SubjectAreaPanel';
@@ -56,14 +60,25 @@ export function LogicalModelPage() {
     });
   };
 
-  const removeModel = (model: LogicalModel) => {
-    dialog.confirm(t('{0} 논리 모델을 삭제하시겠습니까?', model.modelName), async () => {
-      await api(`/api/logical/model/${model.id}`, { method: 'DELETE' });
+  // 삭제 확인 조회 : 함께 지워질 주제 영역 수와 구성 기준값 (M8-C2)
+  const removeModel = (model: LogicalModel) => withDeletion(`/api/logical/model/${model.id}/deletion`, (deletion) => {
+    const cascade = cascadeText(deletion);
+    const deleted = () => {
       setParams({}, { replace: true });
       void refreshModels();
       toast.success(t('정상적으로 삭제되었습니다.'));
+    };
+    dialog.confirm(cascade ? `${t('{0} 논리 모델을 삭제하시겠습니까?', model.modelName)} ${cascade}` : t('{0} 논리 모델을 삭제하시겠습니까?', model.modelName), async () => {
+      // 409 (M8-C3) : 최신 모델·주제 영역 구성을 다시 읽어 보여 주고 사용자가 다시 확인한다
+      const ok = await runWithReview({
+        dialog, title: t('논리 모델 삭제'), intro: t('삭제 대상 또는 함께 삭제될 항목이 그 사이 바뀌었습니다.'),
+        seen: deletionSnapshot(deletion, model.modifiedAt), load: () => loadDeletion(`/api/logical/model/${model.id}/deletion`),
+        act: async (state) => { await api(`/api/logical/model/${model.id}${baseQuery(state.modifiedAt, state.composition)}`, { method: 'DELETE', conflict: 'handled' }); },
+        retryLabel: t('최신 구성으로 삭제'), onDone: deleted, onClose: () => void refreshModels(),
+      });
+      if (ok) deleted();
     });
-  };
+  });
 
   return (
     <>
@@ -309,22 +324,15 @@ function ModelContent({ model, erdPath }: { model: LogicalModel; erdPath: (entit
 
   const removeRelationship = (relationship: LogicalRelationship) => {
     dialog.confirm(t('{0} 관계를 삭제하시겠습니까?', relationLabel(relationship)), async () => {
-      await api(`/api/logical/relationship/${relationship.id}`, { method: 'DELETE' });
-      refresh();
+      await deleteRelationshipGuarded(dialog, relationship, refresh);
     });
   };
 
   const toggleRelationshipApproval = (relationship: LogicalRelationship) => {
     const approved = !!relationship.isApproval;
     dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
-      // 화면이 읽은 관계의 수정 일시를 기준값으로 보낸다 (M8-C1) : 그 사이 바뀌었으면 409(공통 알림) — 목록을 다시 불러와 최신 관계를 보게 한다 (자동 재시도 없음)
-      try {
-        await api(`/api/logical/relationship/${relationship.id}/approval/${!approved}?modifiedAt=${encodeURIComponent(relationship.modifiedAt ?? '')}`, { method: 'PATCH' });
-      } catch (error) {
-        if (error instanceof ApiError && error.code === 'MODEL_CONFLICT') refresh();
-        return;
-      }
-      refresh();
+      // 화면이 읽은 관계의 수정 일시를 기준값으로 보낸다 (M8-C1). 409 면 최신 관계를 보여 주고 사용자가 다시 승인한다 (M8-C3 — 자동 재시도 없음)
+      await approveRelationshipGuarded(dialog, relationship, refresh);
     });
   };
 
@@ -583,20 +591,40 @@ function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: 
   const toast = useToast();
   const [name, setName] = useState(model?.modelName ?? '');
   const [description, setDescription] = useState(model?.modelDescription ?? '');
+  const [busy, run] = useSubmitting();
+  const recovery = useConflictRecovery({
+    initial: { name: model?.modelName ?? '', description: model?.modelDescription ?? '' },
+    base: model?.modifiedAt,
+    fields: [{ key: 'name', label: t('모델명'), get: (v) => v.name }, { key: 'description', label: t('설명'), get: (v) => v.description }],
+    load: async () => {
+      const latest = await api<LogicalModel>(`/api/logical/model/${model?.id}`, { silent: true });
+      return { values: { name: latest.modelName, description: latest.modelDescription ?? '' }, base: latest.modifiedAt ?? null };
+    },
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('모델명은(는) 필수 입력 항목입니다.'));
-    dialog.confirm(model ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
+    dialog.confirm(model ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
       // 이름 중복(프로젝트 안, 대소문자 무시)은 서버에서 검증한다
-      const saved = await api<LogicalModel>('/api/logical/model', { method: 'POST', body: { id: model?.id ?? null, modelName: name.trim(), modelDescription: description.trim() || null, modifiedAt: model?.modifiedAt ?? null } });
+      let saved: LogicalModel;
+      try {
+        saved = await api<LogicalModel>('/api/logical/model', { method: 'POST', conflict: 'handled', body: { id: model?.id ?? null, modelName: name.trim(), modelDescription: description.trim() || null, modifiedAt: model ? recovery.base : null } });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, description })) return;
+        throw error;
+      }
       onSaved(saved);
       toast.success(model ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'));
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('description')) setDescription(latest.description);
+      })}
       <div className="form-group">
         <label htmlFor="modelName">{t('모델명')}</label>
         <input type="text" className="form-control" id="modelName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -605,7 +633,7 @@ function ModelForm({ model, onSaved }: { model?: LogicalModel; onSaved: (model: 
         <label htmlFor="modelDescription">{t('설명')}</label>
         <textarea className="form-control" id="modelDescription" maxLength={1000} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }

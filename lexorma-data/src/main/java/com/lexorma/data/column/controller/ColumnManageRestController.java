@@ -110,17 +110,22 @@ public class ColumnManageRestController {
         return ResponseEntity.ok(Map.of("result", true, "termDtos", termDtos));
     }
 
-    @Operation(summary = "컬럼 승인여부 승인/미승인 수정", description = "컬럼의 승인여부를 승인/미승인 처리를 진행한다.")
+    @Operation(summary = "컬럼 승인여부 승인/미승인 수정", description = "컬럼의 승인여부를 승인/미승인 처리를 진행한다. 행마다 modifiedAt(화면이 읽은 수정 일시) 필수 — "
+            + "하나라도 그 사이 바뀌었으면 409, 아무것도 바꾸지 않는다 (M8-C2). 승인 권한이 없으면 권한 오류가 먼저다")
     @PatchMapping("/saveColumn/approval/{type}")
     public ResponseEntity<Map<String, Object>> updateColumnApproval(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(value = "type") String type, @RequestBody List<ColumnInfoDto> columnInfoDtos) {
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable() && columnInfoDtos != null) {
+            columnInfoDtos.forEach(dto -> com.lexorma.common.jpa.ModelBase.require(true, dto.getModifiedAt()));
+        }
         columnManageService.updateColumnApproval(accountDto, columnInfoDtos, type);
 
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "컬럼 삭제", description = "등록된 컬럼정보를 삭제한다.")
+    @Operation(summary = "컬럼 삭제", description = "등록된 컬럼정보를 삭제한다. 행마다 modifiedAt(화면이 읽은 수정 일시) 필수 — 없으면 400, 그 사이 바뀌었으면 409, 아무것도 지우지 않는다 (M8-C2)")
     @DeleteMapping("/deleteColumn")
     public ResponseEntity<Map<String, Object>> deleteColumn(@AuthenticationPrincipal AccountDto accountDto, @RequestBody List<ColumnInfoDto> columnInfoDtos) {
+        if (columnInfoDtos != null) columnInfoDtos.forEach(dto -> com.lexorma.common.jpa.ModelBase.require(true, dto.getModifiedAt()));
         columnManageService.deleteColumn(accountDto, columnInfoDtos);
         return ResponseEntity.ok(Map.of("result", true));
     }
@@ -172,8 +177,12 @@ public class ColumnManageRestController {
     @Operation(summary = "컬럼 일괄 저장", description = "테이블의 컬럼을 한 번에 추가/수정/삭제하고 화면 순서대로 정렬 순서를 저장합니다. 검증 오류가 있으면 아무것도 저장하지 않고 행별 오류를 돌려줍니다.")
     @PutMapping(value = "/saveColumn/bulk")
     public ResponseEntity<ColumnBulkSaveDto.Result> saveColumnsBulk(@RequestBody ColumnBulkSaveDto request, @AuthenticationPrincipal AccountDto accountDto) {
-        // DEC-08 : 기존 컬럼 행은 모두 기준값이 필요하다 (편집 화면은 테이블 전체를 보여 주고 함께 저장한다 — 그 사이 바뀐 행이 있으면 409)
-        if (request != null && request.getRows() != null) request.getRows().forEach(row -> com.lexorma.common.jpa.ModelBase.require(row.getId() != null, row.getBaseModifiedAt()));
+        // DEC-08 : 기존 컬럼 행은 기준값이 필요하다 — 바꾸지 않은 행(unchanged, M8-C3·M8-D04)은 서버가 값을 쓰지 않으므로 기준값 없이 온다
+        if (request != null && request.getRows() != null) request.getRows().forEach(row -> com.lexorma.common.jpa.ModelBase.require(
+                row.getId() != null && !Boolean.TRUE.equals(row.getUnchanged()), row.getBaseModifiedAt()));
+        // M8-C2 : 지울 컬럼도 화면이 읽은 수정 일시가 필요하다 (deletedBaseModifiedAt — ID 마다)
+        if (request != null && request.getDeletedIds() != null) request.getDeletedIds().stream().filter(java.util.Objects::nonNull)
+                .forEach(id -> com.lexorma.common.jpa.ModelBase.require(true, request.getDeletedBaseModifiedAt() == null ? null : request.getDeletedBaseModifiedAt().get(id)));
         return ResponseEntity.ok(columnManageService.saveColumnsBulk(accountDto, request));
     }
 

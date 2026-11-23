@@ -59,6 +59,9 @@ public interface TableDesignService {
 
     void deleteTable(List<TableInfoDto> tableInfoDtos, AccountDto accountDto);
 
+    /** 삭제 확인 화면 (M8-C2) : 테이블마다 지금 기준값과 함께 지워질 인덱스·제약조건·관계 구성 */
+    List<com.lexorma.common.jpa.ModelComposition.Deletion> selectTableDeletions(List<Long> tableIds, AccountDto accountDto);
+
     void uploadTableExcelFile(MultipartFile file, AccountDto accountDto) throws IOException;
 
     /**

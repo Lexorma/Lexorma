@@ -67,6 +67,8 @@ class ModelChangeHistoryIntegrationTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -148,7 +150,7 @@ class ModelChangeHistoryIntegrationTest {
         Set<Long> beforeDelete = mark();
         assertThatThrownBy(() -> tables.deleteTable(admin, List.of(dto(table)))).isInstanceOf(CustomException.class);
         assertThat(since(projectId, beforeDelete)).isEmpty();
-        columns.deleteColumn(admin, List.of(ColumnInfoDto.builder().id(column.getId()).build()));
+        columns.deleteColumn(admin, List.of(columnRow(column.getId())));
         tables.deleteTable(admin, List.of(dto(table)));
         assertThat(tableInfoRepository.findById(table.getId())).isEmpty();
         List<ModelChangeHistory> deleted = since(projectId, beforeDelete);
@@ -308,10 +310,10 @@ class ModelChangeHistoryIntegrationTest {
 
         // 승인·승인취소 (컬럼) : 실제로 바뀐 것만
         relogin(admin);
-        ColumnInfoDto target = ColumnInfoDto.builder().id(columnId).build();
-        columns.updateColumnApproval(admin, "true", List.of(target));
-        columns.updateColumnApproval(admin, "true", List.of(target));
-        columns.updateColumnApproval(admin, "false", List.of(target));
+        // M8-C2 : 목록 행처럼 지금 수정 일시를 싣는다
+        columns.updateColumnApproval(admin, "true", List.of(columnRow(columnId)));
+        columns.updateColumnApproval(admin, "true", List.of(columnRow(columnId)));
+        columns.updateColumnApproval(admin, "false", List.of(columnRow(columnId)));
         assertThat(since(projectId, mark)).extracting(ModelChangeHistory::getAction).containsExactly(Action.APPROVE, Action.REVOKE);
     }
 
@@ -373,13 +375,13 @@ class ModelChangeHistoryIntegrationTest {
         assertThatThrownBy(() -> physical.saveRelation(admin, relation("FK", order, code, pair(stat, cd)))).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> physical.saveRelation(admin, relation("FK", order, code, pair(statGrp, grp), pair(stat, cd)))).isInstanceOf(CustomException.class);
         // 승인된 관계는 삭제할 수 없다 → 이력 없음
-        assertThatThrownBy(() -> physical.delete(admin, "relation", fk.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physical.delete(admin, "relation", fk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id()))).isInstanceOf(CustomException.class);
         assertThat(since(projectId, mark)).isEmpty();
 
         // 승인취소 → REVOKE, 삭제 → DELETE (삭제 전 컬럼 쌍이 남는다)
-        physical.updateApproval(admin, "relation", fk.id(), false);
-        physical.updateApproval(admin, "relation", fk.id(), false); // 그대로 → 이력 없음
-        physical.delete(admin, "relation", fk.id());
+        physical.updateApproval(admin, "relation", fk.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id()));
+        physical.updateApproval(admin, "relation", fk.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id())); // 그대로 → 이력 없음
+        physical.delete(admin, "relation", fk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id()));
         List<ModelChangeHistory> removed = since(projectId, mark);
         assertThat(removed).extracting(ModelChangeHistory::getAction).containsExactly(Action.REVOKE, Action.DELETE);
         assertThat(removed.get(1).getAfterData()).isNull();
@@ -401,8 +403,8 @@ class ModelChangeHistoryIntegrationTest {
         assertThat(json(indexCreated.getAfterData()).get("columns").get(0).get("columnId").asLong()).isEqualTo(stat.getId());
         assertThat(json(indexCreated.getAfterData()).get("columns").get(1).get("columnOrder").asInt()).isEqualTo(2);
         mark = mark();
-        physical.updateApproval(admin, "index", index.id(), false);
-        physical.delete(admin, "index", index.id());
+        physical.updateApproval(admin, "index", index.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, index.id()));
+        physical.delete(admin, "index", index.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, index.id()));
         assertThat(since(projectId, mark)).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getAction)
                 .containsExactly(tuple(TargetType.PHYSICAL_INDEX, Action.REVOKE), tuple(TargetType.PHYSICAL_INDEX, Action.DELETE));
 
@@ -417,10 +419,10 @@ class ModelChangeHistoryIntegrationTest {
         assertThat(json(constraints.get(1).getAfterData()).get("checkExpression").asString()).isEqualTo("STAT_CD <> ''");
         assertThat(json(constraints.get(1).getAfterData()).get("columns")).isEmpty();
         mark = mark();
-        physical.updateApproval(admin, "constraint", check.id(), false);
-        physical.updateApproval(admin, "constraint", check.id(), true);
-        physical.updateApproval(admin, "constraint", unique.id(), false);
-        physical.delete(admin, "constraint", unique.id());
+        physical.updateApproval(admin, "constraint", check.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, check.id()));
+        physical.updateApproval(admin, "constraint", check.id(), true, currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, check.id()));
+        physical.updateApproval(admin, "constraint", unique.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, unique.id()));
+        physical.delete(admin, "constraint", unique.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, unique.id()));
         assertThat(since(projectId, mark)).extracting(ModelChangeHistory::getAction).containsExactly(Action.REVOKE, Action.APPROVE, Action.REVOKE, Action.DELETE);
 
         // PK 변경은 컬럼의 속성 변경으로 한 번만 남는다 (제약조건 이력과 겹치지 않는다)
@@ -564,14 +566,21 @@ class ModelChangeHistoryIntegrationTest {
         return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(table.getId()).map(TableInfo::modifiedAt).orElse(null)).build();
     }
 
-    private static TableInfoDto dto(TableInfo table) {
-        return TableInfoDto.builder().id(table.getId()).build();
+    private ColumnInfoDto columnRow(Long id) {
+        return ColumnInfoDto.builder().id(id).modifiedAt(currentBase.of(ColumnInfo.class, id)).build();
+    }
+
+    /** 목록 행 : M8-C2 승인·삭제 요청은 지금 수정 일시와 삭제 확인 구성을 싣는다 */
+    private TableInfoDto dto(TableInfo table) {
+        return currentBase.table(table.getId());
     }
 
     private ColumnBulkSaveDto bulk(TableInfo table, List<ColumnBulkSaveDto.Row> rows, List<Long> deletedIds) {
         rows.stream().filter(r -> r.getId() != null)
                 .forEach(r -> r.setBaseModifiedAt(columnInfoRepository.findById(r.getId()).map(ColumnInfo::modifiedAt).orElse(null)));
-        return ColumnBulkSaveDto.builder().tableInfoId(table.getId()).rows(new ArrayList<>(rows)).deletedIds(deletedIds).build();
+        java.util.Map<Long, java.time.LocalDateTime> deletedBases = new java.util.HashMap<>(); // M8-C2 : 지울 컬럼의 지금 수정 일시
+        deletedIds.forEach(id -> deletedBases.put(id, columnInfoRepository.findById(id).map(ColumnInfo::modifiedAt).orElse(null)));
+        return ColumnBulkSaveDto.builder().tableInfoId(table.getId()).rows(new ArrayList<>(rows)).deletedIds(deletedIds).deletedBaseModifiedAt(deletedBases).build();
     }
 
     private static ColumnBulkSaveDto.Row row(String key, Long id, Long termId, String description, String dataType, int maxLength) {

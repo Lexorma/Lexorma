@@ -482,8 +482,10 @@ class SmokeTest {
 
         // 기본 스키마 : 이름 변경·삭제 불가
         assertThat(postJson("/api/schema", "{\"id\":" + defaultId + ",\"schemaName\":\"main\",\"updated\":\"" + schemaUpdated(defaultId) + "\"}").body()).contains("INVALID_SCHEMA_NAME");
-        assertThat(delete("/api/schema/" + defaultId).statusCode()).isEqualTo(400);
-        assertThat(delete("/api/schema/" + id).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/schema/" + defaultId + "?modifiedAt=" + schemaUpdated(defaultId)).statusCode()).isEqualTo(400);
+        // M8-C2 : 삭제도 목록의 수정 일시가 필수 (없으면 400 MODEL_BASE_REQUIRED)
+        assertThat(delete("/api/schema/" + id).body()).contains("MODEL_BASE_REQUIRED");
+        assertThat(delete("/api/schema/" + id + "?modifiedAt=" + schemaUpdated(id)).statusCode()).isEqualTo(200);
         assertThat(get("/api/schema", true).body()).doesNotContain(name);
     }
 
@@ -678,23 +680,27 @@ class SmokeTest {
         // 관리자(승인 권한자)가 등록한 엔터티·관계는 바로 승인된다 → 승인 취소 전에는 지울 수 없다
         assertThat(get("/api/logical/entity/" + entityId, true).body()).contains("\"isApproval\":true");
         assertThat(relationship.path("isApproval").asBoolean()).isTrue();
-        assertThat(delete("/api/logical/entity/" + entityId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
-        assertThat(delete("/api/logical/relationship/" + relationshipId).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
-        assertThat(patch("/api/logical/entity/" + entityId + "/approval/false").statusCode()).isEqualTo(200);
+        // M8-C2 : 삭제는 기준값(+ 하위 객체를 함께 지우면 삭제 확인 조회의 구성 기준값)이 필수 — 없으면 400 MODEL_BASE_REQUIRED
+        assertThat(delete("/api/logical/entity/" + entityId).body()).contains("MODEL_BASE_REQUIRED");
+        assertThat(get("/api/logical/entity/" + entityId + "/deletion", true).body()).contains("\"kind\":\"attributes\"", "\"composition\":\"v1:");
+        assertThat(delete("/api/logical/entity/" + entityId + entityBase(entityId)).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
+        assertThat(delete("/api/logical/relationship/" + relationshipId + "?modifiedAt=" + modifiedAt("TB_LGCL_REL", "LGCL_REL_SN", relationshipId)).body()).contains("APPROVED_DATA_CANNOT_BE_DELETED");
+        assertThat(patch("/api/logical/entity/" + entityId + "/approval/false").body()).contains("MODEL_BASE_REQUIRED");
+        assertThat(patch("/api/logical/entity/" + entityId + "/approval/false?modifiedAt=" + modifiedAt("TB_LGCL_ENTT", "LGCL_ENTT_SN", entityId)).statusCode()).isEqualTo(200);
         // 관계 승인·승인 취소는 화면이 읽은 관계의 수정 일시(modifiedAt)가 필수다 (M8-C1) — 없으면 400 MODEL_BASE_REQUIRED
         assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false").body()).contains("MODEL_BASE_REQUIRED");
         assertThat(patch("/api/logical/relationship/" + relationshipId + "/approval/false?modifiedAt=" + modifiedAt("TB_LGCL_REL", "LGCL_REL_SN", relationshipId)).statusCode()).isEqualTo(200);
-        HttpResponse<String> blocked = delete("/api/logical/entity/" + entityId);
+        HttpResponse<String> blocked = delete("/api/logical/entity/" + entityId + entityBase(entityId));
         assertThat(blocked.statusCode()).isEqualTo(400);
         assertThat(blocked.body()).contains("RELATION_EXISTS");
-        assertThat(delete("/api/logical/attribute/" + attributeId).body()).contains("RELATION_EXISTS");
-        assertThat(delete("/api/logical/model/" + modelId).body()).contains("RELATION_EXISTS");
+        assertThat(delete("/api/logical/attribute/" + attributeId + "?modifiedAt=" + modifiedAt("TB_LGCL_ATRB", "LGCL_ATRB_SN", attributeId)).body()).contains("RELATION_EXISTS");
+        assertThat(delete("/api/logical/model/" + modelId + modelBase(modelId)).body()).contains("RELATION_EXISTS");
 
         // 정리 : 관계 → 식별자 → 엔터티(속성 포함) → 모델
-        assertThat(delete("/api/logical/relationship/" + relationshipId).statusCode()).isEqualTo(200);
-        assertThat(delete("/api/logical/identifier/" + identifierId).statusCode()).isEqualTo(200);
-        assertThat(delete("/api/logical/entity/" + entityId).statusCode()).isEqualTo(200);
-        assertThat(delete("/api/logical/model/" + modelId).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/relationship/" + relationshipId + "?modifiedAt=" + modifiedAt("TB_LGCL_REL", "LGCL_REL_SN", relationshipId)).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/identifier/" + identifierId + "?modifiedAt=" + modifiedAt("TB_LGCL_IDNTFR", "LGCL_IDNTFR_SN", identifierId)).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/entity/" + entityId + entityBase(entityId)).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/logical/model/" + modelId + modelBase(modelId)).statusCode()).isEqualTo(200);
         assertThat(get("/api/logical/model", true).body()).doesNotContain(name);
     }
 
@@ -753,7 +759,7 @@ class SmokeTest {
         HttpResponse<String> refused = postJson("/api/modelMapping/subtypeKey", "{\"mappingId\":" + mappingId + ",\"attributeId\":" + attributeId + ",\"columnId\":1}");
         assertThat(refused.statusCode()).isEqualTo(400);
         assertThat(refused.body()).contains("INVALID_MODEL_MAPPING");
-        HttpResponse<String> missing = delete("/api/modelMapping/subtypeKey/999999999");
+        HttpResponse<String> missing = delete("/api/modelMapping/subtypeKey/999999999?modifiedAt=2026-01-01T00:00:00");
         assertThat(missing.statusCode()).isEqualTo(400);
         assertThat(missing.body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
         HttpResponse<String> noCsrf = client.send(HttpRequest.newBuilder(uri("/api/modelMapping/subtypeKey"))
@@ -791,9 +797,10 @@ class SmokeTest {
         for (var attribute : seededDetail.path("attributes")) {
             assertThat(attribute.path("attributeTermId").asLong()).as(attribute.path("attributeName").asString()).isEqualTo(attribute.path("columnTermId").asLong());
             seededPairs.add(new long[]{attribute.path("attributeId").asLong(), attribute.path("columnId").asLong()});
-            assertThat(delete("/api/modelMapping/attribute/" + attribute.path("mappingId").asLong()).statusCode()).isEqualTo(200);
+            assertThat(delete("/api/modelMapping/attribute/" + attribute.path("mappingId").asLong() + "?modifiedAt=" + attribute.path("modifiedAt").asString()).statusCode()).isEqualTo(200);
         }
-        assertThat(delete("/api/modelMapping/entity/" + seeded.path("mappingId").asLong()).statusCode()).isEqualTo(200);
+        assertThat(delete("/api/modelMapping/entity/" + seeded.path("mappingId").asLong()).body()).contains("MODEL_BASE_REQUIRED"); // M8-C2
+        assertThat(delete("/api/modelMapping/entity/" + seeded.path("mappingId").asLong() + "?modifiedAt=" + seededDetail.path("mapping").path("mappingModifiedAt").asString()).statusCode()).isEqualTo(200);
         assertThat(get("/api/modelMapping/status", true).body()).contains("\"mappedEntities\":" + (entities - 1), "\"mappedAttributes\":" + (attributes - seededPairs.size()));
 
         var entity = java.util.stream.StreamSupport.stream(mapper.readTree(get(accountRows + "&mapped=false", true).body()).path("data").spliterator(), false)
@@ -821,7 +828,7 @@ class SmokeTest {
         // 오류 : 400 + 코드
         assertThat(get("/api/modelMapping/entity/999999999", true).body()).contains("MODEL_MAPPING_IS_NOT_DEFINED");
         assertThat(postJson("/api/modelMapping/attribute", "{\"mappingId\":" + mappingId + ",\"attributeId\":999999999,\"columnId\":" + columnId + "}").body()).contains("INVALID_MODEL_MAPPING");
-        HttpResponse<String> blocked = delete("/api/modelMapping/entity/" + mappingId);
+        HttpResponse<String> blocked = delete("/api/modelMapping/entity/" + mappingId + "?modifiedAt=" + modifiedAt("TB_ENTT_TBL_MPNG", "ENTT_TBL_MPNG_SN", mappingId));
         assertThat(blocked.statusCode()).isEqualTo(400);
         assertThat(blocked.body()).contains("RELATION_EXISTS");
 
@@ -1630,6 +1637,17 @@ class SmokeTest {
     /** 행의 지금 수정 일시 (ISO, 화면이 조회 응답에서 받는 기준값과 같은 값) — M8-C1 기준값 필수 API 용 */
     private String modifiedAt(String table, String idColumn, long id) {
         return jdbcTemplate.queryForObject("SELECT MDFCN_DT FROM " + table + " WHERE " + idColumn + " = ?", java.sql.Timestamp.class, id).toLocalDateTime().toString();
+    }
+
+    /** M8-C2 : 엔터티·모델 삭제 요청 쿼리 (화면이 읽은 수정 일시 + 삭제 확인 조회의 구성 기준값) */
+    private String entityBase(long entityId) throws Exception {
+        return "?modifiedAt=" + modifiedAt("TB_LGCL_ENTT", "LGCL_ENTT_SN", entityId) + "&composition="
+                + tools.jackson.databind.json.JsonMapper.builder().build().readTree(get("/api/logical/entity/" + entityId + "/deletion", true).body()).path("composition").asString();
+    }
+
+    private String modelBase(long modelId) throws Exception {
+        return "?modifiedAt=" + modifiedAt("TB_LGCL_MDL", "LGCL_MDL_SN", modelId) + "&composition="
+                + tools.jackson.databind.json.JsonMapper.builder().build().readTree(get("/api/logical/model/" + modelId + "/deletion", true).body()).path("composition").asString();
     }
 
     private String wordBase(long wordId) {

@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, isConflict } from '../../lib/api';
+import { baseQuery } from '../../lib/deletion';
+import { MappingConflictNotice, useSubmitting, type MappingConflict } from '../../components/conflict/ConflictRecovery';
+import { runWithReview } from '../../components/conflict/conflictActions';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { useSchemas } from '../schema/schemas';
@@ -36,6 +39,10 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<TableCandidate | null>(null);
   const [conflict, setConflict] = useState(false);
+  // 409 (M8-C3) : 다른 사용자가 이 매핑을 바꿨다 — 내 선택은 두고 최신 매핑·기준값을 받아 보여 준다 (다시 저장은 사용자가)
+  const [stale, setStale] = useState<MappingConflict | null>(null);
+  const [base, setBase] = useState<string | null>(row.mappingModifiedAt ?? null);
+  const [busy, run] = useSubmitting();
   const queryClient = useQueryClient();
 
   const candidates = useQuery({
@@ -59,10 +66,18 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!selected) return dialog.alert(t('매핑할 물리 테이블을 선택해주세요.'));
-    dialog.confirm(t('{0} 엔터티를 {1} 테이블에 매핑하시겠습니까?', row.entityName, selected.tableName), async () => {
+    dialog.confirm(t('{0} 엔터티를 {1} 테이블에 매핑하시겠습니까?', row.entityName, selected.tableName), () => void run(async () => {
       try {
-        await api('/api/modelMapping/entity', { method: 'POST', body: { id: row.mappingId, entityId: row.entityId, tableId: selected.tableId } });
+        await api('/api/modelMapping/entity', { method: 'POST', conflict: 'handled', body: { id: row.mappingId, entityId: row.entityId, tableId: selected.tableId, modifiedAt: row.mappingId != null ? base : null } });
       } catch (error) {
+        if (isConflict(error) && row.mappingId != null) {
+          const latest = await api<MappingDetail>(`/api/modelMapping/entity/${row.mappingId}`, { silent: true }).catch(() => null);
+          setStale({ label: t('물리 테이블'), before: row.tableName ? `${row.schemaName}.${row.tableName}` : null, mine: `${selected.schemaName}.${selected.tableName}`,
+            latest: latest ? `${latest.mapping.schemaName}.${latest.mapping.tableName}` : null, gone: !latest });
+          if (latest) setBase(latest.mapping.mappingModifiedAt ?? null);
+          void candidates.refetch();
+          return;
+        }
         if (!isMappingConflict(error)) throw error;
         // 충돌한 테이블 선택만 비우고 후보·추천을 다시 읽는다 (스키마·검색어는 그대로) — 사용자가 다시 골라야 저장된다
         setSelected(null);
@@ -73,7 +88,7 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
       }
       onSaved();
       toast.success(t('정상적으로 저장되었습니다.'));
-    });
+    }));
   };
 
   return (
@@ -90,6 +105,7 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
           {t('저장하는 사이에 다른 매핑이 먼저 저장되었습니다. 최신 후보를 다시 불러왔습니다. 후보를 확인하고 다시 골라주세요.')}
         </p>
       )}
+      {stale && <MappingConflictNotice conflict={stale} />}
       {row.mappingId == null && <TableSuggestionList entityId={row.entityId} schemaId={schemaId} selectedId={selected?.tableId ?? null} onSelect={setSelected} />}
 
       <div className="form-group">
@@ -136,7 +152,7 @@ export function EntityMappingForm({ row, onSaved }: { row: MappingRow; onSaved: 
       )}
 
       <p className="form-help">{selected ? t('선택한 테이블 : {0}', `${selected.schemaName}.${selected.tableName}`) : t('매핑할 물리 테이블을 선택해주세요.')}</p>
-      <button type="submit" className="btn btn-primary" disabled={!selected}>{t('매핑 저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={!selected || busy || !!stale?.gone}>{busy ? t('처리 중…') : t('매핑 저장')}</button>
     </form>
   );
 }
@@ -174,6 +190,8 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
   // 매핑이 바뀔 때마다 추천 후보를 다시 받는다 (추천 당시 상태를 믿지 않는다 — 저장은 서버가 다시 검사한다)
   const [version, setVersion] = useState(0);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [stale, setStale] = useState<MappingConflict | null>(null);
+  const [busy, run] = useSubmitting();
 
   if (detail.isError) return <p role="alert">{t('매핑 정보를 불러오지 못했습니다.')} {detail.error.message}</p>;
   if (!detail.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
@@ -192,11 +210,19 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
     onChanged();
   };
 
-  const save = async (attribute: MappingAttribute) => {
+  const save = (attribute: MappingAttribute) => run(async () => {
     const columnId = Number(drafts[attribute.attributeId]);
     try {
-      await api('/api/modelMapping/attribute', { method: 'POST', body: { id: attribute.mappingId, mappingId, attributeId: attribute.attributeId, columnId } });
+      await api('/api/modelMapping/attribute', { method: 'POST', conflict: 'handled', body: { id: attribute.mappingId, mappingId, attributeId: attribute.attributeId, columnId, modifiedAt: attribute.modifiedAt ?? null } });
     } catch (error) {
+      if (isConflict(error)) {
+        // 409 (M8-C3) : 고른 컬럼은 그대로 두고 최신 매핑(기준값 포함)을 다시 읽어 기존·최신·내 선택을 보여 준다. 다시 [저장] 은 사용자가
+        const mine = unmappedColumns.find((c) => String(c.columnId) === drafts[attribute.attributeId])?.columnName ?? null;
+        const latest = (await detail.refetch()).data?.attributes.find((a) => a.attributeId === attribute.attributeId);
+        setStale({ label: attribute.attributeName, before: attribute.columnName, latest: latest?.columnName ?? null, mine, gone: !latest || latest.mappingId !== attribute.mappingId });
+        setVersion((v) => v + 1);
+        return;
+      }
       if (!isMappingConflict(error)) throw error;
       // 충돌한 속성의 선택만 비우고(다른 속성의 고른 값은 그대로) 매핑 상태·추천을 다시 읽는다 — 사용자가 다시 골라야 저장된다
       const rest = { ...drafts };
@@ -208,14 +234,29 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
       return;
     }
     setConflict(null);
+    setStale(null);
     changed();
-  };
+  });
 
   const remove = (attribute: MappingAttribute) => {
-    dialog.confirm(t('{0} 속성의 컬럼 매핑을 해제하시겠습니까? 속성과 컬럼은 삭제되지 않습니다.', attribute.attributeName), async () => {
-      await api(`/api/modelMapping/attribute/${attribute.mappingId}`, { method: 'DELETE' });
-      changed();
-    });
+    dialog.confirm(t('{0} 속성의 컬럼 매핑을 해제하시겠습니까? 속성과 컬럼은 삭제되지 않습니다.', attribute.attributeName), () => void run(async () => {
+      // M8-C2 기준값, M8-C3 : 409 면 최신 매핑을 보여 주고 다시 해제할지 묻는다 (자동 재해제 없음)
+      const snapshot = (a: MappingAttribute) => ({ modifiedAt: a.modifiedAt ?? null, fields: [{ key: 'column', label: t('물리 컬럼'), value: a.columnName ?? '' }] });
+      try {
+        await runWithReview({
+          dialog, title: t('속성 매핑 해제'), intro: t('다른 사용자가 이 매핑을 변경했습니다.'), seen: snapshot(attribute),
+          load: async () => {
+            const latest = (await api<MappingDetail>(`/api/modelMapping/entity/${mappingId}`, { silent: true })).attributes.find((a) => a.mappingId === attribute.mappingId);
+            if (!latest) throw new ApiError(400, t('매핑이 이미 해제되었습니다.'), 'MODEL_MAPPING_IS_NOT_DEFINED');
+            return snapshot(latest);
+          },
+          act: async (state) => { await api(`/api/modelMapping/attribute/${attribute.mappingId}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          retryLabel: t('최신 내용으로 해제'), onClose: changed,
+        });
+      } finally {
+        changed();
+      }
+    }));
   };
 
   const headers = ['#', t('논리 속성'), t('논리 표준 용어'), t('물리 컬럼'), t('물리 표준 용어'), t('매핑 상태'), ...(canEdit ? [t('관리')] : [])];
@@ -250,6 +291,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
         </div>
       )}
 
+      {stale && <MappingConflictNotice conflict={stale} onDismiss={() => setStale(null)} />}
       {conflict && (
         <p className="form-help mapping-conflict" role="status">
           {t('{0} 속성을 저장하는 사이에 그 컬럼이 다른 매핑에 먼저 쓰였습니다. 최신 매핑 상태와 추천을 다시 불러왔습니다. 컬럼을 다시 골라주세요.', conflict)}
@@ -304,7 +346,7 @@ export function AttributeMappingDetail({ mappingId, canEdit, controls, onChanged
                       {canEdit && (
                         <td>
                           <div className="logical-actions">
-                            <button type="button" className="btn btn-sm btn-primary" disabled={draft === '' || draft === current} onClick={() => void save(a)}>
+                            <button type="button" className="btn btn-sm btn-primary" disabled={busy || draft === '' || draft === current} onClick={() => void save(a)}>
                               {a.mappingId != null ? t('변경') : t('매핑')}
                             </button>
                             {a.mappingId != null && <button type="button" className="btn btn-sm btn-danger" onClick={() => remove(a)}>{t('해제')}</button>}

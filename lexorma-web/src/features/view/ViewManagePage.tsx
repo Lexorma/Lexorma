@@ -8,6 +8,7 @@ import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
+import { detailGuarded, viewSnapshot } from '../table/physicalConflicts';
 import { formatDateTime } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useSchemas } from '../schema/schemas';
@@ -170,15 +171,17 @@ function ViewDetailView({ viewId, onChanged, onNavigate, onClose, onOpenView, se
   };
   const remove = () => {
     dialog.confirm(t('{0} VIEW 를 삭제하시겠습니까? 출력 컬럼·참조 객체·변경 요청 이력도 함께 삭제됩니다.', view.viewName), async () => {
-      await api(`/api/physical/view/${enc(viewId)}`, { method: 'DELETE' });
-      onChanged();
-      onClose();
+      // M8-C2 상세의 수정 일시, M8-C3 : 409 면 최신 VIEW 를 보여 주고 다시 삭제할지 묻는다
+      await detailGuarded(dialog, 'view', viewId, viewSnapshot(detail.data!), undefined, onChanged, onClose);
     });
   };
   const toggleApproval = () => {
     dialog.confirm(approved ? t('VIEW 승인을 취소하시겠습니까?') : t('VIEW 를 승인하시겠습니까?'), async () => {
-      await api(`/api/physical/view/${enc(viewId)}/approval/${!approved}`, { method: 'PATCH' });
-      changed();
+      try {
+        await detailGuarded(dialog, 'view', viewId, viewSnapshot(detail.data!), !approved, changed);
+      } catch {
+        changed(); // 그 밖의 오류 : 공통 알림 뒤 최신 상세를 다시 읽는다
+      }
     });
   };
   const process = (request: ViewChangeRequest, approve: boolean) => {

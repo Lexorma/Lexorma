@@ -143,9 +143,9 @@ class PhysicalModelIntegrationTest {
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.RELATION_EXISTS));
 
         // 스키마 : 테이블이 있으면 삭제 불가, 기본 스키마 삭제 불가
-        assertThatThrownBy(() -> schemaService.deleteSchema(admin, sales.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> schemaService.deleteSchema(admin, sales.id(), null)).isInstanceOf(CustomException.class);
         Long defaultSchemaId = schemaService.resolveSchema(projectId, null).getId();
-        assertThatThrownBy(() -> schemaService.deleteSchema(admin, defaultSchemaId)).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> schemaService.deleteSchema(admin, defaultSchemaId, null)).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> schemaService.saveSchema(admin, new SchemaDto(null, "SALES", null, null)))
                 .as("대소문자만 다른 스키마명").isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> schemaService.saveSchema(admin, new SchemaDto(null, "1bad name", null, null)))
@@ -166,7 +166,7 @@ class PhysicalModelIntegrationTest {
         ColumnInfo aRef = column(a.getProjectId(), aTable, "A_REF", false, null);
         PhysicalModelDto.Relation aRelation = physicalModelService.saveRelation(a, new PhysicalModelDto.Relation(null, null, "LOGICAL", null,
                 aTable.getId(), null, aTable.getId(), null, List.of(new PhysicalModelDto.ColumnPair(aRef.getId(), null, aId.getId(), null)), null));
-        physicalModelService.updateApproval(a, PhysicalModelService.Kind.RELATION, aRelation.id(), false);
+        physicalModelService.updateApproval(a, PhysicalModelService.Kind.RELATION, aRelation.id(), false, null);
         Long aSchemaId = schemaService.resolveSchema(a.getProjectId(), null).getId();
 
         AccountDto b = loginAsAdmin("m1-iso-b");
@@ -179,7 +179,7 @@ class PhysicalModelIntegrationTest {
                 .as("다른 프로젝트 테이블을 대상으로").isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> physicalModelService.saveIndex(b, new PhysicalModelDto.Index(null, bTable.getId(), null, null, false, List.of(ref(aRef)), null)))
                 .as("다른 프로젝트 컬럼으로 인덱스").isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> physicalModelService.delete(b, PhysicalModelService.Kind.RELATION, aRelation.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physicalModelService.delete(b, PhysicalModelService.Kind.RELATION, aRelation.id(), null)).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> schemaService.resolveSchema(b.getProjectId(), aSchemaId))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_IS_NOT_DEFINED));
         assertThatThrownBy(() -> schemaService.saveSchema(b, new SchemaDto(aSchemaId, "hijack", null, null))).isInstanceOf(CustomException.class);
@@ -199,13 +199,13 @@ class PhysicalModelIntegrationTest {
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "999999", "ROLE_USER");
         PhysicalModelDto.Index index = physicalModelService.saveIndex(user, new PhysicalModelDto.Index(null, t.getId(), null, null, false, List.of(ref(name), ref(code)), null));
         assertThat(index.isApproval()).isFalse();
-        assertThatThrownBy(() -> physicalModelService.updateApproval(user, PhysicalModelService.Kind.INDEX, index.id(), true)).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physicalModelService.updateApproval(user, PhysicalModelService.Kind.INDEX, index.id(), true, null)).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> schemaService.saveSchema(user, new SchemaDto(null, "user_schema", null, null))).isInstanceOf(CustomException.class);
-        physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, index.id()); // 미승인은 삭제 가능
+        physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, index.id(), null); // 미승인은 삭제 가능
 
         SecurityTestSupport.loginAs(projectRepository, projectId, String.valueOf(admin.getId()), "ROLE_ADMIN");
         PhysicalModelDto.Constraint unique = physicalModelService.saveConstraint(admin, new PhysicalModelDto.Constraint(null, t.getId(), null, "UNIQUE", null, List.of(ref(name), ref(code)), null));
-        assertThatThrownBy(() -> physicalModelService.delete(admin, PhysicalModelService.Kind.CONSTRAINT, unique.id()))
+        assertThatThrownBy(() -> physicalModelService.delete(admin, PhysicalModelService.Kind.CONSTRAINT, unique.id(), null))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED));
         assertThat(id.getId()).isNotNull();
     }

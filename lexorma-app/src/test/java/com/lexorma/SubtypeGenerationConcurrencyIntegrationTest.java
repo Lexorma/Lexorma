@@ -226,7 +226,7 @@ class SubtypeGenerationConcurrencyIntegrationTest {
         Tree t = tree("cc-b1");
         long link = jdbc.queryForObject("select s.SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG s join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = s.ENTT_TBL_MPNG_SN where m.LGCL_ENTT_SN = ?", Long.class, t.org());
         Outcome o = ordered(() -> generation.apply(login(t.f()), t.f().request(List.of(t.dept()), t.deptPlan().planToken())), () -> {
-            mappings.deleteSubtypeKeyMapping(login(t.f()), link);
+            mappings.deleteSubtypeKeyMapping(login(t.f()), link, null);
             return null;
         });
         assertThat(o.first()).isEqualTo("OK");
@@ -242,7 +242,7 @@ class SubtypeGenerationConcurrencyIntegrationTest {
         Tree t = tree("cc-b2");
         long link = jdbc.queryForObject("select s.SBTYP_IDNTFR_COL_MPNG_SN from TB_SBTYP_IDNTFR_COL_MPNG s join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = s.ENTT_TBL_MPNG_SN where m.LGCL_ENTT_SN = ?", Long.class, t.org());
         Outcome o = ordered(() -> {
-            mappings.deleteSubtypeKeyMapping(login(t.f()), link);
+            mappings.deleteSubtypeKeyMapping(login(t.f()), link, null);
             return null;
         }, () -> generation.apply(login(t.f()), t.f().request(List.of(t.dept()), t.deptPlan().planToken())));
         assertThat(o.first()).isEqualTo("OK");
@@ -269,7 +269,7 @@ class SubtypeGenerationConcurrencyIntegrationTest {
         generation.apply(f.user, f.request(List.of(customer, company), plan.planToken()));
         group(f, customer, "고객 구분", company, entity(f, "개인 고객"));
         long column = column(f.table(company), "CORP_CUST_NO");
-        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, column));
+        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, column), null);
         return new Cross(f, customerNo, company, ref, column);
     }
 
@@ -372,7 +372,7 @@ class SubtypeGenerationConcurrencyIntegrationTest {
     void mappingVersusAttributeDelete() throws Exception {
         Cross c = cross("cc-d2");
         Outcome o = ordered(() -> inherited(c), () -> {
-            logical.deleteAttribute(login(c.f()), c.customerNo());
+            logical.deleteAttribute(login(c.f()), c.customerNo(), null);
             return null;
         });
         assertThat(o).isEqualTo(new Outcome(true, "RELATION_EXISTS", "OK"));
@@ -386,7 +386,7 @@ class SubtypeGenerationConcurrencyIntegrationTest {
         Cross c1 = cross("cc-d3");
         long mapping1 = mappingId(c1.company());
         Outcome o1 = ordered(() -> inherited(c1), () -> {
-            mappings.deleteEntityMapping(login(c1.f()), mapping1);
+            mappings.deleteEntityMapping(login(c1.f()), mapping1, null);
             return null;
         });
         assertThat(o1).isEqualTo(new Outcome(true, "RELATION_EXISTS", "OK"));
@@ -395,9 +395,9 @@ class SubtypeGenerationConcurrencyIntegrationTest {
         Cross c2 = cross("cc-d3b");
         long mapping2 = mappingId(c2.company());
         // 직접 속성 매핑이 남아 있으면 해제가 막히므로 모두 푼다
-        jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping2).forEach(id -> mappings.deleteAttributeMapping(c2.f().user, id));
+        jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping2).forEach(id -> mappings.deleteAttributeMapping(c2.f().user, id, null));
         Outcome o2 = ordered(() -> {
-            mappings.deleteEntityMapping(login(c2.f()), mapping2);
+            mappings.deleteEntityMapping(login(c2.f()), mapping2, null);
             return null;
         }, () -> mappings.saveSubtypeKeyMapping(login(c2.f()), new ModelMappingDto.SubtypeKeyMapping(null, mapping2, c2.customerNo(), c2.column())));
         assertThat(o2).isEqualTo(new Outcome(true, "MODEL_MAPPING_IS_NOT_DEFINED", "OK"));

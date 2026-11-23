@@ -76,7 +76,19 @@ export interface RequestOptions {
   body?: unknown;
   /** 오류 시 공통 알림을 띄우지 않는다 */
   silent?: boolean;
+  /**
+   * 409 충돌(MODEL_CONFLICT · ERD_LAYOUT_CONFLICT)은 화면이 복구 흐름으로 처리한다 (M8-C3) : 그 오류만 공통 알림을 띄우지 않는다.
+   * 다른 오류(권한·대상 없음·검증)는 지금처럼 공통 알림
+   */
+  conflict?: 'handled';
   signal?: AbortSignal;
+}
+
+/** 다른 사용자가 그 사이 바꾼 409 (M8-C1~C3) */
+export const CONFLICT_CODES = new Set(['MODEL_CONFLICT', 'ERD_LAYOUT_CONFLICT']);
+
+export function isConflict(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 409 && CONFLICT_CODES.has(error.code ?? '');
 }
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -143,7 +155,8 @@ async function toError(res: Response): Promise<ApiError> {
 
 function fail(error: unknown, options: RequestOptions): never {
   // 중복 로그인으로 로그아웃된 안내는 silent 요청(새로고침 직후의 /api/auth/me)이어도 보여 준다
-  if (error instanceof ApiError && (!options.silent || error.code === 'DUPLICATE_LOGIN') && errorListener) {
+  const handledConflict = options.conflict === 'handled' && isConflict(error);
+  if (error instanceof ApiError && !handledConflict && (!options.silent || error.code === 'DUPLICATE_LOGIN') && errorListener) {
     error.handled = true;
     errorListener(error);
   }

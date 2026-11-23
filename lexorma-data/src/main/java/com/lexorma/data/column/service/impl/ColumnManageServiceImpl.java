@@ -185,14 +185,21 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         }
 
         Long projectId = accountDto.getProjectId();
+        boolean isApproval = Boolean.parseBoolean(type);
 
-        columnInfoDtos.forEach(columnInfoDto -> {
-            ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
-            // 없는(그 사이 지워진·다른 프로젝트) 컬럼은 대상 없음 400 (예전에는 NullPointerException 으로 500 — M8-C1). 잠금·기준값은 M8-C2
-            if (columnInfo == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
-
-            columnInfo.setIsApproval(Boolean.parseBoolean(type));
+        // 승인할 컬럼 행을 ID 순으로 잠그고 다시 읽은 뒤(M8-C2, X-02·X-03), 승인자가 본 컬럼(행의 modifiedAt)과 같을 때만 바꾼다 — 하나라도 다르면 409 (전체 롤백).
+        // 예전에는 잠그지 않아, 그 사이 커밋된 수정(설명 등)을 승인자가 본 적 없이 승인했고 같은 행의 삭제와도 엇갈렸다. 이미 그 상태면 바꾸지 않는다
+        Map<Long, java.time.LocalDateTime> bases = new HashMap<>();
+        columnInfoDtos.forEach(dto -> {
+            if (dto.getId() == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
+            bases.put(dto.getId(), dto.getModifiedAt());
         });
+        for (Long id : new java.util.TreeSet<>(bases.keySet())) {
+            ColumnInfo columnInfo = lockColumn(projectId, id);
+            if (Boolean.TRUE.equals(columnInfo.getIsApproval()) == isApproval) continue;
+            com.lexorma.common.jpa.ModelBase.verify(columnInfo, bases.get(id), columnInfo.getColumnName());
+            columnInfo.setIsApproval(isApproval);
+        }
 
     }
 
@@ -222,14 +229,22 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
         }
 
+        // 지울 컬럼 행도 ID 순으로 잠그고 다시 읽는다 (M8-C2) : 컬럼 승인은 테이블 행이 아니라 컬럼 행을 잠그므로, 테이블 잠금만으로는 그 사이 승인된 컬럼을 지울 수 있었다 (X-03)
+        Map<Long, ColumnInfo> locked = new HashMap<>();
+        for (Long id : requested) locked.put(id, lockColumn(projectId, id));
+        Set<Long> handled = new HashSet<>();
+
         columnInfoDtos.forEach(columnInfoDto -> {
-            ColumnInfo columnInfo = columnInfoRepository.findByProjectIdAndId(projectId, columnInfoDto.getId());
             // 없는(그 사이 지워진·다른 프로젝트) 컬럼은 대상 없음 400 (예전에는 NullPointerException 으로 500 — M8-C1)
+            ColumnInfo columnInfo = columnInfoDto.getId() == null ? null : locked.get(columnInfoDto.getId());
             if (columnInfo == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
+            if (!handled.add(columnInfo.getId())) return; // 같은 컬럼이 두 번 온 요청 : 한 번만 지운다
 
             if(columnInfo.getIsApproval()){
                 throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
             }
+            // 화면이 본 컬럼(행의 modifiedAt)과 같을 때만 지운다 (M8-C2, M8-D01) — 다르면 409, 앞에서 지운 컬럼도 롤백된다
+            com.lexorma.common.jpa.ModelBase.verify(columnInfo, columnInfoDto.getModifiedAt(), columnInfo.getColumnName());
 
             // 관계·인덱스·제약조건에 쓰인 컬럼은 삭제할 수 없다 (참조 테이블명에서 만든 관계는 함께 지운다)
             physicalModelService.releaseColumns(projectId, List.of(columnInfo));
@@ -252,6 +267,18 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         // 지운 PK 를 참조하던 다른 테이블의 관계를 다시 맞춘다
         physicalModelService.syncReferenceRelations(projectId, tableIds);
+    }
+
+    /** 컬럼 행을 잠그고 다시 읽는다 (FOR NO KEY UPDATE — 이미 키 강도로 잡은 행이면 기다리지 않는다). 없거나 다른 프로젝트·그 사이 지워졌으면 대상 없음 400 */
+    private ColumnInfo lockColumn(Long projectId, Long id) {
+        ColumnInfo column = columnInfoRepository.findByProjectIdAndId(projectId, id);
+        if (column == null) throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
+        try {
+            entityManager.refresh(column, LockModeType.PESSIMISTIC_WRITE);
+        } catch (jakarta.persistence.EntityNotFoundException gone) {
+            throw new CustomException(ErrorCode.COLUMN_IS_NOT_DEFINED);
+        }
+        return column;
     }
 
     @Override
@@ -694,11 +721,17 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         // 업무 설명을 고치는 행은 먼저 잠그고 지금 값을 다시 읽어 비교한다 : 같은 업무 설명을 동시에 고친 두 저장(또는 AI 제안 승인) 중 뒤의 것이
         // 앞의 것을 모르고 덮어쓰지 않도록 (AI-5). 교착을 피하려고 ID 순서로 잠근다. 다른 행은 잠그지 않는다 (@DynamicUpdate 로 바꾼 칸만 쓴다)
         // 기준값(baseModifiedAt, DEC-08)을 보낸 행도 같은 순서로 잠그고 다시 읽어 비교한다 — 하나라도 다르면 아무것도 저장하지 않고 409
-        rows.stream().filter(row -> row.getId() != null && (row.getBizDescription() != null || row.getBaseModifiedAt() != null) && existing.containsKey(row.getId()))
-                .map(ColumnBulkSaveDto.Row::getId).distinct().sorted()
+        // 지울 컬럼(M8-C2)도 같은 ID 순 잠금에 넣고 화면이 읽은 수정 일시와 비교한다 — 그 사이 다른 사용자가 고친 컬럼을 예전 화면이 지우지 않는다
+        Map<Long, java.time.LocalDateTime> deletedBases = request.getDeletedBaseModifiedAt() == null ? Map.of() : request.getDeletedBaseModifiedAt();
+        java.util.stream.Stream.concat(
+                        rows.stream().filter(row -> row.getId() != null && (row.getBizDescription() != null || row.getBaseModifiedAt() != null)).map(ColumnBulkSaveDto.Row::getId),
+                        deletedIds.stream().filter(deletedBases::containsKey))
+                .filter(existing::containsKey).distinct().sorted()
                 .forEach(id -> entityManager.refresh(existing.get(id), LockModeType.PESSIMISTIC_WRITE));
         rows.stream().filter(row -> row.getId() != null && row.getBaseModifiedAt() != null && existing.containsKey(row.getId()))
                 .forEach(row -> com.lexorma.common.jpa.ModelBase.verify(existing.get(row.getId()), row.getBaseModifiedAt(), existing.get(row.getId()).getColumnName()));
+        deletedIds.stream().filter(id -> existing.containsKey(id) && deletedBases.get(id) != null).sorted()
+                .forEach(id -> com.lexorma.common.jpa.ModelBase.verify(existing.get(id), deletedBases.get(id), existing.get(id).getColumnName()));
         Map<String, StandardTerm> termByRowKey = new HashMap<>();
         Set<Long> seenIds = new HashSet<>();
         // 새로 적거나 바꾼 참조 테이블명 (행 키 → 값) : 여러 스키마에 있어 정할 수 없는 이름은 스키마명을 적게 한다
@@ -715,6 +748,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 삭제와 수정을 함께 할 수 없습니다.", column.getColumnName())));
                 } else if (!seenIds.add(row.getId())) {
                     errors.add(new ColumnBulkSaveDto.RowError(key, Messages.get("{0} : 같은 컬럼이 두 번 들어 있습니다.", column.getColumnName())));
+                } else if (Boolean.TRUE.equals(row.getUnchanged())) {
+                    // 바꾸지 않은 행 (M8-D04) : 값을 보지 않는다 — 그 사이 다른 사용자가 고쳤어도 이 저장과 충돌하지 않고 그 값이 남는다
                 } else if (!Boolean.TRUE.equals(column.getIsApproval())) {
                     validateRowFields(row, column.getColumnName(), errors);
                     if (BizDescriptions.conflict(column.getBizDescription(), row.getBizDescription(), row.getBizDescriptionBase())) {
@@ -785,6 +820,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             if (row.getId() != null) {
                 ColumnInfo column = existing.get(row.getId());
 
+                if (Boolean.TRUE.equals(row.getUnchanged())) {
+                    // 바꾸지 않은 행 (M8-D04) : 값·순서 모두 쓰지 않는다 (비어 있는 순서도 채우지 않는다). 뒤의 컬럼은 이 컬럼 다음 순서부터 매긴다
+                    if (column.getSortOrder() != null) order = Math.max(order, column.getSortOrder());
+                    continue;
+                }
                 if (Boolean.TRUE.equals(column.getIsApproval())) {
                     // 승인된 컬럼은 정해진 순서를 바꾸지 않는다. 뒤의 컬럼은 이 컬럼 다음 순서부터 매긴다.
                     // 단, 순서가 비어 있는 컬럼(예전 데이터)은 화면 순서대로 채운다. 비워 두면 목록 끝으로 밀려

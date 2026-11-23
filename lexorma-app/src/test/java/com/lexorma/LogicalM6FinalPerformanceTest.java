@@ -128,7 +128,7 @@ class LogicalM6FinalPerformanceTest {
         });
         write(model, "상속 해제 (하위 없는 m3 빼기, 되돌림)", () -> save(f, a, a.subtypes().stream().limit(2).map(m -> new MemberInput(m.entityId(), m.classificationValue())).toList(), null));
         write(model, "승인 영향 (루트 승인, 되돌림)", () -> {
-            logical.updateEntityApproval(f.user, s.root, true);
+            logical.updateEntityApproval(f.user, s.root, true, null);
             return null;
         });
         AccountDto member = f.member();

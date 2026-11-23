@@ -9,6 +9,8 @@ import type { Applicability } from './physicalRename';
 /** 엔터티 기준 1행. 매핑하지 않은 엔터티는 mappingId·schema·table 이 null */
 export interface MappingRow {
   mappingId: number | null;
+  /** 매핑 행의 수정 일시 (M8-C2 — 매핑 변경·해제의 기준값, 미매핑이면 null) */
+  mappingModifiedAt?: string | null;
   modelId: number;
   modelName: string;
   entityId: number;
@@ -60,6 +62,8 @@ export interface MappingInheritance {
 /** 상속 PK 매핑 1행 (GET /api/modelMapping/entity/{mappingId}/subtypeKeys 의 keys). current false = 지금 루트 주 식별자에 없는 기존 매핑 */
 export interface SubtypeKeyRow {
   id: number | null;
+  /** 상속 PK 매핑 행의 수정 일시 (M8-C2 기준값) */
+  modifiedAt?: string | null;
   order: number;
   current: boolean;
   attributeId: number;
@@ -177,6 +181,8 @@ export const KEY_CHECKS: Record<string, { label: string; variant: LabelVariant }
 /** 매핑된 엔터티의 속성 1행. 매핑하지 않은 속성은 mappingId·column 이 null */
 export interface MappingAttribute {
   mappingId: number | null;
+  /** 속성 매핑 행의 수정 일시 (M8-C2 — 변경·해제의 기준값) */
+  modifiedAt?: string | null;
   attributeId: number;
   attributeName: string;
   attributeTermId: number | null;

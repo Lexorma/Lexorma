@@ -319,7 +319,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
             long mapping = jdbc.queryForObject("select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where LGCL_ENTT_SN = ?", Long.class, m.person());
             var row = jdbc.queryForMap("select SBTYP_ATRB_COL_MPNG_SN, LGCL_ATRB_SN, COL_SN from TB_SBTYP_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ? order by SBTYP_ATRB_COL_MPNG_SN"
                     + " fetch first 1 rows only", mapping);
-            mappings.deleteSubtypeAttributeMapping(m.f().user, ((Number) row.get("SBTYP_ATRB_COL_MPNG_SN")).longValue());
+            mappings.deleteSubtypeAttributeMapping(m.f().user, ((Number) row.get("SBTYP_ATRB_COL_MPNG_SN")).longValue(), null);
             var request = new ModelMappingDto.SubtypeAttributeMapping(null, mapping, ((Number) row.get("LGCL_ATRB_SN")).longValue(), ((Number) row.get("COL_SN")).longValue());
             String[] r = during(() -> mappings.saveSubtypeAttributeMapping(m.f().user, request), () -> mappings.saveSubtypeAttributeMapping(m.f().user, request));
             System.out.println("[AC-X02] " + Arrays.toString(r));
@@ -338,9 +338,9 @@ class InheritanceStrategyConcurrencyIntegrationTest {
             M m = model("c07-" + i);
             generate(m, token(m, A), A);
             long mapping = jdbc.queryForObject("select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where LGCL_ENTT_SN = ?", Long.class, m.member());
-            for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id);
-            mappings.deleteEntityMapping(m.f().user, mapping);
-            String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member()), () -> mappings.deleteConversions(m.f().user, m.member()));
+            for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id, null);
+            mappings.deleteEntityMapping(m.f().user, mapping, null);
+            String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member(), null), () -> mappings.deleteConversions(m.f().user, m.member(), null));
             System.out.println("[AC-X03] " + Arrays.toString(r));
             assertThat(r[0]).isEqualTo("OK");
             assertThat(r[1]).isNotEqualTo("OK").doesNotStartWith("SQLSTATE");
@@ -362,14 +362,14 @@ class InheritanceStrategyConcurrencyIntegrationTest {
                 // 서브타입 속성(생년월일) 매핑 하나만 남기고 해제 → 그것도 해제해 두고 재등록을 경합시킨다. 루트 매핑은 남긴다 (통합 속성 매핑의 부모)
                 var merged = jdbc.queryForMap("select a.ATRB_COL_MPNG_SN, a.LGCL_ATRB_SN, a.COL_SN from TB_ATRB_COL_MPNG a join TB_LGCL_ATRB t on t.LGCL_ATRB_SN = a.LGCL_ATRB_SN"
                         + " where a.ENTT_TBL_MPNG_SN = ? and t.LGCL_ENTT_SN = ?", mapping, m.person());
-                for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id);
-                mappings.deleteEntityMapping(m.f().user, mapping);
+                for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id, null);
+                mappings.deleteEntityMapping(m.f().user, mapping, null);
                 long attribute = ((Number) merged.get("LGCL_ATRB_SN")).longValue(), column = ((Number) merged.get("COL_SN")).longValue();
                 if (!deleteFirst) {
                     // 재등록 선행 : 루트 매핑을 다시 만들고(테이블 그대로) 통합 속성 매핑을 잡은 채 기록 삭제 — 삭제는 기다린 뒤 관련 매핑 때문에 거절
                     long root = mappings.saveEntityMapping(m.f().user, new ModelMappingDto.EntityMapping(null, m.member(), integrated)).id();
                     String[] r = during(() -> mappings.saveAttributeMapping(m.f().user, new ModelMappingDto.AttributeMapping(null, root, attribute, column)),
-                            () -> mappings.deleteConversions(m.f().user, m.member()));
+                            () -> mappings.deleteConversions(m.f().user, m.member(), null));
                     System.out.println("[AC-C15 재등록 선행] " + Arrays.toString(r));
                     assertThat(r[0]).isEqualTo("OK");
                     assertThat(r[1]).isEqualTo("RELATION_EXISTS");
@@ -377,7 +377,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
                     assertThat(records(m)).isOne();
                 } else {
                     // 삭제 선행 : 매핑이 모두 해제된 상태에서 기록 삭제를 잡은 채 루트 재매핑 + 통합 속성 매핑 — 기록이 없어졌으므로 통합 속성 매핑은 거절
-                    String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member()), () -> {
+                    String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member(), null), () -> {
                         long root = mappings.saveEntityMapping(m.f().user, new ModelMappingDto.EntityMapping(null, m.member(), integrated)).id();
                         return mappings.saveAttributeMapping(m.f().user, new ModelMappingDto.AttributeMapping(null, root, attribute, column));
                     });
@@ -423,7 +423,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     }
 
     Object deleteKey(M m, long entity, boolean primary) {
-        logical.deleteIdentifier(m.f().user, identifier(m, entity, primary).id());
+        logical.deleteIdentifier(m.f().user, identifier(m, entity, primary).id(), null);
         return null;
     }
 
@@ -577,7 +577,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
             M m = model("c07d-" + i);
             String token = token(m, A);
             String[] r = during(() -> generate(m, token, A), () -> {
-                logical.deleteAttribute(m.f().user, m.type());
+                logical.deleteAttribute(m.f().user, m.type(), null);
                 return null;
             });
             System.out.println("[AC-C07 삭제 · 생성 선행] " + Arrays.toString(r));
@@ -587,7 +587,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
             assertThat(count("select count(*) from TB_LGCL_ATRB where LGCL_ATRB_SN = ?", m.type())).isOne();
             M n = model("c07e-" + i);
             assertThat(outcome(() -> {
-                logical.deleteAttribute(n.f().user, n.type());
+                logical.deleteAttribute(n.f().user, n.type(), null);
                 return null;
             })).as("정책상 동시 실행 불가 — 분류 속성 삭제는 단독으로도 거절").isNotEqualTo("OK");
         }
@@ -725,7 +725,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
                     long fk = m.f().attr(m.member(), "지점 코드", false, "BRNCH_CD_VL");
                     m.f().pairs(m.f().rel("지점 소속", branch, m.member(), false, 0), new long[]{code, fk});
                 }, m -> () -> {
-                    physicalModel.delete(m.f().user, com.lexorma.data.physical.service.PhysicalModelService.Kind.CONSTRAINT, unique[0]);
+                    physicalModel.delete(m.f().user, com.lexorma.data.physical.service.PhysicalModelService.Kind.CONSTRAINT, unique[0], null);
                     return null;
                 },
                 (m, r) -> {
@@ -799,7 +799,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
                 generate(m, token(m, A), A);
                 long table = m.f().table(m.member());
                 releaseMappings(m);
-                Supplier<Object> delete = () -> mappings.deleteConversions(m.f().user, m.member());
+                Supplier<Object> delete = () -> mappings.deleteConversions(m.f().user, m.member(), null);
                 Supplier<Object> rename = () -> renameTable(m, table, "MBR_NEW");
                 String[] r = deleteFirst ? during(delete, rename) : during(rename, delete);
                 System.out.println("[AC-C16 이름 변경 · " + (deleteFirst ? "삭제 선행" : "이름 변경 선행") + "] " + Arrays.toString(r));
@@ -812,7 +812,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
             generate(m, token(m, A), A);
             long column = jdbc.queryForObject("select CLSF_COL_SN from TB_SBTYP_GROUP_CNVR where LGCL_SBTYP_GROUP_SN = ?", Long.class, m.group());
             releaseMappings(m);
-            String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member()), () -> {
+            String[] r = during(() -> mappings.deleteConversions(m.f().user, m.member(), null), () -> {
                 com.lexorma.data.column.domain.dto.ColumnInfoDto dto = new com.lexorma.data.column.domain.dto.ColumnInfoDto();
                 dto.setId(column);
                 columnService.deleteColumn(m.f().user, List.of(dto));
@@ -828,8 +828,8 @@ class InheritanceStrategyConcurrencyIntegrationTest {
 
     void releaseMappings(M m) {
         long mapping = jdbc.queryForObject("select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where LGCL_ENTT_SN = ?", Long.class, m.member());
-        for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id);
-        mappings.deleteEntityMapping(m.f().user, mapping);
+        for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(m.f().user, id, null);
+        mappings.deleteEntityMapping(m.f().user, mapping, null);
     }
 
     @Test
@@ -837,7 +837,7 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     void generationVersusApproval() throws Exception {
         Assumptions.assumeTrue(postgres());
         bothWays("AC-C17", A, m -> { }, m -> () -> {
-                    logical.updateEntityApproval(m.f().user, m.member(), true);
+                    logical.updateEntityApproval(m.f().user, m.member(), true, null);
                     return null;
                 },
                 (m, r) -> {

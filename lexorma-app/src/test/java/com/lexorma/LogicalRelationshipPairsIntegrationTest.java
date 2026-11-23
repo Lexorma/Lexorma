@@ -166,7 +166,7 @@ class LogicalRelationshipPairsIntegrationTest {
     void deletionAndIdentifierChange() {
         Fixture f = fixture("pairs-delete");
         LogicalModelDto.RelationshipPairs saved = save(f, f.orderToHistory, List.of(new PairInput(f.orderNo, f.srcOrderNo), new PairInput(f.detailNo, f.srcDetailNo)));
-        assertThatThrownBy(() -> logical.deleteAttribute(f.user, f.srcOrderNo)).isInstanceOf(CustomException.class)
+        assertThatThrownBy(() -> logical.deleteAttribute(f.user, f.srcOrderNo, null)).isInstanceOf(CustomException.class)
                 .hasMessageContaining("속성 짝에서 사용 중인 속성");
         assertThat(count("select count(*) from TB_LGCL_ATRB where LGCL_ATRB_SN = ?", f.srcOrderNo)).isOne();
 
@@ -180,11 +180,11 @@ class LogicalRelationshipPairsIntegrationTest {
 
         // 짝을 비우면 속성을 지울 수 있다
         LogicalModelDto.RelationshipPairs cleared = save(f, mismatch, List.of());
-        logical.deleteAttribute(f.user, f.srcOrderNo);
+        logical.deleteAttribute(f.user, f.srcOrderNo, null);
         // 관계 삭제 → 짝도 없다
         save(f, cleared, List.of(new PairInput(f.orderName, f.srcDetailNo)));
         assertThat(count("select count(*) from TB_LGCL_REL_ATRB where LGCL_REL_SN = ?", f.orderToHistory.id())).isOne();
-        logical.deleteRelationship(f.user, f.orderToHistory.id());
+        logical.deleteRelationship(f.user, f.orderToHistory.id(), null);
         assertThat(count("select count(*) from TB_LGCL_REL_ATRB where LGCL_REL_SN = ?", f.orderToHistory.id())).isZero();
         assertThat(saved.relationshipId()).isEqualTo(f.orderToHistory.id());
     }

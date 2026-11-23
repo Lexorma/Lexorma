@@ -9,6 +9,8 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { PhysicalGeneration } from './PhysicalGeneration';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
+import { runWithReview } from '../../components/conflict/conflictActions';
+import { baseQuery } from '../../lib/deletion';
 import { t } from '../../lib/i18n';
 import { useLogicalModels } from '../logical/model';
 import { useSchemas } from '../schema/schemas';
@@ -124,9 +126,22 @@ export function ModelMappingPage() {
       return dialog.alert(t('상속 PK 매핑이 {0}건 있어 엔터티 매핑을 해제할 수 없습니다. [속성 매핑] 의 상속 PK 매핑을 먼저 해제해주세요.', inheritedLinks(row)));
     }
     dialog.confirm(t('{0} 엔터티와 {1} 테이블의 매핑을 해제하시겠습니까? 엔터티와 테이블은 삭제되지 않습니다.', row.entityName, row.tableName ?? ''), async () => {
-      await api(`/api/modelMapping/entity/${row.mappingId}`, { method: 'DELETE' });
-      reload();
-      toast.success(t('매핑을 해제했습니다.'));
+      // M8-C2 기준값, M8-C3 : 409 면 최신 매핑(테이블·속성 매핑 수)을 보여 주고 다시 해제할지 묻는다 (자동 재해제 없음)
+      const snapshot = (r: MappingRow) => ({ modifiedAt: r.mappingModifiedAt ?? null, fields: [
+        { key: 'table', label: t('물리 테이블'), value: r.tableName ? `${r.schemaName}.${r.tableName}` : '' },
+        { key: 'attributes', label: t('속성 매핑'), value: String(r.mappedAttributeCount) },
+      ] });
+      const done = () => toast.success(t('매핑을 해제했습니다.'));
+      const ok = await runWithReview({
+        dialog, title: t('엔터티 매핑 해제'), intro: t('다른 사용자가 이 매핑을 변경했습니다.'), seen: snapshot(row),
+        load: async () => snapshot((await api<{ mapping: MappingRow }>(`/api/modelMapping/entity/${row.mappingId}`, { silent: true })).mapping),
+        act: async (state) => { await api(`/api/modelMapping/entity/${row.mappingId}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+        retryLabel: t('최신 내용으로 해제'), onDone: done, onClose: reload,
+      });
+      if (ok) {
+        reload();
+        done();
+      }
     });
   };
 

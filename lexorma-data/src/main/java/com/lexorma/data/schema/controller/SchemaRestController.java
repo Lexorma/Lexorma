@@ -37,12 +37,15 @@ public class SchemaRestController {
         return ResponseEntity.ok(schemaService.saveSchema(accountDto, schemaDto));
     }
 
-    @Operation(summary = "스키마 삭제", description = "테이블이 없는 기본 스키마 외 스키마만 삭제. 승인 권한만 가능")
+    @Operation(summary = "스키마 삭제", description = "테이블이 없는 기본 스키마 외 스키마만 삭제. 승인 권한만 가능. modifiedAt(목록의 updated) 필수 — 없으면 400, 그 사이 바뀌었으면 409 (M8-C2). "
+            + "권한이 없으면 권한 오류가 먼저다")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/schema/{schemaId}")
     public ResponseEntity<Map<String, Object>> deleteSchema(@AuthenticationPrincipal AccountDto accountDto,
-                                                            @PathVariable(name = "schemaId") Long schemaId) {
-        schemaService.deleteSchema(accountDto, schemaId);
+                                                            @PathVariable(name = "schemaId") Long schemaId, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        // 권한(승인 권한자)이 없으면 기준값보다 권한 오류(서비스)가 먼저다
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        schemaService.deleteSchema(accountDto, schemaId, modifiedAt);
         return ResponseEntity.ok(Map.of("result", true));
     }
 }

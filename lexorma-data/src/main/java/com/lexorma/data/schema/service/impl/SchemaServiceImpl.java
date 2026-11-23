@@ -108,7 +108,7 @@ public class SchemaServiceImpl implements SchemaService {
 
     @Override
     @Transactional
-    public void deleteSchema(AccountDto accountDto, Long schemaId) {
+    public void deleteSchema(AccountDto accountDto, Long schemaId, java.time.LocalDateTime modifiedAt) {
         checkManageable();
         // 이름 공간 잠금과 같은 행을 먼저 잠가, 이 스키마에 테이블·VIEW 를 등록·이동하는 쓰기와 직렬화한 뒤 비어 있는지 본다
         SchemaInfo schema = schemaInfoRepository.findForUpdate(schemaId, accountDto.getProjectId())
@@ -116,6 +116,9 @@ public class SchemaServiceImpl implements SchemaService {
         if (Boolean.TRUE.equals(schema.getIsDefault())) {
             throw new CustomException(ErrorCode.DATA_CANNOT_BE_DELETED, "기본 스키마는 삭제할 수 없습니다.");
         }
+        // 화면이 본 스키마(목록의 updated)와 같을 때만 지운다 (M8-C2, M8-D01). 잠근 뒤 다시 읽은 값으로 비교한다
+        entityManager.refresh(schema);
+        com.lexorma.common.jpa.ModelBase.verify(schema, modifiedAt, schema.getSchemaName());
         if (tableInfoRepository.existsBySchema_Id(schemaId)) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "{0} 에 테이블이 있습니다.", schema.getSchemaName());
         }

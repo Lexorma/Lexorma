@@ -424,6 +424,11 @@ class TableDesignServiceImplTest {
             TableInfo table = table(1L, "TB_USER", false);
             when(tableInfoRepository.findForUpdate(1L, 1L)).thenReturn(Optional.of(table));
             lenient().when(tableInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(table);
+            // M8-C2 : 함께 지워질 인덱스·제약조건·관계 구성을 (ID, 수정 일시) 투영으로 읽는다 — 자식 없음, 내부 호출(기준값 null)은 비교하지 않는다
+            @SuppressWarnings("unchecked")
+            jakarta.persistence.TypedQuery<Object[]> none = org.mockito.Mockito.mock(jakarta.persistence.TypedQuery.class, org.mockito.Mockito.RETURNS_SELF);
+            when(none.getResultList()).thenReturn(List.of());
+            when(entityManager.createQuery(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(Object[].class))).thenReturn(none);
 
             service.deleteTable(List.of(TableInfoDto.builder().id(1L).build()), login);
 

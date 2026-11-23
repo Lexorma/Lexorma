@@ -72,6 +72,8 @@ class ModelMappingIntegrationTest {
     private static final Pageable PAGE = PageRequest.of(0, 100);
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -101,7 +103,7 @@ class ModelMappingIntegrationTest {
         Entity member = entity(admin, model, "회원");
         Entity grade = entity(admin, model, "등급");
         Entity order = entity(admin, other, "주문");
-        logicalService.updateEntityApproval(admin, grade.id(), false);
+        logicalService.updateEntityApproval(admin, grade.id(), false, null);
         SchemaDto sales = schemaService.saveSchema(admin, new SchemaDto(null, "sales", null, null));
         TableInfo tbMember = table(projectId, "TB_MEMBER", null, true);
         TableInfo tbGrade = table(projectId, "TB_GRADE", null, false);
@@ -126,7 +128,7 @@ class ModelMappingIntegrationTest {
         rejected(() -> service.saveEntityMapping(admin, new EntityMapping(null, extra.id(), null)), ErrorCode.TABLE_IS_NOT_DEFINED);
         rejected(() -> service.saveEntityMapping(admin, new EntityMapping(-1L, null, tbSpare.getId())), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         rejected(() -> service.selectEntityMapping(admin, -1L), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
-        rejected(() -> service.deleteEntityMapping(admin, -1L), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
+        rejected(() -> service.deleteEntityMapping(admin, -1L, null), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
 
         // 목록 : 엔터티 1행, 모델명 → 엔터티명 순. 조건 : 모델, 스키마, 매핑 여부, 엔터티명·테이블명 검색
         assertThat(rows(admin, new EntitySearch(model.id(), null, null, null, null)))
@@ -163,14 +165,14 @@ class ModelMappingIntegrationTest {
         rejected(() -> service.saveEntityMapping(outsider, new EntityMapping(null, theirs.id(), tbMember.getId())), ErrorCode.TABLE_IS_NOT_DEFINED);
         rejected(() -> service.saveEntityMapping(outsider, new EntityMapping(mapping.id(), null, theirTable.getId())), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         rejected(() -> service.selectEntityMapping(outsider, mapping.id()), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
-        rejected(() -> service.deleteEntityMapping(outsider, mapping.id()), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
+        rejected(() -> service.deleteEntityMapping(outsider, mapping.id(), null), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
         assertThat(rows(outsider, new EntitySearch(null, null, null, null, null))).extracting(EntityRow::entityId).containsExactly(theirs.id());
         assertThat(rows(outsider, new EntitySearch(model.id(), null, null, null, null))).isEmpty();
         assertThat(tables(outsider, null, null)).extracting(TableCandidate::tableId).containsExactly(theirTable.getId());
 
         // 삭제 : 매핑만 지워지고 엔터티·테이블은 남는다
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        service.deleteEntityMapping(admin, mapping.id());
+        service.deleteEntityMapping(admin, mapping.id(), null);
         assertThat(rows(admin, new EntitySearch(model.id(), null, false, null, null))).extracting(EntityRow::entityName).contains("회원");
         assertThat(logicalService.selectEntity(admin, member.id()).entityName()).isEqualTo("회원");
         assertThat(tableInfoRepository.findById(tbSpare.getId())).isPresent();
@@ -224,7 +226,7 @@ class ModelMappingIntegrationTest {
         rejected(() -> service.saveAttributeMapping(admin, new AttributeMapping(null, parent.id(), -1L, mbrNm.getId())), ErrorCode.INVALID_MODEL_MAPPING);
         rejected(() -> service.saveAttributeMapping(admin, new AttributeMapping(null, parent.id(), name, null)), ErrorCode.INVALID_MODEL_MAPPING);
         rejected(() -> service.saveAttributeMapping(admin, new AttributeMapping(-1L, null, null, mbrNm.getId())), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
-        rejected(() -> service.deleteAttributeMapping(admin, -1L), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
+        rejected(() -> service.deleteAttributeMapping(admin, -1L, null), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
 
         // 변경 : 컬럼만 바뀐다. 이미 쓰인 컬럼·다른 테이블의 컬럼으로는 못 바꾼다
         AttributeMapping nameMapping = service.saveAttributeMapping(admin, new AttributeMapping(null, parent.id(), name, mbrNm.getId()));
@@ -236,7 +238,7 @@ class ModelMappingIntegrationTest {
 
         // 속성 매핑이 있으면 부모 매핑의 테이블 변경·삭제를 막는다 (같은 테이블로 다시 저장하는 것은 변경이 아니다)
         rejected(() -> service.saveEntityMapping(admin, new EntityMapping(parent.id(), null, tbSpare.getId())), ErrorCode.INVALID_MODEL_MAPPING);
-        rejected(() -> service.deleteEntityMapping(admin, parent.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteEntityMapping(admin, parent.id(), null), ErrorCode.RELATION_EXISTS);
         assertThat(service.saveEntityMapping(admin, new EntityMapping(parent.id(), null, tbMember.getId())).tableId()).isEqualTo(tbMember.getId());
         assertThat(service.selectEntityMapping(admin, parent.id()).mapping().mappedAttributeCount()).isEqualTo(2);
 
@@ -251,14 +253,14 @@ class ModelMappingIntegrationTest {
         rejected(() -> service.saveAttributeMapping(outsider, new AttributeMapping(null, theirParent.id(), joined, theirColumn.getId())), ErrorCode.INVALID_MODEL_MAPPING);
         rejected(() -> service.saveAttributeMapping(outsider, new AttributeMapping(null, theirParent.id(), theirAttribute, mbrNm.getId())), ErrorCode.INVALID_MODEL_MAPPING);
         rejected(() -> service.saveAttributeMapping(outsider, new AttributeMapping(nameMapping.id(), null, null, theirColumn.getId())), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
-        rejected(() -> service.deleteAttributeMapping(outsider, nameMapping.id()), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
+        rejected(() -> service.deleteAttributeMapping(outsider, nameMapping.id(), null), ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED);
 
         // 삭제 : 속성 매핑을 모두 해제하면 부모 매핑도 지울 수 있다. 속성·컬럼은 남는다
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        service.deleteAttributeMapping(admin, noMapping.id());
-        service.deleteAttributeMapping(admin, nameMapping.id());
+        service.deleteAttributeMapping(admin, noMapping.id(), null);
+        service.deleteAttributeMapping(admin, nameMapping.id(), null);
         assertThat(service.selectEntityMapping(admin, parent.id()).attributes()).hasSize(3).allMatch(a -> a.mappingId() == null && a.columnId() == null);
-        service.deleteEntityMapping(admin, parent.id());
+        service.deleteEntityMapping(admin, parent.id(), null);
         assertThat(logicalService.selectAttributes(admin, member.id())).hasSize(3);
         assertThat(columnInfoRepository.findAllByTableInfo_IdIn(List.of(tbMember.getId()))).hasSize(3);
     }
@@ -270,7 +272,7 @@ class ModelMappingIntegrationTest {
         long projectId = admin.getProjectId();
         Model model = logicalService.saveModel(admin, new Model(null, "삭제", null));
         Entity entity = entity(admin, model, "회원");
-        logicalService.updateEntityApproval(admin, entity.id(), false);
+        logicalService.updateEntityApproval(admin, entity.id(), false, null);
         Long attribute = attribute(admin, entity, "회원번호");
         SchemaDto schema = schemaService.saveSchema(admin, new SchemaDto(null, "member", null, null));
         TableInfo table = table(projectId, "TB_MEMBER", schema.id(), false);
@@ -279,12 +281,12 @@ class ModelMappingIntegrationTest {
         EntityMapping parent = service.saveEntityMapping(admin, new EntityMapping(null, entity.id(), table.getId()));
         AttributeMapping child = service.saveAttributeMapping(admin, new AttributeMapping(null, parent.id(), attribute, column.getId()));
 
-        rejected(() -> logicalService.deleteEntity(admin, entity.id()), ErrorCode.RELATION_EXISTS);
-        rejected(() -> logicalService.deleteAttribute(admin, attribute), ErrorCode.RELATION_EXISTS);
-        rejected(() -> logicalService.deleteModel(admin, model.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> logicalService.deleteEntity(admin, entity.id(), null, null), ErrorCode.RELATION_EXISTS);
+        rejected(() -> logicalService.deleteAttribute(admin, attribute, null), ErrorCode.RELATION_EXISTS);
+        rejected(() -> logicalService.deleteModel(admin, model.id(), null, null), ErrorCode.RELATION_EXISTS);
         rejected(() -> columnManageService.deleteColumn(admin, List.of(ColumnInfoDto.builder().id(column.getId()).build())), ErrorCode.RELATION_EXISTS);
-        rejected(() -> service.deleteEntityMapping(admin, parent.id()), ErrorCode.RELATION_EXISTS);
-        rejected(() -> schemaService.deleteSchema(admin, schema.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> service.deleteEntityMapping(admin, parent.id(), null), ErrorCode.RELATION_EXISTS);
+        rejected(() -> schemaService.deleteSchema(admin, schema.id(), null), ErrorCode.RELATION_EXISTS);
         // 컬럼 일괄 저장의 삭제도 같은 검사를 거친다 (일괄 저장은 승인된 테이블에만 한다)
         tx.executeWithoutResult(s -> tableInfoRepository.findById(table.getId()).orElseThrow().setIsApproval(true));
         rejected(() -> columnManageService.saveColumnsBulk(admin, ColumnBulkSaveDto.builder().tableInfoId(table.getId()).deletedIds(List.of(column.getId())).build()), ErrorCode.RELATION_EXISTS);
@@ -303,7 +305,7 @@ class ModelMappingIntegrationTest {
 
         // 트랜잭션 롤백 : 매핑 변경 뒤 예외가 나면 변경이 남지 않는다
         TableInfo spare = table(projectId, "TB_SPARE", null, false);
-        service.deleteAttributeMapping(admin, child.id());
+        service.deleteAttributeMapping(admin, child.id(), null);
         assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
             service.saveEntityMapping(admin, new EntityMapping(parent.id(), null, spare.getId()));
             throw new IllegalStateException("rollback");
@@ -311,17 +313,17 @@ class ModelMappingIntegrationTest {
         assertThat(service.selectEntityMapping(admin, parent.id()).mapping().tableId()).isEqualTo(table.getId());
 
         // 속성 매핑 해제 → 속성·컬럼 삭제 가능. 컬럼이 없어도 엔터티 매핑이 있으면 테이블은 삭제할 수 없다
-        logicalService.deleteAttribute(admin, attribute);
+        logicalService.deleteAttribute(admin, attribute, null);
         columnManageService.deleteColumn(admin, List.of(ColumnInfoDto.builder().id(column.getId()).build()));
         rejected(() -> tableDesignService.deleteTable(List.of(TableInfoDto.builder().id(table.getId()).build()), admin), ErrorCode.RELATION_EXISTS);
-        rejected(() -> logicalService.deleteEntity(admin, entity.id()), ErrorCode.RELATION_EXISTS);
+        rejected(() -> logicalService.deleteEntity(admin, entity.id(), null, null), ErrorCode.RELATION_EXISTS);
 
         // 엔터티 매핑 해제 → 엔터티 → 논리 모델, 테이블 → 스키마 순으로 지울 수 있고 매핑 행은 남지 않는다
-        service.deleteEntityMapping(admin, parent.id());
-        logicalService.deleteEntity(admin, entity.id());
-        logicalService.deleteModel(admin, model.id());
+        service.deleteEntityMapping(admin, parent.id(), null);
+        logicalService.deleteEntity(admin, entity.id(), null, null);
+        logicalService.deleteModel(admin, model.id(), null, null);
         tableDesignService.deleteTable(List.of(TableInfoDto.builder().id(table.getId()).build()), admin);
-        schemaService.deleteSchema(admin, schema.id());
+        schemaService.deleteSchema(admin, schema.id(), null);
         assertThat(jdbc.queryForObject("select count(*) from TB_ENTT_TBL_MPNG where PRJ_SN = ?", Integer.class, projectId)).isZero();
 
         // 프로젝트 삭제 : 매핑이 있어도 지울 수 있고, 매핑과 양쪽 원본이 함께 지워진다 (ProjectDeletionIntegrationTest 가 전체 범위를 본다)
@@ -405,14 +407,14 @@ class ModelMappingIntegrationTest {
         assertThat(controller.selectStatus(viewer, model.id()).getBody()).hasSize(1);
         assertThatThrownBy(() -> controller.saveEntityMapping(viewer, new EntityMapping(mapping.id(), null, table.getId()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveAttributeMapping(viewer, new AttributeMapping(null, mapping.id(), attribute, column.getId()))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteEntityMapping(viewer, mapping.id())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteAttributeMapping(viewer, 1L)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteEntityMapping(viewer, mapping.id(), currentBase.of(com.lexorma.data.mapping.domain.entity.EntityTableMapping.class, mapping.id()))).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteAttributeMapping(viewer, 1L, currentBase.of(com.lexorma.data.mapping.domain.entity.AttributeColumnMapping.class, 1L))).isInstanceOf(AccessDeniedException.class);
 
         // USER : 승인된 엔터티·테이블의 매핑도 등록·삭제한다 (매핑은 엔터티·테이블을 바꾸지 않는다)
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "901", "ROLE_USER");
         Long attributeMappingId = controller.saveAttributeMapping(user, new AttributeMapping(null, mapping.id(), attribute, column.getId())).getBody().id();
-        assertThat(controller.deleteAttributeMapping(user, attributeMappingId).getBody()).containsEntry("result", true);
-        assertThat(controller.deleteEntityMapping(user, mapping.id()).getBody()).containsEntry("result", true);
+        assertThat(controller.deleteAttributeMapping(user, attributeMappingId, currentBase.of(com.lexorma.data.mapping.domain.entity.AttributeColumnMapping.class, attributeMappingId)).getBody()).containsEntry("result", true);
+        assertThat(controller.deleteEntityMapping(user, mapping.id(), currentBase.of(com.lexorma.data.mapping.domain.entity.EntityTableMapping.class, mapping.id())).getBody()).containsEntry("result", true);
         assertThat(controller.saveEntityMapping(user, new EntityMapping(null, entity.id(), table.getId())).getBody().id()).isNotNull();
         assertThat(logicalService.selectEntity(user, entity.id()).isApproval()).isTrue();
 
@@ -464,7 +466,7 @@ class ModelMappingIntegrationTest {
         EntityTarget parent = mappedEntity(admin, model, "부모 삭제", 1);
         List<String> parentRace = concurrently(2, i -> {
             if (i == 0) {
-                service.deleteEntityMapping(admin, parent.mapping.id());
+                service.deleteEntityMapping(admin, parent.mapping.id(), null);
                 return "deleted";
             }
             return "ok " + service.saveAttributeMapping(admin, new AttributeMapping(null, parent.mapping.id(), parent.attributes.get(0), parent.columns.get(0).getId())).id();
@@ -476,11 +478,11 @@ class ModelMappingIntegrationTest {
 
         // 엔터티 삭제 ↔ 그 엔터티의 매핑 등록
         Entity doomed = entity(admin, model, "삭제 대상");
-        logicalService.updateEntityApproval(admin, doomed.id(), false);
+        logicalService.updateEntityApproval(admin, doomed.id(), false, null);
         TableInfo forDoomed = table(projectId, "TB_DOOMED_ENTITY", null, false);
         List<String> entityRace = concurrently(2, i -> {
             if (i == 0) {
-                logicalService.deleteEntity(admin, doomed.id());
+                logicalService.deleteEntity(admin, doomed.id(), null, null);
                 return "deleted";
             }
             return "ok " + service.saveEntityMapping(admin, new EntityMapping(null, doomed.id(), forDoomed.getId())).id();

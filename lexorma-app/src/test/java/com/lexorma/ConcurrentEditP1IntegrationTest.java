@@ -79,6 +79,7 @@ class ConcurrentEditP1IntegrationTest {
     @Autowired StandardWordRepository words;
     @Autowired TransactionTemplate tx;
     @Autowired JdbcTemplate jdbc;
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired EntityManager entityManager;
     @Autowired com.lexorma.data.logical.controller.LogicalModelRestController logicalApi;
     @Autowired com.lexorma.data.dictionary.controller.DataDictionaryRestController dictionaryApi;
@@ -418,9 +419,9 @@ class ConcurrentEditP1IntegrationTest {
                 .targetTable(tableRepository.getReferenceById(parent.getId())).relationName("FK_M8C1_2").relationType(TableRelation.Type.FK).relationSource(TableRelation.Source.USER)
                 .isApproval(false).build()).getId());
         assertThat(deletedMeanwhile(relationRepository::findById, relation2, () -> relationRepository.deleteById(relation2),
-                () -> physical.delete(admin, PhysicalModelService.Kind.RELATION, relation2))).isEqualTo("INVALID_PHYSICAL_MODEL");
+                () -> physical.delete(admin, PhysicalModelService.Kind.RELATION, relation2, null))).isEqualTo("INVALID_PHYSICAL_MODEL");
         assertThat(deletedMeanwhile(constraintRepository::findById, constraintId, () -> constraintRepository.deleteById(constraintId),
-                () -> physical.delete(admin, PhysicalModelService.Kind.CONSTRAINT, constraintId))).isEqualTo("INVALID_PHYSICAL_MODEL");
+                () -> physical.delete(admin, PhysicalModelService.Kind.CONSTRAINT, constraintId, null))).isEqualTo("INVALID_PHYSICAL_MODEL");
     }
 
     /** 한 트랜잭션에서 대상을 먼저 읽어 두고(화면 요청이 같은 행을 이미 올려 둔 상태), 다른 트랜잭션이 지우고 커밋한 뒤 같은 트랜잭션에서 작업을 부른다 */
@@ -486,7 +487,8 @@ class ConcurrentEditP1IntegrationTest {
     private void awaitDoneOrLockWait(Future<?> work) {
         String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
                 : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        long started = System.nanoTime();
+        long deadline = started + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return;
             if (jdbc.queryForObject(sql, Integer.class) > 0) return;
@@ -497,7 +499,9 @@ class ConcurrentEditP1IntegrationTest {
                 return;
             }
         }
-        throw new IllegalStateException("B 가 끝나지도, 잠금을 기다리지도 않았다");
+        // 진단 (M8-C4a) : 스레드·Hikari·DB 세션·AuthUtil 컨텍스트 — 시간 제한은 그대로 두고 원인을 남긴다
+        throw new IllegalStateException("B 가 끝나지도, 잠금을 기다리지도 않았다"
+                + ConcurrencyDiagnostics.describe("B 대기", started, jdbc, dataSource, projectRepository));
     }
 
     private boolean postgres() {

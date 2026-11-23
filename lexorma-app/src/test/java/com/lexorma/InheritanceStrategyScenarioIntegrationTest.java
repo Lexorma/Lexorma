@@ -261,7 +261,7 @@ class InheritanceStrategyScenarioIntegrationTest {
         generate(m, A);
         AccountDto user = m.f().user;
         long mbr = m.f().table(m.member());
-        error(() -> mappings.deleteConversions(user, m.member()), ErrorCode.RELATION_EXISTS);
+        error(() -> mappings.deleteConversions(user, m.member(), null), ErrorCode.RELATION_EXISTS);
         error(() -> subtypes.deleteGroup(user, m.g2(), jdbc.queryForObject("select MDFCN_DT from TB_LGCL_SBTYP_GROUP where LGCL_SBTYP_GROUP_SN = ?",
                 java.sql.Timestamp.class, m.g2()).toLocalDateTime()), ErrorCode.RELATION_EXISTS);
         assertThat(mappings.selectConversions(user, m.f().modelId)).singleElement().satisfies(t -> {
@@ -271,12 +271,12 @@ class InheritanceStrategyScenarioIntegrationTest {
         });
         // 매핑 해제 : 속성 매핑(통합 컬럼 포함) → 엔터티 매핑
         long mapping = jdbc.queryForObject("select ENTT_TBL_MPNG_SN from TB_ENTT_TBL_MPNG where LGCL_ENTT_SN = ?", Long.class, m.member());
-        for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(user, id);
-        mappings.deleteEntityMapping(user, mapping);
+        for (Long id : jdbc.queryForList("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where ENTT_TBL_MPNG_SN = ?", Long.class, mapping)) mappings.deleteAttributeMapping(user, id, null);
+        mappings.deleteEntityMapping(user, mapping, null);
         // 매핑만 해제한 상태 : 통합 엔터티는 정상 통합이 아니다 (미매핑으로 센다 — 위장하지 않는다)
         assertThat(mappings.selectStatus(user, m.f().modelId).get(0).mergedEntities()).isZero();
         // 테이블은 기록이 쓰고 있어 지울 수 없다 (컬럼이 있어 원래도 막히지만 기록 검사가 먼저 — 메시지)
-        assertThat(mappings.deleteConversions(user, m.member())).isEqualTo(2);
+        assertThat(mappings.deleteConversions(user, m.member(), null)).isEqualTo(2);
         assertThat(count("select count(*) from TB_SBTYP_GROUP_CNVR where PRJ_SN = ?", user.getProjectId())).isZero();
         assertThat(count("select count(*) from TB_TBL where TBL_SN = ?", mbr)).as("물리 테이블은 그대로").isOne();
     }

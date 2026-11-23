@@ -6,7 +6,11 @@ import { useToast } from '../../components/toast/ToastProvider';
 import { Label } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
 import type { SubjectArea } from './subjectArea';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { runWithReview } from '../../components/conflict/conflictActions';
+import { deleteAttributeGuarded, deleteEntityGuarded, deleteIdentifierGuarded, entitySnapshot, loadEntity } from './conflictSnapshots';
+import { baseQuery, cascadeText, withDeletion } from '../../lib/deletion';
 import { t, tc } from '../../lib/i18n';
 import { searchTerms, termLabel, type Term } from '../column/terms';
 import { historyPath } from '../history/model';
@@ -72,6 +76,7 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     openEntityDetail(definedEntityId, { ...options, initialTab });
   };
 
+  const [busy, run] = useSubmitting(); // 승인·삭제 요청 중 중복 제출 방지 (M8-C3-D05) — 조기 return 앞 (훅 순서)
   if (entity.isError) return <p role="alert">{t('엔터티를 불러오지 못했습니다.')} {entity.error.message}</p>;
   if (!entity.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
 
@@ -93,22 +98,36 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
     options.onChanged?.();
   };
 
+  const approvalDone = () => toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
+  // 승인 : 화면이 본 엔터티 기준값. 409 면 최신 엔터티를 보여 주고 사용자가 다시 승인한다 (M8-C3 — 자동 재전송 없음)
   const toggleApproval = () => {
-    dialog.confirm(approved ? t('이 엔터티를 승인취소하시겠습니까?') : t('이 엔터티를 승인하시겠습니까?'), async () => {
-      await api(`/api/logical/entity/${entityId}/approval/${!approved}`, { method: 'PATCH' });
-      changed();
-      toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
-    });
+    dialog.confirm(approved ? t('이 엔터티를 승인취소하시겠습니까?') : t('이 엔터티를 승인하시겠습니까?'), () => void run(async () => {
+      const ok = await runWithReview({
+        dialog, title: approved ? t('엔터티 승인 취소') : t('엔터티 승인'), intro: t('다른 사용자가 이 항목을 변경했습니다.'),
+        seen: entitySnapshot(data), load: async () => entitySnapshot(await loadEntity(entityId)),
+        act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${baseQuery(state.modifiedAt)}`, { method: 'PATCH', conflict: 'handled' }); },
+        retryLabel: approved ? t('최신 내용으로 승인 취소') : t('최신 내용으로 승인'), targetApproval: !approved,
+        onDone: approvalDone, onClose: changed,
+      });
+      if (ok) {
+        changed();
+        approvalDone();
+      }
+    }));
   };
 
-  const remove = () => {
-    dialog.confirm(t('{0} 엔터티를 삭제하시겠습니까? 속성과 식별자도 함께 삭제됩니다.', data.entityName), async () => {
-      await api(`/api/logical/entity/${entityId}`, { method: 'DELETE' });
+  // 삭제 확인 조회 : 함께 지워질 속성·식별자 수와 구성 기준값 (M8-C2 — 확인한 뒤 구성이 바뀌면 409, M8-C3 — 최신 구성을 보여 주고 다시 확인)
+  const remove = () => withDeletion(`/api/logical/entity/${entityId}/deletion`, (deletion) => {
+    const cascade = cascadeText(deletion);
+    const deleted = () => {
       controls.close();
       options.onChanged?.();
       toast.success(t('정상적으로 삭제되었습니다.'));
-    });
-  };
+    };
+    dialog.confirm(cascade ? `${t('{0} 엔터티를 삭제하시겠습니까?', data.entityName)} ${cascade}` : t('{0} 엔터티를 삭제하시겠습니까?', data.entityName), () => void run(async () => {
+      await deleteEntityGuarded(dialog, entityId, deletion, data.modifiedAt, deleted, changed);
+    }));
+  });
 
   const inheritedAttributes = info?.attributes.filter((a) => a.inherited).length ?? 0;
   const tabs: [Tab, string][] = [
@@ -172,12 +191,12 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
           <button type="button" className="btn" onClick={() => { controls.close(); (options.onNavigate ?? navigate)(historyPath('LOGICAL_ENTITY', entityId)); }}>{t('변경 이력')}</button>
         )}
         {approvalAvailable && (
-          <button type="button" className={approved ? 'btn btn-danger' : 'btn btn-primary'} onClick={toggleApproval}>
+          <button type="button" className={approved ? 'btn btn-danger' : 'btn btn-primary'} disabled={busy} onClick={toggleApproval}>
             {approved ? t('승인취소') : tc('버튼', '승인')}
           </button>
         )}
         {editable && (
-          <button type="button" className="btn btn-danger" disabled={!relationships.data || related.length > 0 || participates} onClick={remove}
+          <button type="button" className="btn btn-danger" disabled={busy || !relationships.data || related.length > 0 || participates} onClick={remove}
             title={related.length ? t('관계에 사용 중인 엔터티는 삭제할 수 없습니다. 관계를 먼저 정리해주세요.') : participates ? t('슈퍼타입·서브타입 엔터티는 삭제할 수 없습니다. 상속을 먼저 해제해주세요.') : undefined}>
             {t('엔터티 삭제')}
           </button>
@@ -192,20 +211,40 @@ function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editab
   const toast = useToast();
   const [name, setName] = useState(entity.entityName);
   const [description, setDescription] = useState(entity.entityDescription ?? '');
+  const [busy, run] = useSubmitting();
+  // 409 복구 (M8-C3) : 입력 유지 → 최신 엔터티 비교 → 고른 변경만 다시 적용 → 직접 저장
+  const recovery = useConflictRecovery({
+    initial: { name: entity.entityName, description: entity.entityDescription ?? '' },
+    base: entity.modifiedAt,
+    fields: [{ key: 'name', label: t('엔터티명'), get: (v) => v.name }, { key: 'description', label: t('설명'), get: (v) => v.description }],
+    load: async () => {
+      const latest = await api<LogicalEntity>(`/api/logical/entity/${entity.id}`, { silent: true });
+      return { values: { name: latest.entityName, description: latest.entityDescription ?? '' }, base: latest.modifiedAt ?? null };
+    },
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('엔터티명은(는) 필수 입력 항목입니다.'));
-    dialog.confirm(t('수정하시겠습니까?'), async () => {
+    dialog.confirm(t('수정하시겠습니까?'), () => void run(async () => {
       // 이름 중복(모델 안, 대소문자 무시)·승인 상태는 서버에서 검증한다
-      await api('/api/logical/entity', { method: 'POST', body: { id: entity.id, entityName: name.trim(), entityDescription: description.trim() || null, modifiedAt: entity.modifiedAt ?? null } });
+      try {
+        await api('/api/logical/entity', { method: 'POST', conflict: 'handled', body: { id: entity.id, entityName: name.trim(), entityDescription: description.trim() || null, modifiedAt: recovery.base } });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, description })) return;
+        throw error;
+      }
       onSaved();
       toast.success(t('정상적으로 수정되었습니다.'));
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('description')) setDescription(latest.description);
+      })}
       <div className="form-group">
         <label htmlFor="entityName">{t('엔터티명')}</label>
         <input type="text" className="form-control" id="entityName" maxLength={255} required readOnly={!editable} value={name} onChange={(e) => setName(e.target.value)} />
@@ -214,7 +253,7 @@ function BasicTab({ entity, editable, onSaved }: { entity: LogicalEntity; editab
         <label htmlFor="entityDescription">{t('설명')}</label>
         <textarea className="form-control" id="entityDescription" maxLength={1000} rows={3} readOnly={!editable} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
-      {editable && <button type="submit" className="btn btn-primary">{t('저장')}</button>}
+      {editable && <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>}
     </form>
   );
 }
@@ -234,8 +273,7 @@ function AttributeTab({ entity, editable, onChanged, inherited = 0 }: { entity: 
 
   const remove = (attribute: LogicalAttribute) => {
     dialog.confirm(t('{0} 속성을 삭제하시겠습니까?', attribute.attributeName), async () => {
-      await api(`/api/logical/attribute/${attribute.id}`, { method: 'DELETE' });
-      onChanged();
+      await deleteAttributeGuarded(dialog, entity.id, attribute, onChanged);
     });
   };
 
@@ -315,6 +353,30 @@ export function AttributeForm({ entityId, attribute, onSaved }: { entityId: numb
     ? { id: attribute.termId, name: attribute.termName ?? '', domainName: attribute.domainName, domainDataType: attribute.domainDataType } : null);
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<Term[] | null>(null);
+  const [busy, run] = useSubmitting();
+  type Values = { name: string; description: string; dataType: string; required: boolean; term: LinkedTerm | null };
+  const valuesOf = (a?: LogicalAttribute): Values => ({
+    name: a?.attributeName ?? '', description: a?.attributeDescription ?? '', dataType: a?.dataType ?? '', required: !!a?.isRequired,
+    term: a?.termId != null ? { id: a.termId, name: a.termName ?? '', domainName: a.domainName, domainDataType: a.domainDataType } : null,
+  });
+  // 409 복구 (M8-C3) : 수정일 때만 — 엔터티 상세에서 이 속성의 최신 값을 읽는다
+  const recovery = useConflictRecovery<Values>({
+    initial: valuesOf(attribute),
+    base: attribute?.modifiedAt,
+    fields: [
+      { key: 'name', label: t('속성명'), get: (v) => v.name },
+      { key: 'dataType', label: t('데이터 유형'), get: (v) => v.dataType },
+      { key: 'required', label: t('필수 속성'), get: (v) => v.required, show: (v) => (v.required ? t('예') : t('아니요')) },
+      { key: 'term', label: t('표준 용어'), get: (v) => v.term?.id ?? null, show: (v) => v.term?.name ?? null },
+      { key: 'description', label: t('설명'), get: (v) => v.description },
+    ],
+    load: async () => {
+      const detail = await api<LogicalEntity>(`/api/logical/entity/${entityId}`, { silent: true });
+      const latest = detail.attributes.find((a) => a.id === attribute?.id);
+      if (!latest) throw new ApiError(400, t('속성을 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+      return { values: valuesOf(latest), base: latest.modifiedAt ?? null };
+    },
+  });
 
   const search = async () => {
     if (!keyword.trim()) return dialog.alert(t('검색할 표준 용어명을 입력해주세요.'));
@@ -331,18 +393,31 @@ export function AttributeForm({ entityId, attribute, onSaved }: { entityId: numb
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('속성명은(는) 필수 입력 항목입니다.'));
-    dialog.confirm(attribute ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
+    dialog.confirm(attribute ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
       // 도메인은 보내지 않는다 : 표준 용어의 도메인을 서버가 조회해 내려준다
-      await api('/api/logical/attribute', {
-        method: 'POST',
-        body: { id: attribute?.id ?? null, entityId, attributeName: name.trim(), attributeDescription: description.trim() || null, dataType: dataType.trim() || null, isRequired: required, termId: term?.id ?? null, modifiedAt: attribute?.modifiedAt ?? null },
-      });
+      try {
+        await api('/api/logical/attribute', {
+          method: 'POST',
+          conflict: 'handled',
+          body: { id: attribute?.id ?? null, entityId, attributeName: name.trim(), attributeDescription: description.trim() || null, dataType: dataType.trim() || null, isRequired: required, termId: term?.id ?? null, modifiedAt: attribute ? recovery.base : null },
+        });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, description, dataType, required, term })) return;
+        throw error;
+      }
       onSaved();
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('dataType')) setDataType(latest.dataType);
+        if (!picks.has('required')) setRequired(latest.required);
+        if (!picks.has('term')) setTerm(latest.term);
+        if (!picks.has('description')) setDescription(latest.description);
+      })}
       <div className="form-group">
         <label htmlFor="attributeName">{t('속성명')}</label>
         <input type="text" className="form-control" id="attributeName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -391,7 +466,7 @@ export function AttributeForm({ entityId, attribute, onSaved }: { entityId: numb
         <label htmlFor="attributeDescription">{t('설명')}</label>
         <textarea className="form-control" id="attributeDescription" maxLength={1000} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }
@@ -410,8 +485,7 @@ function IdentifierTab({ entity, editable, onChanged, subtype = false }: { entit
 
   const remove = (identifier: LogicalIdentifier) => {
     dialog.confirm(t('{0} 식별자를 삭제하시겠습니까?', identifier.identifierName), async () => {
-      await api(`/api/logical/identifier/${identifier.id}`, { method: 'DELETE' });
-      onChanged();
+      await deleteIdentifierGuarded(dialog, entity.id, identifier, onChanged);
     });
   };
 
@@ -464,6 +538,23 @@ export function IdentifierForm({ entity, identifier, onSaved, subtype = false }:
   const attributeName = new Map(entity.attributes.map((a) => [a.id, a.attributeName]));
   const available = entity.attributes.filter((a) => !ids.includes(a.id));
   const otherPrimary = entity.identifiers.find((i) => i.isPrimary && i.id !== identifier?.id);
+  const [busy, run] = useSubmitting();
+  type Values = { name: string; primary: boolean; ids: number[]; names: Map<number, string> };
+  const recovery = useConflictRecovery<Values>({
+    initial: { name: identifier?.identifierName ?? '', primary: !subtype && !!identifier?.isPrimary, ids: identifier?.attributeIds ?? [], names: attributeName },
+    base: identifier?.modifiedAt,
+    fields: [
+      { key: 'name', label: t('식별자명'), get: (v) => v.name },
+      { key: 'primary', label: t('주 식별자'), get: (v) => v.primary, show: (v) => (v.primary ? t('예') : t('아니요')) },
+      { key: 'ids', label: t('구성 속성 (순서대로)'), get: (v) => v.ids, show: (v) => v.ids.map((id) => v.names.get(id) ?? `#${id}`).join(', ') },
+    ],
+    load: async () => {
+      const detail = await api<LogicalEntity>(`/api/logical/entity/${entity.id}`, { silent: true });
+      const latest = detail.identifiers.find((i) => i.id === identifier?.id);
+      if (!latest) throw new ApiError(400, t('식별자를 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+      return { values: { name: latest.identifierName, primary: !subtype && !!latest.isPrimary, ids: latest.attributeIds, names: new Map(detail.attributes.map((a) => [a.id, a.attributeName])) }, base: latest.modifiedAt ?? null };
+    },
+  });
 
   const move = (index: number, delta: number) => {
     const next = [...ids];
@@ -475,14 +566,25 @@ export function IdentifierForm({ entity, identifier, onSaved, subtype = false }:
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('식별자명은(는) 필수 입력 항목입니다.'));
     if (!ids.length) return dialog.alert(t('식별자 속성을 1개 이상 선택해주세요.'));
-    dialog.confirm(identifier ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
-      await api('/api/logical/identifier', { method: 'POST', body: { id: identifier?.id ?? null, entityId: entity.id, identifierName: name.trim(), isPrimary: primary, attributeIds: ids, modifiedAt: identifier?.modifiedAt ?? null } });
+    dialog.confirm(identifier ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
+      try {
+        await api('/api/logical/identifier', { method: 'POST', conflict: 'handled', body: { id: identifier?.id ?? null, entityId: entity.id, identifierName: name.trim(), isPrimary: primary, attributeIds: ids, modifiedAt: identifier ? recovery.base : null } });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, primary, ids, names: attributeName })) return;
+        throw error;
+      }
       onSaved();
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('primary')) setPrimary(latest.primary);
+        // 구성 속성 : 지금 엔터티에 없는 속성(그 사이 삭제)은 뺀다
+        if (!picks.has('ids')) setIds(latest.ids.filter((id) => attributeName.has(id)));
+      })}
       <div className="form-group">
         <label htmlFor="identifierName">{t('식별자명')}</label>
         <input type="text" className="form-control" id="identifierName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -514,7 +616,7 @@ export function IdentifierForm({ entity, identifier, onSaved, subtype = false }:
           {available.map((a) => <option key={a.id} value={a.id}>{a.attributeName}</option>)}
         </select>
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }

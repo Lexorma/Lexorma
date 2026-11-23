@@ -302,6 +302,20 @@ public class ModelMappingQueryRepository {
                 .fetch();
     }
 
+    /** 속성의 표준 용어 (속성 ID → [용어 ID, 용어명, 영문약어], 용어가 없으면 값이 null 인 배열) — 상속 PK 의 명칭 진단 (M7-NAME-1), 한 번에 읽는다 */
+    public Map<Long, Object[]> findAttributeTerms(java.util.Collection<Long> attributeIds) {
+        Map<Long, Object[]> result = new HashMap<>();
+        if (attributeIds.isEmpty()) return result;
+        query.select(attribute.id, attributeTerm.id, attributeTerm.commonStandardTermName, attributeTerm.commonStandardTermAbbreviation)
+                .from(attribute)
+                .leftJoin(attribute.standardTerm, attributeTerm)
+                .where(attribute.id.in(attributeIds))
+                .fetch()
+                .forEach(row -> result.put(row.get(attribute.id), new Object[]{row.get(attributeTerm.id), row.get(attributeTerm.commonStandardTermName),
+                        row.get(attributeTerm.commonStandardTermAbbreviation)}));
+        return result;
+    }
+
     /** 모델의 주 식별자 : 엔터티 ID → 주 식별자를 이루는 속성 ID. 주 식별자가 없는 엔터티는 키가 없다 */
     public Map<Long, Set<Long>> findPrimaryIdentifierAttributes(Long projectId, Long modelId) {
         Map<Long, Set<Long>> result = new HashMap<>();

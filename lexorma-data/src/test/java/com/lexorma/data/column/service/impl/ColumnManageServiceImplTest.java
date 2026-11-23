@@ -63,6 +63,13 @@ class ColumnManageServiceImplTest {
     @InjectMocks
     ColumnManageServiceImpl service;
 
+    /** 영문약어 조회는 실제 규칙(StandardTermAbbreviationLookup — 대소문자 무시 + 후보 전체)으로, 저장소만 목으로 둔다 (M7-NAME-1) */
+    @org.junit.jupiter.api.BeforeEach
+    void lookup() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "termLookup",
+                new com.lexorma.data.dictionary.service.StandardTermAbbreviationLookup(standardTermRepository));
+    }
+
     @AfterEach
     void tearDown() {
         SecurityTestSupport.clear();
@@ -312,7 +319,7 @@ class ColumnManageServiceImplTest {
         /** 청크 단위 IN 조회 : 테이블명 / 영문약어 */
         private void stubTablesAndTerm(TableInfo... tables) {
             when(tableInfoRepository.findAllByProjectIdAndTableNameIn(eq(1L), anyCollection())).thenReturn(List.of(tables));
-            when(standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(eq(1L), anyCollection()))
+            when(standardTermRepository.findAbbreviationCandidates(eq(1L), anyCollection(), anyCollection()))
                     .thenReturn(List.of(userNameTerm()));
         }
 
@@ -404,7 +411,7 @@ class ColumnManageServiceImplTest {
             StandardTerm useYn = term(4L, "사용_여부", "USE_YN", true);
             when(standardTermRepository.findAllByProjectIdAndCommonStandardTermNameIn(eq(1L), anyCollection()))
                     .thenReturn(List.of(userNm, regDtA, regDtB));
-            when(standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(eq(1L), anyCollection()))
+            when(standardTermRepository.findAbbreviationCandidates(eq(1L), anyCollection(), anyCollection()))
                     .thenReturn(List.of(useYn));
 
             List<com.lexorma.data.column.domain.dto.TermResolveDto> result = service.resolveTerms(login,

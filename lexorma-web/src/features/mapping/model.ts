@@ -382,9 +382,19 @@ export interface ColumnRecommendation {
   reason: string;
   /** 일괄 적용 판정 (M-7 일괄 적용 1차 — 추천끼리 충돌은 전체 후보 기준) */
   applicability: Applicability;
+  /** 상속 컬럼 행(scope=INHERITED)만 : B형 상속 PK · C형 루트 PK·조상 속성 복제 (M7-NAME-1, 읽기 전용). 그 밖에는 null */
+  inheritance: RecommendationInheritance | null;
 }
 
-/** GET /api/modelMapping/recommendation/column/summary : total = 모델의 속성 수 = 네 상태의 합 */
+export interface RecommendationInheritance {
+  kind: 'KEY' | 'ATTRIBUTE';
+  strategy: 'B' | 'C';
+  originEntityId: number;
+  originEntityName: string;
+  readOnlyReason: string;
+}
+
+/** GET /api/modelMapping/recommendation/column/summary : total = 모델의 속성 수 = 네 상태의 합. inherited = 읽기 전용 상속 컬럼 (total 과 따로) */
 export interface ColumnRecommendationSummary {
   modelId: number;
   total: number;
@@ -392,7 +402,13 @@ export interface ColumnRecommendationSummary {
   alreadyMatched: number;
   unavailable: number;
   conflict: number;
+  inherited?: { total: number; available: number; alreadyMatched: number; unavailable: number; conflict: number };
 }
+
+/** 상속 컬럼의 전략·종류 표시 (M7-NAME-1) */
+export const inheritanceLabel = (value: RecommendationInheritance) => value.strategy === 'C'
+  ? (value.kind === 'KEY' ? t('C형 · 루트 PK 복제') : t('C형 · 조상 속성 복제'))
+  : t('B형 · 상속 PK');
 
 /** 엔터티명을 나눈 단어 1개의 표준 단어 변환 결과 (TableNameDto.Word) */
 export interface TableNameWord {

@@ -139,8 +139,8 @@ class PhysicalNameRecommendationConflictIntegrationTest {
             assertThat(previewConflict).as(c.label() + " 미리보기").isEqualTo(c.conflict());
             assertThat(conflictFilter.contains(c.attributeId())).as(c.label() + " 충돌 필터").isEqualTo(c.conflict());
             if (c.conflict()) assertThat(availableFilter).as(c.label() + " 적용 가능 필터").doesNotContain(c.attributeId());
-            // 자기 자신 사례의 '일치(ALREADY_MATCHED)' 는 표준화 규칙이다 (이번에 바꾸지 않음) : H2 목록 SQL 은 UPPER 가 ß → SS 라 일치로, 행 판정(Java equalsIgnoreCase)은 추천 가능으로 본다 — 15.4
-            else if (!c.label().startsWith("자기 자신")) assertThat(availableFilter.contains(c.attributeId())).as(c.label() + " 적용 가능 필터").isEqualTo(row.status() == Status.AVAILABLE);
+            // 자기 자신 사례(STRAßE_CD ↔ STRASSE_CD)도 이제 같다 (M7-NAME-1) : 비 ASCII 행은 목록 SQL 이 아니라 행 판정(Java equalsIgnoreCase)으로 상태 조건·요약을 정한다
+            else assertThat(availableFilter.contains(c.attributeId())).as(c.label() + " 적용 가능 필터").isEqualTo(row.status() == Status.AVAILABLE);
             if (c.conflict()) {
                 PhysicalNameRenameDto.PlanItem item = plan.items().get(0);
                 assertThatThrownBy(() -> rename.apply(admin, request(c.columnId(), item.recommendedName(), item.modifiedAt(), plan.planToken())))

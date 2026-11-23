@@ -106,7 +106,7 @@ class ColumnNameUnicodeMigrationTest {
     @ParameterizedTest(name = "신규 설치 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void freshInstall(String vendor) {
-        Db db = install(vendor, null, 3);
+        Db db = install(vendor, null, 4); // V0~V3
         try {
             assertFinalSchema(db);
             column(db, 900001020, 900001010, "STRAßE");
@@ -132,7 +132,7 @@ class ColumnNameUnicodeMigrationTest {
     @ParameterizedTest(name = "최대 길이·바이트 경계 {0}")
     @ValueSource(strings = {"h2", "postgresql"})
     void maximumLengthAndBytes(String vendor) {
-        Db db = install(vendor, null, 3);
+        Db db = install(vendor, null, 4); // V0~V3
         try {
             // 압축하기 어려운 입력 : 대문자가 4바이트 이상이 되는 BMP 글자(ΐ ΰ ᾳ ﬓ և ŉ …)를 섞은 255자. H2 의 varchar(255) 는 UTF-16 단위라 BMP 만 쓴다
             List<Integer> wide = new ArrayList<>();

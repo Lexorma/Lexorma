@@ -292,11 +292,11 @@ class PhysicalNameRecommendationIntegrationTest {
         // 권한 : 조회는 VIEWER, 미승인 사용자는 불가 (컨트롤러 메서드 보안)
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, projectId, "920", "ROLE_VIEWER");
         assertThat(controller.selectColumnRecommendationSummary(viewer, model.id()).getBody().total()).isEqualTo(9L);
-        assertThat(controller.selectColumnRecommendations(viewer, 0, 10, null, null, null, model.id(), null, null, null, Status.UNAVAILABLE).getBody()).containsEntry("recordsTotal", 3L);
+        assertThat(controller.selectColumnRecommendations(viewer, 0, 10, null, null, null, model.id(), null, null, null, Status.UNAVAILABLE, null).getBody()).containsEntry("recordsTotal", 3L);
         assertThat(controller.selectTableRecommendations(viewer, 0, 10, null, null, null, model.id(), null).getBody()).containsEntry("recordsTotal", 7L);
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "921", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.selectColumnRecommendationSummary(notApproved, model.id())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectColumnRecommendations(notApproved, 0, 10, null, null, null, model.id(), null, null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.selectColumnRecommendations(notApproved, 0, 10, null, null, null, model.id(), null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.selectTableRecommendations(notApproved, 0, 10, null, null, null, model.id(), null)).isInstanceOf(AccessDeniedException.class);
     }
 

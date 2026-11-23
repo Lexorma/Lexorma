@@ -278,11 +278,13 @@ public class PhysicalNameRenameService {
         Map<String, TableNameDto> tableNames = tableDesignService.generateTableNames(
                 tableById.values().stream().map(TableTarget::entityName).filter(Objects::nonNull).collect(Collectors.toSet()), account);
 
+        // 상속 매핑으로 이어진 컬럼 (M7-NAME-1, NAME-P07) : 목록에서 고를 수 없게 했지만 요청을 직접 보내도 여기서 막는다 (읽기 전용 — 이름 변경 미지원)
+        Map<Long, String> readOnly = recommendation.inheritedReadOnly(projectId, columnIds);
         List<Work> works = new ArrayList<>();
         for (Item item : items) {
             Work w = new Work(item);
             if (item.type() == TargetType.TABLE) tableWork(w, tableById.get(item.id()), tableNames);
-            else columnWork(w, columnById.get(item.id()));
+            else columnWork(w, columnById.get(item.id()), readOnly.get(item.id()));
             works.add(w);
         }
         List<Work> tableRenames = works.stream().filter(w -> w.renames && w.item.type() == TargetType.TABLE).toList();
@@ -390,7 +392,8 @@ public class PhysicalNameRenameService {
             return;
         }
         w.recommended = upper(name.tableName());
-        if (same(t.tableName(), w.recommended)) {
+        // '바꿀 것 없음' 은 목록과 같은 판정 (M7-NAME-1) : 추천명을 대문자로 바꾸기 전 값으로 비교한다 — 대문자 변환이 ß → SS 처럼 글자 수를 바꾸면 목록은 일치, 미리보기는 변경으로 갈렸다
+        if (PhysicalNameRecommendationService.sameName(t.tableName(), name.tableName())) {
             w.noChange = true;
             w.issues.add(new ApplyIssue(ApplyCode.NO_CHANGE, Messages.get("현재 테이블명이 표준 단어로 만든 테이블명과 같습니다."), List.of()));
             return;
@@ -399,7 +402,7 @@ public class PhysicalNameRenameService {
         requestedName(w);
     }
 
-    private void columnWork(Work w, ColumnTarget c) {
+    private void columnWork(Work w, ColumnTarget c, String readOnly) {
         w.schemaId = c.schemaId();
         w.schemaName = c.schemaName();
         w.tableId = c.tableId();
@@ -408,6 +411,10 @@ public class PhysicalNameRenameService {
         w.logicalName = c.attributeName();
         w.current = c.columnName();
         w.modifiedAt = c.modifiedAt();
+        if (readOnly != null) {
+            w.issues.add(new ApplyIssue(ApplyCode.INHERITED_READ_ONLY, readOnly, List.of()));
+            return;
+        }
         if (c.attributeId() == null) {
             w.issues.add(new ApplyIssue(ApplyCode.NOT_MAPPED, Messages.get("컬럼이 논리 속성에 매핑되지 않아 추천 컬럼명이 없습니다."), List.of()));
             return;
@@ -418,7 +425,8 @@ public class PhysicalNameRenameService {
             return;
         }
         w.recommended = upper(name.name());
-        if (same(c.columnName(), w.recommended)) {
+        // '바꿀 것 없음' 은 목록 행과 같은 StandardNames.sameColumnName (M7-NAME-1 — 대문자로 바꾸기 전 추천명으로 비교)
+        if (PhysicalNameRecommendationService.sameName(c.columnName(), name.name())) {
             w.noChange = true;
             w.issues.add(new ApplyIssue(ApplyCode.NO_CHANGE, Messages.get("현재 컬럼명이 표준 용어의 영문약어와 같습니다."), List.of()));
             return;

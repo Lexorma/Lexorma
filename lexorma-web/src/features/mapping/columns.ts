@@ -43,6 +43,22 @@ export const recommendationColumnColumns: GridColumn[] = [
   { columnName: t('추천 근거'), column: 'reason', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '21%' },
 ];
 
+/**
+ * 상속 컬럼 추천 목록 (GET …/recommendation/column/data?scope=INHERITED, M7-NAME-1) : 행 1개 = 상속 매핑으로 이어진 물리 컬럼 1개 (읽기 전용).
+ * 엔터티 = 그 테이블의 서브타입·말단, 원본 = 속성을 정의한 조상 엔터티. 정렬은 서버가 같은 필드 이름으로 한다
+ */
+export const recommendationInheritedColumns: GridColumn[] = [
+  { columnName: t('논리 엔터티'), column: 'entityName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '11%' },
+  { columnName: t('원본 엔터티'), column: 'originEntityName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '10%' },
+  { columnName: t('논리 속성'), column: 'logicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '11%' },
+  { columnName: t('물리 테이블'), column: 'tableName', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
+  { columnName: t('현재 컬럼명'), column: 'currentPhysicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '12%' },
+  { columnName: t('추천 컬럼명'), column: 'recommendedPhysicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '12%' },
+  { columnName: t('추천 상태'), column: 'status', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '8%' },
+  { columnName: t('상속 전략'), column: 'strategy', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '11%' },
+  { columnName: t('추천 근거'), column: 'reason', columnType: 'STRING', isSearch: false, isFilter: false, rowType: 'TEXT', width: '14%' },
+];
+
 /** 테이블명 추천 목록 (GET /api/modelMapping/recommendation/table/data) : 행 1개 = 논리 엔터티 1개 */
 export const recommendationTableColumns: GridColumn[] = [
   { columnName: t('논리 엔터티'), column: 'logicalName', columnType: 'STRING', isSearch: true, isFilter: true, rowType: 'TEXT', width: '18%' },

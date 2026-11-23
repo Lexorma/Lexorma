@@ -110,6 +110,8 @@ public enum ErrorCode {
      * 같은 이름의 표준 도메인이 여러 개(예전 데이터) 있어 하나로 정할 수 없습니다. ([DICT-2])
      */
     AMBIGUOUS_STANDARD_DOMAIN(HttpStatus.CONFLICT, "AMBIGUOUS_STANDARD_DOMAIN"),
+    /** 영문약어(대소문자 무시)가 같은 표준 용어가 여러 개라 하나로 정할 수 없다 (M7-NAME-1, NAME-P09 — 승인 여부·첫 행으로 고르지 않는다) */
+    AMBIGUOUS_STANDARD_TERM(HttpStatus.CONFLICT, "AMBIGUOUS_STANDARD_TERM"),
 
     /**
      * 권한이 없어 작업을 수행할 수 없습니다.

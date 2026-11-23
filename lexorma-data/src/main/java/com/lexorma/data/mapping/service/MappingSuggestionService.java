@@ -404,7 +404,9 @@ public class MappingSuggestionService {
         for (Row r : rows) {
             if (r.entityId() == null) continue;
             byEntity.computeIfAbsent(r.entityId(), k -> new ArrayList<>()).add(r);
-            if (r.type() == CheckType.INHERITANCE) inheritance.computeIfAbsent(r.entityId(), k -> new ArrayList<>()).add(r);
+            // 상속 PK 명칭 행 (M7-NAME-1, 코드 INHERITED_KEY) : 속성 = 루트 주 식별자 속성이지만 판정 대상은 서브타입의 상속 PK 컬럼이다 —
+            // 속성 ID 로 묶으면 루트 엔터티의 PK 속성 표시까지 불일치가 된다. 서브타입의 상속 구조 쪽(상속 PK 연결 표시)으로 묶는다
+            if (r.type() == CheckType.INHERITANCE || "INHERITED_KEY".equals(r.code())) inheritance.computeIfAbsent(r.entityId(), k -> new ArrayList<>()).add(r);
             else if (r.attributeId() != null && !r.type().structure()) byAttribute.computeIfAbsent(r.attributeId(), k -> new ArrayList<>()).add(r);
         }
         return new Judged(byEntity, byAttribute, inheritance);

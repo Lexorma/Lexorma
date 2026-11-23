@@ -43,7 +43,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +56,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
     private final com.lexorma.core.project.repository.ProjectRepository projectRepository;
     private final com.lexorma.core.project.guard.ProjectWriteGuard projectWriteGuard;
     private final com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
+    private final com.lexorma.data.dictionary.service.StandardTermAbbreviationLookup termLookup;
     private static final int FIRST_ROW = 1;
 
     @Override
@@ -292,7 +292,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Map<String, Long> tableIdByName = new HashMap<>();
         Map<Long, String> tableNameById = new HashMap<>();
         Set<String> ambiguousTableNames = new HashSet<>();
-        Map<String, Long> termIdByAbbreviation = new HashMap<>();
+        // 컬럼명(적은 그대로) → 영문약어가 같은 표준 용어 ID 들 (M7-NAME-1 : 대소문자 무시, 여러 개면 정하지 않는다)
+        Map<String, List<Long>> termIdsByColumnName = new HashMap<>();
 
         // 잠금 순서 (M7-U07) : 업로드 전체가 한 트랜잭션이라 청크마다 ID 순으로 잠가도 청크 사이에서 순서가 뒤집혀 교착이 날 수 있었다
         // (업로드 A 청크 1 = T1 → 청크 2 = T2, 업로드 B 청크 1 = T2 → 청크 2 = T1 — PostgreSQL 40P01 재현). 파일을 한 번 먼저 읽어 대상 테이블명만 모으고
@@ -314,7 +315,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         ExcelUtils.readExcelRowsInChunks(file, 0, tableExcelHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
             List<Map<String, String>> columnRows = rows.stream().filter(map -> !map.get("tableName").isEmpty()).toList();
 
-            loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdByAbbreviation);
+            loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdsByColumnName);
             // 이 청크가 컬럼을 더할 테이블 행은 위에서 업로드 전체 기준으로 이미 ID 순으로 잠갔다 (단건 등록과 같은 공통 잠금 — 그 뒤에 이미 있는 컬럼을 읽는다).
             // 먼저 읽은 테이블 집합에 없는 테이블은 없어야 하지만, 있으면 여기서 잠근다
             columnRows.stream().map(map -> tableIdByName.get(map.get("tableName").toUpperCase())).filter(java.util.Objects::nonNull).distinct().sorted()
@@ -362,15 +363,16 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 if (ColumnNameKey.isBlankName(columnName)) {
                     throw CustomException.withMessage(ErrorCode.INVALID_PHYSICAL_MODEL, "{0} : 컬럼명이 비어 있는 행이 있습니다.", tableName);
                 }
-                // 표준용어 : 영문약어(대문자) 우선, 없으면 입력값 그대로
-                Long termId = termIdByAbbreviation.get(columnName.toUpperCase());
-                if (termId == null) {
-                    termId = termIdByAbbreviation.get(columnName);
-                }
-
-                if (termId == null) {
+                // 표준용어 : 영문약어가 컬럼명과 같은 용어 (M7-NAME-1, NAME-P09 — 앞뒤 공백 제거 + 대소문자 무시, StandardNames.sameColumnName).
+                // 엑셀 행에는 용어·도메인을 고를 칸이 없어 후보를 더 좁힐 문맥이 없다 : 여러 개면 승인 여부·DB 순서로 고르지 않고 업로드 전체를 취소한다
+                List<Long> termIds = termIdsByColumnName.getOrDefault(columnName, List.of());
+                if (termIds.isEmpty()) {
                     throw new CustomException(ErrorCode.TERM_IS_NOT_DEFINED, columnName);
                 }
+                if (termIds.size() > 1) {
+                    throw new CustomException(ErrorCode.AMBIGUOUS_STANDARD_TERM, "{0}.{1} : 영문약어가 같은 표준 용어 {2}개", tableName, columnName, termIds.size());
+                }
+                Long termId = termIds.get(0);
 
                 chunkTableIds.add(tableInfoId);
 
@@ -461,23 +463,18 @@ public class ColumnManageServiceImpl implements ColumnManageService {
      * 테이블명은 "테이블명" 또는 "스키마명.테이블명" : 테이블명은 스키마 안에서만 하나라서, 여러 스키마에 있는 이름은 스키마를 적어야 한다 (TableNameResolver).
      */
     private void loadColumnUploadReferences(Long projectId, List<Map<String, String>> columnRows, Map<String, Long> tableIdByName,
-                                            Map<Long, String> tableNameById, Set<String> ambiguousTableNames, Map<String, Long> termIdByAbbreviation) {
+                                            Map<Long, String> tableNameById, Set<String> ambiguousTableNames, Map<String, List<Long>> termIdsByColumnName) {
         resolveUploadTables(projectId, columnRows.stream().map(map -> map.get("tableName").toUpperCase()).collect(Collectors.toSet()),
                 tableIdByName, tableNameById, ambiguousTableNames);
 
-        Set<String> abbreviations = columnRows.stream()
-                .flatMap(map -> Stream.of(map.get("columnName").toUpperCase(), map.get("columnName")))
-                .filter(abbreviation -> !termIdByAbbreviation.containsKey(abbreviation))
+        // 표준 용어 : 아직 찾지 않은 컬럼명만 한 번에 (청크당 조회 1번). 대소문자 무시 + 후보 전체 (예전에는 저장된 약어와 대소문자까지 같은 첫 행만 썼다)
+        Set<String> columnNames = columnRows.stream()
+                .map(map -> map.get("columnName"))
+                .filter(name -> name != null && !termIdsByColumnName.containsKey(name))
                 .collect(Collectors.toSet());
 
-        if (!abbreviations.isEmpty()) {
-            abbreviations.forEach(abbreviation -> termIdByAbbreviation.put(abbreviation, null));
-            standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations)
-                    .forEach(term -> {
-                        if (termIdByAbbreviation.get(term.getCommonStandardTermAbbreviation()) == null) {
-                            termIdByAbbreviation.put(term.getCommonStandardTermAbbreviation(), term.getId());
-                        }
-                    });
+        if (!columnNames.isEmpty()) {
+            termLookup.find(projectId, columnNames).forEach((name, terms) -> termIdsByColumnName.put(name, terms.stream().map(StandardTerm::getId).toList()));
         }
     }
 
@@ -578,23 +575,22 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         Set<String> names = lines.stream().map(ColumnManageServiceImpl::toTermName).collect(Collectors.toSet());
         Set<String> abbreviations = lines.stream()
                 .filter(input -> ABBREVIATION_INPUT.matcher(input).matches())
-                .map(String::toUpperCase)
                 .collect(Collectors.toSet());
 
         Map<String, List<StandardTerm>> byName = standardTermRepository.findAllByProjectIdAndCommonStandardTermNameIn(projectId, names).stream()
                 .collect(Collectors.groupingBy(StandardTerm::getCommonStandardTermName));
-        Map<String, List<StandardTerm>> byAbbreviation = abbreviations.isEmpty() ? Map.of()
-                : standardTermRepository.findAllByProjectIdAndCommonStandardTermAbbreviationIn(projectId, abbreviations).stream()
-                .collect(Collectors.groupingBy(term -> term.getCommonStandardTermAbbreviation().toUpperCase()));
+        // 영문약어 : 대소문자 무시 + 후보 전체 (M7-NAME-1 — 엑셀 업로드와 같은 StandardTermAbbreviationLookup. 저장된 약어가 소문자여도 찾는다)
+        Map<String, List<StandardTerm>> byAbbreviation = abbreviations.isEmpty() ? Map.of() : termLookup.find(projectId, abbreviations);
 
         return lines.stream().map(input -> {
             // 용어명이 정확히 같은 용어를 먼저, 없으면 영문약어명
             List<StandardTerm> found = byName.getOrDefault(toTermName(input), List.of());
             if (found.isEmpty() && ABBREVIATION_INPUT.matcher(input).matches()) {
-                found = byAbbreviation.getOrDefault(input.toUpperCase(), List.of());
+                found = byAbbreviation.getOrDefault(input, List.of());
             }
+            // 여러 건(AMBIGUOUS)이면 화면이 고르게 한다 — 승인된 용어를 앞에 보이지만 서버·화면 모두 미리 고르지 않는다 (NAME-P09)
             return TermResolveDto.of(input, found.stream()
-                    .sorted(java.util.Comparator.comparing((StandardTerm term) -> !Boolean.TRUE.equals(term.getIsApproval())) // 승인된 용어 먼저
+                    .sorted(java.util.Comparator.comparing((StandardTerm term) -> !Boolean.TRUE.equals(term.getIsApproval())) // 승인된 용어 먼저 (표시 순서만)
                             .thenComparing(StandardTerm::getId))
                     .map(StandardTermDto::fromEntity)
                     .toList());

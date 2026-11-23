@@ -38,7 +38,7 @@ class LexormaIndexSeedTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, vendor, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3); // V0·V1 (2026-11-22 네 번째 합침 — 예전 V2 주제 영역 · V3 서브타입 · V4 서브타입 식별자 컬럼 매핑 · V5 컬럼 데이터 무결성 포함)
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4); // V0·V1·V2·V3 (V2 상속 A·C 저장 구조, V3 그 CHECK 재정의 — 2026-11-23) — V0·V1 은 (2026-11-22 네 번째 합침 — 예전 V2 주제 영역 · V3 서브타입 · V4 서브타입 식별자 컬럼 매핑 · V5 컬럼 데이터 무결성 포함)
             var jdbc = new JdbcTemplate(dataSource);
             Map<String, String> declared = declaredIndexes(vendor);
             Map<String, String> model = modelIndexes(jdbc, s);

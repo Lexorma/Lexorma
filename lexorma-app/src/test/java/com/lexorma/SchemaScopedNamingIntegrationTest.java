@@ -122,7 +122,10 @@ class SchemaScopedNamingIntegrationTest {
         assertThat(tableInfoRepository.findById(archivedCode.getId()).orElseThrow().getSchema().getId()).isEqualTo(main);
 
         // DB 의 UNIQUE (스키마 + 이름) : 서비스를 거치지 않아도 같은 스키마에 같은 이름은 들어가지 않는다
-        long freeId = jdbc.queryForObject("select coalesce(max(TBL_SN), 0) + 1000 from TB_TBL", Long.class); // 같은 검증 DB 를 다시 써도 겹치지 않게
+        // 직접 넣는 행의 ID 는 시퀀스가 절대 닿지 않는 음수로 (ProjectDeletionIntegrationTest 와 같은 방식). 예전의 '최댓값 + 1000' 은 시퀀스보다 앞선 양수라,
+        // 같은 H2 메모리 DB 를 쓰는 뒤 테스트의 JPA 저장이 그 값에 닿으면 TB_TBL PK 가 겹쳤다 (실행 순서에 따라 DashboardStatsIntegrationTest 실패, 2026-11-23).
+        // 프로젝트 ID 로 정하므로 같은 검증 DB 를 다시 써도 겹치지 않는다
+        long freeId = -(projectId * 1000);
         assertThatThrownBy(() -> jdbc.update("insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, APRV_YN) values(?, ?, ?, 'MBR', true)", freeId, projectId, archive))
                 .isInstanceOf(DataIntegrityViolationException.class);
         jdbc.update("insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, APRV_YN) values(?, ?, ?, 'MBR_OK', true)", freeId + 1, projectId, archive);

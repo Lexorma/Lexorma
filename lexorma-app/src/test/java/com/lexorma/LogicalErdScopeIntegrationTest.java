@@ -35,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class LogicalErdScopeIntegrationTest {
 
     @Autowired ApplicationContext context;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired LogicalModelService logical;
     @Autowired LogicalModelRestController controller;
     @Autowired JdbcTemplate jdbc;
@@ -252,7 +254,7 @@ class LogicalErdScopeIntegrationTest {
         assertThat(controller.searchEntities(viewer, s.f.modelId, "주문", 20).getBody().items()).hasSize(1);
         assertThat(controller.saveLayout(viewer, s.f.modelId, new LogicalModelDto.Layout(null, Map.of(s.member, new LogicalModelDto.Point(1, 1)), new LogicalModelDto.Viewport(0, 0, 1)))
                 .getBody().nodes()).containsKey(s.member);
-        assertThatThrownBy(() -> controller.deleteEntity(viewer, s.team)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteEntity(viewer, s.team, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, s.team), currentBase.entityComposition(viewer, s.team))).isInstanceOf(AccessDeniedException.class);
         assertThat(new HashSet<>(List.of(s.team))).isNotEmpty();
         assertThatThrownBy(() -> controller.selectGraphPart(viewer, s.f.modelId, null, 0, 301)).isInstanceOf(CustomException.class);
     }

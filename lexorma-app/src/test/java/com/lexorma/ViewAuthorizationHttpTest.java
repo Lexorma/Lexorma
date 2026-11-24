@@ -136,9 +136,10 @@ class ViewAuthorizationHttpTest {
         error(user.patch("/api/physical/view/request/" + requestId + "/true"), 400, "APPROVAL_PERMISSION_DENIED");
         error(user.patch("/api/physical/view/request/" + requestId + "/false"), 400, "APPROVAL_PERMISSION_DENIED");
         error(user.patch("/api/physical/view/" + own + "/approval/true"), 400, "APPROVAL_PERMISSION_DENIED");
-        error(user.delete("/api/physical/view/" + approved), 400, "APPROVED_DATA_CANNOT_BE_DELETED");
+        error(user.delete("/api/physical/view/" + approved), 400, "MODEL_BASE_REQUIRED"); // M8-C2 : 삭제도 상세의 updated 가 필수
+        error(user.delete("/api/physical/view/" + approved + "?modifiedAt=" + updated(user, approved)), 400, "APPROVED_DATA_CANNOT_BE_DELETED");
         assertThat(user.postJson("/api/physical/view/ddl/preview", save("VW_PREVIEW", "SELECT 1", null)).statusCode()).isEqualTo(200);
-        assertThat(user.delete("/api/physical/view/" + own).statusCode()).isEqualTo(200);
+        assertThat(user.delete("/api/physical/view/" + own + "?modifiedAt=" + updated(user, own)).statusCode()).isEqualTo(200);
 
         // ---------- VIEWER
         Browser viewer = new Browser(port);
@@ -160,8 +161,8 @@ class ViewAuthorizationHttpTest {
         assertThat(stranger.login("admin", otherProjectId).statusCode()).isEqualTo(200);
         for (HttpResponse<String> response : List.of(stranger.get("/api/physical/view/" + approved), stranger.get("/api/physical/view/" + approved + "/ddl"),
                 // 기준값을 넣어도(값은 아무거나) 다른 프로젝트의 VIEW 는 없는 것과 같다 (기준값 검사보다 프로젝트 범위가 먼저 막는다)
-                stranger.put("/api/physical/view/" + approved, save("VW_AUTH", "SELECT 7", null).replaceFirst("}$", ",\"baseModifiedAt\":\"2026-01-01T00:00:00\"}")), stranger.delete("/api/physical/view/" + approved),
-                stranger.patch("/api/physical/view/" + approved + "/approval/false"), stranger.patch("/api/physical/view/request/" + requestId + "/true"),
+                stranger.put("/api/physical/view/" + approved, save("VW_AUTH", "SELECT 7", null).replaceFirst("}$", ",\"baseModifiedAt\":\"2026-01-01T00:00:00\"}")), stranger.delete("/api/physical/view/" + approved + "?modifiedAt=2026-01-01T00:00:00"),
+                stranger.patch("/api/physical/view/" + approved + "/approval/false?modifiedAt=2026-01-01T00:00:00"), stranger.patch("/api/physical/view/request/" + requestId + "/true"),
                 stranger.postJson("/api/physical/view", save("VW_STEAL", "SELECT 1", tableId)))) {
             error(response, 400, "INVALID_PHYSICAL_MODEL");
         }
@@ -193,6 +194,10 @@ class ViewAuthorizationHttpTest {
     }
 
     /** 수정 요청에 화면처럼 상세의 수정 일시를 기준값으로 넣는다 (DEC-13 3차 : 없으면 400) */
+    private static String updated(Browser client, long id) throws Exception {
+        return JSON.readTree(client.get("/api/physical/view/" + id).body()).path("updated").asString();
+    }
+
     private static String withBase(Browser client, long id, String body) throws Exception {
         String updated = JSON.readTree(client.get("/api/physical/view/" + id).body()).path("updated").asString();
         return body.substring(0, body.length() - 1) + ",\"baseModifiedAt\":\"" + updated + "\"}";

@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { blockNonNumericKeys } from '../../lib/format';
 import { t } from '../../lib/i18n';
 
@@ -48,13 +49,26 @@ export function DictionaryForm({
   const toast = useToast();
   // 읽기 전용 칸은 사용자가 입력하지 않으므로 필수 검사를 하지 않는다 (용어 수정의 도메인 허용값처럼 비어 있어도 정상인 표시 값 — M-5 6차)
   const isReadOnly = (key: string) => key === 'id' || key === 'projectId' || !!config.readonly?.(key);
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => {
-      const control = config.control?.(f.key);
-      const initial = f.value ?? (typeof control === 'object' ? control.options[0]?.value : '');
-      return [f.key, initial === null || initial === undefined ? '' : String(initial)];
-    })),
-  );
+  const toValues = (source: (key: string) => unknown) => Object.fromEntries(fields.map((f) => {
+    const control = config.control?.(f.key);
+    const initial = source(f.key) ?? (typeof control === 'object' ? control.options[0]?.value : '');
+    return [f.key, initial === null || initial === undefined ? '' : String(initial)];
+  })) as Record<string, string>;
+  const [values, setValues] = useState<Record<string, string>>(() => toValues((key) => fields.find((f) => f.key === key)?.value));
+  const [busy, run] = useSubmitting();
+  const editable = fields.filter((f) => !isReadOnly(f.key));
+  // 409 복구 (M8-C3, 수정만) : 목록 API 의 ID 검색으로 이 행의 최신 값을 읽어 입력 칸끼리 비교한다 (읽기 전용 칸은 최신 값으로 바뀐다)
+  const recovery = useConflictRecovery<Record<string, string>>({
+    initial: values,
+    base: base?.modifiedAt as string | null | undefined,
+    fields: editable.map((f) => ({ key: f.key, label: f.label, get: (v) => v[f.key] })),
+    load: async () => {
+      const list = `/api/get${tableId.charAt(0).toUpperCase()}${tableId.slice(1)}/data?page=0&size=1&searchColumn=id&searchQuery=${encodeURIComponent(values.id ?? '')}`;
+      const found = (await api<{ data: Record<string, unknown>[] }>(list, { silent: true })).data.find((r) => String(r.id) === values.id);
+      if (!found) throw new ApiError(400, t('대상을 찾을 수 없습니다.'), 'DATA_IS_NOT_DEFINED');
+      return { values: toValues((key) => found[key]), base: (found.modifiedAt as string | null | undefined) ?? null };
+    },
+  });
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -83,22 +97,29 @@ export function DictionaryForm({
     if (message) return dialog.alert(message);
 
     Object.assign(data, base);
+    if (type === 'U' && base && 'modifiedAt' in base) data.modifiedAt = recovery.base; // 409 복구로 다시 적용하면 최신 기준값
 
     const url = `/api/${type === 'C' ? 'insertDataDictionary' : 'updateDataDictionary'}/${tableId}`;
-    let response: { result: boolean };
-    try {
-      response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data });
-    } catch {
-      // 오류는 공통 알림이 보여 준다. 폼은 닫지 않고 입력을 그대로 둔다 (409 충돌도 — 자동 재전송·덮어쓰기 없음)
-      return;
-    }
-    if (!response.result) return;
-    onSaved();
-    toast.success(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'));
+    await run(async () => {
+      let response: { result: boolean };
+      try {
+        response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data, conflict: 'handled' });
+      } catch (error) {
+        // 409 : 입력을 그대로 두고 복구 안내 (M8-C3). 그 밖의 오류는 공통 알림 — 폼은 닫지 않는다 (자동 재전송·덮어쓰기 없음)
+        recovery.catchConflict(error, values);
+        return;
+      }
+      if (!response.result) return;
+      onSaved();
+      toast.success(type === 'C' ? t('정상적으로 등록되었습니다.') : t('정상적으로 수정되었습니다.'));
+    });
   };
 
   return (
     <form id={`${type === 'C' ? 'add' : 'edit'}-${tableId}`} onSubmit={onSubmit} noValidate>
+      {recovery.notice((latest, picks) => setValues((current) => Object.fromEntries(Object.keys(current).map((key) => [
+        key, picks.has(key) ? current[key] : latest[key] ?? current[key],
+      ]))))}
       {fields.map((f) => {
         const control = config.control?.(f.key) ?? 'text';
         const readOnly = isReadOnly(f.key);
@@ -127,7 +148,7 @@ export function DictionaryForm({
           ),
         ];
       })}
-      <button type="submit" className="btn btn-primary" style={{ marginTop: 20 }}>{submitText}</button>
+      <button type="submit" className="btn btn-primary" style={{ marginTop: 20 }} disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : submitText}</button>
     </form>
   );
 }

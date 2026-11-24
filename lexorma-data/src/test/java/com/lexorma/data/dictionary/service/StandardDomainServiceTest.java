@@ -86,7 +86,7 @@ class StandardDomainServiceTest {
     @DisplayName("승인 처리는 로그인 프로젝트의 도메인 상태를 변경한다")
     void approval() {
         StandardDomain domain = domain(false);
-        when(standardDomainRepository.findByIdAndProjectId(1L, 1L)).thenReturn(domain);
+        when(standardDomainRepository.findForUpdate(1L, 1L)).thenReturn(java.util.Optional.of(domain)); // 승인은 행을 잠그고 읽는다 (M8-C1)
 
         service.approvalStandardDomains(ids(1L), login, true);
 

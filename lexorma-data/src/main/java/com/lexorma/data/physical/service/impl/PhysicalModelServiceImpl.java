@@ -171,8 +171,8 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     public PhysicalModelDto.Relation updateRelationRules(AccountDto accountDto, Long relationId, PhysicalModelDto.RelationRules rules) {
         Long projectId = accountDto.getProjectId();
         TableRelation relation = relationRepository.findByIdAndProjectId(relationId, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
-        // 행을 잠그고 다시 읽는다 (DEC-08 : 비교와 반영 사이에 다른 수정이 끼어들지 않는다)
-        entityManager.refresh(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        // 행을 잠그고 다시 읽는다 (DEC-08 : 비교와 반영 사이에 다른 수정이 끼어들지 않는다). 그 사이 지워졌으면 대상 없음 400 (예전에는 500 — M8-C1)
+        refreshOrNotFound(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (relation.getRelationType() != TableRelation.Type.FK) throw invalid("논리 관계에는 삭제·수정 규칙이 없습니다.");
         rejectApproved(relation.getIsApproval());
         com.lexorma.common.jpa.ModelBase.verify(relation, rules == null ? null : rules.baseModifiedAt(), relation.getRelationName());
@@ -550,6 +550,16 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 refIds(d.includeColumns()), d.condition());
     }
 
+    /** 다시 읽기 (잠금 강도는 선택) : 그 사이 지워진 행은 대상 없음 400 — EntityNotFoundException 이 500 으로 나가지 않게 한다 (M8-C1) */
+    private void refreshOrNotFound(Object entity, jakarta.persistence.LockModeType lock) {
+        try {
+            if (lock == null) entityManager.refresh(entity);
+            else entityManager.refresh(entity, lock);
+        } catch (EntityNotFoundException e) {
+            throw notFound();
+        }
+    }
+
     /** 인덱스를 찾고 그 테이블 행을 잠근 뒤 최신 상태로 다시 읽는다 (잠그기 전에 다른 트랜잭션이 고쳤거나 지웠을 수 있다) */
     private TableIndex lockIndex(Long projectId, Long id) {
         TableIndex index = indexRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
@@ -677,7 +687,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
     @Override
     @Transactional
-    public void delete(AccountDto accountDto, Kind kind, Long id) {
+    public void delete(AccountDto accountDto, Kind kind, Long id, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         switch (kind) {
             case RELATION -> {
@@ -685,13 +695,17 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 if (relation.getRelationSource() == TableRelation.Source.REF_COLUMN) {
                     throw invalid("참조 테이블명으로 만든 관계입니다. 컬럼 관리에서 참조 테이블을 비워주세요.");
                 }
+                // 행을 잠그고 다시 읽은 뒤 지운다 : 그 사이 지워졌으면 대상 없음 400 (예전에는 0행 DELETE 로 500 — M8-C1), 그 사이 승인됐으면 승인된 상태를 본다
+                refreshOrNotFound(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
                 rejectApproved(relation.getIsApproval());
+                com.lexorma.common.jpa.ModelBase.verify(relation, modifiedAt, relation.getRelationName()); // M8-C2 : 화면이 본 관계(규칙 수정도 기준값을 올린다)
                 relationRepository.delete(relation);
             }
             case INDEX -> {
                 TableIndex index = lockIndex(projectId, id);
                 rejectColumnIndex(index);
                 rejectApproved(index.getIsApproval());
+                com.lexorma.common.jpa.ModelBase.verify(index, modifiedAt, index.getIndexName()); // M8-C2 : 화면이 본 인덱스 (구성 변경도 기준값을 올린다)
                 indexRepository.delete(index); // 변경 요청 이력은 FK CASCADE 로 함께 지워진다
                 resyncColumnIndexes(projectId, index.getTableInfo(), Set.of());
             }
@@ -699,8 +713,9 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 TableConstraint constraint = constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
                 // 테이블 행을 먼저 잠근다 (M7-AK-D15) : 그 UNIQUE 를 참조하는 FK 를 만드는 보정·생성(테이블 행 NOWAIT)과 엇갈려 만드는 시점에 무효인 FK 가 생기지 않게
                 lockTable(projectId, constraint.getTableInfo().getId());
-                entityManager.refresh(constraint);
+                refreshOrNotFound(constraint, null); // 그 사이 지워졌으면 대상 없음 400 (예전에는 500 — M8-C1)
                 rejectApproved(constraint.getIsApproval());
+                com.lexorma.common.jpa.ModelBase.verify(constraint, modifiedAt, constraint.getConstraintName()); // M8-C2
                 constraintRepository.delete(constraint);
             }
         }
@@ -708,14 +723,23 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
     @Override
     @Transactional
-    public void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval) {
+    public void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval, java.time.LocalDateTime modifiedAt) {
         if (!AuthUtil.isApprovalAvailable()) throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
         Long projectId = accountDto.getProjectId();
+        // M8-C2 (M8-D02) : 대상 행을 잠그고 다시 읽은 뒤, 승인 상태를 바꿀 때만 승인자가 본 수정 일시와 비교한다 (다르면 409). 이미 그 상태면 기준값을 보지 않는다 (상태가 바뀌지 않는다)
         switch (kind) {
-            case RELATION -> relationRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound).setIsApproval(isApproval);
+            case RELATION -> {
+                // 관계 삭제와 같은 잠금 (예전에는 잠그지 않아 삭제·규칙 수정과 엇갈렸다 — X-03)
+                TableRelation relation = relationRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+                refreshOrNotFound(relation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                if (Boolean.TRUE.equals(relation.getIsApproval()) == isApproval) return;
+                com.lexorma.common.jpa.ModelBase.verify(relation, modifiedAt, relation.getRelationName());
+                relation.setIsApproval(isApproval);
+            }
             case INDEX -> {
                 TableIndex index = lockIndex(projectId, id);
                 rejectColumnIndex(index);
+                if (Boolean.TRUE.equals(index.getIsApproval()) != isApproval) com.lexorma.common.jpa.ModelBase.verify(index, modifiedAt, index.getIndexName());
                 // 승인 대기 요청은 승인된 정의를 기준으로 만든 것이라, 승인을 취소하면 요청 없이 직접 고칠 수 있게 되어 요청과 어긋난다
                 if (!isApproval && changeRequestRepository.existsByTableIndex_IdAndStatus(id, IndexChangeRequest.Status.REQUESTED)) {
                     throw invalid("승인 대기 중인 변경 요청이 있습니다. 먼저 승인하거나 반려해주세요.");
@@ -724,7 +748,15 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 // 승인 : 이 UNIQUE 가 대신하는 컬럼 인덱스를 지운다 / 승인 취소 : 대신하던 컬럼 인덱스를 되살린다
                 resyncColumnIndexes(projectId, index.getTableInfo(), replacedColumns(index));
             }
-            case CONSTRAINT -> constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound).setIsApproval(isApproval);
+            case CONSTRAINT -> {
+                // 제약조건 삭제와 같은 잠금 : 테이블 행 → 다시 읽기 (예전에는 잠그지 않았다 — X-03)
+                TableConstraint constraint = constraintRepository.findByIdAndProjectId(id, projectId).orElseThrow(PhysicalModelServiceImpl::notFound);
+                lockTable(projectId, constraint.getTableInfo().getId());
+                refreshOrNotFound(constraint, null);
+                if (Boolean.TRUE.equals(constraint.getIsApproval()) == isApproval) return;
+                com.lexorma.common.jpa.ModelBase.verify(constraint, modifiedAt, constraint.getConstraintName());
+                constraint.setIsApproval(isApproval);
+            }
         }
     }
 

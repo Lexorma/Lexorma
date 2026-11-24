@@ -42,11 +42,12 @@ export function ColumnOrder({ columnInfos, controls, onSuccess }: { columnInfos:
     });
   };
 
-  // 순서저장 : 화면에 보이는 순서대로 정렬순서를 저장한다.
+  // 순서저장 : 화면에 보이는 순서대로 정렬순서를 저장한다. 행마다 팝업을 연 때의 정렬 순서(baseSortOrder, 없던 컬럼은 0)를 함께 보낸다 (M8-C1) —
+  // 그 사이 다른 사용자가 순서를 바꿨거나 컬럼이 더해지거나 지워졌으면 서버가 409 로 전체를 거절한다 (공통 알림, 팝업과 바꾼 순서는 그대로 둔다)
   const save = async () => {
     const response = await api<{ result: boolean }>('/api/saveColumn/sortOrder', {
       method: 'PATCH',
-      body: cards.map((col, index) => ({ id: col.id, sortOrder: index + 1 })),
+      body: cards.map((col, index) => ({ id: col.id, sortOrder: index + 1, baseSortOrder: col.sortOrder ?? 0 })),
     });
     if (response.result) {
       controls.close();

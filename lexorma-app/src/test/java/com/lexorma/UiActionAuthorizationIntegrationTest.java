@@ -371,8 +371,11 @@ class UiActionAuthorizationIntegrationTest {
     /** 세 종류의 승인 API 를 불러 모두 같은 결과인지 본다. expected 가 null 이면 역할 부족(403), TABLE_IS_NOT_DEFINED 는 "거절 없이 통과" 표시 */
     private void approve(AccountDto account, List<StandardDomainDto> domains, List<StandardWordDto> words, List<StandardTermDto> terms, boolean approval, ErrorCode expected) {
         List<Runnable> calls = List.of(
-                () -> dictionary.approvalStandardDomains(domains, account, approval),
-                () -> dictionary.approvalStandardWords(words, account, approval),
+                // 표준 도메인·단어도 화면처럼 불러온 기준값(modifiedAt)을 함께 보낸다 (M8-C1)
+                () -> dictionary.approvalStandardDomains(domains.stream().map(domain -> StandardDomainDto.builder().id(domain.getId())
+                        .modifiedAt(domainRepository.findById(domain.getId()).map(com.lexorma.data.dictionary.domain.entity.StandardDomain::modifiedAt).orElse(null)).build()).toList(), account, approval),
+                () -> dictionary.approvalStandardWords(words.stream().map(word -> StandardWordDto.builder().id(word.getId())
+                        .modifiedAt(wordRepository.findById(word.getId()).map(com.lexorma.data.dictionary.domain.entity.StandardWord::modifiedAt).orElse(null)).build()).toList(), account, approval),
                 // 표준 용어는 화면처럼 불러온 기준값(modifiedAt)을 함께 보낸다 (M-5 8차)
                 () -> dictionary.approvalStandardTerms(terms.stream().map(term -> StandardTermDto.builder().id(term.getId())
                         .modifiedAt(termRepository.findById(term.getId()).map(StandardTerm::modifiedAt).orElse(null)).build()).toList(), account, approval));

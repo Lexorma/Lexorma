@@ -4,7 +4,9 @@ import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api, enc } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { deleteSchemaGuarded } from '../table/physicalConflicts';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { useSchemas, type Schema } from './schemas';
@@ -25,10 +27,8 @@ export function SchemaManagePage() {
 
   const remove = (schema: Schema) => {
     dialog.confirm(t('{0} 스키마를 삭제하시겠습니까?', schema.schemaName), async () => {
-      const response = await api<{ result: boolean }>(`/api/schema/${enc(schema.id)}`, { method: 'DELETE' });
-      if (!response.result) return;
-      void refresh();
-      toast.success(t('정상적으로 삭제되었습니다.'));
+      // 목록의 수정 일시 (M8-C2). 409 면 최신 스키마를 보여 주고 다시 삭제할지 묻는다 (M8-C3)
+      await deleteSchemaGuarded(dialog, schema, refresh, () => toast.success(t('정상적으로 삭제되었습니다.')));
     });
   };
 
@@ -108,21 +108,41 @@ function SchemaForm({ schema, onSaved }: { schema?: Schema; onSaved: () => void 
   const toast = useToast();
   const [name, setName] = useState(schema?.schemaName ?? '');
   const [description, setDescription] = useState(schema?.schemaDescription ?? '');
+  const [busy, run] = useSubmitting();
+  const recovery = useConflictRecovery({
+    initial: { name: schema?.schemaName ?? '', description: schema?.schemaDescription ?? '' },
+    base: schema?.updated,
+    fields: [{ key: 'name', label: t('스키마명'), get: (v) => v.name }, { key: 'description', label: t('설명'), get: (v) => v.description }],
+    load: async () => {
+      const latest = (await api<Schema[]>('/api/schema', { silent: true })).find((s) => s.id === schema?.id);
+      if (!latest) throw new ApiError(400, t('스키마를 찾을 수 없습니다.'), 'SCHEMA_IS_NOT_DEFINED');
+      return { values: { name: latest.schemaName, description: latest.schemaDescription ?? '' }, base: latest.updated ?? null };
+    },
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const schemaName = name.trim();
     if (!schemaName) return dialog.alert(t('스키마명은(는) 필수 입력 항목입니다.'));
-    dialog.confirm(schema ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
+    dialog.confirm(schema ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
       // 이름 형식·중복·권한은 서버에서 검증한다
-      await api('/api/schema', { method: 'POST', body: { id: schema?.id ?? null, schemaName, schemaDescription: description.trim() || null, updated: schema?.updated ?? null } });
+      try {
+        await api('/api/schema', { method: 'POST', conflict: 'handled', body: { id: schema?.id ?? null, schemaName, schemaDescription: description.trim() || null, updated: schema ? recovery.base : null } });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, description })) return;
+        throw error;
+      }
       onSaved();
       toast.success(schema ? t('정상적으로 수정되었습니다.') : t('정상적으로 저장되었습니다.'));
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('description')) setDescription(latest.description);
+      })}
       <div className="form-group">
         <label htmlFor="schemaName">{t('스키마명')}</label>
         <input type="text" className="form-control gh-mono" id="schemaName" maxLength={63} autoComplete="off" required autoFocus={!schema?.isDefault}
@@ -137,7 +157,7 @@ function SchemaForm({ schema, onSaved }: { schema?: Schema; onSaved: () => void 
         <label htmlFor="schemaDescription">{t('설명')}</label>
         <input type="text" className="form-control" id="schemaDescription" maxLength={255} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }

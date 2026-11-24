@@ -31,6 +31,10 @@ public class ColumnBulkSaveDto {
     @Builder.Default
     private List<Long> deletedIds = new ArrayList<>();
 
+    /** 지울 컬럼마다 화면이 읽은 수정 일시 (M8-C2 — 키 = deletedIds 의 ID). HTTP 요청은 deletedIds 전부 필수, 다르면 409 */
+    @Builder.Default
+    private java.util.Map<Long, java.time.LocalDateTime> deletedBaseModifiedAt = new java.util.HashMap<>();
+
     @Getter
     @Setter
     @NoArgsConstructor
@@ -42,6 +46,12 @@ public class ColumnBulkSaveDto {
 
         /** 기존 컬럼 ID (새 컬럼이면 null) */
         private Long id;
+
+        /**
+         * 바꾸지 않은 기존 행 (M8-C3, M8-D04 — 기준값은 실제로 고치거나 지우는 행에만) : true 면 서버는 이 행의 값을 읽지도 쓰지도 않고 기준값도 보지 않는다.
+         * 순서(sortOrder)도 그대로 둔다 — 화면 순서는 다른 행의 번호를 매길 때만 쓴다. 순서 변경·컬럼 추가·삭제가 있는 저장은 화면이 모든 행을 기준값과 함께 보낸다 (테이블 단위 검증)
+         */
+        private Boolean unchanged;
 
         /** 새 컬럼의 표준용어 ID : 컬럼명은 이 용어의 영문약어명으로 정한다 */
         private Long termId;

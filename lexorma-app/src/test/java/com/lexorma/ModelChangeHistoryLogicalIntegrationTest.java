@@ -115,11 +115,11 @@ class ModelChangeHistoryLogicalIntegrationTest {
         mark = mark();
         assertThatThrownBy(() -> logical.saveEntity(admin, entity(member.id(), model, "회원", "바뀜"))).isInstanceOf(CustomException.class);
         assertThat(since(projectId, mark)).isEmpty();
-        logical.updateEntityApproval(admin, member.id(), false);
-        logical.updateEntityApproval(admin, member.id(), false);
+        logical.updateEntityApproval(admin, member.id(), false, null);
+        logical.updateEntityApproval(admin, member.id(), false, null);
         logical.saveEntity(admin, entity(member.id(), model, "회원", "가입한 회원"));
         logical.saveEntity(admin, entity(member.id(), model, "회원", "가입한 회원"));
-        logical.updateEntityApproval(admin, member.id(), true);
+        logical.updateEntityApproval(admin, member.id(), true, null);
         assertThat(since(projectId, mark)).extracting(ModelChangeHistory::getAction).containsExactly(Action.REVOKE, Action.UPDATE, Action.APPROVE);
 
         // 속성 : 프로젝트 ID 가 없는 엔티티도 엔터티의 프로젝트로 남는다. 표준 용어는 ID + 이름
@@ -169,7 +169,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
         // 한 트랜잭션에서 만들고 지우면 남지 않는다. 논리·물리 모델을 함께 바꾸면 한 그룹이다
         TableInfo table = table(projectId, "TB_MBR");
         mark = mark();
-        tx.executeWithoutResult(s -> logical.deleteAttribute(admin, logical.saveAttribute(admin, attribute(null, member, "임시", null, false, null)).id()));
+        tx.executeWithoutResult(s -> logical.deleteAttribute(admin, logical.saveAttribute(admin, attribute(null, member, "임시", null, false, null)).id(), null));
         assertThat(since(projectId, mark)).isEmpty();
         tx.executeWithoutResult(s -> {
             logical.saveAttribute(admin, attribute(grade.id(), member, "회원 등급", "CODE", false, null));
@@ -200,7 +200,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 속성 삭제 → DELETE (삭제 전 상태)
         mark = mark();
-        logical.deleteAttribute(admin, grade.id());
+        logical.deleteAttribute(admin, grade.id(), null);
         ModelChangeHistory deleted = onlySince(projectId, mark);
         assertThat(deleted).extracting(ModelChangeHistory::getAction, ModelChangeHistory::getTargetName).containsExactly(Action.DELETE, "회원.회원 등급");
         assertThat(deleted.getAfterData()).isNull();
@@ -208,9 +208,9 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 엔터티 삭제 : 딸린 속성·식별자가 같은 그룹에 DELETE 로 남고, 지워진 엔터티의 이름·프로젝트를 그대로 갖는다
         logical.saveIdentifier(admin, new Identifier(null, member.id(), "회원 식별자", true, List.of(number.id()), null));
-        logical.updateEntityApproval(admin, member.id(), false);
+        logical.updateEntityApproval(admin, member.id(), false, null);
         mark = mark();
-        logical.deleteEntity(admin, member.id());
+        logical.deleteEntity(admin, member.id(), null, null);
         List<ModelChangeHistory> cascade = since(projectId, mark);
         assertThat(cascade).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getAction).containsExactlyInAnyOrder(
                 tuple(TargetType.LOGICAL_ENTITY, Action.DELETE), tuple(TargetType.LOGICAL_ATTRIBUTE, Action.DELETE), tuple(TargetType.LOGICAL_ATTRIBUTE, Action.DELETE),
@@ -229,7 +229,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 엔터티가 없어진 모델 삭제 → DELETE
         mark = mark();
-        logical.deleteModel(admin, model.id());
+        logical.deleteModel(admin, model.id(), null, null);
         assertThat(onlySince(projectId, mark)).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getAction).containsExactly(TargetType.LOGICAL_MODEL, Action.DELETE);
     }
 
@@ -281,13 +281,13 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 승인취소 → 카디널리티 수정 → 같은 값 → 승인 → (승인된 관계 삭제 거절) → 승인취소 → 삭제
         mark = mark();
-        logical.updateRelationshipApproval(admin, rel.id(), false);
+        logical.updateRelationshipApproval(admin, rel.id(), false, null);
         logical.saveRelationship(admin, relationship(rel.id(), model, "주문-상품", order, item, 1, 1, 1, null));
         logical.saveRelationship(admin, relationship(rel.id(), model, "주문-상품", order, item, 1, 1, 1, null));
-        logical.updateRelationshipApproval(admin, rel.id(), true);
-        assertThatThrownBy(() -> logical.deleteRelationship(admin, rel.id())).isInstanceOf(CustomException.class);
-        logical.updateRelationshipApproval(admin, rel.id(), false);
-        logical.deleteRelationship(admin, rel.id());
+        logical.updateRelationshipApproval(admin, rel.id(), true, null);
+        assertThatThrownBy(() -> logical.deleteRelationship(admin, rel.id(), null)).isInstanceOf(CustomException.class);
+        logical.updateRelationshipApproval(admin, rel.id(), false, null);
+        logical.deleteRelationship(admin, rel.id(), null);
         List<ModelChangeHistory> lifecycle = since(projectId, mark);
         assertThat(lifecycle).extracting(ModelChangeHistory::getAction).containsExactly(Action.REVOKE, Action.UPDATE, Action.APPROVE, Action.REVOKE, Action.DELETE);
         assertThat(changedFields(admin, lifecycle.get(1))).containsExactlyInAnyOrder("relationshipName", "targetMin");
@@ -296,7 +296,7 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 식별자 삭제 → 삭제 전 구성이 남는다
         mark = mark();
-        logical.deleteIdentifier(admin, pk.id());
+        logical.deleteIdentifier(admin, pk.id(), null);
         ModelChangeHistory removed = onlySince(projectId, mark);
         assertThat(removed.getAction()).isEqualTo(Action.DELETE);
         assertThat(json(removed.getBeforeData()).get("attributes")).hasSize(3);
@@ -361,25 +361,25 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 매핑된 엔터티·테이블·속성은 삭제가 거절되고(매핑이 연쇄로 지워지지 않는다), 속성 매핑이 있는 엔터티 매핑도 해제할 수 없다 → 이력 없음
         mark = mark();
-        logical.updateEntityApproval(admin, member.id(), false);
+        logical.updateEntityApproval(admin, member.id(), false, null);
         Set<Long> afterRevoke = mark();
-        assertThatThrownBy(() -> logical.deleteEntity(admin, member.id())).isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> logical.deleteAttribute(admin, number.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> logical.deleteEntity(admin, member.id(), null, null)).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> logical.deleteAttribute(admin, number.id(), null)).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> tables.deleteTable(admin, List.of(TableInfoDto.builder().id(tbMember.getId()).build()))).isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> mappings.deleteEntityMapping(admin, mapping.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> mappings.deleteEntityMapping(admin, mapping.id(), null)).isInstanceOf(CustomException.class);
         assertThat(since(projectId, afterRevoke)).isEmpty();
 
         // 해제 : 속성 매핑 → 엔터티 매핑 순서로, 각각 DELETE (해제 전 대상이 남는다)
         mark = mark();
-        mappings.deleteAttributeMapping(admin, attributeMapping.id());
-        mappings.deleteEntityMapping(admin, mapping.id());
+        mappings.deleteAttributeMapping(admin, attributeMapping.id(), null);
+        mappings.deleteEntityMapping(admin, mapping.id(), null);
         List<ModelChangeHistory> released = since(projectId, mark);
         assertThat(released).extracting(ModelChangeHistory::getTargetType, ModelChangeHistory::getAction, ModelChangeHistory::getTargetName)
                 .containsExactly(tuple(TargetType.COLUMN_MAPPING, Action.DELETE, "회원 번호 ↔ MBR_NO"), tuple(TargetType.TABLE_MAPPING, Action.DELETE, "회원 ↔ TB_MBR"));
         assertThat(released).allMatch(h -> h.getAfterData() == null);
 
         // 매핑을 해제한 뒤 엔터티를 지워도, 지워진 대상과 이어졌던 매핑의 이력은 그대로 조회된다
-        logical.deleteEntity(admin, member.id());
+        logical.deleteEntity(admin, member.id(), null, null);
         assertThat(search(admin, "TABLE_MAPPING", mapping.id())).extracting(ModelChangeHistoryDto.Summary::action, ModelChangeHistoryDto.Summary::targetName)
                 .containsExactly(tuple("DELETE", "회원 ↔ TB_MBR"), tuple("UPDATE", "회원 ↔ TB_MBR"), tuple("CREATE", "회원 ↔ TB_SPARE"));
         assertThat(history.detail(admin, search(admin, "COLUMN_MAPPING", attributeMapping.id()).getFirst().id()).getBody().before().get("attributeName").asString()).isEqualTo("회원 번호");

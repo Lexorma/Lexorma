@@ -548,7 +548,7 @@ class PhysicalGenerationStabilizationIntegrationTest {
         Long mappingId = attributeMappings.findByAttribute_Id(custNo).orElseThrow().getId();
         int versionsBefore = f.versions();
         List<Object> outcomes = race(f, () -> generation.apply(login(f), f.request(List.of(ord), plan.planToken())), () -> {
-            mappingService.deleteAttributeMapping(login(f), mappingId);
+            mappingService.deleteAttributeMapping(login(f), mappingId, null);
             return "unmapped";
         });
         assertOnlyConflicts(outcomes);

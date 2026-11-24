@@ -60,9 +60,11 @@ public interface PhysicalModelService {
     com.lexorma.data.physical.domain.entity.TableConstraint createGeneratedUnique(Long projectId, com.lexorma.data.table.domain.entity.TableInfo table,
                                                                              java.util.List<com.lexorma.data.column.domain.entity.ColumnInfo> columns, String name);
 
-    void delete(AccountDto accountDto, Kind kind, Long id);
+    /** modifiedAt : 화면이 읽은 수정 일시 (M8-C2 — 다르면 409, null = 내부 호출) */
+    void delete(AccountDto accountDto, Kind kind, Long id, java.time.LocalDateTime modifiedAt);
 
-    void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval);
+    /** modifiedAt : 승인자가 본 수정 일시 (M8-C2 — 승인 상태가 바뀔 때만 비교, 다르면 409) */
+    void updateApproval(AccountDto accountDto, Kind kind, Long id, boolean isApproval, java.time.LocalDateTime modifiedAt);
 
     /**
      * 컬럼 삭제 전에 호출 : 사용자가 정의한 관계·인덱스·제약조건에 쓰인 컬럼이면 삭제를 막고,

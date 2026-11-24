@@ -255,7 +255,7 @@ class PhysicalGenerationIntegrationTest {
         // 관계 삭제 (승인된 관계는 지울 수 없어 승인을 푼다 — 승인 상태는 계획에 들어가지 않는다)
         jdbc.update("update TB_LGCL_REL set APRV_YN = false where LGCL_REL_SN = ?", added.id());
         plan = generation.preview(f.user, request);
-        logical.deleteRelationship(f.user, added.id());
+        logical.deleteRelationship(f.user, added.id(), null);
         assertStale(f, plan);
         // 방향 변경 (원본 ↔ 대상) : 승인된 관계는 바꿀 수 없어 승인을 풀고 바꾼다
         jdbc.update("update TB_LGCL_REL set APRV_YN = false where LGCL_REL_SN = ?", f.relationship.id());

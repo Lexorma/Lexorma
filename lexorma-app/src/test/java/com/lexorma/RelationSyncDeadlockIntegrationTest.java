@@ -152,6 +152,7 @@ class RelationSyncDeadlockIntegrationTest {
         }
     }
 
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired ApplicationContext context;
     @Autowired TableDesignService tables;
     @Autowired ColumnManageService columns;
@@ -218,6 +219,8 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     /** 대기점에 멈춘 첫 작업 A 와 두 번째 작업 B : B 가 끝나거나 잠금을 기다리기 시작하면 A 를 놓는다. [A 결과, B 결과, B 가 기다린 문장(없으면 null)] */
+    private String lastDiagnostics = "";
+
     private String[] pausedThen(Pause pause, Supplier<Object> a, Supplier<Object> b) throws Exception {
         SecurityContext login = SecurityContextHolder.getContext();
         paused = new CountDownLatch(1);
@@ -232,6 +235,9 @@ class RelationSyncDeadlockIntegrationTest {
             if (waited != null) break;
             LockSupport.parkNanos(20_000_000);
         }
+        // 진단 (M8-C4a) : B 가 잠금 대기도 완료도 하지 않은 채 10초가 지나면 A 를 놓기 전 상태를 남긴다 (단언 설명에 붙는다)
+        lastDiagnostics = waited == null && !second.isDone()
+                ? ConcurrencyDiagnostics.describe("S 시나리오 B 대기", until - TimeUnit.SECONDS.toNanos(10), jdbc, dataSource, null) : "";
         release.countDown();
         return new String[]{first.get(60, TimeUnit.SECONDS), second.get(60, TimeUnit.SECONDS), waited};
     }
@@ -290,7 +296,7 @@ class RelationSyncDeadlockIntegrationTest {
             System.out.println("[M7-FK-02] S4 round " + round + " : " + Arrays.toString(r));
             assertThat(r[0]).as("A (round " + round + ")").isEqualTo("OK");
             assertThat(r[1]).as("B (round " + round + ")").isEqualTo("OK");
-            assertThat(r[2]).as("B 는 A 가 끝날 때까지 프로젝트 행에서 기다린다 (행 잠금 대기가 아니다)").isNotNull().containsIgnoringCase("tb_prj ");
+            assertThat(r[2]).as("B 는 A 가 끝날 때까지 프로젝트 행에서 기다린다 (행 잠금 대기가 아니다)" + lastDiagnostics).isNotNull().containsIgnoringCase("tb_prj ");
             assertThat(jdbc.queryForList("select TBL_NM from TB_TBL where TBL_SN in (?, ?) order by TBL_SN", String.class, x.t1(), x.t2())).containsExactly("TA_NEW", "TB_NEW");
             assertThat(relations(x.t1(), x.t2())).isEqualTo(1);
             assertThat(relations(x.t2(), x.t1())).isEqualTo(1);
@@ -874,7 +880,7 @@ class RelationSyncDeadlockIntegrationTest {
         Fk b = fk("tw2");
         long mapping = jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where LGCL_ATRB_SN = ?", Long.class, b.fa1());
         String[] r2 = duringCorrection(b, () -> {
-            mappings.deleteAttributeMapping(b.f().user, mapping);
+            mappings.deleteAttributeMapping(b.f().user, mapping, null);
             return null;
         });
         System.out.println("[M7-FK] 보정 ↔ 속성 매핑 해제 : " + Arrays.toString(r2));

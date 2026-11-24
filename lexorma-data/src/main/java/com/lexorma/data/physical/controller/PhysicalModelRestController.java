@@ -137,24 +137,30 @@ public class PhysicalModelRestController {
         return ResponseEntity.ok(physicalModelService.saveConstraint(accountDto, constraint));
     }
 
-    @Operation(summary = "관계·인덱스·제약조건 삭제", description = "kind : relation / index / constraint. 승인된 항목은 삭제할 수 없다")
+    @Operation(summary = "관계·인덱스·제약조건 삭제", description = "kind : relation / index / constraint. 승인된 항목은 삭제할 수 없다. modifiedAt(화면이 읽은 수정 일시) 필수 — "
+            + "없으면 400, 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/{kind}/{id}")
     public ResponseEntity<Map<String, Object>> delete(@AuthenticationPrincipal AccountDto accountDto,
                                                       @PathVariable(name = "kind") String kind,
-                                                      @PathVariable(name = "id") Long id) {
-        physicalModelService.delete(accountDto, toKind(kind), id);
+                                                      @PathVariable(name = "id") Long id, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        PhysicalModelService.Kind type = toKind(kind);
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        physicalModelService.delete(accountDto, type, id, modifiedAt);
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "관계·인덱스·제약조건 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능")
+    @Operation(summary = "관계·인덱스·제약조건 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능. modifiedAt(화면이 읽은 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/{kind}/{id}/approval/{isApproval}")
     public ResponseEntity<Map<String, Object>> updateApproval(@AuthenticationPrincipal AccountDto accountDto,
                                                               @PathVariable(name = "kind") String kind,
                                                               @PathVariable(name = "id") Long id,
-                                                              @PathVariable(name = "isApproval") boolean isApproval) {
-        physicalModelService.updateApproval(accountDto, toKind(kind), id, isApproval);
+                                                              @PathVariable(name = "isApproval") boolean isApproval, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        PhysicalModelService.Kind type = toKind(kind);
+        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        physicalModelService.updateApproval(accountDto, type, id, isApproval, modifiedAt);
         return ResponseEntity.ok(Map.of("result", true));
     }
 

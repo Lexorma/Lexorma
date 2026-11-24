@@ -4,7 +4,10 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
-import { api, enc } from '../../lib/api';
+import { api, ApiError, enc, isConflict } from '../../lib/api';
+import { MappingConflictNotice, type MappingConflict } from '../../components/conflict/ConflictRecovery';
+import { runWithReview } from '../../components/conflict/conflictActions';
+import { baseQuery } from '../../lib/deletion';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import { useEntityDetail } from '../logical/entityDetail';
@@ -79,6 +82,8 @@ export function SubtypeKeySection({ mappingId, canEdit, onChanged, onNavigate }:
   /** 컬럼을 고르는 중인 행 (원본 속성 ID — 이 매핑 안에서만 유일) */
   const [editing, setEditing] = useState<SubtypeKeyRow | null>(null);
   const [busy, setBusy] = useState(false);
+  // 409 (M8-C3) : 다른 사용자가 이 상속 PK 매핑을 바꿨다 — 기존·최신·내 선택
+  const [conflict, setConflict] = useState<MappingConflict | null>(null);
 
   if (detail.isError) return <p role="alert">{t('상속 PK 매핑을 불러오지 못했습니다.')}</p>;
   if (!detail.data) return <p className="gh-muted" role="status">{t('불러오는 중입니다.')}</p>;
@@ -94,10 +99,23 @@ export function SubtypeKeySection({ mappingId, canEdit, onChanged, onNavigate }:
     dialog.confirm(t('{0} 의 상속 PK 매핑({1})을 해제하시겠습니까? 연결 정보만 지웁니다. 논리 속성·물리 컬럼은 삭제되지 않고, 물리 PK·FK 와 상속 관계도 바뀌지 않습니다.',
       row.attributeName, row.columnName ?? ''), async () => {
       setBusy(true);
+      const snapshot = (k: SubtypeKeyRow) => ({ modifiedAt: k.modifiedAt ?? null, fields: [{ key: 'column', label: t('물리 컬럼'), value: k.columnName ?? '' }] });
       try {
-        await api(`/api/modelMapping/subtypeKey/${enc(row.id)}`, { method: 'DELETE' });
-        changed();
-        toast.success(t('상속 PK 매핑을 해제했습니다.'));
+        // M8-C2 기준값, M8-C3 : 409 면 최신 상속 PK 매핑을 보여 주고 다시 해제할지 묻는다
+        const ok = await runWithReview({
+          dialog, title: t('상속 PK 매핑 해제'), intro: t('다른 사용자가 이 매핑을 변경했습니다.'), seen: snapshot(row),
+          load: async () => {
+            const latest = (await api<SubtypeKeyDetail>(`/api/modelMapping/entity/${enc(mappingId)}/subtypeKeys`, { silent: true })).keys.find((k) => k.id === row.id);
+            if (!latest) throw new ApiError(400, t('매핑이 이미 해제되었습니다.'), 'MODEL_MAPPING_IS_NOT_DEFINED');
+            return snapshot(latest);
+          },
+          act: async (state) => { await api(`/api/modelMapping/subtypeKey/${enc(row.id)}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          retryLabel: t('최신 내용으로 해제'), onClose: changed, onDone: () => toast.success(t('상속 PK 매핑을 해제했습니다.')),
+        });
+        if (ok) {
+          changed();
+          toast.success(t('상속 PK 매핑을 해제했습니다.'));
+        }
       } finally {
         setBusy(false);
       }
@@ -107,10 +125,17 @@ export function SubtypeKeySection({ mappingId, canEdit, onChanged, onNavigate }:
   const save = async (row: SubtypeKeyRow, column: KeyColumnCandidate) => {
     setBusy(true);
     try {
-      await api('/api/modelMapping/subtypeKey', { method: 'POST', body: { id: row.id, mappingId, attributeId: row.attributeId, columnId: column.columnId } });
+      await api('/api/modelMapping/subtypeKey', { method: 'POST', conflict: 'handled', body: { id: row.id, mappingId, attributeId: row.attributeId, columnId: column.columnId, modifiedAt: row.modifiedAt ?? null } });
+      setConflict(null);
       changed();
       toast.success(row.id != null ? t('상속 PK 매핑을 변경했습니다.') : t('상속 PK 매핑을 등록했습니다.'));
-    } catch {
+    } catch (error) {
+      if (isConflict(error)) {
+        // 409 : 최신 매핑(기준값 포함)을 다시 읽어 기존·최신·내 선택을 보여 준다. 다시 저장은 사용자가 (자동 재전송 없음)
+        const latest = (await detail.refetch()).data?.keys.find((k) => k.attributeId === row.attributeId && k.current === row.current);
+        setConflict({ label: row.attributeName, before: row.columnName, latest: latest?.columnName ?? null, mine: column.columnName, gone: !latest || latest.id !== row.id });
+        return;
+      }
       // 오류(409·400)는 공통 알림이 보여 준다. 고르던 행은 그대로 두고 서버 상태를 다시 읽는다 (화면과 저장 상태가 어긋나지 않게)
       void detail.refetch();
     } finally {
@@ -161,6 +186,7 @@ export function SubtypeKeySection({ mappingId, canEdit, onChanged, onNavigate }:
         {stale.length > 0 && <> <Label variant="danger">{t('무효 매핑 {0}', stale.length)}</Label></>}
         {statusLabel && <> <Label variant={statusLabel.variant} dot>{statusLabel.label}</Label></>}
       </h4>
+      {conflict && <MappingConflictNotice conflict={conflict} onDismiss={() => setConflict(null)} />}
       <p className="gh-muted">
         {data.subtype && data.status === 'CONCRETE' ? data.statusMessage : data.subtype
           ? t('{0} 은(는) {1} 의 서브타입입니다. 루트 {2} 의 주 식별자를 상속 PK 로 이 테이블 컬럼에 연결합니다. 상속 PK 는 직접 속성이 아니며 직접 속성 매핑률에 들어가지 않습니다.',

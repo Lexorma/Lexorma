@@ -8,6 +8,7 @@ import { useToast } from '../../components/toast/ToastProvider';
 import type { Row } from '../../components/grid/Grid';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError, enc } from '../../lib/api';
+import { approveTables } from './physicalConflicts';
 import { isBlank } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useColumnBulkEditor } from '../column/ColumnBulkEditor';
@@ -58,11 +59,13 @@ export function useTableDetail() {
     // 승인 상태면 승인취소, 미승인 상태면 승인 (목록의 승인·승인취소 버튼과 같은 API)
     const toggleApproval = (close: () => void) => {
       dialog.confirm(approved ? t('이 테이블을 승인취소하시겠습니까?') : t('이 테이블을 승인하시겠습니까?'), async () => {
-        const response = await api<{ result: boolean }>(`/api/saveTable/${!approved}`, { method: 'PATCH', body: [row] });
-        if (!response.result) return;
+        const done = () => toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
+        // 409 (M8-C3) : 최신 테이블 상태를 보여 주고 다시 승인할지 묻는다. 검토를 닫으면 상세를 다시 연다
+        const ok = await approveTables(dialog, [row], !approved, () => { close(); changed(); }, done);
+        if (!ok) return;
         close();
         changed();
-        toast.success(approved ? t('정상적으로 승인취소처리 되었습니다.') : t('정상적으로 승인처리 되었습니다.'));
+        done();
       });
     };
 

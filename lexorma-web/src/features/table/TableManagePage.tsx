@@ -7,6 +7,8 @@ import { Grid, type GridHandle, type Row } from '../../components/grid/Grid';
 import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, download, enc } from '../../lib/api';
+import { approveTables, deleteTables } from './physicalConflicts';
+import { cascadeText, type Deletion } from '../../lib/deletion';
 import { useAuth } from '../../hooks/useAuth';
 import { useSchemas } from '../schema/schemas';
 import { TableForm } from './TableForm';
@@ -47,12 +49,18 @@ export function TableManagePage() {
       dialog.alert(t('체크된 데이터에 승인된 정보도 포함되어있습니다. 승인이 완료된 경우, 삭제가 불가능합니다.'));
       return;
     }
-    dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
-      const response = await api<{ result: boolean }>('/api/deleteTable', { method: 'DELETE', body: checked });
-      if (!response.result) return;
-      reload();
-      toast.success(t('정상적으로 삭제되었습니다.'));
-    });
+    // 삭제 확인 조회 (M8-C2) : 함께 지워질 인덱스·제약조건·관계 수와 테이블마다 구성 기준값. 요청 행은 목록이 읽은 modifiedAt 을 그대로 싣는다 (확인 뒤 바뀌었으면 409)
+    api<Deletion[]>(`/api/deleteTable/preview?tableIds=${checked.map((row) => row.id).join(',')}`).then((deletions) => {
+      const cascade = cascadeText(deletions);
+      const done = () => toast.success(t('정상적으로 삭제되었습니다.'));
+      dialog.confirm(cascade ? `${t('체크된 데이터를 삭제하시겠습니까?')} ${cascade}` : t('체크된 데이터를 삭제하시겠습니까?'), async () => {
+        // 409 (M8-C3) : 바뀐 테이블만 보여 주고 최신 구성으로 다시 삭제할지 묻는다 (선택은 그대로)
+        if (await deleteTables(dialog, checked, deletions, reload, done)) {
+          reload();
+          done();
+        }
+      });
+    }, () => undefined);
   };
 
   const updateActive = (isApproval: boolean) => {
@@ -63,10 +71,11 @@ export function TableManagePage() {
         dialog.alert(isApproval ? t('승인 필요한 정보가 선택되지 않았습니다.') : t('승인취소 필요한 정보가 선택되지 않았습니다.'));
         return;
       }
-      const response = await api<{ result: boolean }>(`/api/saveTable/${isApproval}`, { method: 'PATCH', body: checked });
-      if (!response.result) return;
-      reload();
-      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      const done = () => toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      if (await approveTables(dialog, checked, isApproval, reload, done)) {
+        reload();
+        done();
+      }
     });
   };
 

@@ -7,7 +7,8 @@ import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { Navigate } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { api, ApiError, download } from '../../lib/api';
+import { api, download } from '../../lib/api';
+import { runListWithReview } from '../../components/conflict/conflictActions';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
@@ -209,18 +210,28 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
         dialog.alert(isApproval ? t('승인이 필요한 {0}가 선택되지 않았습니다.', tab.name) : t('승인취소가 필요한 {0}가 선택되지 않았습니다.', tab.name));
         return;
       }
-      // 체크한 행(그리드가 불러온 그대로 — 표준 용어는 modifiedAt 기준값 포함)을 보낸다. 화면을 연 뒤 바뀐 용어가 있으면 서버가 409 로 전체를 거절하고(공통 알림),
-      // 성공 안내 없이 목록을 다시 불러와 최신 내용을 보게 한다 (M-5 8차 — 자동 재시도 없음)
-      let response: { result: boolean };
-      try {
-        response = await api<{ result: boolean }>(`${tab.approvalUrl}/${isApproval}`, { method: 'PATCH', body: checked });
-      } catch (error) {
-        if (error instanceof ApiError && error.code === 'MODEL_CONFLICT') reload();
-        return;
-      }
-      if (!response.result) return;
+      // 체크한 행(그리드가 불러온 그대로 — modifiedAt 기준값 포함)을 보낸다. 화면을 연 뒤 바뀐 행이 있으면 서버가 409 로 전체를 거절한다 (M-5 8차·M8-C1).
+      // M8-C3 : 바뀐 행만 보여 주고 최신 기준값으로 다시 승인할지 묻는다 (자동 재시도 없음 — 선택은 그대로)
+      const done = () => toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      const nameKey = tab.id === 'standardTerms' ? 'commonStandardTermName' : tab.id === 'standardWords' ? 'commonStandardWordName' : 'commonStandardDomainName';
+      const dataUrl = `/api/get${tab.id.charAt(0).toUpperCase()}${tab.id.slice(1)}/data`;
+      const ok = await runListWithReview({
+        dialog, title: isApproval ? t('{0} 승인', tab.name) : t('{0} 승인 취소', tab.name), intro: t('선택한 항목 중 다른 사용자가 바꾼 항목이 있어 아무것도 바뀌지 않았습니다.'),
+        items: checked.map((row) => ({ id: Number(row.id), label: String(row[nameKey] ?? row.id), seen: { modifiedAt: (row.modifiedAt as string | null | undefined) ?? null, approved: row.isApprovalYn === 'Y' } })),
+        load: async () => {
+          const found = await Promise.all(checked.map((row) => api<{ data: Record<string, unknown>[] }>(`${dataUrl}?page=0&size=1&searchColumn=id&searchQuery=${encodeURIComponent(String(row.id))}`, { silent: true })
+            .then((r) => r.data.find((x) => String(x.id) === String(row.id)) ?? null).catch(() => null)));
+          return new Map(found.filter((r): r is Record<string, unknown> => !!r).map((r) => [Number(r.id), { modifiedAt: (r.modifiedAt as string | null) ?? null, approved: r.isApprovalYn === 'Y' }]));
+        },
+        act: async (states) => {
+          const body = checked.map((row) => ({ ...row, modifiedAt: states.get(Number(row.id))?.modifiedAt ?? row.modifiedAt }));
+          await api<{ result: boolean }>(`${tab.approvalUrl}/${isApproval}`, { method: 'PATCH', body, conflict: 'handled' });
+        },
+        retryLabel: isApproval ? t('최신 내용으로 승인') : t('최신 내용으로 승인 취소'), targetApproval: isApproval, onDone: done, onClose: reload,
+      });
+      if (!ok) return;
       reload();
-      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      done();
     });
   };
 

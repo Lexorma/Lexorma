@@ -3,7 +3,9 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { useToast } from '../../components/toast/ToastProvider';
 import { ChevronDownIcon, ChevronUpIcon } from '@primer/octicons-react';
 import type { Row } from '../../components/grid/Grid';
-import { api, ApiError, enc } from '../../lib/api';
+import { api, ApiError, enc, isConflict } from '../../lib/api';
+import { CompareTable, loadFailure, type CompareRow } from '../../components/conflict/ConflictRecovery';
+import { formatDateTime } from '../../lib/format';
 import { blockNonNumericKeys } from '../../lib/format';
 import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
 import { CommonColumnSet, type CommonColumnItem } from './CommonColumnSet';
@@ -186,7 +188,7 @@ function toPayloadRow(row: BulkRow) {
   const biz = row.fields[BIZ_KEY] ?? '';
   if (row.isNew) payload[BIZ_KEY] = biz;
   else if (bizChanged(row)) Object.assign(payload, { [BIZ_KEY]: biz, bizDescriptionBase: row.original?.[BIZ_KEY] ?? '' });
-  // 기존 행은 모두 기준값을 보낸다 (서버가 필수로 확인 — 화면이 읽은 뒤 바뀐 행이 하나라도 있으면 409, DEC-08 3차)
+  // 기존 행은 기준값을 보낸다 (서버가 필수로 확인 — 화면이 읽은 뒤 바뀐 행이 있으면 409, DEC-08 3차). 바꾸지 않은 행은 save 가 unchanged 로 대신 보낸다 (M8-D04)
   if (!row.isNew) payload.baseModifiedAt = row.modifiedAt ?? null;
   return payload;
 }
@@ -281,7 +283,12 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       .sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER))
       .map(fromExisting),
   );
-  const originalOrder = useMemo(() => rows.map((r) => r.id), []);
+  // 순서 변경 판단의 기준 (409 복구로 최신 컬럼을 다시 적용하면 그때의 서버 순서가 된다)
+  const [originalOrder, setOriginalOrder] = useState(() => rows.map((r) => r.id));
+  // 409 복구 (M8-C3) : 편집 내용(rows)은 그대로 두고 최신 컬럼과 행별로 비교한다
+  type Recovery = { stage: 'detected' } | { stage: 'loading' } | { stage: 'failed'; message: string }
+    | { stage: 'loaded'; latest: ColumnInfo[]; compare: CompareRow[]; keep: Set<string>; gone: string[]; added: number };
+  const [recovery, setRecovery] = useState<Recovery | null>(null);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -651,17 +658,87 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
     dialog.confirm(message, save);
   };
 
+  /** 최신 컬럼을 읽어 행마다 비교 : 다른 사용자가 바꾼 행 · 내가 바꾼 행 · 그 사이 삭제·추가된 컬럼 (D03) */
+  const loadLatest = async () => {
+    setRecovery({ stage: 'loading' });
+    let latest: ColumnInfo[];
+    try {
+      latest = (await api<{ columnInfos: ColumnInfo[] }>(`/api/selectColumn/tableColumn/${enc(table.id)}`, { silent: true })).columnInfos;
+    } catch (error) {
+      setRecovery({ stage: 'failed', message: loadFailure(error) });
+      return;
+    }
+    const byId = new Map(latest.map((c) => [c.id, c]));
+    const current = rowsRef.current;
+    const compare: CompareRow[] = [];
+    const keep = new Set<string>();
+    const gone: string[] = [];
+    current.filter((r) => !r.isNew).forEach((r) => {
+      const now = byId.get(r.id!);
+      const mine = r.deleted ? t('삭제') : isModified(r) ? t('수정') : null;
+      const changedOnServer = !now || (now.modifiedAt ?? null) !== (r.modifiedAt ?? null);
+      if (!changedOnServer) return;
+      if (!now) gone.push(r.columnName);
+      if (mine && now) keep.add(r.key);
+      compare.push({ key: r.key, label: r.columnName, before: r.modifiedAt ? formatDateTime(r.modifiedAt) : null,
+        latest: now ? `${now.modifiedAt ? formatDateTime(now.modifiedAt) : ''}${now.isApproval === 'Y' ? ` · ${t('승인')}` : ''}` : t('삭제됨'),
+        mine: mine ?? undefined, changedOnServer: true, changedByMe: !!mine && !!now });
+    });
+    const added = latest.filter((c) => !current.some((r) => r.id === c.id)).length;
+    setRecovery({ stage: 'loaded', latest, compare, keep, gone, added });
+  };
+
+  /** 고른 행의 내 변경만 최신 값 위에 다시 적용한 새 편집 상태 (D04) : 내가 고친 칸만 내 값, 나머지 칸·행은 최신 값. 서버에서 지워진 행은 뺀다 */
+  const reapply = () => {
+    if (recovery?.stage !== 'loaded') return;
+    const byId = new Map(recovery.latest.map((c) => [c.id, c]));
+    const next: BulkRow[] = [];
+    rowsRef.current.forEach((r) => {
+      if (r.isNew) return void next.push(r);
+      const now = byId.get(r.id!);
+      if (!now) return; // 그 사이 삭제된 컬럼
+      const fresh = fromExisting(now);
+      if (!recovery.keep.has(r.key) || fresh.approved) {
+        // 내 변경을 버리는 행(또는 그 사이 승인되어 고칠 수 없는 행) : 최신 값 그대로. 지우려던 표시는 유지 (승인된 행은 지울 수 없어 푼다)
+        return void next.push({ ...fresh, key: r.key, deleted: !!r.deleted && !fresh.approved && recovery.keep.has(r.key) });
+      }
+      const fields: Fields = { ...fresh.fields };
+      Object.keys(r.fields).forEach((k) => {
+        if (String(r.fields[k] ?? '').trim() !== String(r.original?.[k] ?? '').trim()) fields[k] = r.fields[k];
+      });
+      next.push({ ...r, fields, original: fresh.original, modifiedAt: fresh.modifiedAt, approved: fresh.approved, error: null });
+    });
+    // 다른 사용자가 더한 컬럼은 서버 순서대로 뒤에 붙인다
+    recovery.latest.filter((c) => !rowsRef.current.some((r) => r.id === c.id))
+      .sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER)).forEach((c) => next.push(fromExisting(c)));
+    setOriginalOrder(recovery.latest.slice().sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER)).map((c) => c.id));
+    rowsRef.current = next;
+    setRows(next);
+    setRecovery(null);
+  };
+
   const save = async () => {
     const current = rowsRef.current;
+    // M8-D04 : 순서 변경·추가·삭제가 없으면 바꾸지 않은 행은 기준값 없이 unchanged 로만 보낸다 (그 사이 다른 사용자가 그 행을 고쳐도 이 저장은 409 가 아니고 그 값이 남는다).
+    // 순서 변경·추가·삭제가 있으면 모든 기존 행의 번호가 다시 매겨질 수 있어 예전처럼 모든 행을 기준값과 함께 보낸다 (테이블 단위 검증)
+    const structural = counts.reordered || counts.created > 0 || counts.deleted > 0;
     const payload = {
       tableInfoId: table.id,
-      rows: current.filter((r) => !r.deleted).map(toPayloadRow),
+      rows: current.filter((r) => !r.deleted).map((r) => (!structural && !r.isNew && !isModified(r) ? { key: r.key, id: r.id, unchanged: true } : toPayloadRow(r))),
       deletedIds: current.filter((r) => r.deleted).map((r) => r.id),
+      // M8-C2 : 지울 컬럼마다 화면이 읽은 수정 일시 — 그 사이 다른 사용자가 고친 컬럼은 409 (아무것도 저장하지 않는다)
+      deletedBaseModifiedAt: Object.fromEntries(current.filter((r) => r.deleted).map((r) => [r.id, r.modifiedAt ?? null])),
     };
     setSaving(true);
     try {
-      const response = await api<{ result: boolean; created: number; updated: number; deleted: number; errors?: { key: string; message: string }[] }>(
-        '/api/saveColumn/bulk', { method: 'PUT', body: payload });
+      let response: { result: boolean; created: number; updated: number; deleted: number; errors?: { key: string; message: string }[] };
+      try {
+        response = await api<typeof response>('/api/saveColumn/bulk', { method: 'PUT', body: payload, conflict: 'handled' });
+      } catch (error) {
+        if (!isConflict(error)) throw error;
+        setRecovery({ stage: 'detected' }); // 편집 내용은 그대로 — 자동 재전송 없음
+        return;
+      }
       if (!response.result) {
         const general: string[] = [];
         const errors = response.errors || [];
@@ -891,6 +968,31 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
           </div>
         )}
       </section>
+
+      {recovery && (
+        <div className="conflict-notice" role="alert">
+          <strong>{t('다른 사용자가 이 테이블의 컬럼을 변경했습니다.')}</strong>
+          <p>{t('작성한 내용은 유지됩니다. 최신 내용을 확인한 뒤 다시 저장해 주세요.')}</p>
+          {recovery.stage === 'detected' && <div className="conflict-actions"><button type="button" className="btn btn-sm btn-primary" onClick={() => void loadLatest()}>{t('최신 내용 확인')}</button></div>}
+          {recovery.stage === 'loading' && <p role="status">{t('최신 내용을 불러오는 중입니다.')}</p>}
+          {recovery.stage === 'failed' && <p className="conflict-error">{recovery.message}</p>}
+          {recovery.stage === 'loaded' && (
+            <>
+              <CompareTable rows={recovery.compare} showMine picks={recovery.keep}
+                onPick={(key, keep) => setRecovery((s) => {
+                  if (s?.stage !== 'loaded') return s;
+                  const next = new Set(s.keep);
+                  if (keep) next.add(key); else next.delete(key);
+                  return { ...s, keep: next };
+                })} />
+              {recovery.gone.length > 0 && <p>{t('그 사이 삭제된 컬럼은 편집에서 빠집니다 : {0}', recovery.gone.join(', '))}</p>}
+              {recovery.added > 0 && <p>{t('다른 사용자가 더한 컬럼 {0}개를 목록 끝에 함께 보여 줍니다.', recovery.added)}</p>}
+              <p className="gh-muted">{t('고른 행은 내가 고친 칸만 최신 값 위에 다시 적용하고, 나머지는 현재 서버 값을 씁니다. 적용한 뒤 확인하고 직접 저장해 주세요.')}</p>
+              <div className="conflict-actions"><button type="button" className="btn btn-sm btn-primary" onClick={reapply}>{t('최신 내용에 내 변경 다시 적용')}</button></div>
+            </>
+          )}
+        </div>
+      )}
 
       {generalErrors.length > 0 && (
         <div className="col-bulk-general-error">

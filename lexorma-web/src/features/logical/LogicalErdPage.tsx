@@ -11,7 +11,10 @@ import { Label } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChanges';
-import { api, enc } from '../../lib/api';
+import { api, enc, isConflict } from '../../lib/api';
+import { openLayoutConflict, type Positions } from '../erd/layoutConflict';
+import { cascadeText, withDeletion } from '../../lib/deletion';
+import { approveRelationshipGuarded, deleteAttributeGuarded, deleteEntityGuarded, deleteIdentifierGuarded, deleteRelationshipGuarded } from './conflictSnapshots';
 import { useErdExport, erdFileName } from '../erd/exportImage';
 import { t, tc, tx } from '../../lib/i18n';
 import { motionMs } from '../../lib/motion';
@@ -180,6 +183,8 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
   const savedVersion = useRef<number | null>(null);
   const positions = useRef(new Map<string, XY>());
   const appliedLayout = useRef<ErdLayout | null>(null);
+  // 배치 충돌 비교의 기준 (불러온 배치 — 409 복구 뒤에는 그때의 최신 배치, M8-C3)
+  const layoutBase = useRef<Positions>({});
   const focusRequest = useRef(focusEntity);
   // 이웃 탐색으로 고른 엔터티 (D-52) : 선택만 하고 화면은 탐색 결과 전체에 맞춘다. 깊은 링크·새 엔터티는 지금처럼 그 엔터티를 가운데로
   const fitWithFocus = useRef(false);
@@ -286,6 +291,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
       appliedLayout.current = layout.data;
       savedVersion.current = layout.data.version;
       positions.current = new Map(Object.entries(layout.data.nodes));
+      layoutBase.current = { ...layout.data.nodes };
       clearPending();
       shown.current = false;
     }
@@ -388,6 +394,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
     try {
       const result = await api<ErdLayout>(layoutUrl, {
         method: 'PUT',
+        conflict: 'handled', // 409 는 배치 충돌 복구 대화상자가 다룬다 (M8-C3) — 공통 알림을 겹쳐 띄우지 않는다
         // 화면의 엔터티 + 범위를 바꾸기 전에 옮겨 둔 엔터티. 저장하지 않은 범위 밖 엔터티의 좌표는 서버에 있는 그대로 둔다
         body: {
           version: savedVersion.current,
@@ -397,13 +404,43 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
         },
       });
       savedVersion.current = result.version;
+      layoutBase.current = { ...result.nodes };
       clearPending();
       setMessage(t('배치를 저장했습니다.'));
-    } catch {
-      setMessage(t('배치를 저장하지 못했습니다.'));
+    } catch (error) {
+      if (isConflict(error)) await recoverLayout();
+      else setMessage(t('배치를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
+  }
+
+  /** 409 (같은 사용자의 다른 탭이 먼저 저장) : 옮긴 위치를 버리지 않고 최신 배치와 비교해 고른 뒤 최신 버전으로 다시 준비한다 (저장은 사용자가) */
+  async function recoverLayout() {
+    let latest: ErdLayout;
+    try {
+      latest = await api<ErdLayout>(layoutUrl, { silent: true });
+    } catch {
+      setMessage(t('최신 배치를 불러오지 못했습니다. 옮긴 위치는 그대로 있습니다. 잠시 뒤 다시 저장해 주세요.'));
+      return;
+    }
+    const mine: Positions = Object.fromEntries([...pending.current].filter((id) => positions.current.has(id)).map((id) => [id, positions.current.get(id)!]));
+    const names = new Map((graph.data?.entities ?? []).map((e) => [String(e.id), e.name]));
+    setMessage(t('다른 탭에서 배치를 먼저 저장했습니다. 옮긴 위치는 유지됩니다.'));
+    openLayoutConflict(dialog, {
+      base: layoutBase.current, mine, shown: new Set(nodes.map((n) => n.id)), latest: { version: latest.version, nodes: latest.nodes },
+      name: (id) => names.get(id) ?? `#${id}`,
+      onResolve: ({ version, keep, adopt, base }) => {
+        savedVersion.current = version;
+        layoutBase.current = { ...base };
+        Object.entries(adopt).forEach(([id, p]) => { positions.current.set(id, p); pending.current.delete(id); });
+        Object.entries(keep).forEach(([id, p]) => { positions.current.set(id, p); pending.current.add(id); });
+        setNodes((current) => current.map((n) => (adopt[n.id] ? { ...n, position: adopt[n.id] } : n)));
+        setPendingCount(pending.current.size);
+        setDirty(pending.current.size > 0);
+        setMessage(t('최신 배치 기준으로 다시 준비했습니다. 확인한 뒤 [배치 저장] 을 눌러 주세요.'));
+      },
+    });
   }
 
   const reloadSaved = () => {
@@ -463,19 +500,23 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
     });
   };
 
-  const removeEntity = (entity: GraphEntity) => {
-    dialog.confirm(t('{0} 엔터티를 삭제하시겠습니까? 속성과 식별자도 함께 삭제됩니다.', entity.name), async () => {
-      // 삭제할 수 없으면(관계·매핑·승인) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다
-      await api(`/api/logical/entity/${entity.id}`, { method: 'DELETE' });
-      positions.current.delete(String(entity.id));
-      pending.current.delete(String(entity.id));
-      setPendingCount(pending.current.size);
-      setDirty(pending.current.size > 0);
-      setSelectedId(null);
-      setMessage(t('엔터티를 삭제했습니다.'));
-      await refresh();
+  // 삭제 확인 조회 (M8-C2) : ERD 조회에는 수정 일시가 없어 확인 대화상자를 열 때 읽은 엔터티 기준값과 함께 지워질 구성을 보낸다 (ERD 수정 폼과 같은 방식)
+  const removeEntity = (entity: GraphEntity) => withDeletion(`/api/logical/entity/${entity.id}/deletion`, (deletion) => {
+    const cascade = cascadeText(deletion);
+    dialog.confirm(cascade ? `${t('{0} 엔터티를 삭제하시겠습니까?', entity.name)} ${cascade}` : t('{0} 엔터티를 삭제하시겠습니까?', entity.name), async () => {
+      // 삭제할 수 없으면(관계·매핑·승인) 서버가 거절하고 사유를 알린다 → 노드를 지우지 않는다. 확인한 뒤 바뀌었으면 409 → 최신 구성을 보여 주고 다시 확인 (M8-C3)
+      const deleted = async () => {
+        positions.current.delete(String(entity.id));
+        pending.current.delete(String(entity.id));
+        setPendingCount(pending.current.size);
+        setDirty(pending.current.size > 0);
+        setSelectedId(null);
+        setMessage(t('엔터티를 삭제했습니다.'));
+        await refresh();
+      };
+      await deleteEntityGuarded(dialog, entity.id, deletion, undefined, deleted, refresh);
     });
-  };
+  });
 
   const openAttributeForm = (entity: GraphEntity, attribute?: GraphAttribute) => {
     const open = (detail?: LogicalEntity) => dialog.open({
@@ -490,11 +531,15 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
     else open();
   };
 
-  const removeAttribute = (attribute: GraphAttribute) => {
-    dialog.confirm(t('{0} 속성을 삭제하시겠습니까?', attribute.name), async () => {
-      await api(`/api/logical/attribute/${attribute.id}`, { method: 'DELETE' });
-      await refresh();
-    });
+  // ERD 조회에는 수정 일시가 없어 엔터티 상세를 읽어 그 속성의 지금 기준값으로 삭제한다 (M8-C2 — 수정 폼과 같은 방식, 확인 뒤 바뀌었으면 409)
+  const removeAttribute = (entity: GraphEntity, attribute: GraphAttribute) => {
+    api<LogicalEntity>(`/api/logical/entity/${entity.id}`).then((detail) => {
+      const seen = detail.attributes.find((a) => a.id === attribute.id);
+      if (!seen) return void refresh(); // 그 사이 지워졌다 : 최신 ERD 를 다시 읽는다
+      dialog.confirm(t('{0} 속성을 삭제하시겠습니까?', attribute.name), async () => {
+        await deleteAttributeGuarded(dialog, entity.id, seen, refresh);
+      });
+    }, () => undefined);
   };
 
   /** 순서 변경 : 엔터티의 속성 ID 전체를 새 순서로 보낸다 (엔터티 상세와 같은 API) */
@@ -539,18 +584,19 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
 
   const removeRelationship = (relationship: LogicalRelationship) => {
     dialog.confirm(t('{0} 관계를 삭제하시겠습니까? (출발 : {1}, 도착 : {2}) 엔터티·속성·식별자는 바뀌지 않습니다.', relationLabel(relationship), relationship.sourceEntityName, relationship.targetEntityName), async () => {
-      await api(`/api/logical/relationship/${relationship.id}`, { method: 'DELETE' });
-      setSelectedRelationship(null);
-      setMessage(t('관계를 삭제했습니다.'));
-      await refresh();
+      const ok = await deleteRelationshipGuarded(dialog, relationship, refresh);
+      if (ok) {
+        setSelectedRelationship(null);
+        setMessage(t('관계를 삭제했습니다.'));
+      }
     });
   };
 
   const toggleRelationshipApproval = (relationship: LogicalRelationship) => {
     const approved = !!relationship.isApproval;
     dialog.confirm(approved ? t('이 관계를 승인취소하시겠습니까?') : t('이 관계를 승인하시겠습니까?'), async () => {
-      await api(`/api/logical/relationship/${relationship.id}/approval/${!approved}`, { method: 'PATCH' });
-      await refresh();
+      // 화면이 읽은 관계의 수정 일시를 기준값으로 보낸다 (M8-C1). 409 면 최신 관계를 보여 주고 사용자가 다시 승인한다 (M8-C3 — 자동 재시도 없음)
+      await approveRelationshipGuarded(dialog, relationship, refresh);
     });
   };
 
@@ -568,8 +614,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
 
   const removeIdentifier = (identifier: LogicalIdentifier) => {
     dialog.confirm(t('{0} 식별자를 삭제하시겠습니까?', identifier.identifierName), async () => {
-      await api(`/api/logical/identifier/${identifier.id}`, { method: 'DELETE' });
-      await refresh();
+      await deleteIdentifierGuarded(dialog, identifier.entityId, identifier, refresh);
     });
   };
 
@@ -743,7 +788,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
                 onDeleteEntity: () => removeEntity(selected),
                 onAddAttribute: () => openAttributeForm(selected),
                 onEditAttribute: (attribute) => openAttributeForm(selected, attribute),
-                onDeleteAttribute: removeAttribute,
+                onDeleteAttribute: (attribute) => removeAttribute(selected, attribute),
                 onMoveAttribute: (index, delta) => void moveAttribute(selected, index, delta),
               } : undefined}
               onManage={onManage ? () => onManage(selected.id) : undefined}

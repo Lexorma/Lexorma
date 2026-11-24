@@ -84,13 +84,16 @@ public class StandardDomainService {
 
         Long projectId = accountDto.getProjectId();
 
-        standardDomains.forEach(standardDomain -> {
-            StandardDomain domain = standardDomainRepository.findByIdAndProjectId(standardDomain.getId(), projectId);
-            if(domain != null){
-                // 승인/미승인 상태로 변경한다.
-                domain.setIsApproval(isApprovalAvailable);
-            }
-        });
+        // 행을 잠그고(ID 순) 다시 읽은 뒤 승인 여부만 바꾼다 (M8-C1 D-01) : 잠그지 않으면 그 사이 커밋된 수정(타입·길이 등)을 행 전체 UPDATE 로 되돌린다.
+        // 승인자가 본 내용 그대로일 때만 바꾼다 (M8-D02, 표준 용어 승인과 같다) — 하나라도 다르면 409 로 전체를 되돌린다 (한 트랜잭션). 이미 그 상태면 바꾸는 것이 없다
+        bases(standardDomains, StandardDomainDto::getId, StandardDomainDto::getModifiedAt).forEach((id, base) ->
+                standardDomainRepository.findForUpdate(id, projectId).ifPresent(domain -> {
+                    if (Boolean.TRUE.equals(domain.getIsApproval()) == isApprovalAvailable) return;
+                    verifyBase(domain, base, domain.getCommonStandardDomainName(), isApprovalAvailable
+                            ? "화면을 연 뒤 표준 도메인 {0} 이(가) 변경되어 승인하지 않았습니다. 최신 정보를 확인한 후 다시 승인해 주세요."
+                            : "화면을 연 뒤 표준 도메인 {0} 이(가) 변경되어 승인을 취소하지 않았습니다. 최신 정보를 확인한 후 다시 승인 취소해 주세요.");
+                    domain.setIsApproval(isApprovalAvailable);
+                }));
     }
 
     @Transactional
@@ -246,10 +249,19 @@ public class StandardDomainService {
     @Transactional
     public void updateStandardDomain(StandardDomainDto standardDomainDto) {
         // 수정 화면·API 는 도메인명을 바꾸지 않는다 (이름 충돌이 생길 수 없다) — 이름은 등록 때만 정해진다
-        StandardDomain standardDomain = standardDomainRepository.findByIdAndProjectId(standardDomainDto.getId(), standardDomainDto.getProjectId());
+        // 행을 잠그고 다시 읽는다 (M8-C1 D-01) : 같은 도메인의 수정·승인과 겹치면 그쪽이 끝난 뒤의 상태로 판단한다
+        StandardDomain standardDomain = standardDomainDto.getId() == null ? null
+                : standardDomainRepository.findForUpdate(standardDomainDto.getId(), standardDomainDto.getProjectId()).orElse(null);
         if (standardDomain == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_DOMAIN_DATA);
         }
+        // 승인된 도메인은 고칠 수 없다 (M8-D03) — 승인 취소 → 수정 → 재승인. 표준 용어·테이블·컬럼·논리 모델과 같은 오류
+        if (Boolean.TRUE.equals(standardDomain.getIsApproval())) {
+            throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        }
+        // 화면을 연 뒤 다른 사용자가 고쳤으면 409 (DEC-08 — 잠근 행의 MDFCN_DT 와 비교). HTTP 요청은 기준값이 필수다 (컨트롤러)
+        verifyBase(standardDomain, standardDomainDto.getModifiedAt(), standardDomain.getCommonStandardDomainName(),
+                "화면을 연 뒤 다른 사용자가 표준 도메인 {0} 을(를) 먼저 변경해 저장하지 않았습니다. 입력한 내용은 그대로 두었습니다. 최신 정보를 확인한 후 다시 수정해 주세요. 창을 닫고 다시 불러오면 입력한 내용은 사라지니 필요하면 먼저 복사해 두세요.");
 
         standardDomain.setRevisionNumber(standardDomainDto.getRevisionNumber());
         standardDomain.setCommonStandardDomainDescription(standardDomainDto.getCommonStandardDomainDescription());
@@ -257,5 +269,21 @@ public class StandardDomainService {
         standardDomain.setDataLength(standardDomainDto.getDataLength());
         standardDomain.setDataDecimalLength(standardDomainDto.getDataDecimalLength());
         standardDomain.setUnit(standardDomainDto.getUnit());
+    }
+
+    /** 잠근 행의 기준값 비교 (DEC-08 ModelBase) — 다르면 409, 상황 문구로 (표준 용어 verifyBase 와 같다) */
+    private static void verifyBase(com.lexorma.common.jpa.BaseEntity locked, java.time.LocalDateTime base, String name, String message) {
+        try {
+            com.lexorma.common.jpa.ModelBase.verify(locked, base, name);
+        } catch (CustomException conflict) {
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, message, name);
+        }
+    }
+
+    /** 승인·승인 취소할 행 : ID 별 화면 기준값 (같은 ID 가 여러 번이면 처음 것) */
+    private static <T> java.util.Map<Long, java.time.LocalDateTime> bases(List<T> rows, java.util.function.Function<T, Long> id, java.util.function.Function<T, java.time.LocalDateTime> base) {
+        java.util.Map<Long, java.time.LocalDateTime> out = new java.util.TreeMap<>();
+        if (rows != null) rows.stream().filter(r -> id.apply(r) != null).forEach(r -> out.putIfAbsent(id.apply(r), base.apply(r)));
+        return out;
     }
 }

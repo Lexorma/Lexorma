@@ -225,25 +225,46 @@ class ColumnManageServiceImplTest {
         assertThat(term.getColumnInfos()).isEmpty();
     }
 
+    /** 정렬 순서 저장은 테이블 행을 잠근 뒤 그 테이블의 컬럼 전체를 다시 읽어 비교한다 (M8-C1 P-01) */
+    private ColumnInfo sortTarget(boolean approved) {
+        TableInfo table = table();
+        ColumnInfo column = column(1L, approved);
+        column.setTableInfo(table);
+        when(columnInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(column);
+        when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.of(table));
+        when(columnInfoRepository.findAllByTableInfo_IdIn(List.of(10L))).thenReturn(List.of(column));
+        return column;
+    }
+
     @Test
     @DisplayName("승인된 컬럼은 정렬순서를 바꿀 수 없다")
     void sortOrderApproved() {
-        when(columnInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(column(1L, true));
+        sortTarget(true);
 
         assertThatThrownBy(() -> service.updateSortOrder(AccountDto.builder().projectId(1L).build(),
-                List.of(ColumnInfoDto.builder().id(1L).sortOrder(5).build())))
+                List.of(ColumnInfoDto.builder().id(1L).sortOrder(5).baseSortOrder(1).build())))
                 .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
     }
 
     @Test
-    @DisplayName("미승인 컬럼의 정렬순서를 변경한다")
+    @DisplayName("미승인 컬럼의 정렬순서를 변경한다 (팝업이 본 순서 = 지금 순서)")
     void sortOrder() {
-        ColumnInfo column = column(1L, false);
-        when(columnInfoRepository.findByIdAndProjectId(1L, 1L)).thenReturn(column);
+        ColumnInfo column = sortTarget(false);
 
-        service.updateSortOrder(AccountDto.builder().projectId(1L).build(), List.of(ColumnInfoDto.builder().id(1L).sortOrder(5).build()));
+        service.updateSortOrder(AccountDto.builder().projectId(1L).build(), List.of(ColumnInfoDto.builder().id(1L).sortOrder(5).baseSortOrder(1).build()));
 
         assertThat(column.getSortOrder()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("팝업이 본 순서와 지금 순서가 다르면 409, 순서를 바꾸지 않는다 (M8-C1)")
+    void sortOrderStale() {
+        ColumnInfo column = sortTarget(false);
+
+        assertThatThrownBy(() -> service.updateSortOrder(AccountDto.builder().projectId(1L).build(),
+                List.of(ColumnInfoDto.builder().id(1L).sortOrder(5).baseSortOrder(3).build())))
+                .extracting("errorCode").isEqualTo(ErrorCode.MODEL_CONFLICT);
+        assertThat(column.getSortOrder()).isEqualTo(1);
     }
 
     @Test

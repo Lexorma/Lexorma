@@ -54,6 +54,8 @@ class PhysicalErdEditIntegrationTest {
     private static final ErdDto.Viewport VIEWPORT = new ErdDto.Viewport(0, 0, 1);
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -124,11 +126,11 @@ class PhysicalErdEditIntegrationTest {
         assertThat(ddl(admin, order)).isEqualTo(ddl);
 
         // 승인된 관계는 삭제할 수 없다 → 승인취소 후 삭제 → ERD·물리 모델·DDL 에서 사라지고 테이블·컬럼은 그대로
-        assertThatThrownBy(() -> physical.delete(admin, "relation", second.id()))
+        assertThatThrownBy(() -> physical.delete(admin, "relation", second.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, second.id())))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED));
         assertThat(erd(admin).relations()).hasSize(3);
-        physical.updateApproval(admin, "relation", second.id(), false);
-        physical.delete(admin, "relation", second.id());
+        physical.updateApproval(admin, "relation", second.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, second.id()));
+        physical.delete(admin, "relation", second.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, second.id()));
         ErdDto.Graph after = erd(admin);
         assertThat(after.relations()).extracting(Relation::id).containsExactlyInAnyOrder(composite.id(), self.id());
         assertThat(after.columns()).hasSize(graph.columns().size());
@@ -156,7 +158,7 @@ class PhysicalErdEditIntegrationTest {
         tx.executeWithoutResult(s -> physicalModelSync(projectId, child));
 
         Relation derived = erd(admin).relations().stream().filter(r -> "REF_COLUMN".equals(r.relationSource())).findFirst().orElseThrow();
-        assertThatThrownBy(() -> physical.delete(admin, "relation", derived.id())).as("참조 테이블명 관계는 컬럼에서 관리").isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physical.delete(admin, "relation", derived.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, derived.id()))).as("참조 테이블명 관계는 컬럼에서 관리").isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> physical.saveRelation(admin, relation(null, "FK", child, parent, pair(ref, parentId))))
                 .as("참조 테이블명이 있는 컬럼은 사용자 관계로 등록할 수 없다").isInstanceOf(CustomException.class);
         assertThat(erd(admin).relations()).hasSize(1);
@@ -173,8 +175,8 @@ class PhysicalErdEditIntegrationTest {
         String ddl = ddl(admin, child);
         assertThat(ddl).contains(index.indexName()).contains(unique.constraintName()).contains("CONSTRAINT CK_CHILD_TYPE CHECK (TYPE_CD <> '')");
 
-        physical.updateApproval(admin, "index", index.id(), false);
-        physical.delete(admin, "index", index.id());
+        physical.updateApproval(admin, "index", index.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, index.id()));
+        physical.delete(admin, "index", index.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, index.id()));
         assertThat(physical.selectTableModel(admin, child.getId()).getBody().indexes()).isEmpty();
         assertThat(ddl(admin, child)).doesNotContain(index.indexName()).contains(unique.constraintName());
     }
@@ -242,7 +244,7 @@ class PhysicalErdEditIntegrationTest {
         assertThat(erd(viewer).relations()).hasSize(1);
         assertThat(physical.selectTableModel(viewer, b.getId()).getBody().outgoingRelations()).hasSize(1);
         assertThatThrownBy(() -> physical.saveRelation(viewer, relation(null, "FK", b, a, pair(bRef2, aId)))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> physical.delete(viewer, "relation", adminFk.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> physical.delete(viewer, "relation", adminFk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, adminFk.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> physical.saveIndex(viewer, new PhysicalModelDto.Index(null, b.getId(), null, null, false, List.of(ref(bRef2)), null))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> tables.deleteTable(viewer, List.of(dto(a)))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> tables.saveTable(TableInfoDto.builder().tableKorName("뷰어").build(), viewer)).isInstanceOf(AccessDeniedException.class);
@@ -250,13 +252,13 @@ class PhysicalErdEditIntegrationTest {
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "941", "ROLE_USER");
         Relation userFk = physical.saveRelation(user, relation(null, "FK", b, a, pair(bRef2, aId))).getBody();
         assertThat(userFk.isApproval()).as("승인 권한이 없으면 승인 대기").isFalse();
-        assertThatThrownBy(() -> physical.updateApproval(user, "relation", userFk.id(), true))
+        assertThatThrownBy(() -> physical.updateApproval(user, "relation", userFk.id(), true, currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, userFk.id())))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.APPROVAL_PERMISSION_DENIED));
-        assertThatThrownBy(() -> physical.delete(user, "relation", adminFk.id())).as("승인된 관계").isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physical.delete(user, "relation", adminFk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, adminFk.id()))).as("승인된 관계").isInstanceOf(CustomException.class);
         // 승인 대기 FK 도 물리 모델이므로 ERD·DDL 에 나온다 (DDL 은 승인 여부로 거르지 않는다)
         assertThat(erd(user).relations()).hasSize(2);
         assertThat(ddl(user, b)).contains(userFk.relationName());
-        physical.delete(user, "relation", userFk.id());
+        physical.delete(user, "relation", userFk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, userFk.id()));
         assertThat(erd(user).relations()).extracting(Relation::id).containsExactly(adminFk.id());
 
         AccountDto other = loginAsAdmin("m8-3-auth-other");
@@ -264,7 +266,7 @@ class PhysicalErdEditIntegrationTest {
         ColumnInfo xRef = column(other.getProjectId(), x, "A_ID", false, null);
         assertThat(erd(other).tables()).extracting(ErdDto.Table::tableName).containsExactly("TB_X");
         assertThatThrownBy(() -> physical.saveRelation(other, relation(null, "FK", x, a, pair(xRef, aId)))).isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> physical.delete(other, "relation", adminFk.id())).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> physical.delete(other, "relation", adminFk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, adminFk.id()))).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> physical.selectTableModel(other, a.getId())).isInstanceOf(CustomException.class);
         assertThatThrownBy(() -> erd.saveLayout(other, new ErdDto.Layout(null, Map.of(a.getId(), new ErdDto.Point(1, 1)), VIEWPORT))).isInstanceOf(CustomException.class);
 
@@ -299,8 +301,9 @@ class PhysicalErdEditIntegrationTest {
         return new PhysicalModelDto.ColumnRef(column.getId(), null);
     }
 
-    private static TableInfoDto dto(TableInfo table) {
-        return TableInfoDto.builder().id(table.getId()).build();
+    /** M8-C2 : 삭제 요청 행은 지금 수정 일시와 삭제 확인 구성을 싣는다 */
+    private TableInfoDto dto(TableInfo table) {
+        return currentBase.table(table.getId());
     }
 
     private AccountDto loginAsAdmin(String projectName) {

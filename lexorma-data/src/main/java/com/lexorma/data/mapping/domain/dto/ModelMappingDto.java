@@ -8,12 +8,21 @@ public final class ModelMappingDto {
     private ModelMappingDto() {
     }
 
-    /** 엔터티 ↔ 테이블 매핑 저장. 변경(id 있음)은 tableId 만 바꾼다 (entityId 는 무시) */
-    public record EntityMapping(Long id, Long entityId, Long tableId) {
+    /**
+     * 엔터티 ↔ 테이블 매핑 저장. 변경(id 있음)은 tableId 만 바꾼다 (entityId 는 무시).
+     * modifiedAt (M8-C2) : 변경 요청은 화면이 읽은 매핑의 수정 일시(목록의 mappingModifiedAt) — 다르면 409. 응답은 저장 뒤 값
+     */
+    public record EntityMapping(Long id, Long entityId, Long tableId, java.time.LocalDateTime modifiedAt) {
+        public EntityMapping(Long id, Long entityId, Long tableId) {
+            this(id, entityId, tableId, null);
+        }
     }
 
-    /** 속성 ↔ 컬럼 매핑 저장. mappingId = 부모(엔터티 ↔ 테이블 매핑). 변경(id 있음)은 columnId 만 바꾼다 */
-    public record AttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+    /** 속성 ↔ 컬럼 매핑 저장. mappingId = 부모(엔터티 ↔ 테이블 매핑). 변경(id 있음)은 columnId 만 바꾼다. modifiedAt : 변경 요청의 기준값 (M8-C2 — 상세 속성 행의 modifiedAt) */
+    public record AttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId, java.time.LocalDateTime modifiedAt) {
+        public AttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+            this(id, mappingId, attributeId, columnId, null);
+        }
     }
 
     /**
@@ -22,36 +31,45 @@ public final class ModelMappingDto {
      */
     public record EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
                             Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
-                            Long attributeCount, Long mappedAttributeCount, Inheritance inheritance, Physical physical) {
+                            Long attributeCount, Long mappedAttributeCount, Inheritance inheritance, Physical physical, java.time.LocalDateTime mappingModifiedAt) {
         public EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
                          Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
                          Long attributeCount, Long mappedAttributeCount, Inheritance inheritance) {
             this(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    attributeCount, mappedAttributeCount, inheritance, null);
+                    attributeCount, mappedAttributeCount, inheritance, null, null);
         }
 
-        /** 조회 투영 (상속 요약은 목록 서비스가 페이지 단위로 채운다 — M-7 4차) */
         public EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
                          Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
                          Long attributeCount, Long mappedAttributeCount) {
             this(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    attributeCount, mappedAttributeCount, null);
+                    attributeCount, mappedAttributeCount, null, null, null);
+        }
+
+        /**
+         * 조회 투영 (상속 요약은 목록 서비스가 페이지 단위로 채운다 — M-7 4차). mappingModifiedAt : 매핑 행의 수정 일시 (M8-C2 — 매핑 변경·해제의 기준값, 미매핑이면 null)
+         */
+        public EntityRow(Long mappingId, Long modelId, String modelName, Long entityId, String entityName, Boolean entityApproval,
+                         Long schemaId, String schemaName, Long tableId, String tableName, Boolean tableApproval,
+                         Long attributeCount, Long mappedAttributeCount, java.time.LocalDateTime mappingModifiedAt) {
+            this(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
+                    attributeCount, mappedAttributeCount, null, null, mappingModifiedAt);
         }
 
         public EntityRow withInheritance(Inheritance value) {
             return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    attributeCount, mappedAttributeCount, value, physical);
+                    attributeCount, mappedAttributeCount, value, physical, mappingModifiedAt);
         }
 
         /** A형 루트 : 통합 테이블에 들어간 계층 전체의 직접 속성 수 (통합 속성 매핑이 루트 매핑 아래에 있으므로 분모도 같은 범위) */
         public EntityRow withAttributeCount(Long value) {
             return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    value, mappedAttributeCount, inheritance, physical);
+                    value, mappedAttributeCount, inheritance, physical, mappingModifiedAt);
         }
 
         public EntityRow withPhysical(Physical value) {
             return new EntityRow(mappingId, modelId, modelName, entityId, entityName, entityApproval, schemaId, schemaName, tableId, tableName, tableApproval,
-                    attributeCount, mappedAttributeCount, inheritance, value);
+                    attributeCount, mappedAttributeCount, inheritance, value, mappingModifiedAt);
         }
     }
 
@@ -67,14 +85,19 @@ public final class ModelMappingDto {
     }
 
     /** C형 상속 일반 속성 매핑 저장. mappingId = 말단 엔터티 매핑, attributeId = 조상 일반 속성(원본). 변경(id 있음)은 columnId 만 바꾼다 */
-    public record SubtypeAttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+    /** modifiedAt : 변경 요청의 기준값 (M8-C2 — 상세 행의 modifiedAt) */
+    public record SubtypeAttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId, java.time.LocalDateTime modifiedAt) {
+        public SubtypeAttributeMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+            this(id, mappingId, attributeId, columnId, null);
+        }
     }
 
     /**
      * C형 상속 일반 속성 매핑 1행 (조상 일반 속성마다 — 루트 → 직계 부모 순서, 그 뒤 지금 조상 속성이 아닌 기존 매핑(current false)). check : OK · UNMAPPED · OTHER_TABLE · STALE
      */
     public record SubtypeAttributeRow(Long id, boolean current, Long attributeId, String attributeName, Long ownerEntityId, String ownerEntityName, Long columnId, String columnName,
-                                      String dataType, Integer maxLength, String attributeTermName, String attributeDataType, Boolean required, Boolean notNull, String check) {
+                                      String dataType, Integer maxLength, String attributeTermName, String attributeDataType, Boolean required, Boolean notNull, String check,
+                                      java.time.LocalDateTime modifiedAt) {
     }
 
     /** C형 말단 매핑의 상속 일반 속성 매핑 상세. concrete false 면 지금 C형 계층의 말단이 아니다 (기존 매핑은 해제만) */
@@ -90,7 +113,9 @@ public final class ModelMappingDto {
      * 상속 계층 하나의 변환 기록 (D-AC-18). kind : SINGLE_TABLE · TABLE_PER_CONCRETE · INCONSISTENT. dependencies : 기록 삭제를 막는 매핑 (엔터티 매핑·속성 매핑·상속 PK·상속 일반 속성 —
      * 먼저 해제한다), deletable : dependencies 가 없다
      */
-    public record ConversionTree(Long rootEntityId, String rootEntityName, String kind, List<Conversion> conversions, List<String> dependencies, boolean deletable) {
+    /** composition (M8-C2) : 이 계층 변환 기록(행 ID·수정 일시)의 구성 기준값 — 기록 삭제 요청이 돌려준다 (그 사이 기록이 바뀌었으면 409) */
+    public record ConversionTree(Long rootEntityId, String rootEntityName, String kind, List<Conversion> conversions, List<String> dependencies, boolean deletable,
+                                 String composition) {
     }
 
     /**
@@ -116,10 +141,17 @@ public final class ModelMappingDto {
 
     /** 매핑된 엔터티의 속성 1행. 매핑하지 않은 속성은 mappingId·column 이 null 이다. 표준 용어는 비교용 조회 값이다 */
     public record AttributeRow(Long mappingId, Long attributeId, String attributeName, Long attributeTermId, String attributeTermName,
-                               Long columnId, String columnName, Long columnTermId, String columnTermName, Long ownerEntityId, String ownerEntityName) {
+                               Long columnId, String columnName, Long columnTermId, String columnTermName, Long ownerEntityId, String ownerEntityName,
+                               java.time.LocalDateTime modifiedAt) {
         public AttributeRow(Long mappingId, Long attributeId, String attributeName, Long attributeTermId, String attributeTermName,
                             Long columnId, String columnName, Long columnTermId, String columnTermName) {
-            this(mappingId, attributeId, attributeName, attributeTermId, attributeTermName, columnId, columnName, columnTermId, columnTermName, null, null);
+            this(mappingId, attributeId, attributeName, attributeTermId, attributeTermName, columnId, columnName, columnTermId, columnTermName, null, null, null);
+        }
+
+        /** 조회 투영 : modifiedAt = 속성 매핑 행의 수정 일시 (M8-C2 — 매핑 변경·해제의 기준값, 미매핑이면 null) */
+        public AttributeRow(Long mappingId, Long attributeId, String attributeName, Long attributeTermId, String attributeTermName,
+                            Long columnId, String columnName, Long columnTermId, String columnTermName, Long ownerEntityId, String ownerEntityName) {
+            this(mappingId, attributeId, attributeName, attributeTermId, attributeTermName, columnId, columnName, columnTermId, columnTermName, ownerEntityId, ownerEntityName, null);
         }
     }
 
@@ -165,7 +197,11 @@ public final class ModelMappingDto {
     // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차, docs/completed/subtype-physical-transformation.md 30장)
 
     /** 상속 PK 매핑 저장. mappingId = 서브타입의 엔터티 ↔ 테이블 매핑, attributeId = 루트 주 식별자 속성(원본). 변경(id 있음)은 columnId 만 바꾼다 */
-    public record SubtypeKeyMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+    /** modifiedAt : 변경 요청의 기준값 (M8-C2 — 상세 행의 modifiedAt) */
+    public record SubtypeKeyMapping(Long id, Long mappingId, Long attributeId, Long columnId, java.time.LocalDateTime modifiedAt) {
+        public SubtypeKeyMapping(Long id, Long mappingId, Long attributeId, Long columnId) {
+            this(id, mappingId, attributeId, columnId, null);
+        }
     }
 
     /** 상속 PK 매핑 후보 컬럼 : 매핑된 테이블의 컬럼 중 속성 매핑·다른 상속 PK 매핑에 쓰이지 않은 것 (PK·타입은 보여만 준다) */
@@ -183,7 +219,8 @@ public final class ModelMappingDto {
      */
     public record SubtypeKeyRow(Long id, int order, boolean current, Long attributeId, String attributeName, Long attributeEntityId, String attributeEntityName,
                                 Long columnId, String columnName, String dataType, Integer maxLength, java.math.BigDecimal precision, Integer scale, Boolean isPk,
-                                String attributeTermName, String attributeDataType, Boolean notNull, String parentColumnName, String check) {
+                                String attributeTermName, String attributeDataType, Boolean notNull, String parentColumnName, String check,
+                                java.time.LocalDateTime modifiedAt) {
     }
 
     /**

@@ -82,7 +82,7 @@ class ViewNamePolicyIntegrationTest {
         assertInvalid(() -> viewService.create(admin, new ViewDto.Save(b.id(), "VW_USER", null, null, "SELECT 1", List.of(), List.of())), ErrorCode.SAVED_DATA_EXISTS);
         assertInvalid(() -> viewService.create(admin, new ViewDto.Save(a.id(), "TB_USER", null, null, "SELECT 1", List.of(), List.of())), ErrorCode.SAVED_DATA_EXISTS);
         // 스키마를 옮기는 수정 : 옮길 스키마에 같은 이름이 있으면 안 되고, 없으면 된다 (자기 이름은 그대로 둘 수 있다)
-        viewService.updateApproval(admin, vwUserB.id(), false);
+        viewService.updateApproval(admin, vwUserB.id(), false, null);
         assertInvalid(() -> viewService.update(admin, vwUserB.id(), new ViewDto.Save(a.id(), "VW_USER", null, null, "SELECT 1", List.of(), List.of())), ErrorCode.SAVED_DATA_EXISTS);
         viewService.update(admin, vwUserB.id(), new ViewDto.Save(null, "VW_USER", null, null, "SELECT 1", List.of(), List.of()));
         assertThat(jdbc.queryForObject("select SCHM_SN from TB_VIEW where VIEW_SN = ?", Long.class, vwUserB.id())).isEqualTo(schemaService.resolveSchema(projectId, null).getId());
@@ -184,7 +184,7 @@ class ViewNamePolicyIntegrationTest {
         long projectId = admin.getProjectId();
         String adminId = admin.getId();
         Long target = viewService.create(admin, save("VW_TARGET", "SELECT 1")).id();
-        viewService.updateApproval(admin, target, false); // 미승인이라 지울 수 있다
+        viewService.updateApproval(admin, target, false, null); // 미승인이라 지울 수 있다
         Long a = viewService.create(admin, save("VW_A", "SELECT 1")).id();
         Long request = viewService.update(member(projectId), a, new ViewDto.Save(null, "VW_A", null, null, "SELECT * FROM VW_TARGET", List.of(),
                 List.of(new ViewDto.Reference("VIEW", null, target, null, null)))).request().id();
@@ -192,7 +192,7 @@ class ViewNamePolicyIntegrationTest {
         List<String> results = race(List.of(
                 () -> viewService.processRequest(login(projectId, adminId), request, true),
                 () -> {
-                    viewService.delete(login(projectId, adminId), target);
+                    viewService.delete(login(projectId, adminId), target, null);
                     return null;
                 }));
         // 둘 중 하나만 성공 : 승인이 먼저면 삭제가 참조 때문에 거절, 삭제가 먼저면 승인이 대상 없음으로 거절 (요청은 그대로)
@@ -203,7 +203,7 @@ class ViewNamePolicyIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from TB_VIEW_RFRNC r where r.RFRNC_VIEW_SN is not null and not exists (select 1 from TB_VIEW v where v.VIEW_SN = r.RFRNC_VIEW_SN)", Integer.class)).isZero();
         // 승인된 VIEW 는 승인과 겹쳐도 지울 수 없다
         login(projectId, adminId);
-        assertInvalid(() -> viewService.delete(admin, a), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        assertInvalid(() -> viewService.delete(admin, a, null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
     }
 
     // ------------------------------------------------------------------ 보조

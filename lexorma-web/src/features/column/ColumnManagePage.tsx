@@ -9,6 +9,7 @@ import { DownloadIcon, UploadIcon } from '@primer/octicons-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, download, enc } from '../../lib/api';
+import { approveColumns, deleteColumns } from '../table/physicalConflicts';
 import { isBlank } from '../../lib/format';
 import { ColumnForm } from './ColumnForm';
 import { ColumnOrder } from './ColumnOrder';
@@ -78,10 +79,12 @@ export function ColumnManagePage() {
         dialog.alert(isApproval ? t('승인 필요한 정보가 선택되지 않았습니다.') : t('승인취소 필요한 정보가 선택되지 않았습니다.'));
         return;
       }
-      const response = await api<{ result: boolean }>(`/api/saveColumn/approval/${isApproval}`, { method: 'PATCH', body: checked });
-      if (!response.result) return;
-      reload();
-      toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      const done = () => toast.success(isApproval ? t('정상적으로 승인처리 되었습니다.') : t('정상적으로 승인취소처리 되었습니다.'));
+      // 409 (M8-C3) : 바뀐 컬럼만 보여 주고 최신 내용으로 다시 승인할지 묻는다
+      if (await approveColumns(dialog, checked, isApproval, reload, done)) {
+        reload();
+        done();
+      }
     });
   };
 
@@ -93,10 +96,11 @@ export function ColumnManagePage() {
       return;
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
-      const response = await api<{ result: boolean }>('/api/deleteColumn', { method: 'DELETE', body: checked });
-      if (!response.result) return;
-      reload();
-      toast.success(t('정상적으로 삭제되었습니다.'));
+      const done = () => toast.success(t('정상적으로 삭제되었습니다.'));
+      if (await deleteColumns(dialog, checked, reload, done)) {
+        reload();
+        done();
+      }
     });
   };
 

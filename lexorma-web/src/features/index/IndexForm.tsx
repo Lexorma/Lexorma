@@ -5,6 +5,7 @@ import { Label } from '../../components/grid/cells';
 import type { Row } from '../../components/grid/Grid';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
+import { useConflictRecovery } from '../../components/conflict/ConflictRecovery';
 import { t } from '../../lib/i18n';
 import { useSchemas } from '../schema/schemas';
 import { definitionMembers, useIndexTypes, type IndexDetail, type IndexSaveResult } from './model';
@@ -67,6 +68,30 @@ export function IndexForm({ detail, initialTableId, onSaved, onCancel }: {
   const [includes, setIncludes] = useState<number[]>(editing?.includeColumns?.map((c) => c.columnId) ?? []);
   const [condition, setCondition] = useState(editing?.condition ?? '');
   const [saving, setSaving] = useState(false);
+  type Values = { name: string; type: string; unique: boolean; keys: KeyRow[]; includes: number[]; condition: string };
+  const valuesOf = (d?: IndexDetail): Values => ({
+    name: d?.index.indexName ?? '', type: d?.index.indexType ?? '', unique: !!d?.index.isUnique,
+    keys: d ? definitionMembers(d.index).map((m) => ({ columnId: m.columnId, expression: m.expression ?? '', direction: m.direction === 'DESC' ? 'DESC' : 'ASC', nulls: m.nulls ?? '' })) : [],
+    includes: d?.index.includeColumns?.map((c) => c.columnId) ?? [], condition: d?.index.condition ?? '',
+  });
+  const memberText = (k: KeyRow) => `${k.columnId != null ? `#${k.columnId}` : k.expression}${k.direction === 'DESC' ? ' DESC' : ''}`;
+  // 409 복구 (M8-C3, 수정만) : 인덱스 상세의 최신 정의와 비교 (구성은 요약 비교 — 다시 적용하면 고른 항목만 내 값)
+  const recovery = useConflictRecovery<Values>({
+    initial: valuesOf(detail),
+    base: detail?.updated,
+    fields: [
+      { key: 'name', label: t('인덱스명'), get: (v) => v.name },
+      { key: 'type', label: t('인덱스 유형'), get: (v) => v.type },
+      { key: 'unique', label: 'UNIQUE', get: (v) => v.unique, show: (v) => (v.unique ? 'Y' : 'N') },
+      { key: 'keys', label: t('검색 키'), get: (v) => v.keys, show: (v) => v.keys.map(memberText).join(', ') },
+      { key: 'includes', label: 'INCLUDE', get: (v) => v.includes, show: (v) => v.includes.map((id) => `#${id}`).join(', ') },
+      { key: 'condition', label: t('조건 (WHERE)'), get: (v) => v.condition },
+    ],
+    load: async () => {
+      const latest = await api<IndexDetail>(`/api/physical/index/${enc(editing?.id)}`, { silent: true });
+      return { values: valuesOf(latest), base: latest.updated ?? null };
+    },
+  });
 
   // 테이블 검색 : 입력이 멈춘 뒤 한 번 조회한다. 응답 순서와 관계없이 마지막 검색어의 결과만 쓴다 (조회 키 = 검색어)
   useEffect(() => {
@@ -139,12 +164,19 @@ export function IndexForm({ detail, initialTableId, onSaved, onCancel }: {
         includeColumns: includes.map((columnId) => ({ columnId })),
         condition: condition.trim() || null,
         // 수정 : 화면이 읽은 수정 일시 (DEC-08, 다르면 409)
-        modifiedAt: detail?.updated ?? null,
+        modifiedAt: recovery.base,
       };
       setSaving(true);
       try {
         if (editing) {
-          onSaved(await api<IndexSaveResult>(`/api/physical/index/${enc(editing.id)}`, { method: 'PUT', body }));
+          let result: IndexSaveResult;
+          try {
+            result = await api<IndexSaveResult>(`/api/physical/index/${enc(editing.id)}`, { method: 'PUT', body, conflict: 'handled' });
+          } catch (error) {
+            if (recovery.catchConflict(error, { name, type, unique, keys, includes, condition })) return;
+            throw error;
+          }
+          onSaved(result);
         } else {
           await api('/api/physical/index', { method: 'POST', body });
           onSaved(null);
@@ -157,6 +189,14 @@ export function IndexForm({ detail, initialTableId, onSaved, onCancel }: {
 
   return (
     <form className="edit-form index-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('type')) setType(latest.type);
+        if (!picks.has('unique')) setUnique(latest.unique);
+        if (!picks.has('keys')) setKeys(latest.keys);
+        if (!picks.has('includes')) setIncludes(latest.includes);
+        if (!picks.has('condition')) setCondition(latest.condition);
+      })}
       {editing && (
         <div className="dict-detail-status">
           <Label variant={approved ? 'success' : 'attention'} dot>{approved ? t('승인') : t('승인 대기')}</Label>
@@ -314,7 +354,7 @@ export function IndexForm({ detail, initialTableId, onSaved, onCancel }: {
 
       <div className="gh-dialog-actions">
         <button type="button" className="btn" onClick={onCancel}>{t('닫기')}</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? t('저장 중…') : submitLabel}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving || recovery.blocked}>{saving ? t('저장 중…') : submitLabel}</button>
       </div>
     </form>
   );

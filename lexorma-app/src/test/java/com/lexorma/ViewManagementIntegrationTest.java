@@ -52,6 +52,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ViewManagementIntegrationTest {
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired SchemaService schemaService;
@@ -115,7 +117,7 @@ class ViewManagementIntegrationTest {
         assertThat(viewService.search(admin, PageRequest.of(0, 10), null, null, sales.id(), null).getContent()).extracting(ViewDto.Row::viewName).containsExactly("VW_SALES");
 
         // 스키마 삭제 : VIEW 가 있으면 막는다
-        assertInvalid(() -> schemaService.deleteSchema(admin, sales.id()), ErrorCode.RELATION_EXISTS);
+        assertInvalid(() -> schemaService.deleteSchema(admin, sales.id(), null), ErrorCode.RELATION_EXISTS);
     }
 
     @Test
@@ -168,7 +170,7 @@ class ViewManagementIntegrationTest {
                 ErrorCode.SAVED_DATA_EXISTS);
         assertInvalid(() -> viewService.update(admin, view.id(), save("TB_ORDER", null, "SELECT 1", List.of(), List.of())), ErrorCode.SAVED_DATA_EXISTS);
         // 자기 이름은 그대로 저장할 수 있다
-        viewService.updateApproval(admin, view.id(), false);
+        viewService.updateApproval(admin, view.id(), false, null);
         viewService.update(admin, view.id(), save("VW_ORDER", "주문", "SELECT 1", List.of(), List.of()));
         // 다른 프로젝트는 같은 이름을 쓸 수 있다
         AccountDto other = loginAsAdmin("m15-name-other");
@@ -212,7 +214,7 @@ class ViewManagementIntegrationTest {
         AccountDto admin = loginAsAdmin("m15-col");
         assertInvalid(() -> viewService.create(admin, save("VW_DUP", null, "SELECT 1", List.of(column("A", null, null), column("a", null, null)), List.of())), ErrorCode.SAVED_DATA_EXISTS);
         ViewDto.SaveResult view = viewService.create(admin, save("VW_COLS", null, "SELECT A, B, C FROM T", List.of(column("A", null, "INT"), column("B", null, null), column("C", null, null)), List.of()));
-        viewService.updateApproval(admin, view.id(), false);
+        viewService.updateApproval(admin, view.id(), false, null);
         viewService.update(admin, view.id(), save("VW_COLS", null, "SELECT A, B, C FROM T", List.of(column("C", "씨", null), column("A", null, "BIGINT")), List.of()));
         ViewDto.Definition after = viewService.detail(admin, view.id()).view();
         assertThat(after.columns()).extracting(ViewDto.Column::columnName).containsExactly("C", "A");
@@ -262,12 +264,12 @@ class ViewManagementIntegrationTest {
         // 삭제 : 참조된 테이블·VIEW 는 막는다 (자동으로 정리하지 않는다), 승인된 VIEW 도 막는다
         tableUnapproved(salesTable);
         assertInvalid(() -> tableDesignService.deleteTable(List.of(TableInfoDto.builder().id(salesTable.getId()).build()), admin), ErrorCode.RELATION_EXISTS);
-        viewService.updateApproval(admin, b.id(), false);
-        assertInvalid(() -> viewService.delete(admin, b.id()), ErrorCode.RELATION_EXISTS);
-        assertInvalid(() -> viewService.delete(admin, c.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
-        viewService.updateApproval(admin, c.id(), false);
-        viewService.delete(admin, c.id());
-        viewService.delete(admin, b.id());
+        viewService.updateApproval(admin, b.id(), false, null);
+        assertInvalid(() -> viewService.delete(admin, b.id(), null), ErrorCode.RELATION_EXISTS);
+        assertInvalid(() -> viewService.delete(admin, c.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        viewService.updateApproval(admin, c.id(), false, null);
+        viewService.delete(admin, c.id(), null);
+        viewService.delete(admin, b.id(), null);
         assertThat(jdbc.queryForObject("select count(*) from TB_VIEW_RFRNC where VIEW_SN in (?, ?)", Integer.class, b.id(), c.id())).isZero();
 
         // DDL 내보내기 : 참조되는 VIEW 먼저 (이름순이 아니라), 미확인 참조 경고
@@ -294,10 +296,10 @@ class ViewManagementIntegrationTest {
         ViewDto.SaveResult view = viewService.create(member, save("VW_USER", null, "SELECT USER_ID FROM TB_USER", List.of(column("USER_ID", null, null)), List.of(tableRef(user))));
         assertThat(viewService.detail(member, view.id()).isApproval()).isFalse();
         assertThat(viewService.update(member, view.id(), save("VW_USER", "사용자", "SELECT USER_ID FROM TB_USER", List.of(column("USER_ID", null, null)), List.of(tableRef(user)))).applied()).isTrue();
-        assertInvalid(() -> viewService.updateApproval(member, view.id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);
+        assertInvalid(() -> viewService.updateApproval(member, view.id(), true, null), ErrorCode.APPROVAL_PERMISSION_DENIED);
 
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        viewService.updateApproval(admin, view.id(), true);
+        viewService.updateApproval(admin, view.id(), true, null);
         String confirmedDdl = viewService.ddl(admin, view.id(), null).ddl();
 
         SecurityTestSupport.loginAs(projectRepository, projectId, "987654", "ROLE_USER");
@@ -311,10 +313,10 @@ class ViewManagementIntegrationTest {
         assertThat(viewService.ddl(member, view.id(), null).warnings()).anyMatch(w -> w.contains("변경 요청"));
         assertInvalid(() -> viewService.update(member, view.id(), requested), ErrorCode.INVALID_PHYSICAL_MODEL); // 대기 요청이 있다
         assertInvalid(() -> viewService.processRequest(member, result.request().id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);
-        assertInvalid(() -> viewService.delete(member, view.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        assertInvalid(() -> viewService.delete(member, view.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
 
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        assertInvalid(() -> viewService.updateApproval(admin, view.id(), false), ErrorCode.INVALID_PHYSICAL_MODEL); // 대기 요청이 있으면 승인 취소 불가
+        assertInvalid(() -> viewService.updateApproval(admin, view.id(), false, null), ErrorCode.INVALID_PHYSICAL_MODEL); // 대기 요청이 있으면 승인 취소 불가
         viewService.processRequest(admin, result.request().id(), true);
         ViewDto.Detail approved = viewService.detail(admin, view.id());
         assertThat(approved.isApproval()).isTrue();
@@ -389,7 +391,7 @@ class ViewManagementIntegrationTest {
         ViewDto.SaveResult view = viewService.create(admin, save("VW_H", null, "SELECT 1", List.of(column("A", null, null)), List.of(tableRef(user))));
         ModelVersionDto.Summary first = versionService.create(admin, new ModelVersionDto.Create("v-first", null));
         viewService.update(admin, view.id(), save("VW_H", null, "SELECT 2", List.of(column("A", null, null), column("B", null, null)), List.of()));
-        viewService.updateApproval(admin, view.id(), false);
+        viewService.updateApproval(admin, view.id(), false, null);
 
         List<String> actions = jdbc.queryForList("select CHG_TYPE_CD from TB_MDL_CHG_HSTRY where PRJ_SN = ? and TRGT_TYPE_CD = 'PHYSICAL_VIEW' and TRGT_SN = ? order by MDL_CHG_HSTRY_SN",
                 String.class, projectId, view.id());
@@ -434,9 +436,9 @@ class ViewManagementIntegrationTest {
         assertInvalid(() -> viewService.detail(stranger, view.id()), ErrorCode.INVALID_PHYSICAL_MODEL);
         assertInvalid(() -> viewService.ddl(stranger, view.id(), null), ErrorCode.INVALID_PHYSICAL_MODEL);
         assertInvalid(() -> viewService.update(stranger, view.id(), save("VW_ISO", null, "SELECT 3", List.of(), List.of())), ErrorCode.INVALID_PHYSICAL_MODEL);
-        assertInvalid(() -> viewService.updateApproval(stranger, view.id(), false), ErrorCode.INVALID_PHYSICAL_MODEL);
+        assertInvalid(() -> viewService.updateApproval(stranger, view.id(), false, null), ErrorCode.INVALID_PHYSICAL_MODEL);
         assertInvalid(() -> viewService.processRequest(stranger, requestId, true), ErrorCode.INVALID_PHYSICAL_MODEL);
-        assertInvalid(() -> viewService.delete(stranger, view.id()), ErrorCode.INVALID_PHYSICAL_MODEL);
+        assertInvalid(() -> viewService.delete(stranger, view.id(), null), ErrorCode.INVALID_PHYSICAL_MODEL);
         assertThat(viewService.search(stranger, PageRequest.of(0, 10), null, null, null, null).getContent()).isEmpty();
         assertThat(viewService.erdViews(stranger, null)).isEmpty();
 
@@ -444,7 +446,7 @@ class ViewManagementIntegrationTest {
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, projectId, "555555", "ROLE_VIEWER");
         assertThat(viewController.detail(viewer, view.id()).getBody().view().viewName()).isEqualTo("VW_ISO");
         assertThatThrownBy(() -> viewController.create(viewer, save("VW_V", null, "SELECT 1", List.of(), List.of()))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> viewController.delete(viewer, view.id())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> viewController.delete(viewer, view.id(), currentBase.of(com.lexorma.data.view.domain.entity.PhysicalView.class, view.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> viewController.processRequest(viewer, requestId, true)).isInstanceOf(AccessDeniedException.class);
 
         // ERD : 출력 컬럼·참조 객체를 담은 읽기 전용 노드

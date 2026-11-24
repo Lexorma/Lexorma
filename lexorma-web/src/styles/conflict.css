@@ -1,0 +1,104 @@
+/* 동시 편집 충돌 복구 (M8-C3) : 색은 primer 토큰만 써서 라이트·다크가 함께 바뀐다 */
+.conflict-notice {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--gh-attention);
+    border-radius: 6px;
+    background-color: var(--gh-attention-subtle);
+    color: var(--gh-fg);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.conflict-notice > p {
+    margin: 4px 0 0;
+}
+
+.conflict-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.conflict-error {
+    margin: 8px 0 0;
+    color: var(--gh-danger);
+    font-weight: 600;
+}
+
+.conflict-table-wrap {
+    max-width: 100%;
+    margin-top: 8px;
+    overflow-x: auto;
+}
+
+.conflict-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--gh-canvas);
+    font-size: 13px;
+}
+
+.conflict-table th,
+.conflict-table td {
+    padding: 6px 8px;
+    border: 1px solid var(--gh-border-muted);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.conflict-table thead th {
+    background-color: var(--gh-canvas-subtle);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.conflict-changed {
+    background-color: var(--gh-attention-subtle);
+}
+
+.conflict-mine {
+    background-color: var(--gh-accent-subtle);
+}
+
+.conflict-mark {
+    display: block;
+    margin-top: 2px;
+    color: var(--gh-attention);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.conflict-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.conflict-review .popup-button-container {
+    margin-top: 12px;
+}
+
+/* 좁은 화면 (375px) : 표는 가로로 넘기고 버튼은 줄바꿈 */
+@media (max-width: 480px) {
+    .conflict-table {
+        font-size: 12px;
+    }
+
+    .conflict-table th,
+    .conflict-table td {
+        padding: 4px 6px;
+    }
+}
+
+.conflict-pre {
+    max-height: 160px;
+    margin: 0;
+    overflow: auto;
+    font-family: var(--gh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+    white-space: pre-wrap;
+}

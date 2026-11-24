@@ -85,8 +85,8 @@ class IndexManagementIntegrationTest {
 
         // 직접 수정·삭제·승인 불가 (컬럼에서 바꾼다), 같은 구성의 사용자 인덱스도 거절
         assertInvalid(() -> physicalModelService.updateIndex(admin, index.getId(), request(t, "IX_X", null, false, dt)), ErrorCode.INVALID_PHYSICAL_MODEL);
-        assertInvalid(() -> physicalModelService.delete(admin, PhysicalModelService.Kind.INDEX, index.getId()), ErrorCode.INVALID_PHYSICAL_MODEL);
-        assertInvalid(() -> physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, index.getId(), true), ErrorCode.INVALID_PHYSICAL_MODEL);
+        assertInvalid(() -> physicalModelService.delete(admin, PhysicalModelService.Kind.INDEX, index.getId(), null), ErrorCode.INVALID_PHYSICAL_MODEL);
+        assertInvalid(() -> physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, index.getId(), true, null), ErrorCode.INVALID_PHYSICAL_MODEL);
         assertInvalid(() -> physicalModelService.saveIndex(admin, request(t, null, null, false, dt)), ErrorCode.INVALID_PHYSICAL_MODEL);
 
         // 컬럼 승인 → 인덱스도 승인, 인덱스 여부 해제 → 인덱스 삭제
@@ -180,10 +180,10 @@ class IndexManagementIntegrationTest {
         assertThat(ddl(admin, t)).as("승인 전에는 승인된 정의").contains("CREATE INDEX IX_REQ ON TB_REQ (A_CD);").doesNotContain("IX_REQ2");
 
         assertInvalid(() -> physicalModelService.updateIndex(user, approved.id(), request(t, "IX_REQ3", null, false, b)), ErrorCode.INVALID_PHYSICAL_MODEL);
-        assertInvalid(() -> physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, approved.id()), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        assertInvalid(() -> physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, approved.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         assertInvalid(() -> physicalModelService.processIndexChangeRequest(user, requested.request().id(), true), ErrorCode.APPROVAL_PERMISSION_DENIED);
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");
-        assertInvalid(() -> physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, approved.id(), false), ErrorCode.INVALID_PHYSICAL_MODEL);
+        assertInvalid(() -> physicalModelService.updateApproval(admin, PhysicalModelService.Kind.INDEX, approved.id(), false, null), ErrorCode.INVALID_PHYSICAL_MODEL);
 
         // 목록 : 승인 대기 표시
         PhysicalModelDto.IndexRow row = physicalModelService.selectIndexes(admin, PageRequest.of(0, 10), null, null, null, t.getId(), null, null).getContent().get(0);

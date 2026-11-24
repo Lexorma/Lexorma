@@ -56,6 +56,8 @@ import static org.assertj.core.api.Assertions.tuple;
 class SubtypeMappingUiIntegrationTest {
 
     @Autowired ApplicationContext context;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired PhysicalGenerationService generation;
     @Autowired LogicalSubtypeService subtypes;
     @Autowired LogicalModelService logical;
@@ -348,7 +350,7 @@ class SubtypeMappingUiIntegrationTest {
         generate(f, foreign);
         group(f, root, "루트 구분", true, false, foreign, other);
         long foreignColumn = column(f.table(foreign), "FRGN_NO");
-        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, foreignColumn));
+        mappings.deleteAttributeMapping(f.user, jdbc.queryForObject("select ATRB_COL_MPNG_SN from TB_ATRB_COL_MPNG where COL_SN = ?", Long.class, foreignColumn), null);
         mappings.saveSubtypeKeyMapping(f.user, new ModelMappingDto.SubtypeKeyMapping(null, mappingId(foreign), rootNo, foreignColumn));
         jdbc.update("update TB_COL set PK_YN = true, NULL_ALWNC_YN = false where COL_SN = ?", foreignColumn);
         expect(f, foreign, null, "ANCESTOR_INVALID", "NOT_COMPARABLE", d -> {
@@ -443,7 +445,7 @@ class SubtypeMappingUiIntegrationTest {
         assertThat(quality.selectSummary(f.user, f.modelId).inheritance()).isEqualTo(new ModelMappingQualityDto.InheritanceSummary(0, 0, 0, 0, 0, 2, 0, 0, 0, 0));
         // 해제하면 남지 않는다 (직접 속성 매핑은 그대로)
         int direct = f.count("select count(*) from TB_ATRB_COL_MPNG a join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = a.ENTT_TBL_MPNG_SN where m.LGCL_ENTT_SN = ?", company);
-        mappings.deleteSubtypeKeyMapping(f.user, detached.keys().getFirst().id());
+        mappings.deleteSubtypeKeyMapping(f.user, detached.keys().getFirst().id(), null);
         assertThat(rows(f).get(company).inheritance()).isNull();
         assertThat(f.count("select count(*) from TB_ATRB_COL_MPNG a join TB_ENTT_TBL_MPNG m on m.ENTT_TBL_MPNG_SN = a.ENTT_TBL_MPNG_SN where m.LGCL_ENTT_SN = ?", company)).isEqualTo(direct);
         // 일반 진단 회귀 : 직접 속성 진단 유형은 그대로
@@ -572,7 +574,7 @@ class SubtypeMappingUiIntegrationTest {
         assertThat(controller.selectEntityRows(viewer, 0, 10, null, null, null, f.modelId, null, null, null).getStatusCode().is2xxSuccessful()).isTrue();
         assertThatThrownBy(() -> controller.saveSubtypeKeyMapping(viewer, new ModelMappingDto.SubtypeKeyMapping(null, mapping, customerNo, null)))
                 .isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.deleteSubtypeKeyMapping(viewer, 1L)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.deleteSubtypeKeyMapping(viewer, 1L, currentBase.of(com.lexorma.data.mapping.domain.entity.SubtypeIdentifierColumnMapping.class, 1L))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.generatePreview(new PhysicalGenerationDto.Request(List.of(company), null, null), viewer)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.generate(new PhysicalGenerationDto.Request(List.of(company), null, "x"), viewer)).isInstanceOf(AccessDeniedException.class);
         for (String role : List.of("ROLE_USER", "ROLE_DBA", "ROLE_MANAGER", "ROLE_ADMIN")) {
@@ -585,7 +587,7 @@ class SubtypeMappingUiIntegrationTest {
         // 다른 프로젝트의 매핑 ID 를 직접 보내도 거절 (등록·해제·조회)
         GenerationFixture other = GenerationFixture.create(context, "ui-roles-other-" + System.nanoTime(), com.lexorma.core.project.domain.enums.DbType.POSTGRESQL);
         Long key = keys(f, company).keys().getFirst().id();
-        assertThatThrownBy(() -> mappings.deleteSubtypeKeyMapping(other.user, key))
+        assertThatThrownBy(() -> mappings.deleteSubtypeKeyMapping(other.user, key, null))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED));
         assertThatThrownBy(() -> mappings.saveSubtypeKeyMapping(other.user, new ModelMappingDto.SubtypeKeyMapping(key, null, null, column(f.table(company), "CUST_NO"))))
                 .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MODEL_MAPPING_IS_NOT_DEFINED));

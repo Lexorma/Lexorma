@@ -54,6 +54,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ModelIntegrityHardeningIntegrationTest {
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -275,8 +277,8 @@ class ModelIntegrityHardeningIntegrationTest {
         // 같은 정의를 새로 등록하는 것은 거절된다. 남아 있는 관계는 승인취소 후 삭제할 수 있다
         ColumnInfo ref2 = column(projectId, child, "PARENT_ID2", "BIGINT", false);
         invalid(() -> physical.saveRelation(admin, relation(null, "FK", child, parent, pair(ref2, parentId))), "TB_PARENT");
-        physical.updateApproval(admin, "relation", fk.id(), false);
-        physical.delete(admin, "relation", fk.id());
+        physical.updateApproval(admin, "relation", fk.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id()));
+        physical.delete(admin, "relation", fk.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableRelation.class, fk.id()));
         assertThat(physical.selectTableModel(admin, child.getId()).getBody().outgoingRelations()).isEmpty();
     }
 
@@ -392,8 +394,9 @@ class ModelIntegrityHardeningIntegrationTest {
         return TableInfoDto.builder().id(table.getId()).tableName(tableName).tableDescription(description).isMasterTable("N").schemaId(schemaId).baseModifiedAt(tableInfoRepository.findById(table.getId()).map(TableInfo::modifiedAt).orElse(null)).build();
     }
 
-    private static TableInfoDto dto(TableInfo table) {
-        return TableInfoDto.builder().id(table.getId()).build();
+    /** 목록 행 : M8-C2 승인·삭제 요청은 지금 수정 일시와 삭제 확인 구성을 싣는다 */
+    private TableInfoDto dto(TableInfo table) {
+        return currentBase.table(table.getId());
     }
 
     private static Relation relation(String name, String type, TableInfo source, TableInfo target, ColumnPair... pairs) {

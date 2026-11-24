@@ -267,7 +267,7 @@ class InheritanceStrategyPolicyIntegrationTest {
             Model stale = model("ac-pk-stale-" + strategy, true);
             Plan plan = preview(stale, strategy);
             assertThat(plan.creatable()).isTrue();
-            logical.deleteIdentifier(stale.f().user, primaryIdentifier(stale.member()));
+            logical.deleteIdentifier(stale.f().user, primaryIdentifier(stale.member()), null);
             int versions = stale.f().versions();
             error(() -> generation.apply(stale.f().user, request(stale.all(), plan.planToken(), stale.member(), strategy)), ErrorCode.MODEL_CONFLICT);
             assertThat(count("select count(*) from TB_TBL where PRJ_SN = ?", stale.f().user.getProjectId())).isZero();
@@ -376,7 +376,7 @@ class InheritanceStrategyPolicyIntegrationTest {
             assertThat(r.columnName()).isEqualTo("BRDT");
             assertThat(r.code()).isEqualTo("STRATEGY_STRUCTURE_MISMATCH");
         });
-        error(() -> context.getBean(com.lexorma.data.mapping.service.ModelMappingService.class).deleteConversions(m.f().user, m.member()), ErrorCode.RELATION_EXISTS);
+        error(() -> context.getBean(com.lexorma.data.mapping.service.ModelMappingService.class).deleteConversions(m.f().user, m.member(), null), ErrorCode.RELATION_EXISTS);
         assertThat(physical(m)).isEqualTo(physical);
 
         // AC-Q04 : 기업 구분의 분류 속성 변경 → 기업 회원 행 차이 (분류 속성 이름), 루트 행은 분류 컬럼이 분류 속성 매핑 컬럼과 달라 불일치
@@ -454,7 +454,7 @@ class InheritanceStrategyPolicyIntegrationTest {
         assertThat(stale).as("남은 상속 PK 매핑 1 + 상속 일반 속성 매핑 5 (회원 이름·회원 유형 코드·지점 코드·사업자 번호·기업 유형 코드) 모두 불일치").hasSize(6)
                 .allMatch(r -> r.status() == CheckStatus.MISMATCH);
         assertThat(stale).extracting(Row::columnName).contains("MBR_NO", "MBR_NM", "MBR_TY_CD", "BRNCH_CD", "BRNO", "CORP_TY_CD");
-        error(() -> context.getBean(com.lexorma.data.mapping.service.ModelMappingService.class).deleteConversions(m.f().user, m.member()), ErrorCode.RELATION_EXISTS);
+        error(() -> context.getBean(com.lexorma.data.mapping.service.ModelMappingService.class).deleteConversions(m.f().user, m.member(), null), ErrorCode.RELATION_EXISTS);
         assertThat(physical(m)).isEqualTo(physical);
 
         // AC-Q09 : 조상(회원) 일반 속성 추가 → 말단마다 복제 매핑 부족, 컬럼 자동 추가 없음. 필수 여부 변경 → 말단마다 필수 불일치

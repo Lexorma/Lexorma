@@ -407,7 +407,7 @@ class AlternateKeyUniqueIntegrationTest {
         Fx x = generated("dec09");
         long ukId = jdbc.queryForObject("select c.CNSTRT_SN from TB_TBL_CNSTRT c join TB_TBL_CNSTRT_COL cc on cc.CNSTRT_SN = c.CNSTRT_SN join TB_COL col on col.COL_SN = cc.COL_SN"
                 + " where c.TBL_SN = ? and col.COL_NM = 'EMAIL'", Long.class, x.table("고객"));
-        physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, ukId);
+        physicalModelService.delete(x.f().user, PhysicalModelService.Kind.CONSTRAINT, ukId, null);
         assertThat(relations(x.table("주문"), x.table("고객"))).hasSize(2);
         Row row = relationship(x, "이메일");
         assertThat(row.status()).isEqualTo(CheckStatus.MISMATCH);

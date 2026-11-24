@@ -131,7 +131,8 @@ public class ModelMappingQueryRepository {
                 mapping.id, model.id, model.modelName, entity.id, entity.entityName, entity.isApproval,
                 schema.id, schema.schemaName, table.id, table.tableName, table.isApproval,
                 JPAExpressions.select(attribute.count()).from(attribute).where(attribute.entity.eq(entity)),
-                JPAExpressions.select(attributeMapping.count()).from(attributeMapping).where(attributeMapping.mapping.eq(mapping))))).where(where);
+                JPAExpressions.select(attributeMapping.count()).from(attributeMapping).where(attributeMapping.mapping.eq(mapping)),
+                mapping.updated))).where(where);
     }
 
     private static <T> JPAQuery<T> entityJoins(JPAQuery<T> select) {
@@ -151,7 +152,7 @@ public class ModelMappingQueryRepository {
     public List<ModelMappingDto.AttributeRow> findAttributeRows(List<Long> entityIds) {
         List<ModelMappingDto.AttributeRow> rows = query.select(Projections.constructor(ModelMappingDto.AttributeRow.class,
                         attributeMapping.id, attribute.id, attribute.attributeName, attributeTerm.id, attributeTerm.commonStandardTermName,
-                        column.id, column.columnName, columnTerm.id, columnTerm.commonStandardTermName, entity.id, entity.entityName))
+                        column.id, column.columnName, columnTerm.id, columnTerm.commonStandardTermName, entity.id, entity.entityName, attributeMapping.updated))
                 .from(attribute)
                 .join(attribute.entity, entity)
                 .leftJoin(attribute.standardTerm, attributeTerm)

@@ -32,6 +32,8 @@ export interface TableIndex {
   members?: Member[] | null;
   includeColumns?: ColumnRef[] | null;
   condition?: string | null;
+  /** 수정 기준값 (DEC-08 · M8-C2 삭제·승인) */
+  modifiedAt?: string | null;
 }
 
 /** 변경 요청의 전후 정의 (M-14 1차 요청은 members 등이 없다 → columns 가 오름차순 키) */

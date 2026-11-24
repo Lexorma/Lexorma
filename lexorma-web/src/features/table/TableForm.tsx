@@ -3,6 +3,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import type { Row } from '../../components/grid/Grid';
 import { api, enc } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { blockNonNumericKeys } from '../../lib/format';
 import type { Schema } from '../schema/schemas';
 import { t } from '../../lib/i18n';
@@ -40,20 +41,43 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
 }) {
   const dialog = useDialog();
   const toast = useToast();
-  const originalKorName = normalizeKorName(row.tableKorName);
-  const originalTableName = row.tableName ?? '';
+  const [busy, run] = useSubmitting();
+  type Values = { korName: string; tableName: string; description: string; biz: string; isMaster: boolean; sortOrder: string; schemaId: string };
+  const valuesOf = (r: Row): Values => ({
+    korName: r.tableKorName ?? '', tableName: r.tableName ?? '', description: r.tableDescription ?? '', biz: String((r as { bizDescription?: string | null }).bizDescription ?? ''),
+    isMaster: r.isMasterTable === 'Y', sortOrder: String(r.sortOrder ?? ''), schemaId: r.schemaId != null ? String(r.schemaId) : '',
+  });
+  // 409 복구 (M8-C3, 수정만) : 테이블 상세의 최신 값과 비교. 다시 적용하면 "원래 값"(이름 유지·업무 설명 기준값·스키마 이동 판단)도 최신 값이 된다
+  const recovery = useConflictRecovery<Values>({
+    initial: valuesOf(row),
+    base: (row as { modifiedAt?: string | null }).modifiedAt,
+    fields: [
+      { key: 'korName', label: t('테이블 코멘트'), get: (v) => normalizeKorName(v.korName) },
+      { key: 'description', label: t('테이블 설명'), get: (v) => v.description },
+      { key: 'biz', label: t('업무 설명'), get: (v) => v.biz },
+      { key: 'isMaster', label: t('마스터 테이블 여부'), get: (v) => v.isMaster, show: (v) => (v.isMaster ? 'Y' : 'N') },
+      { key: 'sortOrder', label: t('정렬 순서'), get: (v) => v.sortOrder },
+      { key: 'schemaId', label: t('스키마'), get: (v) => v.schemaId, show: (v) => schemas.find((x) => String(x.id) === v.schemaId)?.schemaName ?? v.schemaId },
+    ],
+    load: async () => {
+      const latest = await api<Row & { modifiedAt?: string | null }>(`/api/selectTable/detail/${enc(row.id)}`, { silent: true });
+      return { values: valuesOf(latest), base: latest.modifiedAt ?? null };
+    },
+  });
+  const originalKorName = normalizeKorName(recovery.start.korName);
+  const originalTableName = recovery.start.tableName;
 
   const [korName, setKorName] = useState(row.tableKorName ?? '');
   const [tableName, setTableName] = useState(originalTableName);
   const [description, setDescription] = useState(row.tableDescription ?? '');
   // 업무 설명 (AI-5) : 담당자가 확정한 설명. DDL COMMENT(테이블 설명)·원본 COMMENT 와 따로 둔다
-  const originalBizDescription = String((row as { bizDescription?: string | null }).bizDescription ?? '');
+  const originalBizDescription = recovery.start.biz;
   const [bizDescription, setBizDescription] = useState(originalBizDescription);
   const [isMaster, setIsMaster] = useState(row.isMasterTable === 'Y');
   const [sortOrder, setSortOrder] = useState(row.sortOrder ?? '');
   // 등록 : 스키마를 고른다 (고르지 않으면 기본 스키마). 수정 : 미승인 테이블은 다른 스키마로 옮길 수 있다 (DEC-11 — 승인된 테이블은 수정 자체가 막혀 승인 취소 뒤 옮긴다).
   // 바꿨을 때만 schemaId 를 보낸다 (안 보내면 서버가 지금 스키마를 유지한다). 목록은 화면에서 받는다 (대화상자는 AuthProvider 밖에 그려져 useSchemas 를 쓸 수 없다)
-  const originalSchemaId = type === 'U' && row.schemaId != null ? String(row.schemaId) : '';
+  const originalSchemaId = type === 'U' ? recovery.start.schemaId : '';
   const [schemaId, setSchemaId] = useState(originalSchemaId);
   const selectedSchemaId = schemaId || String(schemas.find((s) => s.isDefault)?.id ?? '');
   const schemaMoved = type === 'U' && !!originalSchemaId && schemaId !== originalSchemaId;
@@ -124,21 +148,35 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
       sortOrder: parseInt(String(sortOrder)) || 0,
       ...((type === 'C' && selectedSchemaId) || schemaMoved ? { schemaId: Number(selectedSchemaId) } : {}),
       // 수정 : 화면이 읽은 수정 일시 (DEC-08 — 그 사이 다른 사용자가 고쳤으면 409, 입력은 그대로 남는다)
-      ...(type === 'U' ? { baseModifiedAt: (row as { modifiedAt?: string | null }).modifiedAt ?? null } : {}),
+      ...(type === 'U' ? { baseModifiedAt: recovery.base } : {}),
     };
 
     const targetSchemaName = schemas.find((s) => String(s.id) === selectedSchemaId)?.schemaName ?? '';
-    dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : schemaMoved ? t('스키마를 {0}(으)로 옮겨 수정하시겠습니까?', targetSchemaName) : t('수정하시겠습니까?'), async () => {
-      const response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body });
+    dialog.confirm(type === 'C' ? t('저장하시겠습니까?') : schemaMoved ? t('스키마를 {0}(으)로 옮겨 수정하시겠습니까?', targetSchemaName) : t('수정하시겠습니까?'), () => void run(async () => {
+      let response: { result: boolean };
+      try {
+        response = await api<{ result: boolean }>('/api/saveTable', { method: type === 'C' ? 'POST' : 'PUT', body, conflict: 'handled' });
+      } catch (error) {
+        if (type === 'U' && recovery.catchConflict(error, { korName, tableName, description: String(description), biz: bizDescription, isMaster, sortOrder: String(sortOrder), schemaId })) return;
+        throw error;
+      }
       if (!response.result) return;
       onSaved({ tableName, schemaId: (type === 'C' && selectedSchemaId) || schemaMoved ? Number(selectedSchemaId) : null });
       toast.success(type === 'C' ? t('정상적으로 저장되었습니다.') : t('정상적으로 수정되었습니다.'));
-    });
+    }));
   };
 
   const result = state.result;
   return (
     <form id="editTableForm" className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('korName')) setKorName(latest.korName);
+        if (!picks.has('description')) setDescription(latest.description);
+        if (!picks.has('biz')) setBizDescription(latest.biz);
+        if (!picks.has('isMaster')) setIsMaster(latest.isMaster);
+        if (!picks.has('sortOrder')) setSortOrder(latest.sortOrder);
+        if (!picks.has('schemaId')) setSchemaId(latest.schemaId);
+      })}
       <div className="form-group">
         <label htmlFor="tableSchema">{t('스키마')}</label>
         {type === 'C' || originalSchemaId ? (
@@ -213,7 +251,7 @@ export function TableForm({ type, row = {}, schemas, onSaved }: {
         <input type="number" className="form-control" id="sortOrder" value={sortOrder} onKeyDown={blockNonNumericKeys} onChange={(e) => setSortOrder(e.target.value)} />
       </div>
 
-      <button type="submit" className="btn btn-primary" id="btn-save-table">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" id="btn-save-table" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }

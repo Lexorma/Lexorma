@@ -627,7 +627,7 @@ class LogicalSubtypeIntegrationTest {
         save(f, null, a, "중복 가능", true, true, null, members(o1, "X", o2, "X"), null);
 
         // 분류 속성은 지울 수 없다, 분류 속성이 무효가 되는 상속 변경(기업 고객을 고객에서 빼기 → 상속 분류의 고객 유형 코드가 사라진다)도 거절
-        error(() -> logical.deleteAttribute(f.user, rootType), ErrorCode.RELATION_EXISTS);
+        error(() -> logical.deleteAttribute(f.user, rootType, null), ErrorCode.RELATION_EXISTS);
         long newcomer = entity(f, "신규");
         error(() -> members(f, type, members(person, "INDIVIDUAL", newcomer, "NEW")), ErrorCode.RELATION_EXISTS, "분류 속성");
         // 분류 속성을 바꾸면 된다
@@ -709,26 +709,26 @@ class LogicalSubtypeIntegrationTest {
         group(f, company, "기업 구분", overseas, local);
 
         // 승인 순서 : 루트 주 식별자 없음 → 거절, 미승인 조상 → 거절, 자동 승인 없음
-        logical.updateEntityApproval(f.user, customer, true);
-        error(() -> logical.updateEntityApproval(f.user, company, true), ErrorCode.INVALID_LOGICAL_MODEL, "주 식별자");
-        logical.updateEntityApproval(f.user, customer, false);
+        logical.updateEntityApproval(f.user, customer, true, null);
+        error(() -> logical.updateEntityApproval(f.user, company, true, null), ErrorCode.INVALID_LOGICAL_MODEL, "주 식별자");
+        logical.updateEntityApproval(f.user, customer, false, null);
         pk(f, customer, no);
-        error(() -> logical.updateEntityApproval(f.user, company, true), ErrorCode.INVALID_LOGICAL_MODEL, "승인되지 않아");
-        logical.updateEntityApproval(f.user, customer, true);
-        error(() -> logical.updateEntityApproval(f.user, overseas, true), ErrorCode.INVALID_LOGICAL_MODEL, "승인되지 않아");
-        logical.updateEntityApproval(f.user, company, true);
-        logical.updateEntityApproval(f.user, overseas, true);
+        error(() -> logical.updateEntityApproval(f.user, company, true, null), ErrorCode.INVALID_LOGICAL_MODEL, "승인되지 않아");
+        logical.updateEntityApproval(f.user, customer, true, null);
+        error(() -> logical.updateEntityApproval(f.user, overseas, true, null), ErrorCode.INVALID_LOGICAL_MODEL, "승인되지 않아");
+        logical.updateEntityApproval(f.user, company, true, null);
+        logical.updateEntityApproval(f.user, overseas, true, null);
         assertThat(count("select count(*) from TB_LGCL_ENTT where LGCL_ENTT_SN in (?, ?) and APRV_YN = true", person, local)).as("다른 엔터티를 함께 승인하지 않는다").isZero();
 
         // 승인 취소 : 승인된 하위(자식·손자)가 있으면 거절
-        error(() -> logical.updateEntityApproval(f.user, customer, false), ErrorCode.INVALID_LOGICAL_MODEL, "승인된 하위 엔터티");
-        error(() -> logical.updateEntityApproval(f.user, company, false), ErrorCode.INVALID_LOGICAL_MODEL);
+        error(() -> logical.updateEntityApproval(f.user, customer, false, null), ErrorCode.INVALID_LOGICAL_MODEL, "승인된 하위 엔터티");
+        error(() -> logical.updateEntityApproval(f.user, company, false, null), ErrorCode.INVALID_LOGICAL_MODEL);
 
         // 승인된 하위에 영향을 주는 변경 : 관리자(승인 권한자)라도 거절
         error(() -> attr(f, customer, "신규 속성"), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE, "승인된 하위 엔터티");
         error(() -> logical.saveAttribute(f.user, new LogicalModelDto.Attribute(no, customer, "고객 번호 변경", null, null, false, null, null, null, null, null)),
                 ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        error(() -> logical.deleteIdentifier(f.user, jdbc.queryForObject("select LGCL_IDNTFR_SN from TB_LGCL_IDNTFR where LGCL_ENTT_SN = ?", Long.class, customer)),
+        error(() -> logical.deleteIdentifier(f.user, jdbc.queryForObject("select LGCL_IDNTFR_SN from TB_LGCL_IDNTFR where LGCL_ENTT_SN = ?", Long.class, customer), null),
                 ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         long order = entity(f, "주문");
         error(() -> f.rel("주문함", customer, order, false, 1), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
@@ -748,9 +748,9 @@ class LogicalSubtypeIntegrationTest {
                 List.of(new com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto.AssignmentItem(overseas, nodes.nullNode()))));
 
         // 하위부터 승인 취소하면 위도 취소된다
-        logical.updateEntityApproval(f.user, overseas, false);
-        logical.updateEntityApproval(f.user, company, false);
-        logical.updateEntityApproval(f.user, customer, false);
+        logical.updateEntityApproval(f.user, overseas, false, null);
+        logical.updateEntityApproval(f.user, company, false, null);
+        logical.updateEntityApproval(f.user, customer, false, null);
         attr(f, customer, "신규 속성");
     }
 
@@ -764,12 +764,12 @@ class LogicalSubtypeIntegrationTest {
         long company = entity(f, "기업 고객");
         long person = entity(f, "개인 고객");
         var type = group(f, customer, "고객 유형", company, person);
-        error(() -> logical.deleteEntity(f.user, customer), ErrorCode.RELATION_EXISTS, "슈퍼타입");
-        error(() -> logical.deleteEntity(f.user, company), ErrorCode.RELATION_EXISTS, "서브타입");
+        error(() -> logical.deleteEntity(f.user, customer, null, null), ErrorCode.RELATION_EXISTS, "슈퍼타입");
+        error(() -> logical.deleteEntity(f.user, company, null, null), ErrorCode.RELATION_EXISTS, "서브타입");
         assertThat(count("select count(*) from TB_LGCL_SBTYP where LGCL_SBTYP_GROUP_SN = ?", type.id())).isEqualTo(2);
         deleteGroup(f, type);
-        logical.deleteEntity(f.user, company);
-        logical.deleteEntity(f.user, customer);
+        logical.deleteEntity(f.user, company, null, null);
+        logical.deleteEntity(f.user, customer, null, null);
         assertThat(count("select count(*) from TB_LGCL_ENTT where LGCL_ENTT_SN = ?", person)).isOne();
     }
 
@@ -1181,7 +1181,7 @@ class LogicalSubtypeIntegrationTest {
         long t = entity(f, "T");
         long t1 = entity(f, "T1");
         long t2 = entity(f, "T2");
-        assertThat(raced(() -> logical.deleteEntity(f.user, t2), () -> group(f, t, "T 그룹", t1, t2))).isEqualTo("LOGICAL_MODEL_IS_NOT_DEFINED");
+        assertThat(raced(() -> logical.deleteEntity(f.user, t2, null, null), () -> group(f, t, "T 그룹", t1, t2))).isEqualTo("LOGICAL_MODEL_IS_NOT_DEFINED");
         // 해제 ↔ 속성 짝 : 짝이 먼저 생기면 해제는 거절
         long u = entity(f, "U");
         long uKey = attr(f, u, "U 번호");
@@ -1201,15 +1201,15 @@ class LogicalSubtypeIntegrationTest {
         long v = entity(f, "V");
         long v1 = entity(f, "V1");
         long v2 = entity(f, "V2");
-        assertThat(raced(() -> logical.updateEntityApproval(f.user, v1, true), () -> group(f, v, "V 그룹", v1, v2))).isEqualTo("APPROVED_DATA_CANNOT_BE_UPDATE");
+        assertThat(raced(() -> logical.updateEntityApproval(f.user, v1, true, null), () -> group(f, v, "V 그룹", v1, v2))).isEqualTo("APPROVED_DATA_CANNOT_BE_UPDATE");
         // 상위 속성 추가 ↔ 하위 승인 : 하위 승인이 먼저면 상위 속성 추가 거절
         long w = entity(f, "W");
         pk(f, w, attr(f, w, "W 번호"));
         long w1 = entity(f, "W1");
         long w2 = entity(f, "W2");
         group(f, w, "W 그룹", w1, w2);
-        logical.updateEntityApproval(f.user, w, true);
-        assertThat(raced(() -> logical.updateEntityApproval(f.user, w1, true), () -> attr(f, w, "W 새 속성"))).isEqualTo("APPROVED_DATA_CANNOT_BE_UPDATE");
+        logical.updateEntityApproval(f.user, w, true, null);
+        assertThat(raced(() -> logical.updateEntityApproval(f.user, w1, true, null), () -> attr(f, w, "W 새 속성"))).isEqualTo("APPROVED_DATA_CANNOT_BE_UPDATE");
         // 최종 구조 : 순환·이중 슈퍼타입 없음
         for (long id : new long[]{a, b, x, s1, t1}) {
             assertThat(subtypes.selectInheritance(f.user, id).level()).isLessThanOrEqualTo(2);

@@ -377,6 +377,9 @@ public class TableDesignServiceImpl implements TableDesignService {
             throw new CustomException(ErrorCode.APPROVAL_PERMISSION_DENIED);
         }
 
+        // 대상 테이블 행을 먼저 ID 오름차순으로 잠근다 (M8-C4a) : 예전에는 요청 순서대로 잠가 [A, B] · [B, A] 두 승인(또는 승인 ↔ 삭제)이 서로 기다렸다 (40P01).
+        // 처리·검사는 아래에서 요청 순서 그대로 (이미 잡은 행이라 기다리지 않는다). 없는 ID 는 아래에서 대상 없음
+        lockTablesInIdOrder(accountDto.getProjectId(), tableInfoDtos);
         tableInfoDtos.forEach(tableInfoDto -> {
             // 행을 잠가 테이블 수정과 엇갈리지 않게 한다 (수정이 먼저 끝난 뒤에 승인된다)
             TableInfo tableInfo = tableInfoDto.getId() == null ? null
@@ -384,6 +387,10 @@ public class TableDesignServiceImpl implements TableDesignService {
             if (tableInfo == null) {
                 throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
             }
+            // 승인자가 본 테이블(행의 modifiedAt)과 같을 때만 바꾼다 (M8-C2, M8-D02). 이미 그 상태면 바꾸지 않는다. 하나라도 다르면 409 — 한 트랜잭션이라 앞의 행도 롤백된다
+            entityManager.refresh(tableInfo);
+            if (Boolean.TRUE.equals(tableInfo.getIsApproval()) == isApproval) return;
+            com.lexorma.common.jpa.ModelBase.verify(tableInfo, tableInfoDto.getModifiedAt(), tableInfo.getTableName());
 
             tableInfo.setIsApproval(isApproval);
         });
@@ -400,9 +407,14 @@ public class TableDesignServiceImpl implements TableDesignService {
                 .map(dto -> dto.getId() == null ? null : tableInfoRepository.findByIdAndProjectId(dto.getId(), projectId))
                 .filter(java.util.Objects::nonNull).map(t -> t.getSchema().getId()).toList());
 
+        // 대상 테이블 행도 ID 오름차순으로 먼저 잠근다 (M8-C4a — 승인과 같은 순서. 삭제끼리는 위의 기본 스키마 행 잠금으로도 직렬화된다)
+        lockTablesInIdOrder(projectId, tableInfoDtos);
         tableInfoDtos.forEach(tableInfoDto -> {
             // 행을 잠가 논리·물리 매핑 등록과 엇갈리지 않게 한다
-            TableInfo tableInfo = tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+            // 없는(그 사이 지워진·다른 프로젝트) 테이블은 대상 없음 400 (예전에는 아래에서 NullPointerException 으로 500 — M8-C1)
+            TableInfo tableInfo = tableInfoDto.getId() == null ? null : tableInfoRepository.findForUpdate(tableInfoDto.getId(), projectId).orElse(null);
+            if (tableInfo == null) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+            entityManager.refresh(tableInfo); // 이름 공간 잠금 전에 읽어 둔 같은 행 — 잠근 뒤의 값(승인·수정 일시·컬럼)으로 판단한다 (M8-C2)
 
             entityTableMappingRepository.findByTable_Id(tableInfoDto.getId()).ifPresent(mapping -> {
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "엔터티 {0} 에 매핑된 테이블입니다. 매핑을 먼저 해제해주세요.", mapping.getEntity().getEntityName());
@@ -428,8 +440,48 @@ public class TableDesignServiceImpl implements TableDesignService {
                 throw new CustomException(ErrorCode.RELATION_EXISTS, "VIEW {0} 이(가) 참조하는 테이블입니다. VIEW 의 참조 객체에서 먼저 빼주세요.", String.join(", ", views));
             }
 
+            // 화면이 본 테이블(modifiedAt)과 삭제 확인이 본 구성(인덱스·제약조건·관계 — DB 가 함께 지운다)이 지금과 같아야 한다 (M8-C2, M8-D01).
+            // 검사는 잠근 행 기준이고 인덱스·제약조건 등록도 이 테이블 행을 잠그므로, 비교한 뒤 지울 때까지 새로 들어올 수 없다. 다르면 409, 앞에서 지운 테이블도 롤백된다
+            com.lexorma.common.jpa.ModelBase.verify(tableInfo, tableInfoDto.getModifiedAt(), tableInfo.getTableName());
+            tableComposition(projectId, tableInfo).verify(tableInfoDto.getComposition(), tableInfo.getTableName());
+
             tableInfoRepository.delete(tableInfo);
         });
+    }
+
+    /** 여러 테이블을 바꾸는 요청의 행 잠금 : 중복을 뺀 ID 오름차순 (같은 종류 안의 순서 = 공통 정책, physical/sync/ModelRowLocks). 다른 프로젝트·없는 ID 는 잠그지 않는다 (처리 단계가 대상 없음으로 거절) */
+    private void lockTablesInIdOrder(Long projectId, List<TableInfoDto> tableInfoDtos) {
+        if (tableInfoDtos == null) return;
+        tableInfoDtos.stream().map(TableInfoDto::getId).filter(java.util.Objects::nonNull).distinct().sorted()
+                .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
+    }
+
+    /** 테이블 삭제 확인 화면 (M8-C2) : 테이블마다 지금 기준값과 함께 지워질 인덱스·제약조건·관계 구성 (다른 프로젝트·없는 테이블은 빠진다) */
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.lexorma.common.jpa.ModelComposition.Deletion> selectTableDeletions(List<Long> tableIds, AccountDto accountDto) {
+        Long projectId = accountDto.getProjectId();
+        if (tableIds == null) return List.of();
+        return tableIds.stream().filter(java.util.Objects::nonNull).distinct()
+                .map(id -> tableInfoRepository.findByIdAndProjectId(id, projectId)).filter(java.util.Objects::nonNull)
+                .map(t -> tableComposition(projectId, t).deletion(t.getId(), t.getTableName(), t.modifiedAt())).toList();
+    }
+
+    /**
+     * 테이블과 함께 지워지는 자식 (DB FK ON DELETE CASCADE) : 인덱스·제약조건·관계(나가는·들어오는). 컬럼이 있는 테이블은 삭제가 거절되므로 컬럼은 넣지 않는다.
+     * 변경 요청 이력(인덱스에 딸림)은 인덱스가 대표한다
+     */
+    private com.lexorma.common.jpa.ModelComposition tableComposition(Long projectId, TableInfo table) {
+        // (ID, 수정 일시) 투영만 읽는다 : 엔티티로 올리면 DB 가 CASCADE 로 지운 자식이 영속성 컨텍스트에 남아 커밋 때 flush 가 실패한다
+        return com.lexorma.common.jpa.ModelComposition.of()
+                .add("indexes", parts("select i.id, i.updated from TableIndex i where i.projectId = :p and i.tableInfo.id = :t", projectId, table.getId()))
+                .add("constraints", parts("select c.id, c.updated from TableConstraint c where c.projectId = :p and c.tableInfo.id = :t", projectId, table.getId()))
+                .add("relations", parts("select r.id, r.updated from TableRelation r where r.projectId = :p and (r.sourceTable.id = :t or r.targetTable.id = :t)", projectId, table.getId()));
+    }
+
+    private List<com.lexorma.common.jpa.ModelComposition.Part> parts(String jpql, Long projectId, Long tableId) {
+        return entityManager.createQuery(jpql, Object[].class).setParameter("p", projectId).setParameter("t", tableId).getResultList().stream()
+                .map(row -> new com.lexorma.common.jpa.ModelComposition.Part((Long) row[0], (java.time.LocalDateTime) row[1])).toList();
     }
 
     @Override

@@ -91,33 +91,39 @@ public class ModelMappingRestController {
         return ResponseEntity.ok(modelMappingService.selectEntityMapping(accountDto, mappingId));
     }
 
-    @Operation(summary = "엔터티 ↔ 테이블 매핑 등록·변경", description = "엔터티 1 : 테이블 1. 변경은 테이블만 바꾸며, 속성 매핑이 있으면 거절한다")
+    @Operation(summary = "엔터티 ↔ 테이블 매핑 등록·변경", description = "엔터티 1 : 테이블 1. 변경은 테이블만 바꾸며, 속성 매핑이 있으면 거절한다. "
+            + "변경(id 있음)은 modifiedAt(목록의 mappingModifiedAt) 필수 — 없으면 400, 그 사이 매핑이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/entity")
     public ResponseEntity<ModelMappingDto.EntityMapping> saveEntityMapping(@AuthenticationPrincipal AccountDto accountDto, @RequestBody ModelMappingDto.EntityMapping mapping) {
+        com.lexorma.common.jpa.ModelBase.require(mapping != null && mapping.id() != null, mapping == null ? null : mapping.modifiedAt());
         return ResponseEntity.ok(modelMappingService.saveEntityMapping(accountDto, mapping));
     }
 
-    @Operation(summary = "엔터티 ↔ 테이블 매핑 삭제", description = "속성 매핑이 있으면 거절한다. 엔터티·테이블은 지우지 않는다")
+    @Operation(summary = "엔터티 ↔ 테이블 매핑 삭제", description = "속성 매핑이 있으면 거절한다. 엔터티·테이블은 지우지 않는다. modifiedAt(목록의 mappingModifiedAt) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/entity/{mappingId}")
-    public ResponseEntity<Map<String, Object>> deleteEntityMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "mappingId") Long mappingId) {
-        modelMappingService.deleteEntityMapping(accountDto, mappingId);
+    public ResponseEntity<Map<String, Object>> deleteEntityMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "mappingId") Long mappingId, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        modelMappingService.deleteEntityMapping(accountDto, mappingId, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "속성 ↔ 컬럼 매핑 등록·변경", description = "부모 매핑(mappingId)의 엔터티에 속한 속성과 테이블에 속한 컬럼만 연결한다. 변경은 컬럼만 바꾼다")
+    @Operation(summary = "속성 ↔ 컬럼 매핑 등록·변경", description = "부모 매핑(mappingId)의 엔터티에 속한 속성과 테이블에 속한 컬럼만 연결한다. 변경은 컬럼만 바꾼다. "
+            + "변경(id 있음)은 modifiedAt(상세 속성 행의 modifiedAt) 필수 — 그 사이 매핑이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/attribute")
     public ResponseEntity<ModelMappingDto.AttributeMapping> saveAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @RequestBody ModelMappingDto.AttributeMapping mapping) {
+        com.lexorma.common.jpa.ModelBase.require(mapping != null && mapping.id() != null, mapping == null ? null : mapping.modifiedAt());
         return ResponseEntity.ok(modelMappingService.saveAttributeMapping(accountDto, mapping));
     }
 
-    @Operation(summary = "속성 ↔ 컬럼 매핑 삭제", description = "속성·컬럼은 지우지 않는다")
+    @Operation(summary = "속성 ↔ 컬럼 매핑 삭제", description = "속성·컬럼은 지우지 않는다. modifiedAt(상세 속성 행의 modifiedAt) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/attribute/{attributeMappingId}")
-    public ResponseEntity<Map<String, Object>> deleteAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "attributeMappingId") Long attributeMappingId) {
-        modelMappingService.deleteAttributeMapping(accountDto, attributeMappingId);
+    public ResponseEntity<Map<String, Object>> deleteAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "attributeMappingId") Long attributeMappingId, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        modelMappingService.deleteAttributeMapping(accountDto, attributeMappingId, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -148,14 +154,16 @@ public class ModelMappingRestController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/subtypeKey")
     public ResponseEntity<ModelMappingDto.SubtypeKeyMapping> saveSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @RequestBody ModelMappingDto.SubtypeKeyMapping mapping) {
+        com.lexorma.common.jpa.ModelBase.require(mapping != null && mapping.id() != null, mapping == null ? null : mapping.modifiedAt()); // M8-C2 : 변경은 기준값 필수
         return ResponseEntity.ok(modelMappingService.saveSubtypeKeyMapping(accountDto, mapping));
     }
 
-    @Operation(summary = "상속 PK 매핑 해제 (M-7 3차)", description = "매핑만 지운다. 물리 PK·FK·컬럼과 논리 식별자는 그대로")
+    @Operation(summary = "상속 PK 매핑 해제 (M-7 3차)", description = "매핑만 지운다. 물리 PK·FK·컬럼과 논리 식별자는 그대로. modifiedAt(상세 행의 modifiedAt) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/subtypeKey/{id}")
-    public ResponseEntity<Map<String, Object>> deleteSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
-        modelMappingService.deleteSubtypeKeyMapping(accountDto, id);
+    public ResponseEntity<Map<String, Object>> deleteSubtypeKeyMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        modelMappingService.deleteSubtypeKeyMapping(accountDto, id, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -185,14 +193,16 @@ public class ModelMappingRestController {
     @PostMapping("/subtypeAttribute")
     public ResponseEntity<ModelMappingDto.SubtypeAttributeMapping> saveSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto,
                                                                                                @RequestBody ModelMappingDto.SubtypeAttributeMapping mapping) {
+        com.lexorma.common.jpa.ModelBase.require(mapping != null && mapping.id() != null, mapping == null ? null : mapping.modifiedAt()); // M8-C2 : 변경은 기준값 필수
         return ResponseEntity.ok(modelMappingService.saveSubtypeAttributeMapping(accountDto, mapping));
     }
 
-    @Operation(summary = "C형 상속 일반 속성 매핑 해제 (M-7 상속 C)", description = "매핑만 지운다. 물리 컬럼·논리 속성은 그대로")
+    @Operation(summary = "C형 상속 일반 속성 매핑 해제 (M-7 상속 C)", description = "매핑만 지운다. 물리 컬럼·논리 속성은 그대로. modifiedAt(상세 행의 modifiedAt) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/subtypeAttribute/{id}")
-    public ResponseEntity<Map<String, Object>> deleteSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id) {
-        modelMappingService.deleteSubtypeAttributeMapping(accountDto, id);
+    public ResponseEntity<Map<String, Object>> deleteSubtypeAttributeMapping(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "id") Long id, @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        modelMappingService.deleteSubtypeAttributeMapping(accountDto, id, modifiedAt);
         return ResponseEntity.ok(DONE);
     }
 
@@ -204,11 +214,14 @@ public class ModelMappingRestController {
     }
 
     @Operation(summary = "상속 변환 기록 삭제 (M-7 상속 A·C, D-AC-18)", description = "상속 계층(루트 엔터티)의 변환 기록을 지운다. 관련 매핑이 남아 있으면 409 가 아니라 RELATION_EXISTS 로 거절한다 (매핑을 먼저 해제). "
-            + "물리 테이블·컬럼·FK·UNIQUE·논리 엔터티는 지우지 않는다")
+            + "물리 테이블·컬럼·FK·UNIQUE·논리 엔터티는 지우지 않는다. composition(목록의 구성 기준값) 필수 — 없으면 400, 그 사이 기록이 바뀌었으면 409 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/conversions/{rootEntityId}")
-    public ResponseEntity<Map<String, Object>> deleteConversions(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "rootEntityId") Long rootEntityId) {
-        modelMappingService.deleteConversions(accountDto, rootEntityId);
+    public ResponseEntity<Map<String, Object>> deleteConversions(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "rootEntityId") Long rootEntityId,
+                                                                 @RequestParam(value = "composition", required = false) String composition) {
+        // M8-C2 : 목록(GET /conversions)이 준 이 계층 기록의 구성 기준값 필수 — 그 사이 기록이 바뀌었으면 409
+        com.lexorma.common.jpa.ModelComposition.require(composition);
+        modelMappingService.deleteConversions(accountDto, rootEntityId, composition);
         return ResponseEntity.ok(DONE);
     }
 

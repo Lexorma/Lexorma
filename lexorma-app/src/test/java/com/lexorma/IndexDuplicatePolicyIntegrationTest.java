@@ -134,7 +134,7 @@ class IndexDuplicatePolicyIntegrationTest {
         setIndexFlag(c, true);
         assertThat(indexes(t)).containsExactly("USER:IX_MINE:N:false");
 
-        physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, mine.id());
+        physicalModelService.delete(user, PhysicalModelService.Kind.INDEX, mine.id(), null);
 
         assertThat(indexes(t)).containsExactly("COLUMN:IX_TB_I_C_CD:N:false");
         assertThat(ddl(admin, t)).containsOnlyOnce("CREATE INDEX IX_TB_I_C_CD ON TB_I (C_CD);");

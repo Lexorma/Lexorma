@@ -131,6 +131,8 @@ public class DataDictionaryRestController {
             , @AuthenticationPrincipal AccountDto accountDto
             , @PathVariable(value = "isChecked") boolean isChecked) {
 
+        // 행마다 화면이 불러온 기준값(modifiedAt)이 필요하다 — 승인자가 본 내용만 승인한다 (M8-C1, M8-D02). 승인 권한이 없으면 권한 오류가 먼저다
+        if (standardDomains != null && AuthUtil.isApprovalAvailable()) standardDomains.forEach(domain -> ModelBase.require(true, domain.getModifiedAt()));
         dataDictionaryService.approvalStandardDomains(standardDomains, accountDto, isChecked);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -158,6 +160,8 @@ public class DataDictionaryRestController {
             , @AuthenticationPrincipal AccountDto accountDto
             , @PathVariable(value = "isChecked") boolean isChecked) {
 
+        // 행마다 화면이 불러온 기준값(modifiedAt)이 필요하다 (M8-C1, M8-D02). 승인 권한이 없으면 권한 오류가 먼저다
+        if (standardWords != null && AuthUtil.isApprovalAvailable()) standardWords.forEach(word -> ModelBase.require(true, word.getModifiedAt()));
         dataDictionaryService.approvalStandardWords(standardWords, accountDto, isChecked);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -251,6 +255,7 @@ public class DataDictionaryRestController {
     @PutMapping(value = "/updateDataDictionary/standardDomains")
     public ResponseEntity<Map<String, Boolean>> updateStandardDomains(@AuthenticationPrincipal AccountDto accountDto, @RequestBody StandardDomainDto standardDomainDto){
 
+        ModelBase.require(true, standardDomainDto == null ? null : standardDomainDto.getModifiedAt()); // 수정 기준값 필수 (M8-C1, DEC-08)
         dataDictionaryService.updateStandardDomain(accountDto, standardDomainDto);
 
         return ResponseEntity.ok(Map.of("result", true));
@@ -271,6 +276,7 @@ public class DataDictionaryRestController {
     @PutMapping(value = "/updateDataDictionary/standardWords")
     public ResponseEntity<Map<String, Boolean>> updateStandardWords(@AuthenticationPrincipal AccountDto accountDto, @RequestBody StandardWordDto standardWordDto){
 
+        ModelBase.require(true, standardWordDto == null ? null : standardWordDto.getModifiedAt()); // 수정 기준값 필수 (M8-C1, DEC-08)
         dataDictionaryService.updateStandardWords(accountDto, standardWordDto);
 
         return ResponseEntity.ok(Map.of("result", true));

@@ -55,6 +55,9 @@ public class TableInfoDto {
     /** 수정 요청 : 화면이 읽은 modifiedAt (DEC-08). 보내면 그 사이 다른 사용자가 고친 테이블을 덮어쓰지 않는다 (MODEL_CONFLICT). 없으면 검사하지 않는다 */
     private java.time.LocalDateTime baseModifiedAt;
 
+    /** 삭제 요청 : 삭제 확인 조회(GET /api/deleteTable/preview)가 준 구성 기준값 (M8-C2 — 함께 지워질 인덱스·제약조건·관계). 응답에는 없다 */
+    private String composition;
+
     public static TableInfoDto fromEntity(TableInfo entity) {
         return TableInfoDto.builder()
                 .id(entity.getId())

@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
 import { api } from '../../lib/api';
+import { useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { keySnapshot, physicalKeyGuarded, type TableModelPart } from '../table/physicalConflicts';
 import { t, tc } from '../../lib/i18n';
 import { columnType, FK_RULES, fkRuleText, type Cardinality, type ErdColumn, type ErdRelation, type ErdTable, type FkRule } from './model';
 import { childText, IDENTIFYING_TEXT, parentText, REASON_TEXT } from './cardinality';
@@ -31,6 +33,8 @@ interface TableIndex {
   isUnique: boolean | null;
   columns: ColumnRef[];
   isApproval: boolean | null;
+  /** 수정 기준값 (DEC-08 · M8-C2 삭제·승인) */
+  modifiedAt?: string | null;
 }
 
 interface TableConstraint {
@@ -40,6 +44,8 @@ interface TableConstraint {
   checkExpression: string | null;
   columns: ColumnRef[];
   isApproval: boolean | null;
+  /** 수정 기준값 (M8-C2 삭제·승인) */
+  modifiedAt?: string | null;
 }
 
 /** GET /api/physical/table/{tableId} (PhysicalModelDto.TableModel) */
@@ -357,16 +363,26 @@ export function TableKeys({ table, columns, editable, approvalAvailable, onChang
     onChanged();
   };
 
+  // M8-C2 : 화면이 읽은 수정 일시를 보낸다 — 그 사이 바뀌었으면 409 (공통 알림), 목록을 다시 읽는다
+  // M8-C2 기준값 · M8-C3 : 409 면 최신 인덱스·제약조건을 보여 주고 사용자가 다시 실행한다 (자동 재전송 없음). 그 밖의 오류는 공통 알림 뒤 다시 읽는다
+  const [busy, run] = useSubmitting();
+  const seenOf = (kind: KeyKind, id: number) => keySnapshot(model.data as unknown as TableModelPart, kind, id);
   const remove = (kind: KeyKind, id: number, name: string) => {
-    dialog.confirm(kind === 'index' ? t('{0} 인덱스를 삭제하시겠습니까?', name) : t('{0} 제약조건을 삭제하시겠습니까?', name), async () => {
-      await api(`/api/physical/${kind}/${id}`, { method: 'DELETE' });
-      changed();
-    });
+    dialog.confirm(kind === 'index' ? t('{0} 인덱스를 삭제하시겠습니까?', name) : t('{0} 제약조건을 삭제하시겠습니까?', name), () => void run(async () => {
+      try {
+        await physicalKeyGuarded(dialog, kind, table.id, id, seenOf(kind, id), undefined, changed);
+      } catch {
+        changed();
+      }
+    }));
   };
-  const toggleApproval = async (kind: KeyKind, id: number, approved: boolean) => {
-    await api(`/api/physical/${kind}/${id}/approval/${!approved}`, { method: 'PATCH' });
-    changed();
-  };
+  const toggleApproval = (kind: KeyKind, id: number, approved: boolean) => run(async () => {
+    try {
+      await physicalKeyGuarded(dialog, kind, table.id, id, seenOf(kind, id), !approved, changed);
+    } catch {
+      changed(); // 공통 오류 알림이 보여 준다 (실패를 성공으로 표시하지 않는다)
+    }
+  });
 
   if (model.isError) return <p role="alert">{t('인덱스·제약조건을 불러오지 못했습니다.')} {model.error.message}</p>;
   if (!model.data) return <p role="status">{t('불러오는 중입니다.')}</p>;
@@ -377,7 +393,7 @@ export function TableKeys({ table, columns, editable, approvalAvailable, onChang
       {fromColumn ? <span className="gh-muted">{t('컬럼 편집에서 변경')}</span> : (
         <div className="logical-actions">
           {editable && <button type="button" className="btn btn-sm btn-danger" disabled={approved} title={approved ? APPROVED_NOTE : undefined} onClick={() => remove(kind, id, name)}>{t('삭제')}</button>}
-          {approvalAvailable && <button type="button" className="btn btn-sm" onClick={() => void toggleApproval(kind, id, approved)}>{approved ? t('승인취소') : tc('버튼', '승인')}</button>}
+          {approvalAvailable && <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void toggleApproval(kind, id, approved)}>{approved ? t('승인취소') : tc('버튼', '승인')}</button>}
         </div>
       )}
     </td>

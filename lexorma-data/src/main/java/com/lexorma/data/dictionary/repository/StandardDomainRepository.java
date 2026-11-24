@@ -36,6 +36,11 @@ public interface StandardDomainRepository extends JpaRepository<StandardDomain, 
 
     StandardDomain findByIdAndProjectId(Long id, Long projectId);
 
+    /** 수정·승인이 잠근 행을 다시 읽어 비교하고 바꾼다 (행 배타 잠금, M8-C1 — 표준 용어 findForUpdate 와 같다) */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select d from StandardDomain d where d.id = :id and d.projectId = :projectId")
+    java.util.Optional<StandardDomain> findForUpdate(@org.springframework.data.repository.query.Param("id") Long id, @org.springframework.data.repository.query.Param("projectId") Long projectId);
+
     List<StandardDomain> findAllByCommonStandardDomainCategoryAndProjectId(String splitDatum, Long projectId);
 
     /**

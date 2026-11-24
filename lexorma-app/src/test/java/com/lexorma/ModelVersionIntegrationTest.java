@@ -72,6 +72,8 @@ class ModelVersionIntegrationTest {
     private static final tools.jackson.databind.json.JsonMapper JSON = tools.jackson.databind.json.JsonMapper.builder().build();
 
     @Autowired ProjectRepository projectRepository;
+
+    @Autowired CurrentBase currentBase; // M8-C2 : 컨트롤러 호출의 지금 기준값
     @Autowired AccountRepository accountRepository;
     @Autowired TableInfoRepository tableInfoRepository;
     @Autowired ColumnInfoRepository columnInfoRepository;
@@ -150,8 +152,8 @@ class ModelVersionIntegrationTest {
         // 모델을 바꿔도 저장된 버전의 내용은 한 글자도 달라지지 않는다
         String stored = jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, v1.id());
         tables.updateTable(TableInfoDto.builder().id(f.order.getId()).tableName("TB_ORDER").tableDescription("주문").isMasterTable("N").baseModifiedAt(tableInfoRepository.findById(f.order.getId()).orElseThrow().modifiedAt()).build(), admin);
-        physical.updateApproval(admin, "constraint", f.check.id(), false);
-        physical.delete(admin, "constraint", f.check.id());
+        physical.updateApproval(admin, "constraint", f.check.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, f.check.id()));
+        physical.delete(admin, "constraint", f.check.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, f.check.id()));
         logical.saveAttribute(admin, new Attribute(null, f.orderEntity.id(), "주문 일자", null, null, false, null, null, null, null, null));
         assertThat(jdbc.queryForObject("select MDL_CN from TB_MDL_VER where MDL_VER_SN = ?", String.class, v1.id())).isEqualTo(stored);
         assertThat(object(versions.snapshot(admin, v1.id()).getBody().objects(), "PHYSICAL_TABLE", f.order.getId()).get("name").asString()).isEqualTo("TB_ORD");
@@ -182,11 +184,11 @@ class ModelVersionIntegrationTest {
             stat.setDefaultValue("'00'");
         });
         ColumnInfo memo = column(admin.getProjectId(), f.order, "MEMO", false);
-        physical.updateApproval(admin, "constraint", f.check.id(), false);
-        physical.delete(admin, "constraint", f.check.id());
-        mappings.deleteAttributeMapping(admin, f.attributeMapping.id());
-        physical.updateApproval(admin, "index", f.index.id(), false);
-        physical.delete(admin, "index", f.index.id());
+        physical.updateApproval(admin, "constraint", f.check.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, f.check.id()));
+        physical.delete(admin, "constraint", f.check.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableConstraint.class, f.check.id()));
+        mappings.deleteAttributeMapping(admin, f.attributeMapping.id(), null);
+        physical.updateApproval(admin, "index", f.index.id(), false, currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, f.index.id()));
+        physical.delete(admin, "index", f.index.id(), currentBase.of(com.lexorma.data.physical.domain.entity.TableIndex.class, f.index.id()));
         PhysicalModelDto.Index recreated = physical.saveIndex(admin, new PhysicalModelDto.Index(null, f.order.getId(), null, null, false, List.of(ref(f.stat), ref(f.statGrp)), null)).getBody();
         Attribute date = logical.saveAttribute(admin, new Attribute(null, f.orderEntity.id(), "주문 일자", null, null, false, null, null, null, null, null));
 
@@ -233,7 +235,7 @@ class ModelVersionIntegrationTest {
         // (서비스는 같은 컬럼 구성의 UNIQUE 를 다시 저장하지 않으므로 순서만 직접 뒤집는다)
         jdbc.update("update TB_TBL_CNSTRT_COL set COL_ORD = COL_ORD + 10 where CNSTRT_SN = ?", f.unique.id());
         jdbc.update("update TB_TBL_CNSTRT_COL set COL_ORD = 13 - COL_ORD where CNSTRT_SN = ?", f.unique.id());
-        logical.updateEntityApproval(admin, f.itemEntity.id(), false);
+        logical.updateEntityApproval(admin, f.itemEntity.id(), false, null);
         logical.saveEntity(admin, new Entity(f.itemEntity.id(), f.model.id(), "주문 품목", null, null, null, null));
         Comparison minor = versions.compare(admin, v2.id(), null).getBody();
         assertThat(minor.changes()).noneMatch(change -> change.targetType().equals("PHYSICAL_CONSTRAINT"));
@@ -340,7 +342,7 @@ class ModelVersionIntegrationTest {
 
         // 논리 : 속성 추가(엔터티 자신은 그대로), 엔터티 이름 변경, 엔터티·관계 추가
         Attribute date = logical.saveAttribute(admin, new Attribute(null, f.orderEntity.id(), "주문 일자", null, null, false, null, null, null, null, null));
-        logical.updateEntityApproval(admin, f.itemEntity.id(), false);
+        logical.updateEntityApproval(admin, f.itemEntity.id(), false, null);
         logical.saveEntity(admin, new Entity(f.itemEntity.id(), f.model.id(), "주문 품목", null, null, null, null));
         Entity delivery = logical.saveEntity(admin, new Entity(null, f.model.id(), "배송", null, null, null, null));
         Relationship shipped = logical.saveRelationship(admin, new Relationship(null, f.model.id(), null, null, f.orderEntity.id(), null, delivery.id(), null, false, 1, 1, 0, null, null, null));

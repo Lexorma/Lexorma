@@ -65,6 +65,7 @@ public class ModelMappingService {
     private final com.lexorma.data.logical.repository.LogicalSubtypeGroupRepository subtypeGroupRepository;
     private final com.lexorma.data.mapping.repository.SubtypeGroupConversionRepository conversionRepository;
     private final com.lexorma.data.mapping.repository.SubtypeAttributeColumnMappingRepository subtypeAttributeRepository;
+    private final jakarta.persistence.EntityManager entityManager;
 
     /** 논리 모델의 상속 변환 해석 (계층 ID 투영 + 변환 기록 — 모델당 두 번 조회) */
     InheritanceConversions conversions(Long projectId, Long modelId) {
@@ -323,7 +324,10 @@ public class ModelMappingService {
             if (role == InheritanceConversions.Role.DISTRIBUTED) throw invalid("엔터티 {0} 은(는) C형으로 말단 테이블에 분산된 엔터티라 테이블에 매핑할 수 없습니다.", entity.getEntityName());
             mapping = EntityTableMapping.builder().projectId(projectId).entity(entity).build();
         } else {
-            mapping = lockMapping(projectId, request.id());
+            // 지금 테이블과 바꿀 테이블을 ID 오름차순으로 잠근다 (M8-C4a, K-01) : 예전에는 "지금 → 새 테이블" 순서라 두 매핑이 테이블을 맞바꾸면 (다른 논리 모델이면) 서로 기다렸다
+            mapping = lockMapping(projectId, request.id(), request.tableId());
+            // M8-C2 (M8-C2-M01) : 화면이 본 매핑(목록의 mappingModifiedAt)과 같을 때만 바꾼다 — 그 사이 다른 사용자가 바꾼 매핑을 덮어쓰지 않는다 (409)
+            com.lexorma.common.jpa.ModelBase.verify(mapping, request.modifiedAt(), mapping.getEntity().getEntityName());
             if (!mapping.getTable().getId().equals(request.tableId()) && attributeMappingRepository.existsByMapping_Id(mapping.getId())) {
                 // 기존 속성 매핑을 말없이 남기거나 다른 컬럼으로 옮기지 않는다
                 throw invalid("속성 매핑이 있는 엔터티 매핑은 테이블을 바꿀 수 없습니다. 속성 매핑을 먼저 해제해주세요.");
@@ -346,12 +350,14 @@ public class ModelMappingService {
             // 잠금으로 직렬화하지만 최종 방어는 DB UNIQUE 다
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS);
         }
-        return new ModelMappingDto.EntityMapping(mapping.getId(), mapping.getEntity().getId(), table.getId());
+        return new ModelMappingDto.EntityMapping(mapping.getId(), mapping.getEntity().getId(), table.getId(), mapping.modifiedAt());
     }
 
+    /** 엔터티 매핑 해제 (M8-C2) : 모델 행 → 테이블 행 잠금 → 다시 읽기 → 화면이 본 매핑(modifiedAt)과 같을 때만 (다르면 409) */
     @Transactional
-    public void deleteEntityMapping(AccountDto accountDto, Long mappingId) {
+    public void deleteEntityMapping(AccountDto accountDto, Long mappingId, java.time.LocalDateTime modifiedAt) {
         EntityTableMapping mapping = lockMapping(accountDto.getProjectId(), mappingId);
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getEntity().getEntityName());
         if (attributeMappingRepository.existsByMapping_Id(mapping.getId())) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "속성 매핑이 있는 엔터티 매핑입니다. 속성 매핑을 먼저 해제해주세요.");
         }
@@ -389,7 +395,8 @@ public class ModelMappingService {
             });
             mapping = AttributeColumnMapping.builder().mapping(parent).attribute(attribute).build();
         } else {
-            mapping = attributeMappingRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound);
+            mapping = refreshed(attributeMappingRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound));
+            com.lexorma.common.jpa.ModelBase.verify(mapping, request.modifiedAt(), mapping.getAttribute().getAttributeName()); // M8-C2 : 부모 매핑 잠금 뒤
         }
         ColumnInfo column = request.columnId() == null ? null : columnInfoRepository.findById(request.columnId()).orElse(null);
         if (column == null || column.getTableInfo() == null || !column.getTableInfo().getId().equals(parent.getTable().getId())) {
@@ -405,15 +412,18 @@ public class ModelMappingService {
         } catch (DataIntegrityViolationException e) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS);
         }
-        return new ModelMappingDto.AttributeMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId());
+        return new ModelMappingDto.AttributeMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId(), mapping.modifiedAt());
     }
 
+    /** 속성 매핑 해제 (M8-C2) : 부모 매핑 잠금 → 다시 읽기 → 화면이 본 매핑(modifiedAt)과 같을 때만 (다르면 409 — 그 사이 다른 컬럼으로 바뀐 매핑을 지우지 않는다) */
     @Transactional
-    public void deleteAttributeMapping(AccountDto accountDto, Long attributeMappingId) {
+    public void deleteAttributeMapping(AccountDto accountDto, Long attributeMappingId, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         if (attributeMappingId == null) throw notFound();
         lockMapping(projectId, attributeMappingRepository.findParentId(attributeMappingId, projectId).orElseThrow(ModelMappingService::notFound));
-        attributeMappingRepository.delete(attributeMappingRepository.findById(attributeMappingId).orElseThrow(ModelMappingService::notFound));
+        AttributeColumnMapping mapping = refreshed(attributeMappingRepository.findById(attributeMappingId).orElseThrow(ModelMappingService::notFound));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getAttribute().getAttributeName());
+        attributeMappingRepository.delete(mapping);
     }
 
     // ------------------------------------------------------------------ 상속 PK 매핑 (M-7 3차)
@@ -456,7 +466,7 @@ public class ModelMappingService {
             SubtypePlanContext.KeyState state = states.get(attribute.getId());
             keys.add(link == null ? new ModelMappingDto.SubtypeKeyRow(null, i + 1, true, attribute.getId(), attribute.getAttributeName(), attribute.getEntity().getId(),
                     attribute.getEntity().getEntityName(), null, null, null, null, null, null, null, termName(attribute), attributeType(attribute), null,
-                    state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), "UNMAPPED") : keyRow(link, i + 1, true, attribute, state));
+                    state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), "UNMAPPED", null) : keyRow(link, i + 1, true, attribute, state));
         }
         for (SubtypeIdentifierColumnMapping link : links) {
             if (!current.contains(link.getAttribute().getId())) keys.add(keyRow(link, 0, false, link.getAttribute(), null));
@@ -577,7 +587,8 @@ public class ModelMappingService {
             });
             mapping = SubtypeIdentifierColumnMapping.builder().mapping(parent).attribute(attribute).build();
         } else {
-            mapping = subtypeKeyRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound);
+            mapping = refreshed(subtypeKeyRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound));
+            com.lexorma.common.jpa.ModelBase.verify(mapping, request.modifiedAt(), mapping.getAttribute().getAttributeName()); // M8-C2 : 부모 매핑 잠금 뒤
         }
         ColumnInfo column = request.columnId() == null ? null : columnInfoRepository.findById(request.columnId()).orElse(null);
         if (column == null || column.getTableInfo() == null || !column.getTableInfo().getId().equals(parent.getTable().getId())) {
@@ -593,16 +604,18 @@ public class ModelMappingService {
         } catch (DataIntegrityViolationException e) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS);
         }
-        return new ModelMappingDto.SubtypeKeyMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId());
+        return new ModelMappingDto.SubtypeKeyMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId(), mapping.modifiedAt());
     }
 
     /** 상속 PK 매핑 해제 : 매핑만 지운다 (물리 PK·FK·컬럼과 논리 식별자는 그대로). 정합하지 않게 된 매핑도 해제할 수 있다 */
     @Transactional
-    public void deleteSubtypeKeyMapping(AccountDto accountDto, Long id) {
+    public void deleteSubtypeKeyMapping(AccountDto accountDto, Long id, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         if (id == null) throw notFound();
         lockMapping(projectId, subtypeKeyRepository.findParentId(id, projectId).orElseThrow(ModelMappingService::notFound));
-        subtypeKeyRepository.delete(subtypeKeyRepository.findById(id).orElseThrow(ModelMappingService::notFound));
+        SubtypeIdentifierColumnMapping mapping = refreshed(subtypeKeyRepository.findById(id).orElseThrow(ModelMappingService::notFound));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getAttribute().getAttributeName()); // M8-C2
+        subtypeKeyRepository.delete(mapping);
     }
 
     private static ModelMappingDto.SubtypeKeyRow keyRow(SubtypeIdentifierColumnMapping link, int order, boolean current, LogicalAttribute attribute, SubtypePlanContext.KeyState state) {
@@ -610,7 +623,7 @@ public class ModelMappingService {
         return new ModelMappingDto.SubtypeKeyRow(link.getId(), order, current, attribute.getId(), attribute.getAttributeName(), attribute.getEntity().getId(),
                 attribute.getEntity().getEntityName(), column.getId(), column.getColumnName(), column.getDataType(), column.getMaxLength(), column.getPrecision(),
                 column.getScale(), column.getIsPk(), termName(attribute), attributeType(attribute), com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(column),
-                state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), !current ? "STALE" : state == null ? null : state.state());
+                state == null || state.parentColumn() == null ? null : state.parentColumn().getColumnName(), !current ? "STALE" : state == null ? null : state.state(), link.modifiedAt());
     }
 
     /** 다른 상속 PK 매핑이 쓰는 컬럼은 속성 매핑·상속 PK 매핑에 다시 쓸 수 없다 (self : 바꾸는 상속 PK 매핑 자신). 상속 일반 속성 매핑에 쓰인 컬럼도 같다 */
@@ -676,7 +689,7 @@ public class ModelMappingService {
         return new ModelMappingDto.SubtypeAttributeRow(link == null ? null : link.getId(), current, attribute.getId(), attribute.getAttributeName(), owner.getId(), owner.getEntityName(),
                 column == null ? null : column.getId(), column == null ? null : column.getColumnName(), column == null ? null : column.getDataType(),
                 column == null ? null : column.getMaxLength(), termName(attribute), attributeType(attribute), attribute.getIsRequired(),
-                column == null ? null : com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(column), check);
+                column == null ? null : com.lexorma.data.table.ddl.TableDdlGenerator.isNotNull(column), check, link == null ? null : link.modifiedAt());
     }
 
     /**
@@ -709,7 +722,8 @@ public class ModelMappingService {
             });
             mapping = com.lexorma.data.mapping.domain.entity.SubtypeAttributeColumnMapping.builder().mapping(parent).attribute(attribute).build();
         } else {
-            mapping = subtypeAttributeRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound);
+            mapping = refreshed(subtypeAttributeRepository.findById(request.id()).orElseThrow(ModelMappingService::notFound));
+            com.lexorma.common.jpa.ModelBase.verify(mapping, request.modifiedAt(), mapping.getAttribute().getAttributeName()); // M8-C2 : 부모 매핑 잠금 뒤
         }
         ColumnInfo column = request.columnId() == null ? null : columnInfoRepository.findById(request.columnId()).orElse(null);
         if (column == null || column.getTableInfo() == null || !column.getTableInfo().getId().equals(parent.getTable().getId())) {
@@ -728,16 +742,18 @@ public class ModelMappingService {
         } catch (DataIntegrityViolationException e) {
             throw new CustomException(ErrorCode.SAVED_DATA_EXISTS);
         }
-        return new ModelMappingDto.SubtypeAttributeMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId());
+        return new ModelMappingDto.SubtypeAttributeMapping(mapping.getId(), parent.getId(), mapping.getAttribute().getId(), column.getId(), mapping.modifiedAt());
     }
 
     /** 상속 일반 속성 매핑 해제 : 매핑만 지운다 (물리 컬럼·논리 속성 그대로) */
     @Transactional
-    public void deleteSubtypeAttributeMapping(AccountDto accountDto, Long id) {
+    public void deleteSubtypeAttributeMapping(AccountDto accountDto, Long id, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         if (id == null) throw notFound();
         lockMapping(projectId, subtypeAttributeRepository.findParentId(id, projectId).orElseThrow(ModelMappingService::notFound));
-        subtypeAttributeRepository.delete(subtypeAttributeRepository.findById(id).orElseThrow(ModelMappingService::notFound));
+        var mapping = refreshed(subtypeAttributeRepository.findById(id).orElseThrow(ModelMappingService::notFound));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getAttribute().getAttributeName()); // M8-C2
+        subtypeAttributeRepository.delete(mapping);
     }
 
     /** 상속 일반 속성 매핑 후보 컬럼 (서버 페이징) : 세 매핑 어디에도 쓰이지 않은 매핑 테이블 컬럼. currentId 의 컬럼은 후보로 둔다 */
@@ -775,7 +791,8 @@ public class ModelMappingService {
                     list.stream().map(r -> new ModelMappingDto.Conversion(r.getId(), r.getGroup().getId(), r.getGroup().getGroupName(), r.getGroup().getSupertypeEntity().getId(),
                             r.getGroup().getSupertypeEntity().getEntityName(), r.getStrategy().name(), r.getTable() == null ? null : r.getTable().getId(),
                             r.getTable() == null ? null : r.getTable().getTableName(), r.getClassificationColumn() == null ? null : r.getClassificationColumn().getId(),
-                            r.getClassificationColumn() == null ? null : r.getClassificationColumn().getColumnName())).toList(), dependencies, dependencies.isEmpty()));
+                            r.getClassificationColumn() == null ? null : r.getClassificationColumn().getColumnName())).toList(), dependencies, dependencies.isEmpty(),
+                    conversionComposition(list).token()));
         });
         return result;
     }
@@ -784,8 +801,14 @@ public class ModelMappingService {
      * 상속 계층의 변환 기록 삭제 (D-AC-18) : 관련 매핑(계층 엔터티의 엔터티 매핑, 계층 속성의 속성·상속 PK·상속 일반 속성 매핑)이 남아 있으면 막는다 — 매핑을 먼저 해제한다.
      * 기록만 지운다 (물리 테이블·컬럼·FK·UNIQUE·논리 엔터티를 지우거나 다른 전략으로 바꾸지 않는다). 논리 모델 행을 잠근 뒤 판단한다 (매핑 등록과 직렬화)
      */
+    /** 변환 기록 삭제의 구성 기준값 (M8-C2) : 계층의 기록 행 (ID·수정 일시). 기록은 생성 적용만 만든다 (논리 모델 행 NOWAIT — 삭제의 모델 잠금과 직렬화) */
+    private static com.lexorma.common.jpa.ModelComposition conversionComposition(List<com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion> records) {
+        return com.lexorma.common.jpa.ModelComposition.of().addEntities("conversions", records, com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion::getId);
+    }
+
+    /** composition : 목록(selectConversions)이 준 구성 기준값 (M8-C2 — 그 사이 기록이 바뀌었으면 409, null = 내부 호출) */
     @Transactional
-    public int deleteConversions(AccountDto accountDto, Long rootEntityId) {
+    public int deleteConversions(AccountDto accountDto, Long rootEntityId, String composition) {
         Long projectId = accountDto.getProjectId();
         LogicalEntity root = lockEntity(projectId, rootEntityId);
         InheritanceConversions c = conversions(projectId, root.getModel().getId());
@@ -794,6 +817,7 @@ public class ModelMappingService {
         List<com.lexorma.data.mapping.domain.entity.SubtypeGroupConversion> records = conversionRepository.findAllByModelId(projectId, root.getModel().getId()).stream()
                 .filter(r -> groups.contains(r.getGroup().getId())).toList();
         if (records.isEmpty()) throw notFound();
+        conversionComposition(records).verify(composition, root.getEntityName());
         List<String> dependencies = conversionDependencies(projectId, c, root.getId());
         if (!dependencies.isEmpty()) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "변환 기록에 의존하는 매핑이 있어 지울 수 없습니다. 매핑을 먼저 해제해주세요 : {0}", String.join(", ", dependencies));
@@ -841,11 +865,28 @@ public class ModelMappingService {
 
     /** 매핑의 논리 모델 행 → 물리 테이블 행 순서로 잠근 뒤 매핑을 읽는다 (잠금을 기다리는 사이 지워졌을 수 있다) */
     private EntityTableMapping lockMapping(Long projectId, Long mappingId) {
+        return lockMapping(projectId, mappingId, null);
+    }
+
+    /** 논리 모델 행 → 매핑 테이블 행(과 바꿀 테이블 행 — 둘이면 ID 오름차순) 순서로 잠근 뒤 매핑을 다시 읽는다. 바꿀 테이블이 없거나 다른 프로젝트면 그 행은 잠그지 않는다 (뒤에서 대상 없음) */
+    private EntityTableMapping lockMapping(Long projectId, Long mappingId, Long otherTableId) {
         if (mappingId == null) throw notFound();
         lockEntity(projectId, mappingRepository.findEntityId(mappingId, projectId).orElseThrow(ModelMappingService::notFound));
         EntityTableMapping mapping = mappingRepository.findByIdAndProjectId(mappingId, projectId).orElseThrow(ModelMappingService::notFound);
-        lockTable(projectId, mapping.getTable().getId());
-        return mapping;
+        Long current = mapping.getTable().getId();
+        java.util.stream.Stream.of(current, otherTableId).filter(java.util.Objects::nonNull).distinct().sorted()
+                .forEach(id -> { if (id.equals(current)) lockTable(projectId, id); else tableInfoRepository.findForUpdate(id, projectId); });
+        return refreshed(mapping); // 잠근 뒤의 값 (M8-C2 기준값 비교) — 같은 트랜잭션에서 먼저 읽어 둔 행일 수 있다
+    }
+
+    /** 잠근 뒤 다시 읽는다 : 그 사이 지워졌으면 대상 없음 */
+    private <T> T refreshed(T entity) {
+        try {
+            entityManager.refresh(entity);
+        } catch (jakarta.persistence.EntityNotFoundException gone) {
+            throw notFound();
+        }
+        return entity;
     }
 
     private static CustomException invalid(String message, Object... args) {

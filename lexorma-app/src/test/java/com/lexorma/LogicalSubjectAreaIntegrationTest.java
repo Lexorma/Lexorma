@@ -347,11 +347,11 @@ class LogicalSubjectAreaIntegrationTest {
         error(() -> areas.delete(f.user, parent.id(), find(f, parent.id()).modifiedAt()), ErrorCode.RELATION_EXISTS);
         error(() -> areas.delete(f.user, child.id(), find(f, child.id()).modifiedAt()), ErrorCode.RELATION_EXISTS);
         // 관계가 있는 엔터티는 지울 수 없다 (기존 제약) : 소속도 그대로
-        error(() -> logical.deleteEntity(f.user, entity), ErrorCode.RELATION_EXISTS);
+        error(() -> logical.deleteEntity(f.user, entity, null, null), ErrorCode.RELATION_EXISTS);
         assertThat(areaOf(entity)).isEqualTo(child.id());
         // 지워지는 엔터티는 소속도 함께
-        logical.deleteRelationship(f.user, logical.selectEntityRelationships(f.user, entity).getFirst().id());
-        logical.deleteEntity(f.user, entity);
+        logical.deleteRelationship(f.user, logical.selectEntityRelationships(f.user, entity).getFirst().id(), null);
+        logical.deleteEntity(f.user, entity, null, null);
         assertThat(count("select count(*) from TB_LGCL_SBJ_AREA_ENTT where LGCL_ENTT_SN = ?", entity)).isZero();
         assign(f, null, one(other, child.id()));
         LocalDateTime stale = find(f, child.id()).modifiedAt().minusSeconds(1);
@@ -365,9 +365,9 @@ class LogicalSubjectAreaIntegrationTest {
         var deep = area(f, parent.id(), "하위 2");
         area(f, deep.id(), "하위 3");
         areas.saveLayout(f.user, f.modelId, deep.id(), new LogicalModelDto.Layout(null, Map.of(), new LogicalModelDto.Viewport(0, 0, 1)));
-        error(() -> logical.deleteModel(f.user, f.modelId), ErrorCode.RELATION_EXISTS);
-        logical.deleteEntity(f.user, other);
-        logical.deleteModel(f.user, f.modelId);
+        error(() -> logical.deleteModel(f.user, f.modelId, null, null), ErrorCode.RELATION_EXISTS);
+        logical.deleteEntity(f.user, other, null, null);
+        logical.deleteModel(f.user, f.modelId, null, null);
         assertThat(count("select count(*) from TB_LGCL_SBJ_AREA where LGCL_MDL_SN = ?", f.modelId)).isZero();
         assertThat(count("select count(*) from TB_LGCL_SBJ_AREA_LYT where LGCL_MDL_SN = ?", f.modelId)).isZero();
     }

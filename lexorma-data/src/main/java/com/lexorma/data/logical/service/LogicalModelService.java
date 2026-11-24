@@ -91,8 +91,10 @@ public class LogicalModelService {
         Long projectId = accountDto.getProjectId();
         projectRepository.findByIdForUpdate(projectId); // 같은 프로젝트의 모델명 중복 검사를 직렬화한다
         String name = name(request.modelName(), "모델명");
-        LogicalModel model = request.id() == null ? LogicalModel.builder().projectId(projectId).build() : model(projectId, request.id());
-        // DEC-08 : 모델 저장은 프로젝트 행 잠금으로 직렬화된다 — 잠근 뒤 다시 읽은 모델과 화면이 읽은 수정 일시 비교
+        LogicalModel model = request.id() == null ? LogicalModel.builder().projectId(projectId).build() : lockModelNoWait(projectId, request.id());
+        // DEC-08 : 모델 저장은 프로젝트 행 잠금으로 직렬화된다 — 잠근 뒤 다시 읽은 모델과 화면이 읽은 수정 일시 비교.
+        // 모델 행도 잠근다 (M8-C2) : 모델 삭제·엔터티 저장은 모델 행을 잡으므로, 예전에는 삭제와 겹친 수정이 0행 UPDATE 로 500 이었다.
+        // 프로젝트 행을 배타로 쥔 뒤라 기다리지 않는다 (모델 행을 쥔 쓰기는 커밋 때 프로젝트 행을 공유로 잡는다 — 기다리면 교착, 바쁘면 409)
         if (request.id() != null) {
             entityManager.refresh(model);
             com.lexorma.common.jpa.ModelBase.verify(model, request.modifiedAt(), model.getModelName());
@@ -105,9 +107,28 @@ public class LogicalModelService {
         return LogicalModelDto.Model.fromEntity(modelRepository.save(model));
     }
 
+    /** 모델 삭제 확인 화면 (M8-C2) : 지금 기준값과 함께 지워질 주제 영역 구성 */
+    @Transactional(readOnly = true)
+    public com.lexorma.common.jpa.ModelComposition.Deletion selectModelDeletion(AccountDto accountDto, Long modelId) {
+        LogicalModel model = model(accountDto.getProjectId(), modelId);
+        return modelComposition(model).deletion(model.getId(), model.getModelName(), model.modifiedAt());
+    }
+
+    /** 모델과 함께 지워지는 자식 : 주제 영역 (사용자별 ERD 배치는 화면 설정이라 넣지 않는다). 엔터티가 있으면 삭제가 거절되므로 엔터티는 넣지 않는다 */
+    private com.lexorma.common.jpa.ModelComposition modelComposition(LogicalModel model) {
+        return com.lexorma.common.jpa.ModelComposition.of().addEntities("subjectAreas", subjectAreaService.areasOf(model.getId()), LogicalSubjectArea::getId);
+    }
+
+    /**
+     * 모델 삭제 (M8-C2, M8-D01) : 모델 행 잠금(주제 영역·엔터티를 더하는 쓰기와 같은 잠금) → 다시 읽어 기준값(modifiedAt) → 주제 영역 구성(composition) 비교 → 다르면 409.
+     * 잠근 동안 새 주제 영역·엔터티가 들어올 수 없다. 내부 호출(기준값 null)은 검사하지 않는다
+     */
     @Transactional
-    public void deleteModel(AccountDto accountDto, Long modelId) {
+    public void deleteModel(AccountDto accountDto, Long modelId, java.time.LocalDateTime modifiedAt, String composition) {
         LogicalModel model = lockModel(accountDto.getProjectId(), modelId);
+        refreshOrNotFound(model, "논리 모델");
+        com.lexorma.common.jpa.ModelBase.verify(model, modifiedAt, model.getModelName());
+        modelComposition(model).verify(composition, model.getModelName());
         if (entityRepository.existsByModel_Id(modelId)) {
             throw new CustomException(ErrorCode.RELATION_EXISTS, "{0} 에 엔터티가 있습니다.", model.getModelName());
         }
@@ -308,10 +329,31 @@ public class LogicalModelService {
         return LogicalModelDto.Entity.detail(saved, created ? request.subjectAreaId() : subjectAreaService.areaOf(saved.getId()));
     }
 
+    /** 엔터티 삭제 확인 화면 (M8-C2) : 지금 기준값과 함께 지워질 속성·식별자 구성 */
+    @Transactional(readOnly = true)
+    public com.lexorma.common.jpa.ModelComposition.Deletion selectEntityDeletion(AccountDto accountDto, Long entityId) {
+        LogicalEntity entity = entity(accountDto.getProjectId(), entityId);
+        return entityComposition(entity).deletion(entity.getId(), entity.getEntityName(), entity.modifiedAt());
+    }
+
+    /** 엔터티와 함께 지워지는 자식 : 직접 정의한 속성·식별자 (식별자 구성 변경은 식별자의 수정 일시를 올린다). 관계·매핑·상속이 있으면 삭제가 거절되므로 넣지 않는다 */
+    private static com.lexorma.common.jpa.ModelComposition entityComposition(LogicalEntity entity) {
+        return com.lexorma.common.jpa.ModelComposition.of()
+                .addEntities("attributes", entity.getAttributes(), LogicalAttribute::getId)
+                .addEntities("identifiers", entity.getIdentifiers(), LogicalIdentifier::getId);
+    }
+
+    /**
+     * 엔터티 삭제 (M8-C2, M8-D01) : 모델 행 잠금(속성·식별자를 더하고 고치는 쓰기와 같은 잠금) → 다시 읽어 기준값 → 속성·식별자 구성 비교 → 다르면 409.
+     * 엔터티의 수정 일시는 자식이 바뀌어도 움직이지 않으므로 구성을 따로 본다. 잠근 동안 새 속성·식별자가 들어올 수 없다
+     */
     @Transactional
-    public void deleteEntity(AccountDto accountDto, Long entityId) {
+    public void deleteEntity(AccountDto accountDto, Long entityId, java.time.LocalDateTime modifiedAt, String composition) {
         LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
+        refreshOrNotFound(entity, "엔터티");
         rejectApproved(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        com.lexorma.common.jpa.ModelBase.verify(entity, modifiedAt, entity.getEntityName());
+        entityComposition(entity).verify(composition, entity.getEntityName());
         // 슈퍼타입·서브타입은 상속을 먼저 해제한다 (그룹·하위 엔터티를 함께 지우지 않는다 — M-6 후속 5차)
         subtypeService.requireNotParticipating(entity);
         // 관계는 함께 지우지 않는다 : 관계를 먼저 정리해야 한다
@@ -330,10 +372,17 @@ public class LogicalModelService {
         entityRepository.delete(entity);
     }
 
+    /**
+     * 엔터티 승인·승인 취소 (M8-C2, M8-D02) : 권한 → 모델 행 잠금 → 다시 읽기 → 이미 그 상태면 바꾸지 않음 → 기준값(modifiedAt) → 상속 승인 조건 → 승인 여부만 변경.
+     * 기준값은 엔터티 행의 수정 일시다 (속성·식별자 변경은 엔터티 기준값을 바꾸지 않는다 — 문서 14장 남은 결정)
+     */
     @Transactional
-    public void updateEntityApproval(AccountDto accountDto, Long entityId, boolean isApproval) {
+    public void updateEntityApproval(AccountDto accountDto, Long entityId, boolean isApproval, java.time.LocalDateTime modifiedAt) {
         requireApprover();
         LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
+        refreshOrNotFound(entity, "엔터티");
+        if (Boolean.TRUE.equals(entity.getIsApproval()) == isApproval) return;
+        com.lexorma.common.jpa.ModelBase.verify(entity, modifiedAt, entity.getEntityName());
         // 서브타입 승인은 조상이 모두 승인된 뒤, 승인 취소는 승인된 하위 엔터티가 없을 때 (자동으로 함께 바꾸지 않는다 — M-6 후속 5차)
         subtypeService.checkApprovalChange(entity, isApproval);
         entity.setIsApproval(isApproval);
@@ -386,12 +435,16 @@ public class LogicalModelService {
         return LogicalModelDto.Attribute.fromEntity(attribute);
     }
 
+    /** 속성 삭제 (M8-C2) : 모델 행 잠금 → 속성 다시 읽기 → 승인 검사 → 기준값(modifiedAt, 화면이 읽은 속성) → 사용 중 검사 */
     @Transactional
-    public void deleteAttribute(AccountDto accountDto, Long attributeId) {
+    public void deleteAttribute(AccountDto accountDto, Long attributeId, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, attributeRepository.findEntityId(attributeId, projectId).orElseThrow(() -> notFound("속성")));
+        LogicalAttribute target = entity.getAttributes().stream().filter(a -> a.getId().equals(attributeId)).findFirst().orElseThrow(() -> notFound("속성"));
+        refreshOrNotFound(target, "속성");
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        com.lexorma.common.jpa.ModelBase.verify(target, modifiedAt, target.getAttributeName());
         entity.getAttributes().stream().filter(a -> a.getId().equals(attributeId)).findFirst().ifPresent(subtypeService::requireNotClassification);
         // 식별자에서 먼저 빼야 한다 (식별자 구성을 말없이 바꾸지 않는다)
         entity.getIdentifiers().stream().filter(i -> i.getAttributes().stream().anyMatch(a -> a.getAttribute().getId().equals(attributeId))).findFirst().ifPresent(i -> {
@@ -493,12 +546,16 @@ public class LogicalModelService {
         return LogicalModelDto.Identifier.fromEntity(identifier);
     }
 
+    /** 식별자 삭제 (M8-C2) : 모델 행 잠금 → 식별자 다시 읽기 → 승인 검사 → 기준값(구성 변경도 식별자의 수정 일시를 올린다 — DEC-08) */
     @Transactional
-    public void deleteIdentifier(AccountDto accountDto, Long identifierId) {
+    public void deleteIdentifier(AccountDto accountDto, Long identifierId, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         LogicalEntity entity = lockEntity(projectId, identifierRepository.findEntityId(identifierId, projectId).orElseThrow(() -> notFound("식별자")));
+        LogicalIdentifier target = entity.getIdentifiers().stream().filter(i -> i.getId().equals(identifierId)).findFirst().orElseThrow(() -> notFound("식별자"));
+        refreshOrNotFound(target, "식별자");
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        com.lexorma.common.jpa.ModelBase.verify(target, modifiedAt, target.getIdentifierName());
         entity.getIdentifiers().removeIf(i -> i.getId().equals(identifierId));
     }
 
@@ -697,12 +754,15 @@ public class LogicalModelService {
         return LogicalModelDto.Relationship.fromEntity(relationshipRepository.save(relationship));
     }
 
+    /** 관계 삭제 (M8-C2) : 모델 행 잠금 → 관계 다시 읽기 → 승인 검사 → 기준값(속성 짝 변경도 관계의 수정 일시를 올린다) → 짝과 함께 삭제 */
     @Transactional
-    public void deleteRelationship(AccountDto accountDto, Long relationshipId) {
+    public void deleteRelationship(AccountDto accountDto, Long relationshipId, java.time.LocalDateTime modifiedAt) {
         Long projectId = accountDto.getProjectId();
         lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
         LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
+        refreshOrNotFound(relationship, "관계");
         rejectApproved(relationship.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
+        com.lexorma.common.jpa.ModelBase.verify(relationship, modifiedAt, relationLabel(relationship));
         rejectInheritedRelationshipChange(relationship.getSourceEntity(), relationship.getTargetEntity(), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         // 관계의 속성 짝을 먼저 지운다 (엔티티 삭제라 변경 이력에 남는다 — DB 의 CASCADE 에 맡기지 않는다)
         pairRepository.deleteAll(pairRepository.findAllByRelationshipIds(List.of(relationshipId)));
@@ -710,10 +770,26 @@ public class LogicalModelService {
         relationshipRepository.delete(relationship);
     }
 
+    /**
+     * 관계 승인·승인 취소 (M8-C1 L-01, M8-D02). 모델 행을 잠근 뒤 관계를 다시 읽고, 승인자가 본 관계(modifiedAt = MDFCN_DT)와 같을 때만 승인 여부를 바꾼다 — 다르면 409.
+     * 예전에는 잠그지 않고 읽어 바꿔, 그 사이 다른 사용자가 커밋한 관계 수정(이름·카디널리티·양 끝)을 행 전체 UPDATE 로 되돌린 채 승인했다.
+     * 이미 그 상태면 바꾸는 것이 없다 (표준 용어 승인과 같다). HTTP 요청은 기준값이 필수다 (컨트롤러)
+     */
     @Transactional
-    public void updateRelationshipApproval(AccountDto accountDto, Long relationshipId, boolean isApproval) {
+    public void updateRelationshipApproval(AccountDto accountDto, Long relationshipId, boolean isApproval, java.time.LocalDateTime modifiedAt) {
         requireApprover();
-        relationshipRepository.findByIdAndProjectId(relationshipId, accountDto.getProjectId()).orElseThrow(() -> notFound("관계")).setIsApproval(isApproval);
+        Long projectId = accountDto.getProjectId();
+        lockModel(projectId, relationshipRepository.findModelId(relationshipId, projectId).orElseThrow(() -> notFound("관계")));
+        LogicalRelationship relationship = relationshipRepository.findByIdAndProjectId(relationshipId, projectId).orElseThrow(() -> notFound("관계"));
+        try {
+            entityManager.refresh(relationship);
+        } catch (jakarta.persistence.EntityNotFoundException gone) {
+            throw notFound("관계");
+        }
+        if (Boolean.TRUE.equals(relationship.getIsApproval()) == isApproval) return;
+        com.lexorma.common.jpa.ModelBase.verify(relationship, modifiedAt,
+                relationship.getRelationshipName() == null ? String.valueOf(relationship.getId()) : relationship.getRelationshipName());
+        relationship.setIsApproval(isApproval);
     }
 
     // ------------------------------------------------------------------ 논리 ERD
@@ -1008,6 +1084,25 @@ public class LogicalModelService {
 
     private LogicalModel lockModel(Long projectId, Long modelId) {
         return modelId == null ? fail("논리 모델") : modelRepository.findForUpdate(modelId, projectId).orElseThrow(() -> notFound("논리 모델"));
+    }
+
+    /** 프로젝트 행을 배타로 쥔 뒤의 모델 행 잠금 : 기다리지 않는다 (바쁘면 409 — physical/sync/ModelRowLocks 규칙). 다른 프로젝트·없는 모델은 대상 없음 */
+    private LogicalModel lockModelNoWait(Long projectId, Long modelId) {
+        if (modelId == null) return fail("논리 모델");
+        model(projectId, modelId); // 프로젝트 확인 (다른 프로젝트 모델을 잠그지 않는다)
+        LogicalModel locked = com.lexorma.data.physical.sync.ModelRowLocks.noWait(() -> entityManager.find(LogicalModel.class, modelId,
+                jakarta.persistence.LockModeType.PESSIMISTIC_WRITE, Map.of("jakarta.persistence.lock.timeout", 0)));
+        if (locked == null) throw notFound("논리 모델");
+        return locked;
+    }
+
+    /** 잠근 뒤 다시 읽는다 : 잠금을 기다리는 사이 지워졌으면 대상 없음 400 (500 이 아니다) */
+    private void refreshOrNotFound(Object entity, String label) {
+        try {
+            entityManager.refresh(entity);
+        } catch (jakarta.persistence.EntityNotFoundException gone) {
+            throw notFound(label);
+        }
     }
 
     private LogicalEntity entity(Long projectId, Long entityId) {

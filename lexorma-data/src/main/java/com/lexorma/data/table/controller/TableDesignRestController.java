@@ -103,19 +103,36 @@ public class TableDesignRestController {
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "테이블 관리 테이블 승인/승인취소", description = "테이블 관리 테이블 데이터를  승인/승인취소합니다.")
+    @Operation(summary = "테이블 관리 테이블 승인/승인취소", description = "테이블 관리 테이블 데이터를  승인/승인취소합니다. 행마다 modifiedAt(화면이 읽은 수정 일시) 필수 — "
+            + "하나라도 그 사이 바뀌었으면 409, 아무것도 바꾸지 않는다 (M8-C2). 승인 권한이 없으면 권한 오류가 먼저다")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/saveTable/{isApproval}")
     public ResponseEntity<Map<String, Boolean>> updateTableIsApproval(@PathVariable(value = "isApproval") boolean isApproval, @AuthenticationPrincipal AccountDto accountDto, @RequestBody List<TableInfoDto> tableInfoDtos) {
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable() && tableInfoDtos != null) {
+            tableInfoDtos.forEach(dto -> com.lexorma.common.jpa.ModelBase.require(true, dto.getModifiedAt()));
+        }
         tableDesignService.updateTableIsApproval(isApproval, accountDto, tableInfoDtos);
 
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "테이블 관리 테이블 삭제", description = "테이블 관리 테이블 데이터를  삭제합니다.")
+    @Operation(summary = "테이블 삭제 확인 (M8-C2)", description = "삭제 확인 화면용 : 테이블마다 지금 기준값(modifiedAt), 함께 지워질 인덱스·제약조건·관계 수(cascade), 구성 기준값(composition)")
+    @PreAuthorize("hasRole('VIEWER')")
+    @GetMapping("/deleteTable/preview")
+    public ResponseEntity<List<com.lexorma.common.jpa.ModelComposition.Deletion>> selectTableDeletions(@AuthenticationPrincipal AccountDto accountDto,
+                                                                                                       @RequestParam(value = "tableIds") List<Long> tableIds) {
+        return ResponseEntity.ok(tableDesignService.selectTableDeletions(tableIds, accountDto));
+    }
+
+    @Operation(summary = "테이블 관리 테이블 삭제", description = "테이블 관리 테이블 데이터를  삭제합니다. 행마다 modifiedAt(화면이 읽은 수정 일시)·composition(삭제 확인 조회의 구성 기준값) 필수 — "
+            + "없으면 400, 그 사이 테이블이나 함께 지워질 인덱스·제약조건·관계가 바뀌었으면 409, 아무것도 지우지 않는다 (M8-C2)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/deleteTable")
     public ResponseEntity<Map<String, Boolean>> deleteTable(@AuthenticationPrincipal AccountDto accountDto, @RequestBody List<TableInfoDto> tableInfoDtos) {
+        if (tableInfoDtos != null) tableInfoDtos.forEach(dto -> {
+            com.lexorma.common.jpa.ModelBase.require(true, dto.getModifiedAt());
+            com.lexorma.common.jpa.ModelComposition.require(dto.getComposition());
+        });
         tableDesignService.deleteTable(tableInfoDtos, accountDto);
         return ResponseEntity.ok(Map.of("result", true));
     }

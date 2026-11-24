@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Label, Mono, Muted } from '../../components/grid/cells';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
-import { api, enc } from '../../lib/api';
+import { api, ApiError, enc, isConflict } from '../../lib/api';
+import { MappingConflictNotice, type MappingConflict } from '../../components/conflict/ConflictRecovery';
+import { runWithReview } from '../../components/conflict/conflictActions';
+import { baseQuery } from '../../lib/deletion';
 import { t } from '../../lib/i18n';
 import { termLabel } from '../column/terms';
 import type { KeyColumnCandidate, MappingPhysical, MappingRow } from './model';
@@ -42,6 +45,8 @@ export function PhysicalTables({ value, onOpen }: { value?: MappingPhysical | nu
 }
 
 interface SubtypeAttributeRow {
+  /** modifiedAt : 상속 일반 속성 매핑 행의 수정 일시 (M8-C2 기준값) */
+  modifiedAt?: string | null;
   id: number | null; current: boolean; attributeId: number; attributeName: string; ownerEntityId: number; ownerEntityName: string;
   columnId: number | null; columnName: string | null; dataType: string | null; maxLength: number | null; attributeTermName: string | null; attributeDataType: string | null;
   required: boolean | null; notNull: boolean | null; check: 'OK' | 'UNMAPPED' | 'OTHER_TABLE' | 'STALE';
@@ -72,6 +77,7 @@ export function InheritedAttributeSection({ mappingId, canEdit, onChanged }: { m
   });
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState<MappingConflict | null>(null);
   if (detail.isError) return <p role="alert">{t('상속 일반 속성 매핑을 불러오지 못했습니다.')}</p>;
   if (!detail.data) return <p className="gh-muted" role="status">{t('불러오는 중입니다.')}</p>;
   const data = detail.data;
@@ -81,10 +87,18 @@ export function InheritedAttributeSection({ mappingId, canEdit, onChanged }: { m
   const save = async (row: SubtypeAttributeRow) => {
     setBusy(true);
     try {
-      await api('/api/modelMapping/subtypeAttribute', { method: 'POST', body: { id: row.id, mappingId, attributeId: row.attributeId, columnId: Number(drafts[row.attributeId]) } });
+      await api('/api/modelMapping/subtypeAttribute', { method: 'POST', conflict: 'handled', body: { id: row.id, mappingId, attributeId: row.attributeId, columnId: Number(drafts[row.attributeId]), modifiedAt: row.modifiedAt ?? null } });
+      setConflict(null);
       changed();
       toast.success(row.id != null ? t('상속 일반 속성 매핑을 변경했습니다.') : t('상속 일반 속성 매핑을 등록했습니다.'));
-    } catch {
+    } catch (error) {
+      if (isConflict(error)) {
+        // 409 (M8-C3) : 고른 컬럼(drafts)은 그대로, 최신 매핑·기준값을 다시 읽어 기존·최신·내 선택을 보여 준다
+        const mine = (candidates.data?.data ?? []).find((c) => String(c.columnId) === drafts[row.attributeId])?.columnName ?? drafts[row.attributeId];
+        const latest = (await detail.refetch()).data?.attributes.find((a) => a.attributeId === row.attributeId && a.current === row.current);
+        setConflict({ label: row.attributeName, before: row.columnName, latest: latest?.columnName ?? null, mine, gone: !latest || latest.id !== row.id });
+        return;
+      }
       void detail.refetch();
     } finally {
       setBusy(false);
@@ -93,10 +107,23 @@ export function InheritedAttributeSection({ mappingId, canEdit, onChanged }: { m
   const remove = (row: SubtypeAttributeRow) => {
     dialog.confirm(t('{0} 의 상속 일반 속성 매핑({1})을 해제하시겠습니까? 연결 정보만 지웁니다. 논리 속성·물리 컬럼은 삭제되지 않습니다.', row.attributeName, row.columnName ?? ''), async () => {
       setBusy(true);
+      const snapshot = (a: SubtypeAttributeRow) => ({ modifiedAt: a.modifiedAt ?? null, fields: [{ key: 'column', label: t('물리 컬럼'), value: a.columnName ?? '' }] });
       try {
-        await api(`/api/modelMapping/subtypeAttribute/${enc(row.id)}`, { method: 'DELETE' });
-        changed();
-        toast.success(t('상속 일반 속성 매핑을 해제했습니다.'));
+        // M8-C2 기준값, M8-C3 : 409 면 최신 매핑을 보여 주고 다시 해제할지 묻는다
+        const ok = await runWithReview({
+          dialog, title: t('상속 일반 속성 매핑 해제'), intro: t('다른 사용자가 이 매핑을 변경했습니다.'), seen: snapshot(row),
+          load: async () => {
+            const latest = (await api<SubtypeAttributeDetail>(`/api/modelMapping/entity/${enc(mappingId)}/subtypeAttributes`, { silent: true })).attributes.find((a) => a.id === row.id);
+            if (!latest) throw new ApiError(400, t('매핑이 이미 해제되었습니다.'), 'MODEL_MAPPING_IS_NOT_DEFINED');
+            return snapshot(latest);
+          },
+          act: async (state) => { await api(`/api/modelMapping/subtypeAttribute/${enc(row.id)}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          retryLabel: t('최신 내용으로 해제'), onClose: changed, onDone: () => toast.success(t('상속 일반 속성 매핑을 해제했습니다.')),
+        });
+        if (ok) {
+          changed();
+          toast.success(t('상속 일반 속성 매핑을 해제했습니다.'));
+        }
       } finally {
         setBusy(false);
       }
@@ -109,6 +136,7 @@ export function InheritedAttributeSection({ mappingId, canEdit, onChanged }: { m
     <section className="mapping-subtype" aria-label={t('상속 일반 속성 매핑')}>
       <h4 className="mapping-subtitle">{t('상속 일반 속성 매핑 (C형)')}{' '}
         <Label variant={mapped === current ? 'success' : 'attention'}>{t('조상 속성 {0} / {1} 매핑', mapped, current)}</Label></h4>
+      {conflict && <MappingConflictNotice conflict={conflict} onDismiss={() => setConflict(null)} />}
       <p className="gh-muted">{data.message ?? t('조상(루트·중간) 엔터티의 일반 속성을 이 말단 테이블에 복제한 컬럼과 연결합니다. 같은 원본 속성을 말단마다 따로 연결하며, 컬럼명으로 추론하지 않습니다.')}</p>
       <div className="dict-detail-columns"><div className="table-wrap">
         <table className="mapping-key-table">
@@ -152,7 +180,8 @@ export function InheritedAttributeSection({ mappingId, canEdit, onChanged }: { m
 }
 
 interface Conversion { id: number; groupId: number; groupName: string; supertypeEntityName: string; strategy: string; tableName: string | null; classificationColumnName: string | null }
-interface ConversionTree { rootEntityId: number; rootEntityName: string | null; kind: string; conversions: Conversion[]; dependencies: string[]; deletable: boolean }
+/** composition : 이 계층 변환 기록의 구성 기준값 (M8-C2 — 삭제 요청이 돌려준다) */
+interface ConversionTree { rootEntityId: number; rootEntityName: string | null; kind: string; conversions: Conversion[]; dependencies: string[]; deletable: boolean; composition: string }
 
 const KIND_LABELS: Record<string, string> = {
   SINGLE_TABLE: t('A형(단일 테이블 통합)'), TABLE_PER_CONCRETE: t('C형(말단 서브타입별 테이블)'), INCONSISTENT: t('맞지 않는 변환 기록'),
@@ -176,11 +205,26 @@ export function ConversionRecords({ modelId, canEdit, onChanged }: { modelId: nu
   const remove = (tree: ConversionTree) => {
     dialog.confirm(t('상속 계층 {0} 의 변환 기록 {1}건을 지우시겠습니까? 기록만 지우며 물리 테이블·컬럼·FK·UNIQUE·논리 엔터티는 바뀌지 않습니다.', tree.rootEntityName ?? '', tree.conversions.length), async () => {
       setBusy(true);
+      const snapshot = (tr: ConversionTree) => ({ modifiedAt: null, composition: tr.composition, cascade: [{ kind: 'conversions', count: tr.conversions.length }],
+        fields: [{ key: 'records', label: t('변환 기록'), value: tr.conversions.map((c) => `${c.groupName}${c.tableName ? ` · ${c.tableName}` : ''}`).join(', ') }] });
+      const done = () => toast.success(t('변환 기록을 지웠습니다.'));
+      const refresh = () => { void list.refetch(); onChanged(); };
       try {
-        await api(`/api/modelMapping/conversions/${enc(tree.rootEntityId)}`, { method: 'DELETE' });
-        void list.refetch();
-        onChanged();
-        toast.success(t('변환 기록을 지웠습니다.'));
+        // M8-C2 구성 기준값, M8-C3 : 409 면 최신 기록을 보여 주고 다시 지울지 묻는다
+        const ok = await runWithReview({
+          dialog, title: t('변환 기록 삭제'), intro: t('삭제 대상 또는 함께 삭제될 항목이 그 사이 바뀌었습니다.'), seen: snapshot(tree),
+          load: async () => {
+            const latest = (await api<ConversionTree[]>(`/api/modelMapping/conversions?modelId=${enc(modelId)}`, { silent: true })).find((x) => x.rootEntityId === tree.rootEntityId);
+            if (!latest) throw new ApiError(400, t('변환 기록이 이미 없습니다.'), 'MODEL_MAPPING_IS_NOT_DEFINED');
+            return snapshot(latest);
+          },
+          act: async (state) => { await api(`/api/modelMapping/conversions/${enc(tree.rootEntityId)}?composition=${enc(state.composition)}`, { method: 'DELETE', conflict: 'handled' }); },
+          retryLabel: t('최신 구성으로 삭제'), onDone: done, onClose: refresh,
+        });
+        if (ok) {
+          refresh();
+          done();
+        }
       } finally {
         setBusy(false);
       }

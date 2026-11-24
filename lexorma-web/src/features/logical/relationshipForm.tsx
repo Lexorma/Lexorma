@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { t } from '../../lib/i18n';
 import { participation, type EntityHits, type LogicalRelationship } from './model';
 import '../../styles/logical.css';
@@ -41,6 +42,32 @@ export function RelationshipForm({ modelId, relationship, initial, onSaved }: {
   // 기본 1 : 0..N (원본 1건이 대상 여러 건과 연결)
   const [source, setSource] = useState(relationship ? sideValue(relationship.sourceMin, relationship.sourceMax) : '1|1');
   const [target, setTarget] = useState(relationship ? sideValue(relationship.targetMin, relationship.targetMax) : '0|N');
+  const [busy, run] = useSubmitting();
+  type Values = { name: string; description: string; sourceEntity: EntityOption | null; targetEntity: EntityOption | null; identifying: boolean; source: string; target: string };
+  const valuesOf = (r: LogicalRelationship): Values => ({
+    name: r.relationshipName ?? '', description: r.relationshipDescription ?? '', sourceEntity: { id: r.sourceEntityId, name: r.sourceEntityName },
+    targetEntity: { id: r.targetEntityId, name: r.targetEntityName }, identifying: !!r.isIdentifying, source: sideValue(r.sourceMin, r.sourceMax), target: sideValue(r.targetMin, r.targetMax),
+  });
+  // 409 복구 (M8-C3) : 출발 엔터티의 관계 목록에서 이 관계의 최신 값을 읽는다
+  const recovery = useConflictRecovery<Values>({
+    initial: relationship ? valuesOf(relationship) : { name: '', description: '', sourceEntity: null, targetEntity: null, identifying: false, source: '1|1', target: '0|N' },
+    base: relationship?.modifiedAt,
+    fields: [
+      { key: 'name', label: t('관계명'), get: (v) => v.name },
+      { key: 'sourceEntity', label: t('출발 엔터티'), get: (v) => v.sourceEntity?.id ?? null, show: (v) => v.sourceEntity?.name ?? null },
+      { key: 'targetEntity', label: t('도착 엔터티'), get: (v) => v.targetEntity?.id ?? null, show: (v) => v.targetEntity?.name ?? null },
+      { key: 'source', label: t('출발 쪽 참여 수'), get: (v) => v.source, show: (v) => sideLabel(v.source) },
+      { key: 'target', label: t('도착 쪽 참여 수'), get: (v) => v.target, show: (v) => sideLabel(v.target) },
+      { key: 'identifying', label: t('식별 관계'), get: (v) => v.identifying, show: (v) => (v.identifying ? t('식별') : t('비식별')) },
+      { key: 'description', label: t('설명'), get: (v) => v.description },
+    ],
+    load: async () => {
+      const list = await api<LogicalRelationship[]>(`/api/logical/entity/${relationship?.sourceEntityId}/relationship`, { silent: true });
+      const latest = list.find((r) => r.id === relationship?.id);
+      if (!latest) throw new ApiError(400, t('관계를 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+      return { values: valuesOf(latest), base: latest.modifiedAt ?? null };
+    },
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -49,18 +76,25 @@ export function RelationshipForm({ modelId, relationship, initial, onSaved }: {
       const [min, max] = value.split('|');
       return { min: Number(min), max: max === 'N' ? null : Number(max) }; // N → null (다)
     };
-    dialog.confirm(relationship ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
-      const saved = await api<LogicalRelationship>('/api/logical/relationship', {
+    dialog.confirm(relationship ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
+      let saved: LogicalRelationship;
+      try {
+      saved = await api<LogicalRelationship>('/api/logical/relationship', {
         method: 'POST',
+        conflict: 'handled',
         body: {
           id: relationship?.id ?? null, modelId, relationshipName: name.trim() || null, relationshipDescription: description.trim() || null,
           sourceEntityId: sourceEntity.id, targetEntityId: targetEntity.id, isIdentifying: identifying,
           sourceMin: side(source).min, sourceMax: side(source).max, targetMin: side(target).min, targetMax: side(target).max,
-          modifiedAt: relationship?.modifiedAt ?? null, // DEC-08 기준값 (수정만)
+          modifiedAt: relationship ? recovery.base : null, // DEC-08 기준값 (수정만, 409 복구 뒤에는 최신)
         },
       });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, description, sourceEntity, targetEntity, identifying, source, target })) return;
+        throw error;
+      }
       onSaved(saved);
-    });
+    }));
   };
 
   const sideSelect = (id: string, label: string, value: string, onChange: (value: string) => void) => (
@@ -82,6 +116,15 @@ export function RelationshipForm({ modelId, relationship, initial, onSaved }: {
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('description')) setDescription(latest.description);
+        if (!picks.has('sourceEntity')) setSourceEntity(latest.sourceEntity);
+        if (!picks.has('targetEntity')) setTargetEntity(latest.targetEntity);
+        if (!picks.has('source')) setSource(latest.source);
+        if (!picks.has('target')) setTarget(latest.target);
+        if (!picks.has('identifying')) setIdentifying(latest.identifying);
+      })}
       <div className="form-group">
         <label htmlFor="relationshipName">{t('관계명')}</label>
         <input type="text" className="form-control" id="relationshipName" maxLength={255} autoFocus placeholder={t('예 : 주문한다 (선택)')} value={name} onChange={(e) => setName(e.target.value)} />
@@ -106,7 +149,7 @@ export function RelationshipForm({ modelId, relationship, initial, onSaved }: {
         <label htmlFor="relationshipDescription">{t('설명')}</label>
         <textarea className="form-control" id="relationshipDescription" maxLength={1000} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }

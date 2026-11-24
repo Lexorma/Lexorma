@@ -5,6 +5,7 @@ import com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto;
 import com.lexorma.data.logical.domain.entity.QLogicalAttribute;
 import com.lexorma.data.logical.domain.entity.QLogicalEntity;
 import com.lexorma.data.logical.domain.entity.QLogicalRelationship;
+import com.lexorma.data.logical.domain.entity.QLogicalSubjectArea;
 import com.lexorma.data.logical.domain.entity.QLogicalSubjectAreaEntity;
 import com.lexorma.data.logical.domain.entity.QLogicalSubtype;
 import com.lexorma.data.logical.domain.entity.QLogicalSubtypeGroup;
@@ -178,6 +179,30 @@ public class LogicalModelQueryRepository {
         BooleanExpression where = entity.model.id.eq(modelId)
                 .and(entity.entityName.lower().like(pattern, '!').or(entity.entityDescription.lower().like(pattern, '!')));
         return scope == null ? where : where.and(inScope(entity.id, scope));
+    }
+
+    /** 모델 하나의 수 (D-35 D35-2 : AI·MCP 모델 목록) */
+    public record ModelCounts(long entities, long relationships, long subjectAreas, long subtypeGroups) {
+    }
+
+    /** 프로젝트의 모델별 엔터티·관계·주제 영역·서브타입 그룹 수 : 종류마다 한 번씩 묶어 센다 (조회 4번 — 모델마다 세지 않는다). 없는 모델은 맵에 없다 (= 모두 0) */
+    public Map<Long, ModelCounts> modelCounts(Long projectId) {
+        QLogicalSubjectArea area = QLogicalSubjectArea.logicalSubjectArea;
+        Map<Long, Long> entities = counts(query.select(entity.model.id, entity.count()).from(entity).where(entity.projectId.eq(projectId)).groupBy(entity.model.id).fetch());
+        Map<Long, Long> relationships = counts(query.select(relationship.model.id, relationship.count()).from(relationship)
+                .where(relationship.projectId.eq(projectId)).groupBy(relationship.model.id).fetch());
+        Map<Long, Long> areas = counts(query.select(area.model.id, area.count()).from(area).where(area.projectId.eq(projectId)).groupBy(area.model.id).fetch());
+        Map<Long, Long> groups = counts(query.select(subtypeGroup.model.id, subtypeGroup.count()).from(subtypeGroup)
+                .where(subtypeGroup.projectId.eq(projectId)).groupBy(subtypeGroup.model.id).fetch());
+        Map<Long, ModelCounts> result = new HashMap<>();
+        java.util.Set<Long> models = new java.util.HashSet<>(entities.keySet());
+        models.addAll(relationships.keySet());
+        models.addAll(areas.keySet());
+        models.addAll(groups.keySet());
+        for (Long id : models) {
+            result.put(id, new ModelCounts(entities.getOrDefault(id, 0L), relationships.getOrDefault(id, 0L), areas.getOrDefault(id, 0L), groups.getOrDefault(id, 0L)));
+        }
+        return result;
     }
 
     /** 엔터티가 범위 안인가 : 미분류 = 소속 행 없음, 영역 = 소속 영역이 목록 안 */

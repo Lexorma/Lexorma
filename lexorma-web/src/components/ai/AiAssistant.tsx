@@ -21,9 +21,12 @@ import '../../styles/ai-assistant.css';
  */
 type ToolStatus = 'OK' | 'NOT_FOUND' | 'INVALID_ARGUMENT' | 'REJECTED' | 'FAILED';
 interface ToolCall { name: string; status: ToolStatus; durationMillis: number }
-type EvidenceType = 'SCHEMA' | 'TABLE' | 'COLUMN' | 'RELATION' | 'TERM' | 'WORD' | 'DOMAIN' | 'HISTORY';
+type EvidenceType = 'SCHEMA' | 'TABLE' | 'COLUMN' | 'RELATION' | 'TERM' | 'WORD' | 'DOMAIN' | 'HISTORY'
+  // 논리 모델 (D-35 D35-3b)
+  | 'LOGICAL_MODEL' | 'SUBJECT_AREA' | 'LOGICAL_ENTITY' | 'LOGICAL_ATTRIBUTE' | 'LOGICAL_IDENTIFIER' | 'LOGICAL_RELATIONSHIP' | 'SUBTYPE_GROUP';
 type EvidenceStatus = 'VERIFIED' | 'NOT_FOUND' | 'OUT_OF_SCOPE' | 'MISMATCH' | 'STALE' | 'UNVERIFIABLE';
-type EvidenceReason = 'NOT_RETRIEVED' | 'MODIFIED' | 'DELETED' | 'NAME' | 'PARENT' | 'KIND' | 'VERSION_UNKNOWN';
+type EvidenceReason = 'NOT_RETRIEVED' | 'MODIFIED' | 'DELETED' | 'NAME' | 'PARENT' | 'KIND' | 'VERSION_UNKNOWN'
+  | 'DESCRIPTION_NOT_RETRIEVED' | 'DESCRIPTION_NOT_REGISTERED';
 type Overall = 'VERIFIED' | 'PARTIAL' | 'UNVERIFIED' | 'NO_EVIDENCE';
 /** 근거와 서버의 검증 결과 (AI-4 후속). id 는 화면에 보이지 않는다 */
 interface Evidence { type: EvidenceType; id: number; name: string | null; status: EvidenceStatus; reason: EvidenceReason | null; source: Mode | null }
@@ -54,9 +57,14 @@ const TOOL_LABEL: Record<string, string> = {
   searchStandardDomains: t('표준 도메인 검색'),
   findSimilarColumns: t('유사 컬럼 찾기'),
   getMetadataHistory: t('변경 이력'),
+  getLogicalModelOverview: t('논리 모델 개요'),
+  searchLogicalEntities: t('논리 엔터티 검색'),
+  getLogicalEntityDetail: t('논리 엔터티 상세'),
 };
 const EVIDENCE_TYPE: Record<EvidenceType, string> = {
   SCHEMA: t('스키마'), TABLE: t('테이블'), COLUMN: t('컬럼'), RELATION: t('관계'), TERM: t('용어'), WORD: t('단어'), DOMAIN: t('도메인'), HISTORY: t('변경 이력'),
+  LOGICAL_MODEL: t('논리 모델'), SUBJECT_AREA: t('주제 영역'), LOGICAL_ENTITY: t('엔터티'), LOGICAL_ATTRIBUTE: t('속성'), LOGICAL_IDENTIFIER: t('식별자'),
+  LOGICAL_RELATIONSHIP: t('논리 관계'), SUBTYPE_GROUP: t('서브타입 그룹'),
 };
 const EVIDENCE_STATUS: Record<EvidenceStatus, string> = {
   VERIFIED: t('확인됨'),
@@ -74,6 +82,8 @@ const EVIDENCE_REASON: Record<EvidenceReason, string> = {
   PARENT: t('소속 테이블이 다름'),
   KIND: t('관계 종류가 다름'),
   VERSION_UNKNOWN: t('버전 정보 없음'),
+  DESCRIPTION_NOT_RETRIEVED: t('AI 가 설명을 조회하지 않음'),
+  DESCRIPTION_NOT_REGISTERED: t('등록된 설명 없음'),
 };
 const STATUS_TEXT: Record<ToolStatus, string> = {
   OK: t('조회함'),
@@ -187,7 +197,7 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
 
           <div className="ai-assistant-body" aria-live="polite">
             <p className="ai-assistant-note">
-              {t('현재 프로젝트에 등록된 메타데이터(스키마·테이블·컬럼·관계·표준 단어·용어·도메인)에 대해 AI 에게 묻습니다. AI 는 읽기 전용 조회만 할 수 있습니다.')}{' '}
+              {t('현재 프로젝트에 등록된 메타데이터(스키마·테이블·컬럼·관계·표준 단어·용어·도메인·논리 모델)에 대해 AI 에게 묻습니다. AI 는 읽기 전용 조회만 할 수 있습니다.')}{' '}
               {t('질문과 AI 가 조회한 메타데이터는 관리자가 지정한 AI 서버로 전송됩니다. 질문과 답변은 저장하지 않습니다.')}
             </p>
             {status && !ready && (

@@ -361,7 +361,7 @@
 - 지켜야 할 기존 원칙 : 단일 서버(별도 MCP 서버 프로세스를 요구하지 않는다 — [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6), 원본 DB 도구는 AI 에 공개하지 않는다(AI 로드맵 원칙 12), 프로젝트 범위는 검증된 실행 컨텍스트에서만(`ExecutionContextVerifier`, 도구 인수로 받지 않음), 읽기 전용(쓰기·승인 도구 없음), 요청 로그 본문 보호(`LogBodyPolicy`), AI 없이도 핵심 기능 동작.
 - **DEC-31 확정 (2026-11-16)** : 외부 AI 도구가 Lexorma 메타데이터를 조회하는 **선택형 MCP 서버를 기존 Spring Boot 에 내장**한다(별도 MCP 서버 운영 요구 없음). 기본 비활성, 켤 때만 추가 설정, 읽기 전용 Tool 만(기존 AI-4 도구·조회 로직 재사용), 프로젝트 권한·격리 유지, 검증된 사용자 인증 컨텍스트 사용, 원본 DB 직접 접근·DDL/DML 실행 Tool 없음, 비밀번호·토큰·Secret 반환 금지, 요청·응답 본문에 민감정보 기록 금지, 외부 인증 서버·추가 인프라를 필수로 만들지 않음, 미승인 추정 관계(DEC-21) 비공개.
 - 구현 전 상세 설계 : 인증 방식, 프로젝트 선택 방식, 토큰 발급·폐기(저장 시 새 테이블 → 증분 마이그레이션), 감사 기록, 접근 제한. [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6 과 4장(원본 수집용 MCP Connector, [U-07] — 반대 방향)과의 관계를 그 문서에 반영해 두었다.
-- [M-6] 완료(2026-11-20)로 옮겨 온 후속 (D-35, 미착수 — 기존 AI·MCP 정책 그대로) : MCP `getLogicalModel`·AI 메타데이터 도구에 ① 주제 영역 목록·계층·엔터티 소속·영역별 조회 ② 슈퍼타입·서브타입(그룹·상속 경로·유효 속성·상속 주 식별자)을 더하는 것. 지금은 두 도구 모두 주제 영역·상속 정보를 주지 않는다.
+- [M-6] 완료(2026-11-20)로 옮겨 온 후속 D-35 는 **완료 (2026-11-24)** — completed-work.md [AI-MCP]·[AI-4] D-35, 상세 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md). **남은 D-35 후속 (사용자 결정 대기, 문서 37장)** : ① 토큰 예산 초과 시 부분 답변 정책 (지금은 질의 전체 `AI_TOKEN_BUDGET_EXCEEDED` — 설명 포함 속성 20개 한 페이지면 다음 요청이 입력 상한) ② 설명 근거의 의미 검증 한계 (`usesDescription` 표시와 실제 조회만 대조) ③ 상속 문맥 변경의 근거 버전 (행 단위 수정 일시만) ④ 관계가 많은 물리 질문의 답이 출력 한도 4,096 을 넘는 경우 (최종 3회 중 2회, 기준선 2회 중 0회 — 원인 미확정) ⑤ 실제 MCP 클라이언트 연결 검증.
 - 완료 조건 : 정한 인증·전송으로 외부 MCP 클라이언트가 허용된 읽기 전용 도구만 프로젝트 범위 안에서 부르고, 기존 AI-4 의 권한·재검증·감사 규칙을 그대로 지킨다.
 
 ### [M-DDL-PERF] DDL Export 반복 조회 측정
@@ -548,7 +548,7 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 
 1. ~~[M-2] 물리 ERD 개선 (실측·이동 경고 등 남은 범위)~~ — **완료 (2026-11-20, completed-work.md [M-2])**
 2. [M-7] 상속 구조의 물리 변환·매핑 확장 (D-30·D-47 — 전략 A 단일 테이블 / B 슈퍼·서브 테이블 / C 구체 테이블 결정, 상속 구조 매핑 정합성)
-3. [AI-MCP]·[AI-4] 논리 모델 조회 확장 (주제 영역·상속 — D-35)
+3. ~~[AI-MCP]·[AI-4] 논리 모델 조회 확장 (주제 영역·상속 — D-35)~~ — 완료 (2026-11-24, completed-work.md). 남은 후속은 위 [AI-MCP] D-35 후속 ①~⑤ (사용자 결정 대기)
 4. [AI-6] 메타데이터 품질 진단 고도화
 
 - 의존성 확인 : 2~4 는 모두 완료된 M-6(논리 모델·주제 영역·상속 저장 구조)을 쓴다. 2 는 [M-7] 의 기존 생성·매핑(DEC-10, 보강 1~5차) 위에 얹고, 3 은 AI-4 읽기 도구·내장 MCP(DEC-31)를 재사용, 4 는 M-5 표준화 규칙(`StandardNames`·진단)을 AI-6 에서 부르는 것이 완료 조건이다([M-5]). 1 은 다른 셋과 독립 — 물리 ERD 컴포넌트를 논리 ERD 와 나눠 쓰므로 공용 부분을 바꿀 때 논리 ERD 회귀를 함께 본다. 각 작업의 범위·우선순위는 착수할 때 다시 정한다 (이번에 설계·구현하지 않음).
@@ -652,4 +652,8 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 | 2026-11-24 | [M-8] M8-C4c-1 (C4c-D01~D07) : 엔터티 승인 구성 기준값, 표준 사전 삭제 기준값·잠금, 원본 매핑 해제 기준값, 승인된 단어 수정 차단, 도메인 승인 취소 영향 범위 API. 새 마이그레이션 없음. C4c-2 남음 (completed/modeling-concurrency-m8.md 20장) | [M-8] |
 | 2026-11-24 | [M-8] M8-C4c-2 (C4c-D08~D13) : 승인된 용어 삭제 400, 잠금 충돌 구분(reason LOCKED), 사전 삭제·원본 매핑 해제 검토, 도메인 승인 취소 영향, 나머지 모델링 화면 409 복구, 충돌 비교 시각 정밀도. 새 마이그레이션 없음, 브라우저 미검증, M8-FINAL 남음 (completed/modeling-concurrency-m8.md 21장) | [M-8] |
 | 2026-11-24 | [M-8] M8-FINAL (FINAL-D01~D06) : 원본 매핑 등록·재지정 기준값, 컬럼 순서 팝업 정렬 결함 수정, 화면 보완 2건, 실제 브라우저(Playwright Chromium) 두 사용자·ko/en·light/dark·1440/1024/375 검증, H2 1회·PostgreSQL 2회 전체 실패 0, 간헐 실패 반복 5회 재발 없음(미해결 유지). **M-8 종료** — 문서를 completed/ 로 이동 (completed/modeling-concurrency-m8.md 22장) | [M-8] |
+| 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-1 현행 분석·상세 설계 (운영 코드 변경 없음) — 논리 Tool 부재·`getLogicalModel` 상속 누락·크기 한계 측정, 상속 계산 공통화 필요, 추천안 C 와 결정 11개 (completed/ai-logical-model-query-d35.md) | [AI-MCP] |
+| 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-2 공통 조회 서비스·AI/MCP 공통 DTO 구현 (Tool 등록 없음) — 상속 계산 공통화·AuthUtil 분리, 응답 크기·조회 수 실측, H2·PostgreSQL 전체 실패 0, 대형 엔터티 상세 상한 초과는 결정 대기 (completed/ai-logical-model-query-d35.md 12~18장) | [AI-MCP] |
+| 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-3a·3b — 상세 section·속성 설명 선택·next 분할(3단계 말단 상세 49,936 → 20,835자), 내부 AI·MCP 논리 Tool 3개 등록, getLogicalModel 호환 보완, 논리 근거 7종, H2·PostgreSQL×2 실패 0 (completed/ai-logical-model-query-d35.md 19~26장) | [AI-MCP] |
+| 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-FINAL — 설명 근거 검증(usesDescription)·참조 근거 기록 결함 수정·검색 입력 설명 보완, 토큰 예산 실측(질문당 프롬프트 +약 1,440), 가짜 Provider 흐름 7, 실제 Ollama gemma4:e4b 20문항, MCP·화면, H2·PostgreSQL×2 1,584/실패 0. **D-35 완료** (completed-work.md), 후속 결정 ①~⑤ 남김 | [AI-MCP] |
 | 2026-11-23 | [M-8] M8-C3 409 충돌 복구 UX (M8-C3-D01~D05) : 수정 폼 입력 보존·최신 비교·고른 변경만 다시 적용, 삭제·승인·매핑 검토 대화상자, ERD 배치 충돌 복구, 일괄 편집 기준값 범위(M8-D04 — 서버 `unchanged` 행), 중복 제출 방지. 새 마이그레이션 없음. C4 남음 (completed/modeling-concurrency-m8.md 15장) | [M-8] |

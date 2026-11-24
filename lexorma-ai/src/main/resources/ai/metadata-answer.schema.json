@@ -21,8 +21,8 @@
         "required": ["type", "id", "name"],
         "properties": {
           "type": {
-            "description": "SCHEMA (schemaId), TABLE (tableId), COLUMN (columnId), RELATION (relationId), TERM (termId), WORD (wordId), DOMAIN (domainId), HISTORY (historyId: one past change record)",
-            "enum": ["SCHEMA", "TABLE", "COLUMN", "RELATION", "TERM", "WORD", "DOMAIN", "HISTORY"]
+            "description": "SCHEMA (schemaId), TABLE (tableId), COLUMN (columnId), RELATION (relationId), TERM (termId), WORD (wordId), DOMAIN (domainId), HISTORY (historyId: one past change record), LOGICAL_MODEL (modelId), SUBJECT_AREA (subjectAreaId), LOGICAL_ENTITY (entityId), LOGICAL_ATTRIBUTE (attributeId), LOGICAL_IDENTIFIER (identifierId), LOGICAL_RELATIONSHIP (relationshipId), SUBTYPE_GROUP (groupId)",
+            "enum": ["SCHEMA", "TABLE", "COLUMN", "RELATION", "TERM", "WORD", "DOMAIN", "HISTORY", "LOGICAL_MODEL", "SUBJECT_AREA", "LOGICAL_ENTITY", "LOGICAL_ATTRIBUTE", "LOGICAL_IDENTIFIER", "LOGICAL_RELATIONSHIP", "SUBTYPE_GROUP"]
           },
           "id": {
             "description": "The id returned by the tool for this item",
@@ -30,7 +30,7 @@
             "minimum": 0
           },
           "name": {
-            "description": "The name of the item as returned by the tool (table name, column name, relation name, term, word or domain name)",
+            "description": "The name of the item as returned by the tool (table, column, relation, term, word, domain, logical model, subject area, entity, attribute, identifier, relationship or subtype group name)",
             "type": "string",
             "minLength": 1,
             "maxLength": 200
@@ -43,6 +43,10 @@
           "kind": {
             "description": "RELATION only: FK (registered foreign key) or LOGICAL (model relation without a database constraint)",
             "enum": ["FK", "LOGICAL", null]
+          },
+          "usesDescription": {
+            "description": "LOGICAL_ATTRIBUTE only: true if the answer relies on the attribute's description (returned with includeAttributeDescriptions)",
+            "type": ["boolean", "null"]
           }
         }
       }

@@ -250,11 +250,12 @@ class MetadataToolIntegrationTest {
     // ------------------------------------------------------------------ 허용 목록 · 읽기 전용
 
     @Test
-    @DisplayName("허용 목록 : 등록되는 Tool 은 10개 조회 Tool 뿐이다. 인자에 프로젝트·계정 ID 가 없고, Tool 코드에 쓰기·승인·SQL·원본 DB·파일·외부 HTTP 경로가 없다")
+    @DisplayName("허용 목록 : 등록되는 Tool 은 13개 조회 Tool 뿐이다 (D-35 D35-3b 논리 모델 3개 포함). 인자에 프로젝트·계정 ID 가 없고, Tool 코드에 쓰기·승인·SQL·원본 DB·파일·외부 HTTP 경로가 없다")
     void allowList() throws IOException {
         List<ToolCallback> callbacks = toolset.callbacks();
         assertThat(callbacks).extracting(c -> c.getToolDefinition().name()).containsExactlyInAnyOrder("listSchemas", "searchTables", "getTableDetail",
-                "getTableColumns", "getTableRelations", "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "findSimilarColumns", "getMetadataHistory");
+                "getTableColumns", "getTableRelations", "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "findSimilarColumns", "getMetadataHistory",
+                "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
         for (ToolCallback callback : callbacks) {
             String name = callback.getToolDefinition().name().toLowerCase();
             assertThat(name).doesNotContain("sql", "save", "insert", "update", "delete", "approve", "execute", "write", "source");

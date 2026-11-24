@@ -11,6 +11,20 @@ import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.dictionary.repository.StandardWordRepository;
 import com.lexorma.data.history.domain.entity.ModelChangeHistory;
 import com.lexorma.data.history.repository.ModelChangeHistoryRepository;
+import com.lexorma.data.logical.domain.entity.LogicalAttribute;
+import com.lexorma.data.logical.domain.entity.LogicalEntity;
+import com.lexorma.data.logical.domain.entity.LogicalIdentifier;
+import com.lexorma.data.logical.domain.entity.LogicalModel;
+import com.lexorma.data.logical.domain.entity.LogicalRelationship;
+import com.lexorma.data.logical.domain.entity.LogicalSubjectArea;
+import com.lexorma.data.logical.domain.entity.LogicalSubtypeGroup;
+import com.lexorma.data.logical.repository.LogicalAttributeRepository;
+import com.lexorma.data.logical.repository.LogicalEntityRepository;
+import com.lexorma.data.logical.repository.LogicalIdentifierRepository;
+import com.lexorma.data.logical.repository.LogicalModelRepository;
+import com.lexorma.data.logical.repository.LogicalRelationshipRepository;
+import com.lexorma.data.logical.repository.LogicalSubjectAreaRepository;
+import com.lexorma.data.logical.repository.LogicalSubtypeGroupRepository;
 import com.lexorma.data.physical.domain.entity.TableRelation;
 import com.lexorma.data.physical.repository.TableRelationRepository;
 import com.lexorma.data.schema.domain.entity.SchemaInfo;
@@ -37,6 +51,8 @@ import java.util.stream.Collectors;
  *   <li>변경 이력(HISTORY)은 추가만 하는 기록이라 기록 시각이 버전이다</li>
  *   <li>버전 : 행의 마지막 수정 일시(MDFCN_DT, {@code @LastModifiedDate}). 이 테이블들은 JPA 로만 쓰고(벌크 UPDATE 없음) 수정 때마다 바뀐다.
  *       한계 — DB 를 직접 고친 변경은 보이지 않고, 테이블의 버전은 그 행만이다(컬럼·관계는 각자의 버전으로 본다)</li>
+ *   <li>논리 모델 (D35-3b) : 모델·주제 영역·엔터티·속성·식별자·관계·서브타입 그룹도 같은 방식 (ID 조회 한 번씩, 버전 = MDFCN_DT). 속성·식별자의 프로젝트·소속은
+ *       그 행을 정의한 엔터티 (엔터티는 배치 지연 로딩으로 묶어 읽는다 — default_batch_fetch_size). 상속 속성도 원본 행이라 정의 엔터티 소속이다</li>
  *   <li>프로젝트는 스냅숏에 담아 비교만 한다. 다른 프로젝트 행의 이름 등 내용은 밖으로 내지 않는다 ({@link EvidenceVerifier})</li>
  * </ul>
  */
@@ -61,6 +77,13 @@ public class EvidenceCatalog {
     private final StandardWordRepository words;
     private final StandardDomainRepository domains;
     private final ModelChangeHistoryRepository histories;
+    private final LogicalModelRepository logicalModels;
+    private final LogicalSubjectAreaRepository subjectAreas;
+    private final LogicalEntityRepository logicalEntities;
+    private final LogicalAttributeRepository logicalAttributes;
+    private final LogicalIdentifierRepository logicalIdentifiers;
+    private final LogicalRelationshipRepository logicalRelationships;
+    private final LogicalSubtypeGroupRepository subtypeGroups;
 
     /** ID 로 지금 상태를 읽는다 (없는 ID 는 결과에 없다). 호출하는 쪽의 트랜잭션 안에서 부른다 */
     public Map<Long, Snapshot> load(EvidenceType type, Collection<Long> ids) {
@@ -76,6 +99,13 @@ public class EvidenceCatalog {
             case WORD -> words.findAllById(distinct).forEach(w -> put(found, snapshot(w)));
             case DOMAIN -> domains.findAllById(distinct).forEach(d -> put(found, snapshot(d)));
             case HISTORY -> histories.findAllById(distinct).forEach(h -> put(found, snapshot(h)));
+            case LOGICAL_MODEL -> logicalModels.findAllById(distinct).forEach(m -> put(found, snapshot(m)));
+            case SUBJECT_AREA -> subjectAreas.findAllById(distinct).forEach(a -> put(found, snapshot(a)));
+            case LOGICAL_ENTITY -> logicalEntities.findAllById(distinct).forEach(e -> put(found, snapshot(e)));
+            case LOGICAL_ATTRIBUTE -> logicalAttributes.findAllById(distinct).forEach(a -> put(found, snapshot(a)));
+            case LOGICAL_IDENTIFIER -> logicalIdentifiers.findAllById(distinct).forEach(i -> put(found, snapshot(i)));
+            case LOGICAL_RELATIONSHIP -> logicalRelationships.findAllById(distinct).forEach(r -> put(found, snapshot(r)));
+            case SUBTYPE_GROUP -> subtypeGroups.findAllById(distinct).forEach(g -> put(found, snapshot(g)));
         }
         return found;
     }
@@ -129,6 +159,41 @@ public class EvidenceCatalog {
         String name = h.getTargetName();
         String shortName = name != null && h.getTargetType() == ModelChangeHistory.TargetType.PHYSICAL_COLUMN && name.contains(".") ? name.substring(name.lastIndexOf('.') + 1) : null;
         return new Snapshot(EvidenceType.HISTORY, h.getId(), h.getProjectId(), labels(name, shortName), h.getTargetId(), h.getTargetType().name(), h.getChangedAt());
+    }
+
+    // ------------------------------------------------------------------ 논리 모델 (D35-3b). parentId : 영역·엔터티·그룹 = 모델, 속성·식별자 = 정의한 엔터티
+
+    private static Snapshot snapshot(LogicalModel m) {
+        return new Snapshot(EvidenceType.LOGICAL_MODEL, m.getId(), m.getProjectId(), labels(m.getModelName()), null, null, m.modifiedAt());
+    }
+
+    private static Snapshot snapshot(LogicalSubjectArea a) {
+        return new Snapshot(EvidenceType.SUBJECT_AREA, a.getId(), a.getProjectId(), labels(a.getAreaName()), a.getModel().getId(), null, a.modifiedAt());
+    }
+
+    private static Snapshot snapshot(LogicalEntity e) {
+        return new Snapshot(EvidenceType.LOGICAL_ENTITY, e.getId(), e.getProjectId(), labels(e.getEntityName()), e.getModel().getId(), null, e.modifiedAt());
+    }
+
+    private static Snapshot snapshot(LogicalAttribute a) {
+        LogicalEntity owner = a.getEntity();
+        return new Snapshot(EvidenceType.LOGICAL_ATTRIBUTE, a.getId(), owner.getProjectId(), labels(a.getAttributeName()), owner.getId(), null, a.modifiedAt());
+    }
+
+    private static Snapshot snapshot(LogicalIdentifier i) {
+        LogicalEntity owner = i.getEntity();
+        return new Snapshot(EvidenceType.LOGICAL_IDENTIFIER, i.getId(), owner.getProjectId(), labels(i.getIdentifierName()), owner.getId(), null, i.modifiedAt());
+    }
+
+    /** 관계 이름은 비어 있을 수 있다 : 이름이 없으면 양 끝 엔터티 이름으로 부를 수 있다 */
+    private static Snapshot snapshot(LogicalRelationship r) {
+        Set<String> names = r.getRelationshipName() == null || r.getRelationshipName().isBlank()
+                ? labels(r.getSourceEntity().getEntityName(), r.getTargetEntity().getEntityName()) : labels(r.getRelationshipName());
+        return new Snapshot(EvidenceType.LOGICAL_RELATIONSHIP, r.getId(), r.getProjectId(), names, r.getModel().getId(), null, r.modifiedAt());
+    }
+
+    private static Snapshot snapshot(LogicalSubtypeGroup g) {
+        return new Snapshot(EvidenceType.SUBTYPE_GROUP, g.getId(), g.getProjectId(), labels(g.getGroupName()), g.getModel().getId(), null, g.modifiedAt());
     }
 
     private static Set<String> labels(String... names) {

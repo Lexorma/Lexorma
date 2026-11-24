@@ -85,6 +85,17 @@ public class LogicalSubtypeService {
         return groups(List.of(group.getId())).getFirst();
     }
 
+    /**
+     * 같은 모델의 그룹 상세 여러 개 (D-35 D35-2 — AI·MCP 엔터티 목록의 상속 요약). 그룹 ID 는 그 모델의 계층에서 온 것이고, 프로젝트·모델이 다른 그룹은 빼고 돌려준다.
+     * 조회 3번 (모델, 그룹+슈퍼타입+분류 속성, 구성원). 로그인 세션을 쓰지 않는다
+     */
+    @Transactional(readOnly = true)
+    public List<LogicalSubtypeDto.Group> selectGroups(Long projectId, Long modelId, Collection<Long> groupIds) {
+        model(projectId, modelId); // 모델이 이 프로젝트의 것인지 (그룹은 모델 하나에만 속한다 — 모델이 같으면 프로젝트도 같다)
+        if (groupIds.isEmpty()) return List.of();
+        return groups(List.copyOf(new LinkedHashSet<>(groupIds))).stream().filter(g -> modelId.equals(g.modelId())).toList();
+    }
+
     /** 그룹 상세 여러 개 (슈퍼타입·분류 속성·구성원을 종류마다 한 번에) — 요청 순서 그대로 */
     private List<LogicalSubtypeDto.Group> groups(List<Long> ids) {
         if (ids.isEmpty()) return List.of();
@@ -311,17 +322,45 @@ public class LogicalSubtypeService {
 
     // ------------------------------------------------------------------ 엔터티의 상속 정보
 
+    /** 화면 : 상속 정보 + 직접 속성의 editable (지금 로그인 사용자 기준 — {@link #screenEditable}) */
     @Transactional(readOnly = true)
     public LogicalSubtypeDto.Inheritance selectInheritance(AccountDto accountDto, Long entityId) {
-        LogicalEntity entity = entity(accountDto.getProjectId(), entityId);
+        return inheritance(accountDto.getProjectId(), entityId, this::screenEditable);
+    }
+
+    /**
+     * 로그인 세션 없이 쓰는 상속 정보 (D-35 D35-2, D35-D10) : 계산은 화면과 같고 editable 만 계산하지 않는다 (모두 false — 화면 권한 개념이 없는 호출용).
+     * 프로젝트는 호출한 쪽이 검증한 범위다 (내부 AI 실행 컨텍스트·MCP 토큰). {@link AuthUtil} 을 부르지 않는다
+     */
+    @Transactional(readOnly = true)
+    public LogicalSubtypeDto.Inheritance selectInheritanceView(Long projectId, Long entityId) {
+        return inheritance(projectId, entityId, NOT_EDITABLE);
+    }
+
+    /** 직접 속성의 editable 판정 : 화면만 지금 사용자 기준으로 계산한다 (공통 계산과 분리 — D35-D10) */
+    @FunctionalInterface
+    private interface Editability {
+        boolean of(LogicalEntity entity, LogicalHierarchy hierarchy);
+    }
+
+    private static final Editability NOT_EDITABLE = (entity, hierarchy) -> false;
+
+    /** 화면의 editable : 승인되지 않았거나 승인 권한자이고, 승인된 후손이 없을 때 (예전 그대로) */
+    private boolean screenEditable(LogicalEntity entity, LogicalHierarchy hierarchy) {
+        return editable(entity, !approvedAmong(hierarchy.descendants(entity.getId())).isEmpty());
+    }
+
+    /** 상속 정보 계산 (화면·AI·MCP 공통). editable 판정만 호출한 쪽이 정한다 */
+    private LogicalSubtypeDto.Inheritance inheritance(Long projectId, Long entityId, Editability editability) {
+        LogicalEntity entity = entity(projectId, entityId);
         Long modelId = entity.getModel().getId();
         LogicalHierarchy h = hierarchy(modelId);
         List<Long> chain = h.chain(entityId);
         Map<Long, LogicalEntity> loaded = graph(modelId, chain);
+        requireLoaded(chain, loaded.keySet());
         Map<Long, List<LogicalIdentifier>> identifiers = identifiers(chain);
         Long root = h.root(entityId);
         boolean subtype = chain.size() > 1;
-        boolean approvedBelow = !approvedAmong(h.descendants(entityId)).isEmpty();
 
         List<LogicalSubtypeDto.Ancestor> ancestors = new ArrayList<>();
         for (int i = 0; i < chain.size() - 1; i++) {
@@ -332,7 +371,9 @@ public class LogicalSubtypeService {
         LogicalHierarchy.Group parentGroup = h.parentGroup(entityId);
         if (parentGroup != null) {
             // 부모 그룹의 정의와 이 엔터티의 분류 값만 읽는다 (구성원이 많은 그룹의 다른 구성원은 읽지 않는다, D-51)
-            LogicalSubtypeGroup g = groupRepository.findWithEntities(List.of(parentGroup.id())).getFirst();
+            List<LogicalSubtypeGroup> found = groupRepository.findWithEntities(List.of(parentGroup.id()));
+            if (found.isEmpty()) throw changedDuringRead(); // 계층을 읽은 뒤 그룹이 지워졌다
+            LogicalSubtypeGroup g = found.getFirst();
             String value = subtypeRepository.findValues(List.of(g.getId()), List.of(entityId)).stream().findFirst().map(row -> (String) row[1]).orElse(null);
             LogicalAttribute a = g.getClassificationAttribute();
             parent = new LogicalSubtypeDto.Parent(g.getId(), g.getGroupName(), g.getSupertypeEntity().getId(), g.getSupertypeEntity().getEntityName(), g.getOverlapping(), g.getTotal(),
@@ -340,7 +381,7 @@ public class LogicalSubtypeService {
         }
         List<LogicalSubtypeDto.Group> groups = groups(h.groupsOf(entityId).stream().map(LogicalHierarchy.Group::id).toList());
         boolean rootKeyMissing = subtype && primary(identifiers.get(root)).isEmpty();
-        List<LogicalSubtypeDto.EffectiveAttribute> attributes = effectiveAttributes(entity, chain, loaded, identifiers, editable(entity, approvedBelow));
+        List<LogicalSubtypeDto.EffectiveAttribute> attributes = effectiveAttributes(entity, chain, loaded, identifiers, editability.of(entity, h));
         List<LogicalSubtypeDto.EffectiveIdentifier> effectiveIdentifiers = effectiveIdentifiers(entityId, chain, loaded, identifiers);
 
         // 상속 관계 : 조상에 정의된 일반 관계 (복제하지 않는다). 가까운 조상부터 역할을 정한다
@@ -369,8 +410,20 @@ public class LogicalSubtypeService {
         LogicalHierarchy h = hierarchy(modelId);
         List<Long> chain = h.chain(entityId);
         Map<Long, LogicalEntity> loaded = graph(modelId, chain);
-        boolean approvedBelow = !approvedAmong(h.descendants(entityId)).isEmpty();
-        return new LogicalSubtypeDto.EffectiveAttributes(entityId, effectiveAttributes(entity, chain, loaded, identifiers(chain), editable(entity, approvedBelow)));
+        requireLoaded(chain, loaded.keySet());
+        return new LogicalSubtypeDto.EffectiveAttributes(entityId, effectiveAttributes(entity, chain, loaded, identifiers(chain), screenEditable(entity, h)));
+    }
+
+    /**
+     * 읽기 일관성 (D35-D12) : 계층(그룹 링크)을 읽은 뒤 다른 트랜잭션이 상속 사슬의 엔터티를 지우고 커밋하면 같은 조회 안의 다음 쿼리에서 그 엔터티가 없다 (READ COMMITTED).
+     * 그때만 '다시 조회' 오류로 알린다 (예전에는 NullPointerException 으로 500). 잠금·재시도는 하지 않는다
+     */
+    static void requireLoaded(List<Long> chain, Set<Long> loaded) {
+        if (!loaded.containsAll(chain)) throw changedDuringRead();
+    }
+
+    static CustomException changedDuringRead() {
+        return new CustomException(ErrorCode.MODEL_CONFLICT, "조회하는 동안 논리 모델의 상속 구조가 바뀌었습니다. 다시 조회해 주세요.");
     }
 
     /** 루트 → 자기 자신 순서, 엔터티 안은 속성 순서. 유효 주 식별자 = 루트의 주 식별자 */

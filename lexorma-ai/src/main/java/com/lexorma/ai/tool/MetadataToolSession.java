@@ -60,6 +60,8 @@ public final class MetadataToolSession {
     private final long deadlineNanos;
     private final List<Call> calls = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, EvidenceCatalog.Snapshot> seen = new ConcurrentHashMap<>();
+    /** 설명을 실제로 돌려준 논리 속성 (D35-FINAL D35-D25) : 키 → 그때의 버전·설명 등록 여부. 설명을 뺀 응답·실패한 호출은 기록하지 않는다 */
+    private final Map<String, DescriptionView> described = new ConcurrentHashMap<>();
     private final List<ToolResult> results = Collections.synchronizedList(new ArrayList<>());
     private volatile Mode mode = Mode.TOOL_CALLING;
 
@@ -127,6 +129,45 @@ public final class MetadataToolSession {
         for (EvidenceCatalog.Snapshot snapshot : snapshots) {
             if (context.projectId().equals(snapshot.projectId())) seen.putIfAbsent(key(snapshot.type(), snapshot.id()), snapshot);
         }
+    }
+
+    /**
+     * 속성 설명을 모델에게 돌려준 기록 (D35-D25). version = 돌려준 때 그 속성 행의 버전, registered = 설명이 등록돼 있었는지 (없으면 '설명 없음' 을 확인한 것).
+     * 같은 속성을 다시 돌려주면 최신 기록으로 바꾼다 (버전이 다른 두 기록을 합치지 않는다)
+     */
+    public record DescriptionView(java.time.LocalDateTime version, boolean registered) {
+    }
+
+    /** 근거 기록의 지금 위치 : 대상 키와 설명 기록 (실패한 호출 뒤 되돌리는 데 쓴다) */
+    public record EvidenceCheckpoint(java.util.Set<String> seen, Map<String, DescriptionView> described) {
+    }
+
+    /**
+     * 근거 기록의 지금 위치 (D35-3b) : Tool 하나를 실행하기 전에 잡아 두고, 그 Tool 의 결과가 모델에게 가지 않으면(결과 상한 초과·조회 오류) 그 사이에 더한 근거를
+     * {@link #discardSince} 로 지운다 — 돌려주지 않은 결과의 대상이 근거로 인정되지 않게 한다. 그 전의 성공한 호출이 남긴 근거는 같은 대상이어도 그대로다
+     */
+    public EvidenceCheckpoint evidenceCheckpoint() {
+        return new EvidenceCheckpoint(java.util.Set.copyOf(seen.keySet()), Map.copyOf(described));
+    }
+
+    /** checkpoint 뒤에 기록한 근거를 지우고 설명 기록을 그때로 되돌린다 (그 전에 다른 Tool 결과로 기록된 근거는 그대로) */
+    public void discardSince(EvidenceCheckpoint checkpoint) {
+        seen.keySet().retainAll(checkpoint.seen());
+        described.clear();
+        described.putAll(checkpoint.described());
+    }
+
+    /** 속성 설명을 돌려줬다 (includeAttributeDescriptions 로 실제 응답에 실은 속성만, 이 프로젝트의 것만) */
+    public void sawDescriptions(Collection<EvidenceCatalog.Snapshot> snapshots, java.util.Set<Long> registered) {
+        for (EvidenceCatalog.Snapshot snapshot : snapshots) {
+            if (!context.projectId().equals(snapshot.projectId())) continue;
+            described.put(key(snapshot.type(), snapshot.id()), new DescriptionView(snapshot.version(), registered.contains(snapshot.id())));
+        }
+    }
+
+    /** 이 질의에서 그 속성의 설명을 돌려준 기록 (없으면 null — 설명을 조회하지 않았다) */
+    public DescriptionView described(EvidenceType type, Long id) {
+        return described.get(key(type, id));
     }
 
     /** 이 질의에서 Tool 이 돌려준 근거 후보 (없으면 null) */

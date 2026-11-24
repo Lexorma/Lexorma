@@ -667,6 +667,13 @@
 - 설계 결정 : U-12 `example` 은 보내지 않고 민감 컬럼은 표시만, 설명은 300자까지. U-13 호출·토큰 기본 한도(코드 상수 + 선택 설정). 원본 DB 도구는 AI 에 노출하지 않는다.
 - 검증 결과 : 로드맵 4단계 완료 조건 점검 [12.9](completed/ai-tool-calling-ai4.md#129-로드맵-4단계-완료-조건-점검). Tool 미지원 실제 모델 검증은 하지 못함 (pending-work.md [AI-4]).
 
+### [AI-MCP]·[AI-4] D-35 논리 모델 AI·MCP 조회 확장 (주제 영역·상속)
+
+- 상태: 완료 (2026-11-24) — 상세 기록 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md) (D35-1 분석·설계 → D35-2 공통 조회 → D35-3a·3b 연동 → D35-FINAL 검증, 확정 정책 D35-D01~D29)
+- 구현 내용 : 공통 조회 `lexorma-ai` `ai/tool/LogicalMetadataService`·`LogicalMetadataDto` (기존 논리 서비스 재사용 — 모델 목록·개요(주제 영역 계층·서브타입 그룹)·엔터티 검색(영역 하위 포함·직접만·미분류)·엔터티 상세(상속 경로·유효 속성·상속/자체 주·보조 식별자·직접/상속 관계)), 상속 계산 공통화(`LogicalSubtypeService.selectInheritanceView` — 화면 editable·`AuthUtil` 분리, 조회 중 상속 사슬 변경은 409), 내부 AI·MCP 공유 Tool `getLogicalModelOverview`·`searchLogicalEntities`·`getLogicalEntityDetail` (내부 AI 13개·MCP 13개), 상세 section·속성 설명 선택·목록마다 전체 수·complete·정확한 next, MCP `getLogicalModel` 호환 보완(직접 정의 범위·상속 여부·직접 슈퍼타입·대체 Tool 안내), RESULT_TOO_LARGE 에 tool·resultChars·maxChars·hint, 논리 근거 유형 7개 + 속성 설명 사용 표시 `usesDescription`(세션의 설명 조회 기록과 대조), 결과를 돌려주지 못한 호출의 근거 되돌림, 응답에 실린 참조(정의 엔터티·구성 속성·관계 양 끝)도 근거로 기록, 시스템·구조화 지시, 화면 근거 유형·사유 이름.
+- 설계 결정 : 기존 제한(목록 20·속성 100·직접 서브타입 20·관계 50·결과 24,000자·질의당 8번·같은 Tool 4번·30초)·기본 토큰 예산·READ COMMITTED 유지, 마이그레이션·새 모듈·새 운영 의존성 없음, 물리 변환 결과 설명은 범위 밖.
+- 검증 결과 : H2 `./gradlew build` 1,584건 실패 0 · 건너뜀 123, PostgreSQL 18.6 새 빈 DB 2회 각 1,584건 실패 0 · 건너뜀 46, 단일 JAR(MCP 끔·켬, JSON-RPC, 끔·폐기 401), 실제 로컬 Ollama `gemma4:e4b` 질문 20개 1회씩(PASS 12 · PARTIAL 2 · FAIL 6 — FAIL 은 모델 해석·근거 유형 혼동과 출력 한도, 서버 근거 검증이 잘못된 근거를 인정하지 않음) + 보완 뒤 재실행, 브라우저(한국어·영어, 라이트·다크, 1440·1024·375). 미검증 : 실제 MCP 클라이언트 연결, 실제 읽기 경합 재현. 후속 결정 : pending-work.md [AI-MCP] D-35 후속.
+
 ### [AI-5] AI 데이터 사전 초안 생성 및 승인 — 완료된 범위
 
 - 상태: **부분 완료** — 여기에는 구현·검증된 범위만 둔다. 사람이 판정한 업무 정확성 평가는 pending-work.md [AI-5-EVAL]

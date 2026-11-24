@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  * AI-4 Tool 등록 범위와 실행 경계. 질의마다 {@link #callbacks()} 와 {@link #advisor()} 를 ChatClient 요청에 넣는다.
  * Tool 호출 프로토콜·반복 실행은 Spring AI({@link ToolCallingAdvisor}, {@link DefaultToolCallingManager})가 하고, 여기서는 다음만 더한다.
  * <ul>
- *   <li><b>허용 목록</b> : {@link MetadataTools#callbacks()} 의 10개만 ({@link #NAMES}). 목록에 없는 이름을 모델이 부르면 아무것도 실행하지 않고 거절을 돌려준다</li>
+ *   <li><b>허용 목록</b> : {@link MetadataTools#callbacks()} 의 13개만 (D-35 D35-3b 논리 모델 3개 포함) ({@link #NAMES}). 목록에 없는 이름을 모델이 부르면 아무것도 실행하지 않고 거절을 돌려준다</li>
  *   <li><b>호출마다 재검증</b> : {@link ExecutionContextVerifier} 로 프로젝트 상태·요청자의 멤버십·현재 역할(VIEWER 이상)을 DB 에서 다시 본다.
  *       실패하면 질의 전체를 끝낸다 (USER·ASYNC·SCHEDULED 모두 같은 경로, 프로젝트는 실행 컨텍스트에서만 온다)</li>
  *   <li><b>읽기 전용 트랜잭션</b> : 조회를 readOnly 트랜잭션에서 한다 (Hibernate flush 없음, PostgreSQL 은 DB 가 쓰기를 거절한다)</li>
@@ -50,7 +50,8 @@ public class MetadataToolset {
 
     /** 등록하는 Tool (읽기 전용). 바꾸면 MetadataToolIntegrationTest 의 허용 목록 고정도 바꾼다 */
     public static final Set<String> NAMES = Set.of("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations",
-            "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "findSimilarColumns", "getMetadataHistory");
+            "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "findSimilarColumns", "getMetadataHistory",
+            "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
 
     private final ExecutionContextVerifier verifier;
     private final TransactionTemplate readOnly;
@@ -126,11 +127,13 @@ public class MetadataToolset {
             long started = System.nanoTime();
             Status status = Status.OK;
             String result;
+            // 근거는 결과를 돌려줄 때만 남긴다 : 상한 초과·오류면 이 호출이 기록한 근거를 지운다 (D35-3b — 돌려주지 않은 대상을 근거로 인정하지 않는다)
+            MetadataToolSession.EvidenceCheckpoint evidence = session.evidenceCheckpoint();
             try {
                 result = readOnly.execute(tx -> delegate.call(toolInput, toolContext));
                 if (result != null && result.length() > RESULT_MAX_CHARS) {
                     status = Status.FAILED;
-                    result = error("RESULT_TOO_LARGE", "The result was too large to send. Narrow the request and try again.");
+                    result = tooLarge(name, result.length());
                 }
             } catch (ToolExecutionException e) {
                 status = status(e.getCause());
@@ -141,6 +144,7 @@ public class MetadataToolset {
                 status = Status.INVALID_ARGUMENT;
                 result = error(status.name(), message(e));
             }
+            if (status != Status.OK) session.discardSince(evidence);
             long millis = (System.nanoTime() - started) / 1_000_000;
             session.record(name, status, millis);
             session.result(name, result);
@@ -203,6 +207,29 @@ public class MetadataToolset {
         log.warn("AI Tool 조회 실패 : {}", cause == null ? null : cause.getClass().getName());
         return "Lookup failed.";
     }
+
+    /**
+     * 결과 상한 초과 (D35-D19) : 결과를 자르지 않고 오류로 돌려준다. 어떤 Tool 이 몇 자였는지와 범위를 줄이는 방법(Tool 별)을 함께 준다 — 오류 자체는 수백 자.
+     * 같은 입력으로 다시 부르지 말라고 알린다
+     */
+    static String tooLarge(String tool, int chars) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "RESULT_TOO_LARGE");
+        body.put("message", "The result was too large to send. Do not repeat the same call; narrow the request and try again.");
+        body.put("tool", tool);
+        body.put("resultChars", chars);
+        body.put("maxChars", RESULT_MAX_CHARS);
+        String hint = NARROWING.get(tool);
+        if (hint != null) body.put("hint", hint);
+        return JsonMapper.shared().writeValueAsString(body);
+    }
+
+    /** Tool 별 범위 줄이는 방법 (논리 모델 Tool — D35-3b) */
+    private static final Map<String, String> NARROWING = Map.of(
+            "getLogicalEntityDetail", "Call getLogicalEntityDetail again with section ATTRIBUTES, IDENTIFIERS, RELATIONS or INHERITANCE and a smaller limit "
+                    + "(e.g. 20); leave includeAttributeDescriptions false unless the descriptions are needed.",
+            "getLogicalModelOverview", "Call getLogicalModelOverview with section SUBJECT_AREAS or SUBTYPE_GROUPS and a smaller limit (e.g. 20).",
+            "searchLogicalEntities", "Call searchLogicalEntities with a smaller limit, a keyword or a subjectAreaId.");
 
     private static String error(String code, String message) {
         Map<String, String> body = new LinkedHashMap<>();

@@ -1276,6 +1276,11 @@ class SmokeTest {
         assertThat(lists("TB_STD_TRM_SYNM", "STD_TRM_SN", none)).as("동의어 없던 용어 수정").isZero();
 
         // 단어 수정 : 금칙어 생략 → 유지, 값 → 교체, 필수 Y/N 누락 → 400, 없는 단어 → 400
+        // 승인 권한자가 등록한 단어는 승인 상태다 — 승인된 단어는 직접 고칠 수 없으므로(M8-C4c-1 C4c-D04) 미승인으로 돌려 둔다
+        assertThat(putJson("/api/updateDataDictionary/standardWords", """
+                {"id":%d,"revisionNumber":1,"commonStandardWordDescription":"DICT-1 수정","isFormatWord":"N","useAbbreviation":"Y","modifiedAt":"%s"}""".formatted(wordId, wordBase(wordId))).body())
+                .as("승인된 단어 직접 수정").contains("APPROVED_DATA_CANNOT_BE_UPDATE");
+        jdbcTemplate.update("UPDATE TB_STD_WORD SET APRV_YN = FALSE WHERE STD_WORD_SN = ?", wordId);
         // 단어 수정은 화면이 읽은 수정 일시(modifiedAt)가 필수다 (M8-C1) — 요청마다 지금 값을 다시 읽어 보낸다
         String wordUpdate = """
                 {"id":%d,"revisionNumber":1,"commonStandardWordDescription":"DICT-1 수정","isFormatWord":"N","useAbbreviation":"Y","modifiedAt":"%s"%s}""";

@@ -84,6 +84,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SourceSyncIntegrationTest {
 
     @Autowired SourceRenameService service;
+    @Autowired com.lexorma.data.sourcemapping.controller.SourceRenameRestController renameApi;
     @Autowired SourceDeletionService deletion;
     @Autowired TableRelationRepository relationRepository;
     @Autowired TableConstraintRepository constraintRepository;
@@ -193,8 +194,14 @@ class SourceSyncIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from TB_COL where TBL_SN = ?", Integer.class, e.table("CUSTOMER").getId())).isEqualTo(4);
 
         // 해제 → 다시 이름 변경 후보, TABLE 매핑 해제 → 컬럼 매핑도 지워진다
-        Long columnMappingId = service.columnMappings(e.manager, customerMapping).get(0).id();
-        service.releaseColumn(e.manager, columnMappingId);
+        SourceRenameDto.ColumnMapping seenColumn = service.columnMappings(e.manager, customerMapping).get(0);
+        Long columnMappingId = seenColumn.id();
+        // 화면이 본 뒤 그 매핑 행이 바뀌었으면(수정 일시) 해제하지 않는다 (M8-C4c-1 C4c-D03) — HTTP 는 modifiedAt 필수
+        assertThat(seenColumn.modifiedAt()).isNotNull();
+        assertThatThrownBy(() -> renameApi.releaseColumn(e.manager, columnMappingId, null)).extracting("errorCode").isEqualTo(ErrorCode.MODEL_BASE_REQUIRED);
+        rejected(() -> service.releaseColumn(e.manager, columnMappingId, seenColumn.modifiedAt().minusSeconds(1)), ErrorCode.MODEL_CONFLICT);
+        assertThat(service.columnMappings(e.manager, customerMapping)).hasSize(1);
+        service.releaseColumn(e.manager, columnMappingId, seenColumn.modifiedAt());
         assertThat(service.columnMappings(e.manager, customerMapping)).isEmpty();
         assertThat(compare.table(e.manager, null, null, "S" + table.sourceTableId(), "COLUMN").renameCandidates())
                 .anyMatch(r -> "full_name".equals(r.sourceName()) && "CUST_NAME".equals(r.modelName()));

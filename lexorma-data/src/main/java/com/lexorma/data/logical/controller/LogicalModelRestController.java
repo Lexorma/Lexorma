@@ -218,16 +218,20 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "엔터티 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능. modifiedAt(화면이 읽은 엔터티의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C2)")
+    @Operation(summary = "엔터티 승인/승인 취소", description = "승인 권한(관리자·매니저·프로젝트 관리자)만 가능. modifiedAt(화면이 읽은 엔터티의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C2). 승인은 composition(상세 조회의 속성·식별자 구성 기준값)도 필수 — 그 사이 속성·식별자가 더해지거나 바뀌었으면 409 (M8-C4c-1)")
     @PreAuthorize("hasRole('USER')")
     @PatchMapping("/entity/{entityId}/approval/{isApproval}")
     public ResponseEntity<Map<String, Object>> updateEntityApproval(@AuthenticationPrincipal AccountDto accountDto,
                                                                     @PathVariable(name = "entityId") Long entityId,
                                                                     @PathVariable(name = "isApproval") boolean isApproval,
-                                                                    @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
-        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다
-        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
-        logicalModelService.updateEntityApproval(accountDto, entityId, isApproval, modifiedAt);
+                                                                    @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt,
+                                                                    @RequestParam(value = "composition", required = false) String composition) {
+        // 승인 권한이 없으면 기준값보다 권한 오류(서비스)가 먼저다. 승인은 상세 조회의 composition(속성·식별자 구성)도 필수 (M8-C4c-1), 승인 취소는 modifiedAt 만
+        if (com.lexorma.core.util.AuthUtil.isApprovalAvailable()) {
+            com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+            if (isApproval) com.lexorma.common.jpa.ModelComposition.require(composition);
+        }
+        logicalModelService.updateEntityApproval(accountDto, entityId, isApproval, modifiedAt, composition);
         return ResponseEntity.ok(DONE);
     }
 
@@ -258,13 +262,19 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "속성 순서 변경", description = "엔터티의 속성 ID 전체를 원하는 순서대로 보낸다")
+    @Operation(summary = "속성 순서 변경", description = "엔터티의 속성 전체를 새 순서대로 [{id, baseSortOrder}] 로 보낸다 (M8-C4b). baseSortOrder 는 화면이 순서를 읽었을 때의 그 속성 정렬 순서(없던 순서는 0) — "
+            + "행마다 필수(없으면 400 MODEL_BASE_REQUIRED, 예전 형식 [id, …] 도 400). 그 사이 순서가 바뀌었거나 속성이 더해지거나 지워졌으면 409, 아무것도 바꾸지 않는다")
     @PreAuthorize("hasRole('USER')")
     @PutMapping("/entity/{entityId}/attribute/order")
     public ResponseEntity<List<LogicalModelDto.Attribute>> reorderAttributes(@AuthenticationPrincipal AccountDto accountDto,
                                                                              @PathVariable(name = "entityId") Long entityId,
-                                                                             @RequestBody List<Long> attributeIds) {
-        return ResponseEntity.ok(logicalModelService.reorderAttributes(accountDto, entityId, attributeIds));
+                                                                             @RequestBody tools.jackson.databind.JsonNode body) {
+        List<LogicalModelDto.AttributeOrder> orders = new java.util.ArrayList<>();
+        if (body != null && body.isArray()) body.forEach(n -> orders.add(n.isObject()
+                ? new LogicalModelDto.AttributeOrder(n.path("id").isNumber() ? n.path("id").asLong() : null, n.path("baseSortOrder").isNumber() ? n.path("baseSortOrder").asInt() : null)
+                : new LogicalModelDto.AttributeOrder(n.isNumber() ? n.asLong() : null, null)));
+        orders.forEach(order -> com.lexorma.common.jpa.ModelBase.require(true, order.baseSortOrder()));
+        return ResponseEntity.ok(logicalModelService.reorderAttributes(accountDto, entityId, orders));
     }
 
     // ------------------------------------------------------------------ 식별자

@@ -33,6 +33,7 @@ public class CommonColumnServiceImpl implements CommonColumnService {
 
     private final CommonColumnRepository commonColumnRepository;
     private final StandardTermRepository standardTermRepository;
+    private final com.lexorma.core.project.repository.ProjectRepository projectRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -81,6 +82,9 @@ public class CommonColumnServiceImpl implements CommonColumnService {
             }
         }
 
+        // 세트 통째 교체는 프로젝트 행을 배타로 잡은 뒤 읽고 지운다 (M8-C4b) : 예전에는 동시 교체 두 건이 같은 행을 지우려다 뒤의 것이 0행 DELETE(낙관적 잠금 예외 500)로 실패했다.
+        // 이제 뒤의 교체는 기다렸다가 앞의 결과를 읽어 교체한다 (마지막 교체가 남는다, 순서 1..n — 세트 저장은 화면이 세트 전체를 보내는 계약 그대로)
+        projectRepository.findByIdForUpdate(projectId);
         commonColumnRepository.deleteAll(commonColumnRepository.findAllByProjectIdOrderBySortOrderAscIdAsc(projectId));
         commonColumnRepository.flush();
 

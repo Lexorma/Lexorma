@@ -12,6 +12,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChanges';
 import { api, enc, isConflict } from '../../lib/api';
+import { useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { openLayoutConflict, type Positions } from '../erd/layoutConflict';
 import { cascadeText, withDeletion } from '../../lib/deletion';
 import { approveRelationshipGuarded, deleteAttributeGuarded, deleteEntityGuarded, deleteIdentifierGuarded, deleteRelationshipGuarded } from './conflictSnapshots';
@@ -29,7 +30,7 @@ import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
 import { EntityMappingSection, MappingLegend, MappingOverlayContext, MappingToggle, useEntityOverlay, type EntityOverlay } from '../mapping/erdOverlay';
-import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { attributeOrderBody, cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { ALL_AREAS, applyAreaFilter, areaMap, areaPath, useSubjectAreas, type AreaFilter } from './subjectArea';
 
 const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(entityRows(n.data.entity)) });
@@ -173,6 +174,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
   const [selectedRelationship, setSelectedRelationship] = useState<number | null>(null);
   const [arranging, setArranging] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [movingAttribute, runMoveAttribute] = useSubmitting(); // 속성 순서 변경 요청 중 중복 클릭 방지 (M8-C4b L-02)
   const [message, setMessage] = useState('');
   const [dirty, setDirtyState] = useState(false);
   const setDirty = (value: boolean) => {
@@ -542,13 +544,11 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
     }, () => undefined);
   };
 
-  /** 순서 변경 : 엔터티의 속성 ID 전체를 새 순서로 보낸다 (엔터티 상세와 같은 API) */
-  const moveAttribute = async (entity: GraphEntity, index: number, delta: number) => {
-    const ids = entity.attributes.map((a) => a.id);
-    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
-    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: ids });
+  /** 순서 변경 : 엔터티 상세와 같은 API·같은 기준값 (M8-C4b L-02) — 요청 중 ↑/↓ 잠금, 409 는 공통 알림이고 보이던 순서를 그대로 둔다 */
+  const moveAttribute = (entity: GraphEntity, index: number, delta: number) => runMoveAttribute(async () => {
+    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: attributeOrderBody(entity.attributes, index, delta) });
     await refresh();
-  };
+  }).catch(() => undefined);
 
   // ------------------------------------------------------------------ 편집 (M-8 2차 : 관계·식별자)
   // 연결점을 잇는 것은 관계 등록의 시작일 뿐이다. 화면에 선을 추가하지 않고 관계 폼을 열며, 저장에 성공해 다시 조회한 뒤에야 선이 생긴다.
@@ -790,6 +790,7 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
                 onEditAttribute: (attribute) => openAttributeForm(selected, attribute),
                 onDeleteAttribute: (attribute) => removeAttribute(selected, attribute),
                 onMoveAttribute: (index, delta) => void moveAttribute(selected, index, delta),
+                moving: movingAttribute,
               } : undefined}
               onManage={onManage ? () => onManage(selected.id) : undefined}
               onMapping={canView('model-mapping') ? () => onLeave(mappingPath(modelId, selected.id)) : undefined}
@@ -890,6 +891,8 @@ interface EntityEdit {
   onEditAttribute: (attribute: GraphAttribute) => void;
   onDeleteAttribute: (attribute: GraphAttribute) => void;
   onMoveAttribute: (index: number, delta: number) => void;
+  /** 속성 순서 저장 중 (↑/↓ 잠금) */
+  moving: boolean;
   onAddRelationship: () => void;
   onAddIdentifier: (detail: LogicalEntity) => void;
   onEditIdentifier: (detail: LogicalEntity, identifier: LogicalIdentifier) => void;
@@ -965,8 +968,8 @@ function EntityPanel({ graph, entity, outsideCount, outsideInheritance = 0, dept
             <small>{[a.termName?.replaceAll('_', ' '), a.domainName, a.dataType].filter(Boolean).join(' · ') || t('연결된 표준 용어가 없습니다.')}</small>
             {edit?.attributeEditable && (
               <span className="erd-attribute-actions">
-                <button type="button" className="btn btn-sm" aria-label={t('위로')} title={t('위로')} disabled={index === 0} onClick={() => edit.onMoveAttribute(index, -1)}>↑</button>
-                <button type="button" className="btn btn-sm" aria-label={t('아래로')} title={t('아래로')} disabled={index === entity.attributes.length - 1} onClick={() => edit.onMoveAttribute(index, 1)}>↓</button>
+                <button type="button" className="btn btn-sm" aria-label={t('위로')} title={t('위로')} disabled={edit.moving || index === 0} onClick={() => edit.onMoveAttribute(index, -1)}>↑</button>
+                <button type="button" className="btn btn-sm" aria-label={t('아래로')} title={t('아래로')} disabled={edit.moving || index === entity.attributes.length - 1} onClick={() => edit.onMoveAttribute(index, 1)}>↓</button>
                 <button type="button" className="btn btn-sm" onClick={() => edit.onEditAttribute(a)}>{t('수정')}</button>
                 <button type="button" className="btn btn-sm btn-danger" disabled={a.identifier} onClick={() => edit.onDeleteAttribute(a)}
                   title={a.identifier ? t('식별자에 포함된 속성은 삭제할 수 없습니다. 식별자에서 먼저 빼주세요.') : undefined}>{t('삭제')}</button>

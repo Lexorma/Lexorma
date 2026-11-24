@@ -353,7 +353,7 @@ class ConcurrentEditC2IntegrationTest {
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, admin.getProjectId(), "990003", "ROLE_USER");
         assertCode(() -> columnApi.updateColumnApproval(user, "true", List.of(ColumnInfoDto.builder().id(f.columnId).build())), "APPROVAL_PERMISSION_DENIED");
         assertCode(() -> tableApi.updateTableIsApproval(true, user, List.of(noBase)), "APPROVAL_PERMISSION_DENIED");
-        assertCode(() -> logicalApi.updateEntityApproval(user, f.entityId, true, null), "APPROVAL_PERMISSION_DENIED");
+        assertCode(() -> logicalApi.updateEntityApproval(user, f.entityId, true, null, null), "APPROVAL_PERMISSION_DENIED");
         assertCode(() -> physicalApi.updateApproval(user, "constraint", 1L, true, null), "APPROVAL_PERMISSION_DENIED");
     }
 
@@ -369,7 +369,7 @@ class ConcurrentEditC2IntegrationTest {
                 () -> logical.updateEntityApproval(admin, id, true, seen.modifiedAt()));
         assertThat(b).isEqualTo("MODEL_CONFLICT");
         assertThat(inTx(() -> entities.findById(id).orElseThrow().getIsApproval())).isFalse();
-        assertCode(() -> logicalApi.updateEntityApproval(admin, id, true, null), "MODEL_BASE_REQUIRED");
+        assertCode(() -> logicalApi.updateEntityApproval(admin, id, true, null, null), "MODEL_BASE_REQUIRED");
         logical.updateEntityApproval(admin, id, true, inTx(() -> entities.findById(id).orElseThrow().modifiedAt()));
         assertThat(inTx(() -> entities.findById(id).orElseThrow().getIsApproval())).isTrue();
     }

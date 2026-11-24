@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, type LabelVariant } from '../../components/grid/cells';
 import { api, enc } from '../../lib/api';
+import { baseQuery } from '../../lib/deletion';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { Pager } from './shared';
@@ -28,6 +29,8 @@ interface Candidates { connectionId: number | null; reflectedOrder: number | nul
 interface ColumnMapping {
   id: number; tableMappingId: number; sourceTableId: number | null; sourceTableName: string | null; sourceColumnName: string; compareName: string; tableId: number | null;
   tableName: string | null; columnId: number | null; columnName: string | null; reflectedOrder: number; status: ColumnStatus; confirmedAt: string | null; confirmedBy: string | null;
+  /** 해제 기준값 (M8-C4c-1) */
+  modifiedAt: string | null;
 }
 interface History {
   id: number; tableMappingId: number; targetType: TargetType; changeType: ChangeType; before: Record<string, unknown> | null; after: Record<string, unknown> | null;
@@ -92,8 +95,12 @@ export function SourceRenamePanel({ canManage, onChanged }: { canManage: boolean
   };
   const release = (m: ColumnMapping) => {
     dialog.confirm(t('컬럼 매핑 {0} ↔ {1} 을(를) 해제하시겠습니까? 다시 이름으로 짝짓습니다.', m.sourceColumnName, m.columnName ?? '-'), async () => {
-      await api(`/api/sourceMapping/renames/columns/${enc(m.id)}`, { method: 'DELETE' });
-      reload();
+      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1) — 409 면 공통 알림 뒤 최신 목록
+      try {
+        await api(`/api/sourceMapping/renames/columns/${enc(m.id)}${baseQuery(m.modifiedAt)}`, { method: 'DELETE' });
+      } finally {
+        reload();
+      }
     });
   };
 

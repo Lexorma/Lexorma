@@ -3781,6 +3781,7 @@ export const en = {
   "사용할 위치": "Position to use",
   "삭제 대상 또는 함께 삭제될 항목이 그 사이 바뀌었습니다.": "The item to delete or the items deleted with it have changed in the meantime.",
   "삭제 대상의 하위 항목이 변경되었습니다. 함께 삭제될 항목을 다시 확인해 주세요.": "The items included in this deletion have changed. Review the items that will be deleted with it again.",
+  "함께 승인되는 하위 항목(속성·식별자)이 변경되었습니다. 최신 구성을 다시 확인해 주세요.": "The attributes or identifiers approved with it have changed. Review the latest composition again.",
   "상속 PK 매핑 해제": "Remove inherited PK mapping",
   "상속 일반 속성 매핑 해제": "Remove inherited attribute mapping",
   "선택한 항목 중 다른 사용자가 바꾼 항목이 있어 아무것도 바뀌지 않았습니다.": "Some of the selected items were changed by another user, so nothing was changed.",

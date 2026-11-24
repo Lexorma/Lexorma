@@ -36,6 +36,7 @@ public class StandardWordService {
     private final StandardWordRepository standardWordRepository;
     private final StandardDomainRepository standardDomainRepository;
     private final EntityManager entityManager;
+    private final DictionaryRowLocks rowLocks;
 
     public Page<StandardWordDto> getStandardWordsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {
         if (searchQuery == null || searchQuery.trim().isEmpty()) {
@@ -89,15 +90,20 @@ public class StandardWordService {
                 }));
     }
 
+    /** 단어 삭제 (M8-C4c-1 C4c-D02) : 도메인 삭제와 같은 잠금·순서 (프로젝트 행 배타 → 행 NOWAIT → 다시 읽기 → 승인 거절 → 기준값 409 → 용어 참조 검사) */
     @Transactional
     public void deleteDataDictionaryStandardWords(List<StandardWordDto> standardWords, AccountDto accountDto) {
+        rowLocks.lockForDeletion(accountDto.getProjectId(), DictionaryRowLocks.Target.WORD, standardWords.stream().map(StandardWordDto::getId).toList());
         standardWords.forEach(standardDomain -> {
             StandardWord word = standardWordRepository.findByIdAndProjectId(standardDomain.getId(), accountDto.getProjectId());
 
             if (word != null) {
+                entityManager.refresh(word);
                 if (word.getIsApproval()) {
                     throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED, word.getCommonStandardWordName());
                 }
+                verifyBase(word, standardDomain.getModifiedAt(), word.getCommonStandardWordName(),
+                        "화면을 연 뒤 다른 사용자가 표준 단어 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.");
 
                 if (word.getTermWordMappings() != null && !word.getTermWordMappings().isEmpty()) {
                     throw new CustomException(ErrorCode.RELATION_EXISTS, word.getCommonStandardWordName());
@@ -235,11 +241,16 @@ public class StandardWordService {
     @Transactional
     public void updateStandardWords(StandardWordDto standardWordDto) {
 
-        // 행을 잠그고 다시 읽는다 (M8-C1 D-02) : 같은 단어의 수정·승인과 겹치면 그쪽이 끝난 뒤의 상태로 판단한다. 단어의 승인 정책(승인된 단어 수정 여부)은 바꾸지 않았다
+        // 행을 잠그고 다시 읽는다 (M8-C1 D-02) : 같은 단어의 수정·승인과 겹치면 그쪽이 끝난 뒤의 상태로 판단한다
         StandardWord standardWord = standardWordDto.getId() == null ? null
                 : standardWordRepository.findForUpdate(standardWordDto.getId(), standardWordDto.getProjectId()).orElse(null);
         if (standardWord == null) {
             throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA);
+        }
+        // 승인된 단어는 고칠 수 없다 (M8-C4c-1 C4c-D04 — 표준 도메인 M8-D03 과 같은 규칙·오류) : 승인 취소 → 수정 → 재승인. 잠근 행으로 보므로 수정 중에 승인이 끼어들지 않는다.
+        // 금칙어는 별도 API 가 없는 이 수정의 한 칸이라 승인된 단어의 금칙어도 같은 절차다 (금칙어 관리 정책 자체는 바꾸지 않았다)
+        if (Boolean.TRUE.equals(standardWord.getIsApproval())) {
+            throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         }
         // 화면을 연 뒤 다른 사용자가 고쳤으면 409 (DEC-08 — 잠근 행의 MDFCN_DT 와 비교). HTTP 요청은 기준값이 필수다 (컨트롤러)
         verifyBase(standardWord, standardWordDto.getModifiedAt(), standardWord.getCommonStandardWordName(),

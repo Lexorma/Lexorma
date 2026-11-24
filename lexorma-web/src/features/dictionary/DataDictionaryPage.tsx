@@ -243,10 +243,15 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
       return;
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
-      const response = await api<{ result: boolean }>(`/api/deleteDataDictionary/${tab.id}`, { method: 'DELETE', body: checked });
-      if (!response.result) return;
-      reload();
-      toast.success(t('정상적으로 삭제처리 되었습니다.'));
+      // 체크한 행(그리드가 불러온 그대로 — modifiedAt 기준값 포함)을 보낸다 (M8-C4c-1). 그 사이 바뀐 행이 있으면 서버가 409 로 전체를 거절하고(공통 알림),
+      // 어느 쪽이든 최신 목록을 다시 읽는다 (자동 재시도 없음)
+      let removed = false;
+      try {
+        removed = (await api<{ result: boolean }>(`/api/deleteDataDictionary/${tab.id}`, { method: 'DELETE', body: checked })).result;
+      } finally {
+        reload();
+      }
+      if (removed) toast.success(t('정상적으로 삭제처리 되었습니다.'));
     });
   };
 

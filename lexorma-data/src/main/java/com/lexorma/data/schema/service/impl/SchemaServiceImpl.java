@@ -60,11 +60,16 @@ public class SchemaServiceImpl implements SchemaService {
         }
         SchemaInfo schema;
         if (schemaDto.id() == null) {
+            // 등록은 프로젝트 행을 배타로 먼저 잡는다 (M8-C4b P-06) : 아직 없는 스키마 행은 잠글 수 없고 UX_SCHM_01 은 대소문자를 구분해, 예전에는 "SALES"·"sales" 동시 등록이
+            // 둘 다 성공하고 같은 이름 동시 등록은 UNIQUE 위반 500 이었다. 이름 변경(프로젝트 배타)·기본 스키마 생성(프로젝트 행 잠금)과도 같은 행으로 직렬화된다 —
+            // 잡은 뒤 아래 대소문자 무시 중복 검사가 최신 상태를 본다. 스키마 등록은 승인 권한자만 하는 드문 작업이라 프로젝트 전체를 잠깐 막는 비용이 작다
+            projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
             schema = SchemaInfo.builder().projectId(projectId).isDefault(false).build();
         } else if (rename) {
             projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
             projectWriteGuard.lock(projectId);
             rowLocks.schemasNoWait(List.of(schemaDto.id()));
+            rowLocks.schemasForKeyChange(List.of(schemaDto.id())); // 이름 = 키 (M8-C4b-R1) : 그 스키마로 참조 관계를 만드는 중(KEY SHARE)이면 기다리지 않고 409
             schema = schemaInfoRepository.findByIdAndProjectId(schemaDto.id(), projectId).orElseThrow(() -> new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED));
             entityManager.refresh(schema);
         } else {

@@ -60,6 +60,14 @@ class ColumnManageServiceImplTest {
     @Mock
     PhysicalModelService physicalModelService; // 관계 동기화는 PhysicalModelServiceImplTest
 
+    // 구조 변경 경로 (PK 구성 변경 — M7-FK-D11 · M8-C4b-R2)
+    @Mock
+    com.lexorma.core.project.repository.ProjectRepository projectRepository;
+    @Mock
+    com.lexorma.core.project.guard.ProjectWriteGuard projectWriteGuard;
+    @Mock
+    com.lexorma.data.physical.sync.ModelRowLocks rowLocks;
+
     @InjectMocks
     ColumnManageServiceImpl service;
 
@@ -177,7 +185,9 @@ class ColumnManageServiceImplTest {
         @DisplayName("승인 권한자가 등록하면 승인으로 저장하고, PK 컬럼은 필수/유일로 설정한다")
         void approverInsertPk() {
             AccountDto login = SecurityTestSupport.loginAsAdmin(1L);
-            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table())); // 등록은 테이블 행을 먼저 잠그고 읽는다 (M-7 물리명 일괄 적용 2차 후속)
+            // 새 PK 컬럼 = PK 구성 변경 → 구조 변경 경로 (M8-C4b-R2) : 프로젝트 배타 → 테이블 행 NOWAIT (일반 등록의 findForUpdate 가 아니다)
+            when(projectRepository.findByIdForUpdate(1L)).thenReturn(java.util.Optional.of(com.lexorma.core.project.domain.entity.Project.builder().build()));
+            when(rowLocks.tablesNoWait(List.of(10L))).thenReturn(List.of(table()));
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(term());
             ColumnInfoDto dto = newColumn();
             dto.setIsPk("Y");
@@ -407,7 +417,8 @@ class ColumnManageServiceImplTest {
             verify(entityManager).getReference(TableInfo.class, 11L);
             // 청크마다 두 번 : 저장 직후 컬럼명 UNIQUE(UX_COL_01) 최종 방어 확인 (M7-U01), 관계 동기화 뒤 비우기 전
             verify(entityManager, org.mockito.Mockito.times(2)).flush();
-            verify(entityManager).clear();
+            // 비우기 두 번 : 테이블 행을 잠근 뒤 테이블명을 최신 데이터로 다시 해석하기 전 (M8-C4b P-03), 청크 저장 뒤
+            verify(entityManager, org.mockito.Mockito.times(2)).clear();
             // 테이블의 컬럼 목록 컬렉션은 건드리지 않는다 (FK 기준)
             assertThat(order.getColumns()).isEmpty();
         }
@@ -493,7 +504,10 @@ class ColumnManageServiceImplTest {
             ColumnInfo remove = column(2L, "OLD_COL", false, 2);
             TableInfo table = approvedTable(keep, remove);
             StandardTerm userNm = term(20L, "USER_NM");
-            when(tableInfoRepository.findForUpdate(10L, 1L)).thenReturn(java.util.Optional.ofNullable(table)); // 일괄 저장은 테이블 행을 먼저 잠근다 (M-7 3차)
+            // USER_ID 의 PK 여부 N → Y = PK 구성 변경 → 구조 변경 경로 (M8-C4b-R2) : 프로젝트 배타 → 테이블 행 NOWAIT (일반 저장의 findForUpdate 가 아니다)
+            when(columnInfoRepository.findPkStates(1L, 10L)).thenReturn(List.of(new Object[]{1L, false, false}, new Object[]{2L, false, false}));
+            when(projectRepository.findByIdForUpdate(1L)).thenReturn(java.util.Optional.of(com.lexorma.core.project.domain.entity.Project.builder().build()));
+            when(rowLocks.tablesNoWait(List.of(10L))).thenReturn(List.of(table));
             when(standardTermRepository.findByIdAndProjectId(20L, 1L)).thenReturn(userNm);
 
             ColumnBulkSaveDto.Row pkRow = existingRow(1L);

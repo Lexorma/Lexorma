@@ -44,6 +44,12 @@ public class DictionaryUsageRestController {
                 PageableUtil.getGridPageable(page, size, sort, com.lexorma.data.dictionary.repository.DictionaryUsageRepository.COLUMN_SORT_FIELDS)));
     }
 
+    @Operation(summary = "표준 도메인 승인 취소 영향 범위", description = "도메인을 참조하는 표준 용어 수(승인된 수), 그 용어를 쓰는 논리 속성·물리 컬럼 수. 승인 취소는 이 참조·승인 상태를 바꾸지 않는다 (안내용, M8-C4c-1)")
+    @GetMapping("/domain/{domainId}/impact")
+    public ResponseEntity<DictionaryUsageDto.DomainImpact> domainImpact(@AuthenticationPrincipal AccountDto accountDto, @PathVariable(name = "domainId") Long domainId) {
+        return ResponseEntity.ok(dictionaryUsageService.domainImpact(accountDto, domainId));
+    }
+
     @Operation(summary = "표준 도메인 사용 컬럼", description = "표준 도메인에 속한 표준 용어를 참조하는 컬럼 (컬럼은 도메인을 직접 참조하지 않는다)")
     @GetMapping("/domain/{domainId}/data")
     public ResponseEntity<Map<String, Object>> selectDomainColumns(@AuthenticationPrincipal AccountDto accountDto,

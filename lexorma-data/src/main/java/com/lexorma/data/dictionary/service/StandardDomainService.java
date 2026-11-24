@@ -36,6 +36,7 @@ public class StandardDomainService {
     private final ProjectRepository projectRepository;
     private final DictionaryUsageRepository usageRepository;
     private final EntityManager entityManager;
+    private final DictionaryRowLocks rowLocks;
     private static final int FIRST_ROW = 1;
 
     public Page<StandardDomainDto> getStandardDomainsData(Pageable pageable, AccountDto accountDto, String searchColumn, String searchQuery) {
@@ -96,25 +97,34 @@ public class StandardDomainService {
                 }));
     }
 
+    /**
+     * 도메인 삭제 (M8-C4c-1 C4c-D02) : 프로젝트 행 배타 → 지울 행 NOWAIT(ID 순) → 다시 읽기 → 승인된 도메인 거절(기존) → 화면이 본 수정 일시(modifiedAt) 비교(409) →
+     * 참조 용어 검사(기존). 하나라도 거절되면 전체 롤백. 없는(다른 프로젝트·이미 지운) 도메인은 예전처럼 건너뛴다. 기준값 null 은 내부 호출 (HTTP 는 컨트롤러가 필수로)
+     */
     @Transactional
     public void deleteDataDictionaryStandardDomains(List<StandardDomainDto> standardDomains, AccountDto accountDto) {
+        rowLocks.lockForDeletion(accountDto.getProjectId(), DictionaryRowLocks.Target.DOMAIN, standardDomains.stream().map(StandardDomainDto::getId).toList());
         standardDomains.forEach(domainDto -> {
             StandardDomain domain = standardDomainRepository.findByIdAndProjectId(domainDto.getId(), accountDto.getProjectId());
 
             if (domain != null) {
+                entityManager.refresh(domain); // 잠근 뒤의 최신 상태 (영속성 컨텍스트에 예전 값이 남지 않게)
                 // 1. 승인된 도메인 삭제 불가
                 if (Boolean.TRUE.equals(domain.getIsApproval())) {
                     throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED,
                             "승인된 도메인은 삭제할 수 없습니다: {0}", domain.getCommonStandardDomainName());
                 }
+                // 2. 화면을 연 뒤 다른 사용자가 고쳤으면 지우지 않는다 (M8-D01)
+                verifyBase(domain, domainDto.getModifiedAt(), domain.getCommonStandardDomainName(),
+                        "화면을 연 뒤 다른 사용자가 표준 도메인 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.");
 
-                // 2. 표준용어에서 참조 중인 경우 삭제 불가
+                // 3. 표준용어에서 참조 중인 경우 삭제 불가
                 if (domain.getStandardTerms() != null && !domain.getStandardTerms().isEmpty()) {
                     throw new CustomException(ErrorCode.RELATION_EXISTS,
                             "표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: {0}", domain.getCommonStandardDomainName());
                 }
 
-                // 3. 삭제 수행
+                // 4. 삭제 수행
                 standardDomainRepository.delete(domain);
             }
         });

@@ -46,7 +46,7 @@ public final class SourceRenameDto {
 
     public record ColumnMapping(Long id, Long tableMappingId, Long sourceTableId, String sourceTableName, String sourceColumnName, String compareName, Long tableId,
                                 String tableName, Long columnId, String columnName, Integer reflectedOrder, ColumnStatus status, LocalDateTime confirmedAt,
-                                String confirmedBy) {
+                                String confirmedBy, LocalDateTime modifiedAt) {
     }
 
     /** TABLE 이름 변경 확정 : 원본 없음인 TABLE 매핑(mappingId)을 새 원본 TABLE 로 옮긴다 (모델 TABLE·컬럼 매핑·예외 여부는 그대로) */

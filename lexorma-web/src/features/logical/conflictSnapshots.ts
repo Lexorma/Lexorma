@@ -13,6 +13,8 @@ export function entitySnapshot(e: LogicalEntity): Snapshot {
   return {
     modifiedAt: e.modifiedAt ?? null,
     approved: !!e.isApproval,
+    // 승인 구성 기준값 (M8-C4c-1) : 서버가 준 값 그대로. 속성·식별자가 바뀌었으면 검토 화면이 '하위 구성 변경'으로 보여 준다
+    composition: e.composition ?? undefined,
     fields: [
       { key: 'name', label: t('엔터티명'), value: e.entityName },
       { key: 'description', label: t('설명'), value: e.entityDescription ?? '' },

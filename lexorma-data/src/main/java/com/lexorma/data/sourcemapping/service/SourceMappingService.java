@@ -198,12 +198,23 @@ public class SourceMappingService {
     /** 스키마 매핑 해제 : 그 원본 스키마의 TABLE 매핑도 함께 해제한다 (스키마 매핑 없이 남은 TABLE 매핑은 충돌이 된다). 매핑 예외는 스키마 매핑과 무관해 남긴다 */
     @Transactional
     public Map<String, Object> unmapSchema(AccountDto accountDto, Long sourceSchemaId) {
+        return unmapSchema(accountDto, sourceSchemaId, null, null);
+    }
+
+    /**
+     * 스키마 매핑 해제 (M8-C4c-1 C4c-D03) : 기준 연결 행 배타 → 매핑 행 → 화면이 본 수정 일시(modifiedAt — 그 사이 다른 모델 스키마로 바뀌었으면 409)와
+     * 함께 해제할 TABLE 매핑 구성(composition — 그 사이 더해지거나 바뀐 TABLE 매핑이 있으면 409, M8-D01 의 하위 구성 규칙) 비교. null = 내부 호출 (HTTP 는 필수)
+     */
+    @Transactional
+    public Map<String, Object> unmapSchema(AccountDto accountDto, Long sourceSchemaId, java.time.LocalDateTime modifiedAt, String composition) {
         Long projectId = manage(accountDto);
         Long connectionId = lockBase(projectId);
         SourceSchemaMapping mapping = schemaMappingRepository.findByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId)
                 .orElseThrow(() -> invalid("매핑되지 않은 원본 스키마입니다."));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getSourceSchemaName());
         List<SourceTableMapping> tables = tableMappingRepository.findAllByProjectIdAndConnectionIdAndSourceSchemaId(projectId, connectionId, sourceSchemaId).stream()
                 .filter(m -> !m.isExclusion()).toList();
+        com.lexorma.common.jpa.ModelComposition.of().addEntities("tableMappings", tables, SourceTableMapping::getId).verify(composition, mapping.getSourceSchemaName());
         State state = state(projectId, connectionId);
         tables.forEach(t -> recordRelease(state, t));
         tableMappingRepository.deleteAll(tables);
@@ -263,10 +274,20 @@ public class SourceMappingService {
     /** TABLE 매핑 해제 : 그 TABLE 의 컬럼 매핑(DEC-06)도 함께 지워진다 (FK ON DELETE CASCADE) — 둘 다 해제 이력을 남긴다 */
     @Transactional
     public Map<String, Object> unmapTable(AccountDto accountDto, Long mappingId) {
+        return unmapTable(accountDto, mappingId, null);
+    }
+
+    /**
+     * TABLE 매핑 해제 (M8-C4c-1 C4c-D03) : 기준 연결 행 배타(매핑 쓰기 공통 잠금) → 매핑 행 → 화면이 본 수정 일시 비교. 매핑 변경은 같은 행을 고쳐 쓰므로(다른 모델 TABLE 로)
+     * ID 만으로는 오래된 화면이 바뀐 최신 매핑을 지웠다 — 이제 409. 지우고 다시 만든 매핑은 새 ID 라 '찾을 수 없음'. 매핑 예외 행은 해제 대상이 아니다 (예외 취소는 별도 API — 예외 행은 고쳐 쓰지 않는다)
+     */
+    @Transactional
+    public Map<String, Object> unmapTable(AccountDto accountDto, Long mappingId, java.time.LocalDateTime modifiedAt) {
         Long projectId = manage(accountDto);
         Long connectionId = lockBase(projectId);
         SourceTableMapping mapping = tableMappingRepository.findByIdAndProjectId(mappingId, projectId)
                 .filter(m -> m.getConnectionId().equals(connectionId) && !m.isExclusion()).orElseThrow(() -> invalid("매핑을 찾을 수 없습니다."));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getCompareName());
         recordRelease(state(projectId, connectionId), mapping);
         tableMappingRepository.delete(mapping);
         return Map.of("result", true);
@@ -557,7 +578,7 @@ public class SourceMappingService {
                 int[] count = counts.getOrDefault(source.id(), new int[2]);
                 if (mapping == null) {
                     rows.add(new SourceMappingDto.SchemaRow(source.id(), source.schemaName(), count[0], count[1], null, null, null, false, null, Status.UNMAPPED,
-                            null, schemaCandidate(source)));
+                            null, schemaCandidate(source), null, null));
                 } else {
                     rows.add(schemaRow(mapping, source.schemaName(), count));
                 }
@@ -574,7 +595,7 @@ public class SourceMappingService {
             SchemaInfo model = mapping.getSchemaId() == null ? null : modelSchemaById.get(mapping.getSchemaId());
             return new SourceMappingDto.SchemaRow(mapping.getSourceSchemaId(), sourceName, count[0], count[1], mapping.getId(), model == null ? null : model.getId(),
                     model == null ? null : model.getSchemaName(), model != null && Boolean.TRUE.equals(model.getIsDefault()), mapping.getReflectedOrder(), status,
-                    schemaReason(status), null);
+                    schemaReason(status), null, mapping.modifiedAt(), releasedTables(mapping.getSourceSchemaId()).token());
         }
 
         /** 같은 이름(원본 DBMS 규칙)의 모델 스키마, 없으면 원본 DBMS 의 기본 스키마(PostgreSQL public) → 모델 기본 스키마. 제안일 뿐이다 */
@@ -617,7 +638,7 @@ public class SourceMappingService {
                     }
                 }
                 rows.add(new SourceMappingDto.TableRow(source.id(), source.schemaId(), schemaName, source.name(), source.comment(), null, null, null, null,
-                        null, null, null, null, null, Status.UNMAPPED, schemaReady ? null : Reason.SCHEMA_UNMAPPED, candidate));
+                        null, null, null, null, null, Status.UNMAPPED, schemaReady ? null : Reason.SCHEMA_UNMAPPED, candidate, null));
             }
             for (SourceTableMapping mapping : tableMappings) {
                 if (sourceTables.containsKey(mapping.getSourceTableId())) continue;
@@ -665,7 +686,13 @@ public class SourceMappingService {
                     source != null ? source.comment() : null, mapping.getId(), model == null ? null : model.id(), model == null ? null : model.name(),
                     model == null ? null : model.korName(), model == null ? null : model.description(), model == null ? null : model.sourceComment(),
                     model == null ? null : model.schemaId(), modelSchema == null ? null : modelSchema.getSchemaName(),
-                    mapping.getReflectedOrder(), status, reason, null);
+                    mapping.getReflectedOrder(), status, reason, null, mapping.modifiedAt());
+        }
+
+        /** 스키마 매핑 해제가 함께 해제하는 TABLE 매핑 (예외 제외) 의 구성 (M8-C4c-1) */
+        com.lexorma.common.jpa.ModelComposition releasedTables(Long sourceSchemaId) {
+            return com.lexorma.common.jpa.ModelComposition.of().addEntities("tableMappings",
+                    tableMappings.stream().filter(m -> !m.isExclusion() && sourceSchemaId.equals(m.getSourceSchemaId())).toList(), SourceTableMapping::getId);
         }
 
         List<SourceMappingDto.ModelSchema> modelSchemaDtos() {

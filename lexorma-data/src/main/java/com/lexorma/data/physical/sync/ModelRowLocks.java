@@ -85,6 +85,14 @@ public class ModelRowLocks {
         keyLock("select TBL_SN from TB_TBL where TBL_SN in (:ids) order by TBL_SN for update nowait", tableIds);
     }
 
+    /**
+     * 이름을 바꿀 스키마 행 : FOR UPDATE NOWAIT (키 강도 — SCHM_NM 은 UX_SCHM_01 의 열), ID 순 (M8-C4b-R1). 테이블 등록·참조 관계 동기화가 그 스키마 행에 거는 KEY SHARE 를
+     * 프로젝트 행을 쥔 채 커밋 때 기다리지 않게 미리 잡는다 (테이블 이름 변경의 {@link #tablesForKeyChange} 와 같은 이유)
+     */
+    public void schemasForKeyChange(Collection<Long> schemaIds) {
+        keyLock("select SCHM_SN from TB_SCHM where SCHM_SN in (:ids) order by SCHM_SN for update nowait", schemaIds);
+    }
+
     /** 이름을 바꾸거나 지울 컬럼 행 : FOR UPDATE NOWAIT (키 강도), ID 순 */
     public void columnsForKeyChange(Collection<Long> columnIds) {
         keyLock("select COL_SN from TB_COL where COL_SN in (:ids) order by COL_SN for update nowait", columnIds);

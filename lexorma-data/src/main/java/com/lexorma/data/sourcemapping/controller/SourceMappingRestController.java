@@ -72,11 +72,15 @@ public class SourceMappingRestController {
         return ResponseEntity.ok(service.mapSchema(accountDto, request));
     }
 
-    @Operation(summary = "스키마 매핑 해제", description = "그 원본 스키마의 TABLE 매핑도 함께 해제한다.")
+    @Operation(summary = "스키마 매핑 해제", description = "그 원본 스키마의 TABLE 매핑도 함께 해제한다. modifiedAt·composition(목록 행의 값) 필수 — 그 사이 매핑이나 함께 해제할 TABLE 매핑이 바뀌었으면 409 (M8-C4c-1)")
     @DeleteMapping("/schemas/{sourceSchemaId}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Map<String, Object>> unmapSchema(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("sourceSchemaId") Long sourceSchemaId) {
-        return ResponseEntity.ok(service.unmapSchema(accountDto, sourceSchemaId));
+    public ResponseEntity<Map<String, Object>> unmapSchema(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("sourceSchemaId") Long sourceSchemaId,
+                                                           @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt,
+                                                           @RequestParam(value = "composition", required = false) String composition) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        com.lexorma.common.jpa.ModelComposition.require(composition);
+        return ResponseEntity.ok(service.unmapSchema(accountDto, sourceSchemaId, modifiedAt, composition));
     }
 
     @Operation(summary = "TABLE 매핑 확정·변경", description = "원본 TABLE → 매핑된 모델 스키마의 모델 TABLE (기준 연결 안에서 1:1).")
@@ -86,11 +90,13 @@ public class SourceMappingRestController {
         return ResponseEntity.ok(service.mapTable(accountDto, request));
     }
 
-    @Operation(summary = "TABLE 매핑 해제")
+    @Operation(summary = "TABLE 매핑 해제", description = "modifiedAt(목록 행의 매핑 수정 일시) 필수 — 그 사이 매핑이 바뀌었으면 409 (M8-C4c-1)")
     @DeleteMapping("/tables/{mappingId}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Map<String, Object>> unmapTable(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("mappingId") Long mappingId) {
-        return ResponseEntity.ok(service.unmapTable(accountDto, mappingId));
+    public ResponseEntity<Map<String, Object>> unmapTable(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("mappingId") Long mappingId,
+                                                          @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        return ResponseEntity.ok(service.unmapTable(accountDto, mappingId, modifiedAt));
     }
 
     @Operation(summary = "TABLE 매핑 예외 등록", description = "미매핑 원본 TABLE 을 매핑하지 않을 대상(예 : flyway_schema_history)으로 지정한다. 원본 수집에는 영향이 없다 (M-4g).")

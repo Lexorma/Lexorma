@@ -205,14 +205,16 @@ class SubtypeGenerationConcurrencyIntegrationTest {
     }
 
     @Test
-    @DisplayName("A-2 부모 변경이 먼저 잠금 : 생성은 기다리지 않고 409, 아무것도 만들지 않는다. 변경 커밋 뒤 미리보기는 PK 불일치")
+    @DisplayName("A-2 부모 변경(PK 컬럼 추가 = 구조 변경)이 먼저 : 생성은 프로젝트 행에서 기다린 뒤 다시 계획해 409, 아무것도 만들지 않는다. 변경 커밋 뒤 미리보기는 PK 불일치")
     void parentPkBeforeGeneration() throws Exception {
         Tree t = tree("cc-a2");
         int versions = t.f().versions();
         Outcome o = ordered(() -> addPkColumn(t.f(), t.orgTable(), "ORG_EXTRA_CD"), () -> generation.apply(login(t.f()), t.f().request(List.of(t.dept()), t.deptPlan().planToken())));
         assertThat(o.first()).isEqualTo("OK");
         assertThat(o.second()).isEqualTo("MODEL_CONFLICT");
-        assertThat(o.secondWaited()).as("NOWAIT — 기다리지 않는다").isFalse();
+        // M8-C4b-R2 (R2-D01) : 부모에 PK 컬럼을 더하는 저장은 PK 구성 변경 = 구조 변경(프로젝트 배타 먼저)이라, 역시 프로젝트 배타를 먼저 잡는 생성 적용은
+        // 프로젝트 행에서 그 커밋을 기다린 뒤 다시 계획해 409 로 끝난다 (예전 : 부모 테이블 행 NOWAIT 로 기다리지 않고 409 — 결과·롤백은 같다)
+        assertThat(o.secondWaited()).as("구조 변경끼리는 프로젝트 행에서 차례로").isTrue();
         assertThat(created(t.f(), t.dept())).isZero();
         assertThat(t.f().versions()).isEqualTo(versions);
         assertThat(generation.preview(t.f().user, t.f().request(List.of(t.dept()))).tables().getFirst().inheritance().reasons()).containsExactly("PARENT_KEY_MISMATCH");

@@ -656,7 +656,7 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     @Test
-    @DisplayName("D11 : PK 삭제 일괄 저장(A, 멈춤) ↔ 그 PK 를 참조하는 컬럼을 추가하는 일반 일괄 저장(B) — 교착 없음, B 는 지워진 PK 를 참조할 수 없어 FK 위반으로 전체 롤백, 잘못된 관계 없음")
+    @DisplayName("D11 : PK 삭제 일괄 저장(A, 멈춤) ↔ 그 PK 를 참조하는 컬럼을 추가하는 일반 일괄 저장(B) — 교착 없음, B 는 A 를 기다린 뒤 지워진 PK 를 보고 관계 없이 성공 (M8-C4b-R1 — 예전 FK 위반 롤백), 잘못된 관계 없음")
     void d11PkDeleteVersusReferencingSave() throws Exception {
         assumeTrue(postgres());
         Bulk x = bulk("rf");
@@ -666,10 +666,12 @@ class RelationSyncDeadlockIntegrationTest {
                 () -> bulkSave(x.f(), x.tb(), List.of(), List.of(newRow(refA, x.taName()))));
         System.out.println("[M7-FK-D11] PK 삭제 ↔ 참조 추가 : " + Arrays.toString(r));
         assertThat(r[0]).isEqualTo("OK");
-        assertThat(r[1]).as("B 는 커밋된 삭제를 보고 FK 위반으로 끝난다 (예전과 같은 결과 — 교착이 아니다)").isEqualTo("SQLSTATE:23503");
+        // M8-C4b-R1 : B 의 관계 동기화가 대상 PK 컬럼 행을 읽기 전에 KEY SHARE 로 잡아 A 의 커밋을 기다린 뒤 다시 계산한다 → 지워진 PK 를 보고 관계 없이 성공
+        // (예전 : 커밋 전 PK 로 관계를 만들어 커밋 때 FK 위반 23503 — 일반 오류 500 으로 B 전체 롤백)
+        assertThat(r[1]).as("B 는 커밋된 삭제를 보고 관계 없이 성공한다 (교착·FK 위반 없음)").isEqualTo("OK");
         assertThat(r[2]).as("B 는 지우는 중인 PK 컬럼 행(KEY SHARE)에서 기다렸다").isNotNull();
         assertThat(pkCount(x.ta())).isZero();
-        assertThat(columnCount(x.tb(), "RA_RF")).as("B 전체 롤백").isZero();
+        assertThat(columnCount(x.tb(), "RA_RF")).as("B 의 컬럼은 저장된다 (참조 테이블명만 남고 PK 가 없어 관계는 없다)").isEqualTo(1);
         assertThat(relations(x.tb(), x.ta())).isZero();
     }
 
@@ -724,7 +726,7 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     @Test
-    @DisplayName("D11 : 컬럼 단건 삭제(PK, 멈춤) ↔ 그 PK 를 참조하는 일괄 저장 — 교착 없음, 참조 쪽 FK 위반 롤백. 테이블 행이 바쁘면 PK 삭제는 409")
+    @DisplayName("D11 : 컬럼 단건 삭제(PK, 멈춤) ↔ 그 PK 를 참조하는 일괄 저장 — 교착 없음, 참조 쪽은 기다린 뒤 관계 없이 성공 (M8-C4b-R1 — 예전 FK 위반 롤백). 테이블 행이 바쁘면 PK 삭제는 409")
     void d11SingleDeleteOfPk() throws Exception {
         assumeTrue(postgres());
         Bulk x = bulk("sd");
@@ -734,9 +736,9 @@ class RelationSyncDeadlockIntegrationTest {
                 () -> bulkSave(x.f(), x.tb(), List.of(), List.of(newRow(refA, x.taName()))));
         System.out.println("[M7-FK-D11] 단건 PK 삭제 ↔ 참조 추가 : " + Arrays.toString(r));
         assertThat(r[0]).isEqualTo("OK");
-        assertThat(r[1]).isEqualTo("SQLSTATE:23503");
+        assertThat(r[1]).as("M8-C4b-R1 : 기다린 뒤 지워진 PK 를 보고 관계 없이 성공 (예전 : FK 위반 23503 롤백)").isEqualTo("OK");
         assertThat(relations(x.tb(), x.ta())).isZero();
-        assertThat(columnCount(x.tb(), "RA_SD")).isZero();
+        assertThat(columnCount(x.tb(), "RA_SD")).isEqualTo(1);
     }
 
     private Object deleteColumns(GenerationFixture f, long... ids) {

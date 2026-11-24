@@ -39,6 +39,10 @@ class StandardTermServiceTest {
     @Mock
     StandardTermRepository standardTermRepository;
     @Mock
+    DictionaryRowLocks rowLocks; // 삭제 잠금 (M8-C4c-1)
+    @Mock
+    jakarta.persistence.EntityManager entityManager;
+    @Mock
     StandardDomainService standardDomainService;
     @Mock
     StandardWordService standardWordService;

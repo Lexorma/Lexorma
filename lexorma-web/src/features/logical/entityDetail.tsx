@@ -15,7 +15,7 @@ import { t, tc } from '../../lib/i18n';
 import { searchTerms, termLabel, type Term } from '../column/terms';
 import { historyPath } from '../history/model';
 import { mappingPath, useMappingLookup } from '../mapping/model';
-import { cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { attributeOrderBody, cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { useInheritance } from './SubtypePanel';
 import { completeness, disjointness, disjointSymbol, type Inheritance } from './subtype';
 import '../../styles/logical.css';
@@ -105,7 +105,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
       const ok = await runWithReview({
         dialog, title: approved ? t('엔터티 승인 취소') : t('엔터티 승인'), intro: t('다른 사용자가 이 항목을 변경했습니다.'),
         seen: entitySnapshot(data), load: async () => entitySnapshot(await loadEntity(entityId)),
-        act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${baseQuery(state.modifiedAt)}`, { method: 'PATCH', conflict: 'handled' }); },
+        // 승인은 상세 조회의 속성·식별자 구성 기준값도 보낸다 (M8-C4c-1 — 승인자가 본 속성만 승인), 승인 취소는 엔터티 기준값만
+        act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${approved ? baseQuery(state.modifiedAt) : baseQuery(state.modifiedAt, state.composition ?? null)}`, { method: 'PATCH', conflict: 'handled' }); },
         retryLabel: approved ? t('최신 내용으로 승인 취소') : t('최신 내용으로 승인'), targetApproval: !approved,
         onDone: approvalDone, onClose: changed,
       });
@@ -277,13 +278,13 @@ function AttributeTab({ entity, editable, onChanged, inherited = 0 }: { entity: 
     });
   };
 
-  // 순서 변경 : 엔터티의 속성 ID 전체를 새 순서로 보낸다
-  const move = async (index: number, delta: number) => {
-    const ids = entity.attributes.map((a) => a.id);
-    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
-    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: ids });
+  // 순서 변경 : 엔터티의 속성 전체를 새 순서 + 화면이 읽은 순서(기준값)로 보낸다 (M8-C4b L-02). 요청 중에는 ↑/↓ 를 막아 연타가 같은 예전 순서로 두 번 보내지 않게 한다.
+  // 409(그 사이 다른 사용자가 순서·구성을 바꿈)·그 밖의 오류는 공통 알림 — 화면의 순서는 그대로 두고 성공으로 보이지 않는다 (자동으로 다시 보내지 않는다)
+  const [moving, runMove] = useSubmitting();
+  const move = (index: number, delta: number) => runMove(async () => {
+    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: attributeOrderBody(entity.attributes, index, delta) });
     onChanged();
-  };
+  }).catch(() => undefined);
 
   return (
     <>
@@ -316,8 +317,8 @@ function AttributeTab({ entity, editable, onChanged, inherited = 0 }: { entity: 
                     {editable && (
                       <td>
                         <div className="logical-actions">
-                          <button type="button" className="btn btn-sm" aria-label={t('위로')} title={t('위로')} disabled={index === 0} onClick={() => void move(index, -1)}>↑</button>
-                          <button type="button" className="btn btn-sm" aria-label={t('아래로')} title={t('아래로')} disabled={index === entity.attributes.length - 1} onClick={() => void move(index, 1)}>↓</button>
+                          <button type="button" className="btn btn-sm" aria-label={t('위로')} title={t('위로')} disabled={moving || index === 0} onClick={() => void move(index, -1)}>↑</button>
+                          <button type="button" className="btn btn-sm" aria-label={t('아래로')} title={t('아래로')} disabled={moving || index === entity.attributes.length - 1} onClick={() => void move(index, 1)}>↓</button>
                           <button type="button" className="btn btn-sm" onClick={() => openForm(a)}>{t('수정')}</button>
                           <button type="button" className="btn btn-sm btn-danger" disabled={inIdentifier.has(a.id)} onClick={() => remove(a)}
                             title={inIdentifier.has(a.id) ? t('식별자에 포함된 속성은 삭제할 수 없습니다. 식별자에서 먼저 빼주세요.') : undefined}>{t('삭제')}</button>

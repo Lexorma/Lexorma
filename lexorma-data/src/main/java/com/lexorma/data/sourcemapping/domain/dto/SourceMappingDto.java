@@ -48,8 +48,13 @@ public final class SourceMappingDto {
      *
      * @param candidate 매핑이 없을 때만 : 같은 이름의 모델 스키마, 기본 스키마(PostgreSQL public → DEFAULT). 제안일 뿐 저장하지 않는다
      */
+    /**
+     * modifiedAt · composition (M8-C4c-1 C4c-D03) : 매핑 행의 수정 일시와, 스키마 매핑 해제가 함께 해제하는 그 원본 스키마의 TABLE 매핑(예외 제외) 구성 기준값.
+     * 해제 요청은 화면이 본 이 두 값을 보낸다 (매핑이 없으면 null)
+     */
     public record SchemaRow(Long sourceSchemaId, String sourceSchemaName, int tableCount, int viewCount, Long mappingId, Long schemaId, String schemaName,
-                            boolean defaultSchema, Integer confirmedOrder, Status status, Reason reason, Candidate candidate) {
+                            boolean defaultSchema, Integer confirmedOrder, Status status, Reason reason, Candidate candidate,
+                            java.time.LocalDateTime modifiedAt, String composition) {
     }
 
     /**
@@ -63,7 +68,7 @@ public final class SourceMappingDto {
      */
     public record TableRow(Long sourceTableId, Long sourceSchemaId, String sourceSchemaName, String sourceTableName, String sourceComment, Long mappingId,
                            Long tableId, String tableName, String tableKorName, String tableDescription, String tableSourceComment, Long schemaId, String schemaName,
-                           Integer confirmedOrder, Status status, Reason reason, Candidate candidate) {
+                           Integer confirmedOrder, Status status, Reason reason, Candidate candidate, java.time.LocalDateTime modifiedAt) {
     }
 
     /**

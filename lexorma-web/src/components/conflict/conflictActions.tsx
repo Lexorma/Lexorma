@@ -98,7 +98,10 @@ export async function runWithReview(options: SingleAction): Promise<boolean> {
       const changedChildren = options.seen.composition !== undefined && latest.composition !== options.seen.composition;
       return {
         rows: snapshotRows(options.seen, latest),
-        note: changedChildren ? t('삭제 대상의 하위 항목이 변경되었습니다. 함께 삭제될 항목을 다시 확인해 주세요.') : options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요.') : undefined,
+        // 승인도 하위 구성을 함께 다룬다 (M8-C4c-1 엔터티 승인 — 속성·식별자)
+        note: changedChildren
+          ? (options.targetApproval !== undefined ? t('함께 승인되는 하위 항목(속성·식별자)이 변경되었습니다. 최신 구성을 다시 확인해 주세요.') : t('삭제 대상의 하위 항목이 변경되었습니다. 함께 삭제될 항목을 다시 확인해 주세요.'))
+          : options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요.') : undefined,
         blocked: already ? (options.targetApproval ? t('다른 사용자가 이미 승인했습니다. 다시 승인할 필요가 없습니다.') : t('다른 사용자가 이미 승인을 취소했습니다.')) : undefined,
         payload: latest,
       };

@@ -33,6 +33,7 @@ public class DictionaryUsageService {
     private final StandardTermRepository standardTermRepository;
     private final StandardDomainRepository standardDomainRepository;
     private final StandardWordRepository standardWordRepository;
+    private final jakarta.persistence.EntityManager entityManager;
 
     public Page<DictionaryUsageDto.ColumnUsage> selectTermColumns(AccountDto accountDto, Long termId, DictionaryUsageDto.ColumnSearch search, Pageable pageable) {
         Long projectId = accountDto.getProjectId();
@@ -56,6 +57,23 @@ public class DictionaryUsageService {
             throw new CustomException(ErrorCode.NOT_FOUND_WORD_DATA, "표준 단어를 찾을 수 없습니다.");
         }
         return usageRepository.findTermsByWord(projectId, wordId, searchColumn, searchQuery, pageable);
+    }
+
+    /** 도메인 승인 취소 전 영향 범위 (M8-C4c-1 C4c-D05) — 조회 시점의 참고 값이다. 승인 취소는 이 값으로 거절하지 않는다 */
+    public DictionaryUsageDto.DomainImpact domainImpact(AccountDto accountDto, Long domainId) {
+        Long projectId = accountDto.getProjectId();
+        var domain = standardDomainRepository.findByIdAndProjectId(domainId, projectId);
+        if (domain == null) throw new com.lexorma.common.exception.CustomException(com.lexorma.common.exception.domain.ErrorCode.NOT_FOUND_DOMAIN_DATA);
+        Object[] terms = entityManager.createQuery("select count(t), coalesce(sum(case when t.isApproval = true then 1 else 0 end), 0) from StandardTerm t"
+                + " where t.projectId = :projectId and t.standardDomain.id = :domainId", Object[].class)
+                .setParameter("projectId", projectId).setParameter("domainId", domainId).getSingleResult();
+        Long attributes = entityManager.createQuery("select count(a) from LogicalAttribute a where a.standardTerm.standardDomain.id = :domainId and a.standardTerm.projectId = :projectId", Long.class)
+                .setParameter("projectId", projectId).setParameter("domainId", domainId).getSingleResult();
+        Object[] columns = entityManager.createQuery("select count(c), coalesce(sum(case when c.isApproval = true then 1 else 0 end), 0) from ColumnInfo c"
+                + " where c.projectId = :projectId and c.standardTerms.standardDomain.id = :domainId", Object[].class)
+                .setParameter("projectId", projectId).setParameter("domainId", domainId).getSingleResult();
+        return new DictionaryUsageDto.DomainImpact(domain.getId(), domain.getCommonStandardDomainName(), domain.getIsApproval(),
+                ((Number) terms[0]).longValue(), ((Number) terms[1]).longValue(), attributes, ((Number) columns[0]).longValue(), ((Number) columns[1]).longValue());
     }
 
     // ------------------------------------------------------------------ 목록의 사용 건수 (페이지당 조회 1번)

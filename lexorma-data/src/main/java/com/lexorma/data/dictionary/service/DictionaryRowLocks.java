@@ -15,7 +15,7 @@ import java.util.Objects;
 import java.util.TreeSet;
 
 /**
- * 표준 사전 삭제의 잠금 (M8-C4c-1 C4c-D02, docs/ongoing/modeling-concurrency-m8.md 20장).
+ * 표준 사전 삭제의 잠금 (M8-C4c-1 C4c-D02, docs/completed/modeling-concurrency-m8.md 20장).
  * <ol>
  *   <li>프로젝트 행 배타 (맨 먼저) : 같은 사전 항목을 새로 참조하는 쓰기 — 표준 용어 등록·키를 바꾸는 용어 수정(도메인·단어를 참조), 도메인 등록 — 가 같은 행을 먼저 잡는다 (DICT-2·M-5 5차).
  *       삭제가 참조 검사를 한 뒤 지울 때까지 새 참조가 끼어들지 않는다</li>
@@ -36,14 +36,17 @@ public class DictionaryRowLocks {
         TreeSet<Long> sorted = new TreeSet<>(ids.stream().filter(Objects::nonNull).toList());
         if (sorted.isEmpty()) return;
         List<Long> list = new ArrayList<>(sorted);
-        ModelRowLocks.noWait(() -> {
+        try {
             for (int from = 0; from < list.size(); from += 1000) {
                 entityManager.createNativeQuery("select " + target.key + " from " + target.table + " where " + target.key + " in (:ids) and PRJ_SN = :projectId order by "
                                 + target.key + " for update nowait")
                         .setParameter("ids", list.subList(from, Math.min(from + 1000, list.size()))).setParameter("projectId", projectId).getResultList();
             }
-            return null;
-        });
+        } catch (RuntimeException e) {
+            if (!ModelRowLocks.lockNotAvailable(e)) throw e; // 교착 등 다른 오류는 409 로 바꾸지 않는다
+            // 잠금 충돌 (M8-C4c-2 C4c-D10) : 다른 작업(수정·승인, 그 항목을 참조하는 모델 저장)이 처리 중 — 데이터 변경과 구분한다
+            throw CustomException.locked(ErrorCode.MODEL_CONFLICT, "다른 작업이 같은 표준 사전 항목을 처리하는 중입니다. 잠시 뒤 다시 시도해주세요.");
+        }
     }
 
     public enum Target {

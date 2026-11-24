@@ -195,6 +195,12 @@ public class SourceRenameService {
      */
     @Transactional
     public List<SourceRenameDto.ColumnMapping> confirmColumn(AccountDto accountDto, SourceRenameDto.ColumnRequest request) {
+        return confirmColumn(accountDto, request, false);
+    }
+
+    /** checkBase (HTTP) : 그 원본 컬럼의 기존 컬럼 매핑을 화면이 본 그대로일 때만 바꾼다 (M8-FINAL FINAL-D03 — TABLE 매핑과 같은 규칙) */
+    @Transactional
+    public List<SourceRenameDto.ColumnMapping> confirmColumn(AccountDto accountDto, SourceRenameDto.ColumnRequest request, boolean checkBase) {
         Long projectId = mappingService.manage(accountDto);
         if (request == null || request.tableMappingId() == null || request.columnId() == null || request.sourceColumnName() == null || request.sourceColumnName().isBlank()) {
             throw SourceMappingService.invalid("원본 컬럼과 모델 컬럼을 골라주세요.");
@@ -222,6 +228,7 @@ public class SourceRenameService {
             throw new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "모델 컬럼 {0} 은(는) 이미 원본 컬럼 {1} 에 매핑되어 있습니다.", modelName, byModel.getSourceColumnName());
         }
         if (bySource != null && request.columnId().equals(bySource.getColumnId())) return columnMappings(accountDto, table.getId());
+        if (checkBase) SourceMappingService.verifyMappingBase(bySource == null ? null : bySource.getId(), bySource, request.mappingId(), request.modifiedAt(), source.name());
         requireUnpaired(accountDto, state, table, source, modelName, bySource);
 
         Map<String, Object> before = bySource == null ? null

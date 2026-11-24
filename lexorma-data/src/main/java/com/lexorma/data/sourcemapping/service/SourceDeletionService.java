@@ -152,9 +152,13 @@ public class SourceDeletionService {
             }
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
             if (!SourceImportService.lockNotAvailable(e)) throw e;
-            throw new CustomException(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
+            throw CustomException.locked(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
         } catch (CustomException e) {
             if (e.getErrorCode() != ErrorCode.MODEL_CONFLICT) throw e;
+            // keyLockDeleted 의 NOWAIT 실패(ModelRowLocks.busy — 원인 LOCKED)만 여기 온다 : 원인은 그대로 넘긴다 (M8-C4c-2)
+            if (CustomException.LOCKED.equals(e.getReason())) {
+                throw CustomException.locked(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
+            }
             throw new CustomException(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
         }
         Work work = work(accountDto, request.connectionId(), request.reflectedOrder());

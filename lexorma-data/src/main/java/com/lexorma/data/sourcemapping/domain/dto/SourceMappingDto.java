@@ -94,10 +94,21 @@ public final class SourceMappingDto {
     public record BaseRequest(Long connectionId, Boolean acknowledge) {
     }
 
-    public record SchemaRequest(Long sourceSchemaId, Long schemaId) {
+    /**
+     * mappingId · modifiedAt (M8-FINAL FINAL-D03) : 화면이 본 그 원본의 기존 매핑 행 (없었으면 둘 다 null = 신규 등록). 지금 행과 다르면 409 — 재지정·등록이 다른 사용자의 매핑을 덮어쓰지 않는다.
+     * 두 칸 생성자는 내부 호출용 (기준값 검사 없는 서비스 오버로드와 함께)
+     */
+    public record SchemaRequest(Long sourceSchemaId, Long schemaId, Long mappingId, java.time.LocalDateTime modifiedAt) {
+        public SchemaRequest(Long sourceSchemaId, Long schemaId) {
+            this(sourceSchemaId, schemaId, null, null);
+        }
     }
 
-    public record TableRequest(Long sourceTableId, Long tableId) {
+    /** mappingId · modifiedAt : {@link SchemaRequest} 와 같은 규칙 (그 원본 TABLE 의 기존 매핑 행) */
+    public record TableRequest(Long sourceTableId, Long tableId, Long mappingId, java.time.LocalDateTime modifiedAt) {
+        public TableRequest(Long sourceTableId, Long tableId) {
+            this(sourceTableId, tableId, null, null);
+        }
     }
 
     /** 매핑 예외 등록 (M-4g) */

@@ -370,7 +370,7 @@ PostgreSQL ICU 76 (Unicode 16.0) 만 대문자를 아는 27개 — 모두 Unicod
 
 ### 14.12 관계 동기화 KEY SHARE 교착 — 후속 이관 (M7-U08, 구현하지 않음)
 
-> **후속 (2026-11-24, M8-C4b-R1 — [ongoing/modeling-concurrency-m8.md 18장](../ongoing/modeling-concurrency-m8.md))** : 동기화가 같은 KEY SHARE 를 대상을 읽기 전에 명시적으로 잡도록 바꿨다 (일반 저장끼리의 잠금 호환은 그대로 — 양방향 참조 회귀 통과).
+> **후속 (2026-11-24, M8-C4b-R1 — [completed/modeling-concurrency-m8.md 18장](modeling-concurrency-m8.md))** : 동기화가 같은 KEY SHARE 를 대상을 읽기 전에 명시적으로 잡도록 바꿨다 (일반 저장끼리의 잠금 호환은 그대로 — 양방향 참조 회귀 통과).
 
 > **후속 결과 (2026-11-22, [physical-fk-correction-m7.md](physical-fk-correction-m7.md) 8~10장)** : 아래에 적은 '잠근 집합 밖 참조 대상의 엇갈림' 은 이름 변경이 없는 등록·일괄·엑셀끼리에서는 교착이 나지 않았다 (부모 행 잠금 = FOR NO KEY UPDATE, KEY SHARE 와 함께 잡힘). 실제 교착은 키(이름·스키마) 변경이 끼는 경우였다 — S4(테이블 이름 변경끼리)·S6b(물리명 적용 ↔ 다중 청크 엑셀)는 해소했고, 일반 일괄 저장끼리의 PK 컬럼 삭제 교차(40P01 재현)는 같은 날 후속(M7-FK-D11, [physical-fk-correction-m7.md 14장](physical-fk-correction-m7.md))에서 PK 컬럼 삭제를 구조 변경 경로(프로젝트 배타 + NOWAIT)로 보내 해결했다 — 컬럼 등록·수정·엑셀·PK 가 아닌 삭제의 잠금은 바뀌지 않았다. 아래 원래 기록은 그대로 둔다.
 

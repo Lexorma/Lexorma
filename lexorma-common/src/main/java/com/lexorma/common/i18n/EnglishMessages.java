@@ -78,6 +78,15 @@ final class EnglishMessages {
         add("정밀도", "precision");
         add("소수 자릿수", "scale");
         add("승인된 도메인은 삭제할 수 없습니다: {0}", "Approved domains cannot be deleted: {0}");
+        add("승인된 용어는 삭제할 수 없습니다: {0}", "Approved terms cannot be deleted: {0}");
+        // M8-FINAL : 원본 매핑 등록·재지정 기준값
+        add("확인한 {0} 의 매핑이 그 사이 해제되었습니다. 목록을 다시 확인한 뒤 매핑해 주세요.", "The mapping of {0} you reviewed was released in the meantime. Check the list again before mapping.");
+        add("그 사이 다른 사용자가 {0} 을(를) 매핑했습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "Another user mapped {0} in the meantime. Review the latest mapping and decide again.");
+        add("확인한 {0} 의 매핑이 해제된 뒤 다시 만들어졌습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "The mapping of {0} you reviewed was released and created again. Review the latest mapping and decide again.");
+        add("확인한 뒤 다른 사용자가 {0} 의 매핑을 바꿨습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "Another user changed the mapping of {0} after you reviewed it. Review the latest mapping and decide again.");
+        // M8-C4c-2 : 잠금 충돌 / 잠근 뒤 바뀐 구성
+        add("다른 작업이 같은 표준 사전 항목을 처리하는 중입니다. 잠시 뒤 다시 시도해주세요.", "Another operation is processing the same standard dictionary item. Try again in a moment.");
+        add("다른 사용자가 같은 테이블의 구성을 먼저 바꿨습니다. 최신 내용을 확인한 뒤 다시 저장해주세요.", "Another user changed the composition of the same table first. Check the latest content and save again.");
         add("표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: {0}", "Domains used by standard terms cannot be deleted: {0}");
 
         // ---------------------------------------------------------------- 컬럼

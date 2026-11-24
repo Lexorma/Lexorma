@@ -50,7 +50,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C4b-R2 (docs/ongoing/modeling-concurrency-m8.md 19장) : 실제 PK 구성 변경(PK 여부 변경·새 PK 컬럼·복합 PK 변경) ↔ 참조 테이블명(REF_COLUMN) 관계 동기화, 불필요한 구조 변경 잠금 방지.
+ * M8-C4b-R2 (docs/completed/modeling-concurrency-m8.md 19장) : 실제 PK 구성 변경(PK 여부 변경·새 PK 컬럼·복합 PK 변경) ↔ 참조 테이블명(REF_COLUMN) 관계 동기화, 불필요한 구조 변경 잠금 방지.
  * C1~C4b 와 같은 방식 : A 를 트랜잭션 안에서 실행하고 커밋 전에 B 를 다른 스레드(다른 연결)에서 시작, B 가 끝났거나 DB 잠금을 기다리는 것을 세션 정보로 확인한 뒤 A 를 커밋한다.
  * 결과 [A, B] 와 끝난 뒤 DB 상태(관계 · 관계 컬럼 · 참조 테이블명)를 함께 본다.
  */

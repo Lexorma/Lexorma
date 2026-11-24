@@ -206,6 +206,15 @@ class SourceSyncIntegrationTest {
         assertThat(compare.table(e.manager, null, null, "S" + table.sourceTableId(), "COLUMN").renameCandidates())
                 .anyMatch(r -> "full_name".equals(r.sourceName()) && "CUST_NAME".equals(r.modelName()));
         service.confirmColumn(e.manager, new SourceRenameDto.ColumnRequest(e.connection, next, customerMapping, "full_name", custName));
+        // M8-FINAL FINAL-D03 : 기존 컬럼 매핑을 보지 않은(신규 등록이라 믿는) 요청·오래된 수정 일시의 요청은 다른 모델 컬럼으로 바꾸지 않는다 (409, 이력도 남지 않는다 — 아래 이력 단언)
+        SourceRenameDto.ColumnMapping current = service.columnMappings(e.manager, customerMapping).get(0);
+        Long otherColumn = jdbc.queryForObject("select min(COL_SN) from TB_COL where TBL_SN = ? and COL_SN <> ?", Long.class, e.table("CUSTOMER").getId(), custName);
+        rejected(() -> service.confirmColumn(e.manager, new SourceRenameDto.ColumnRequest(e.connection, next, customerMapping, "full_name", otherColumn, null, null), true), ErrorCode.MODEL_CONFLICT);
+        rejected(() -> service.confirmColumn(e.manager, new SourceRenameDto.ColumnRequest(e.connection, next, customerMapping, "full_name", otherColumn, current.id(),
+                current.modifiedAt().minusSeconds(1)), true), ErrorCode.MODEL_CONFLICT);
+        assertThatThrownBy(() -> renameApi.confirmColumn(e.manager, new SourceRenameDto.ColumnRequest(e.connection, next, customerMapping, "full_name", otherColumn, current.id(), null)))
+                .extracting("errorCode").isEqualTo(ErrorCode.MODEL_BASE_REQUIRED);
+        assertThat(service.columnMappings(e.manager, customerMapping).get(0).columnId()).isEqualTo(custName);
         mapping.unmapTable(e.manager, customerMapping);
         assertThat(jdbc.queryForObject("select count(*) from TB_SRC_COL_MPNG where SRC_TBL_MPNG_SN = ?", Integer.class, customerMapping)).isZero();
 

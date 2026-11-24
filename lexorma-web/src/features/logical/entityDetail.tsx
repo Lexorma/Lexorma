@@ -9,13 +9,14 @@ import type { SubjectArea } from './subjectArea';
 import { api, ApiError } from '../../lib/api';
 import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { runWithReview } from '../../components/conflict/conflictActions';
+import { moveAttributeWithReview } from './attributeOrderConflict';
 import { deleteAttributeGuarded, deleteEntityGuarded, deleteIdentifierGuarded, entitySnapshot, loadEntity } from './conflictSnapshots';
 import { baseQuery, cascadeText, withDeletion } from '../../lib/deletion';
 import { t, tc } from '../../lib/i18n';
 import { searchTerms, termLabel, type Term } from '../column/terms';
 import { historyPath } from '../history/model';
 import { mappingPath, useMappingLookup } from '../mapping/model';
-import { attributeOrderBody, cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { cardinalityText, type LogicalAttribute, type LogicalEntity, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { useInheritance } from './SubtypePanel';
 import { completeness, disjointness, disjointSymbol, type Inheritance } from './subtype';
 import '../../styles/logical.css';
@@ -107,6 +108,9 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
         seen: entitySnapshot(data), load: async () => entitySnapshot(await loadEntity(entityId)),
         // 승인은 상세 조회의 속성·식별자 구성 기준값도 보낸다 (M8-C4c-1 — 승인자가 본 속성만 승인), 승인 취소는 엔터티 기준값만
         act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${approved ? baseQuery(state.modifiedAt) : baseQuery(state.modifiedAt, state.composition ?? null)}`, { method: 'PATCH', conflict: 'handled' }); },
+        // 승인 : 하위 구성이 바뀌었으면 바뀐 속성·식별자를 줄 단위로 보여 주고, 사용자가 검토한 뒤 다시 승인을 고른다 (M8-C4c-2 — 최신 구성으로 조용히 바꿔 승인하지 않는다)
+        note: approved ? undefined : (latest) => (latest.composition !== entitySnapshot(data).composition
+          ? t('승인하면 함께 승인되는 속성·식별자가 바뀌었습니다. 바뀐 줄을 검토한 뒤 다시 승인할지 정해 주세요. 닫으면 이 상세 화면이 최신 구성으로 바뀝니다.') : undefined),
         retryLabel: approved ? t('최신 내용으로 승인 취소') : t('최신 내용으로 승인'), targetApproval: !approved,
         onDone: approvalDone, onClose: changed,
       });
@@ -281,10 +285,9 @@ function AttributeTab({ entity, editable, onChanged, inherited = 0 }: { entity: 
   // 순서 변경 : 엔터티의 속성 전체를 새 순서 + 화면이 읽은 순서(기준값)로 보낸다 (M8-C4b L-02). 요청 중에는 ↑/↓ 를 막아 연타가 같은 예전 순서로 두 번 보내지 않게 한다.
   // 409(그 사이 다른 사용자가 순서·구성을 바꿈)·그 밖의 오류는 공통 알림 — 화면의 순서는 그대로 두고 성공으로 보이지 않는다 (자동으로 다시 보내지 않는다)
   const [moving, runMove] = useSubmitting();
-  const move = (index: number, delta: number) => runMove(async () => {
-    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: attributeOrderBody(entity.attributes, index, delta) });
-    onChanged();
-  }).catch(() => undefined);
+  // M8-C4c-2 : 409 면 순서 비교 대화상자 (moveAttributeWithReview) — 닫으면 최신 순서를 다시 읽고 사용자가 다시 옮긴다
+  const move = (index: number, delta: number) => runMove(() => moveAttributeWithReview(dialog,
+    entity.id, entity.attributes.map((a) => ({ id: a.id, sortOrder: a.sortOrder, label: a.attributeName })), index, delta, onChanged)).catch(() => undefined);
 
   return (
     <>

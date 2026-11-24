@@ -17,7 +17,8 @@ public class GlobalExceptionHandler {
         ErrorResponse response = new ErrorResponse(
                 errorCode.getHttpStatus().value(),
                 errorCode.getCode(),
-                ex.getCustomMessage() // customMessage를 우선 사용
+                ex.getCustomMessage(), // customMessage를 우선 사용
+                ex.getReason()
         );
         return new ResponseEntity<>(response, errorCode.getHttpStatus());
     }
@@ -43,15 +44,27 @@ public class GlobalExceptionHandler {
     }
 
     // 에러 응답을 위한 DTO 클래스
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public static class ErrorResponse {
         private final int status;
         private final String code;
         private final String message;
+        /** 409 원인 (M8-C4c-2) : "LOCKED" 이거나 없음 (선택 칸 — 기존 클라이언트는 무시해도 된다) */
+        private final String reason;
 
         public ErrorResponse(int status, String code, String message) {
+            this(status, code, message, null);
+        }
+
+        public ErrorResponse(int status, String code, String message, String reason) {
             this.status = status;
             this.code = code;
             this.message = message;
+            this.reason = reason;
+        }
+
+        public String getReason() {
+            return reason;
         }
 
         public int getStatus() {

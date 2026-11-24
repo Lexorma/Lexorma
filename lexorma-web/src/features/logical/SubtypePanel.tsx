@@ -4,7 +4,9 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { useToast } from '../../components/toast/ToastProvider';
 import { Label, SkeletonRows } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
-import { api, enc } from '../../lib/api';
+import { api, ApiError, enc } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { runWithReview, type Snapshot } from '../../components/conflict/conflictActions';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { ListStatus, PageNav, SortHeader, useLastPage } from './listParts';
@@ -74,9 +76,23 @@ export function SubtypeGroupTab({ model, onChanged, openEntity }: { model: Logic
 
   const remove = (row: SubtypeGroupRow) => {
     dialog.confirm(t('{0} 서브타입 그룹을 삭제하시겠습니까? 엔터티는 지우지 않고 상속만 해제합니다.', row.groupName), async () => {
-      await api(`/api/logical/subtypeGroup/${row.id}?modifiedAt=${enc(row.modifiedAt)}`, { method: 'DELETE' });
-      refresh();
-      toast.success(t('정상적으로 삭제되었습니다.'));
+      // 409 (확인한 뒤 그룹·구성원이 바뀌었다) : 확인한 그룹 ↔ 최신 그룹을 보여 주고 사용자가 다시 삭제를 고른다 (M8-C4c-2)
+      const done = () => { refresh(); toast.success(t('정상적으로 삭제되었습니다.')); };
+      let seen: SubtypeGroup;
+      try {
+        seen = await api<SubtypeGroup>(`/api/logical/subtypeGroup/${row.id}`, { silent: true });
+      } catch {
+        seen = { groupName: row.groupName, modifiedAt: row.modifiedAt, subtypes: [] } as unknown as SubtypeGroup;
+      }
+      try {
+        const ok = await runWithReview({
+          dialog, title: t('서브타입 그룹 삭제'), intro: t('다른 사용자가 이 항목을 변경했습니다.'), seen: { ...groupSnapshot(seen), modifiedAt: row.modifiedAt },
+          load: async () => groupSnapshot(await api<SubtypeGroup>(`/api/logical/subtypeGroup/${row.id}`, { silent: true })),
+          act: async (state) => { await api(`/api/logical/subtypeGroup/${row.id}?modifiedAt=${enc(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          retryLabel: t('최신 내용으로 삭제'), onDone: done, onClose: refresh,
+        });
+        if (ok) done();
+      } catch { /* 공통 안내 */ }
     });
   };
 
@@ -154,6 +170,21 @@ interface MemberDraft {
  * 서브타입 그룹 등록·수정 : 배타성·완전성은 고르지 않은 상태에서 시작한다 (기본값 없음). 서브타입은 같은 모델의 엔터티를 찾아 2개 이상 (순서·분류 값).
  * 분류 속성은 슈퍼타입의 유효 속성(직접 정의 또는 상속 — 정의 엔터티 표시) 중 하나 (선택). 서버가 모든 조건을 다시 검사하고, 409 면 입력한 내용은 그대로 둔다
  */
+/** 그룹 비교 상태 : 그룹 자체 칸 + 구성원(서브타입) 한 줄씩 (추가·삭제·분류 값 변경이 줄 단위로 보인다 — M8-C4c-2) */
+function groupSnapshot(g: SubtypeGroup): Snapshot {
+  return {
+    modifiedAt: g.modifiedAt ?? null,
+    fields: [
+      { key: 'name', label: t('그룹명'), value: g.groupName },
+      { key: 'supertype', label: t('슈퍼타입'), value: g.supertypeEntityName ?? '' },
+      { key: 'overlapping', label: t('배타성'), value: g.overlapping == null ? '' : g.overlapping ? 'Overlapping' : 'Disjoint' },
+      { key: 'total', label: t('완전성'), value: g.total == null ? '' : g.total ? 'Total' : 'Partial' },
+      { key: 'classification', label: t('분류 속성'), value: g.classificationAttributeName ?? '' },
+      ...(g.subtypes ?? []).map((m) => ({ key: `member:${m.entityId}`, label: t('서브타입 : {0}', m.entityName), value: m.classificationValue ?? '—', removable: true })),
+    ],
+  };
+}
+
 export function SubtypeGroupForm({ modelId, group, readOnly, onSaved }: { modelId: number; group?: SubtypeGroup; readOnly?: boolean; onSaved: () => void }) {
   const dialog = useDialog();
   const [name, setName] = useState(group?.groupName ?? '');
@@ -164,6 +195,34 @@ export function SubtypeGroupForm({ modelId, group, readOnly, onSaved }: { modelI
   const [classification, setClassification] = useState<number | null>(group?.classificationAttributeId ?? null);
   const [members, setMembers] = useState<MemberDraft[]>(group?.subtypes.map((m) => ({ entityId: m.entityId, entityName: m.entityName, value: m.classificationValue ?? '' })) ?? []);
   const [checking, setChecking] = useState(false);
+  const [busy, run] = useSubmitting();
+  type Values = { name: string; description: string; supertype: EntityOption | null; overlapping: boolean | null; total: boolean | null; classification: number | null;
+    classificationName: string | null; members: MemberDraft[] };
+  const valuesOf = (g: SubtypeGroup): Values => ({
+    name: g.groupName, description: g.groupDescription ?? '', supertype: { id: g.supertypeEntityId, name: g.supertypeEntityName }, overlapping: g.overlapping, total: g.total,
+    classification: g.classificationAttributeId, classificationName: g.classificationAttributeName,
+    members: g.subtypes.map((m) => ({ entityId: m.entityId, entityName: m.entityName, value: m.classificationValue ?? '' })),
+  });
+  const membersText = (list: MemberDraft[]) => list.map((m) => `${m.entityName}${m.value.trim() ? ` (${m.value.trim()})` : ''}`).join(', ');
+  // 409 복구 (M8-C4c-2 — M8-C3 공통) : 그룹 상세의 최신 값과 칸마다 비교한다. 구성원은 목록 전체를 한 칸으로 보고, 내 목록과 최신 목록 중 하나를 고른다 (줄 단위 자동 병합 없음)
+  const recovery = useConflictRecovery<Values>({
+    initial: group ? valuesOf(group) : { name: '', description: '', supertype: null, overlapping: null, total: null, classification: null, classificationName: null, members: [] },
+    base: group?.modifiedAt,
+    fields: [
+      { key: 'name', label: t('그룹명'), get: (v) => v.name },
+      { key: 'description', label: t('설명 (분류 기준)'), get: (v) => v.description },
+      { key: 'supertype', label: t('슈퍼타입'), get: (v) => v.supertype?.id ?? null, show: (v) => v.supertype?.name ?? null },
+      { key: 'overlapping', label: t('배타성'), get: (v) => v.overlapping, show: (v) => (v.overlapping == null ? null : v.overlapping ? 'Overlapping' : 'Disjoint') },
+      { key: 'total', label: t('완전성'), get: (v) => v.total, show: (v) => (v.total == null ? null : v.total ? 'Total' : 'Partial') },
+      { key: 'classification', label: t('분류 속성'), get: (v) => v.classification, show: (v) => v.classificationName },
+      { key: 'members', label: t('서브타입 (순서·분류 값)'), get: (v) => v.members.map((m) => [m.entityId, m.value.trim()]), show: (v) => membersText(v.members) },
+    ],
+    load: async () => {
+      if (!group) throw new ApiError(400, t('서브타입 그룹을 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+      const latest = await api<SubtypeGroup>(`/api/logical/subtypeGroup/${group.id}`, { silent: true });
+      return { values: valuesOf(latest), base: latest.modifiedAt ?? null };
+    },
+  });
 
   // 분류 속성 후보 : 슈퍼타입의 유효 속성 (직접 정의 + 상속)
   const attributes = useQuery({
@@ -207,20 +266,37 @@ export function SubtypeGroupForm({ modelId, group, readOnly, onSaved }: { modelI
     if (overlapping == null) return dialog.alert(t('배타성(Disjoint·Overlapping)을 선택해주세요.'));
     if (total == null) return dialog.alert(t('완전성(Total·Partial)을 선택해주세요.'));
     if (members.length < SUBTYPE_MIN) return dialog.alert(t('서브타입을 {0}개 이상 지정해주세요.', SUBTYPE_MIN));
-    dialog.confirm(group ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
-      await api('/api/logical/subtypeGroup', {
-        method: 'POST',
-        body: {
-          id: group?.id ?? null, modelId, supertypeEntityId: supertype.id, groupName: name.trim(), groupDescription: description.trim() || null, overlapping, total,
-          classificationAttributeId: classification, subtypes: members.map((m) => ({ entityId: m.entityId, classificationValue: m.value.trim() || null })), modifiedAt: group?.modifiedAt ?? null,
-        },
-      });
+    dialog.confirm(group ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
+      try {
+        await api('/api/logical/subtypeGroup', {
+          method: 'POST',
+          conflict: 'handled',
+          body: {
+            id: group?.id ?? null, modelId, supertypeEntityId: supertype.id, groupName: name.trim(), groupDescription: description.trim() || null, overlapping, total,
+            classificationAttributeId: classification, subtypes: members.map((m) => ({ entityId: m.entityId, classificationValue: m.value.trim() || null })),
+            modifiedAt: group ? recovery.base : null, // 409 복구 뒤에는 최신 기준값
+          },
+        });
+      } catch (error) {
+        const classificationName = attributes.data?.attributes.find((a) => a.attributeId === classification)?.attributeName ?? null;
+        recovery.catchConflict(error, { name, description, supertype, overlapping, total, classification, classificationName, members });
+        return; // 그 밖의 오류(업무 규칙·잠금 충돌)는 공통 안내 — 입력은 그대로
+      }
       onSaved();
-    });
+    }));
   };
 
   return (
     <form className="edit-form subtype-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('description')) setDescription(latest.description);
+        if (!picks.has('supertype')) setSupertype(latest.supertype);
+        if (!picks.has('overlapping')) setOverlapping(latest.overlapping);
+        if (!picks.has('total')) setTotal(latest.total);
+        if (!picks.has('classification')) setClassification(latest.classification);
+        if (!picks.has('members')) setMembers(latest.members);
+      })}
       <div className="form-group">
         <label htmlFor="subtypeGroupName">{t('그룹명')}</label>
         <input type="text" className="form-control" id="subtypeGroupName" maxLength={255} required autoFocus readOnly={readOnly} value={name} onChange={(e) => setName(e.target.value)} />
@@ -280,7 +356,7 @@ export function SubtypeGroupForm({ modelId, group, readOnly, onSaved }: { modelI
         </ol>
         {!readOnly && <MemberFinder modelId={modelId} busy={checking} excluded={new Set([...members.map((m) => m.entityId), ...(supertype ? [supertype.id] : [])])} onPick={(hit) => void addMember(hit)} />}
       </div>
-      {!readOnly && <button type="submit" className="btn btn-primary" disabled={checking}>{t('저장')}</button>}
+      {!readOnly && <button type="submit" className="btn btn-primary" disabled={checking || busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>}
     </form>
   );
 }

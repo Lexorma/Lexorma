@@ -50,7 +50,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C4b-R1 (docs/ongoing/modeling-concurrency-m8.md 18장) : 참조 테이블명(REF_COLUMN) 관계 동기화 ↔ 참조 대상의 키 변경(PK 컬럼 삭제·테이블 이름 변경·스키마 이름 변경·PK 여부 변경)·삭제.
+ * M8-C4b-R1 (docs/completed/modeling-concurrency-m8.md 18장) : 참조 테이블명(REF_COLUMN) 관계 동기화 ↔ 참조 대상의 키 변경(PK 컬럼 삭제·테이블 이름 변경·스키마 이름 변경·PK 여부 변경)·삭제.
  * C1~C4b 와 같은 방식 : A 를 트랜잭션 안에서 실행하고 커밋 전에 B 를 다른 스레드(다른 연결)에서 시작, B 가 끝났거나 DB 잠금을 기다리는 것을 세션 정보로 확인한 뒤 A 를 커밋한다.
  * 결과 [A, B] 와 끝난 뒤 DB 상태(관계 · 관계 컬럼 · 참조 테이블명)를 함께 본다.
  */

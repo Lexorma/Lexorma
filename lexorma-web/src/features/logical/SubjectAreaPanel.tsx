@@ -2,7 +2,9 @@ import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'r
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from '@primer/octicons-react';
 import { useDialog, type DialogControls } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { runListWithReview, runWithReview } from '../../components/conflict/conflictActions';
 import { t } from '../../lib/i18n';
 import {
   areaHeight, areaPath, MAX_AREA_DEPTH, subtreeIds, type AreaFilter, type SubjectArea, type SubjectAreaTree,
@@ -196,24 +198,57 @@ export function AreaForm({ modelId, tree, area, parentId, onSaved }: {
   const [parent, setParent] = useState<string>(String(area ? area.parentId ?? '' : parentId ?? ''));
   const [order, setOrder] = useState(area ? String(area.sortOrder) : '');
   const options = parentOptions(tree.areas, area);
+  const [busy, run] = useSubmitting();
+  type Values = { name: string; parent: string; description: string; order: string };
+  const valuesOf = (a: SubjectArea): Values => ({ name: a.areaName, parent: String(a.parentId ?? ''), description: a.areaDescription ?? '', order: String(a.sortOrder) });
+  const areaName = (id: string) => (id ? tree.areas.find((a) => String(a.id) === id)?.areaName ?? `#${id}` : t('(최상위)'));
+  // 409 복구 (M8-C4c-2 — M8-C3 공통) : 모델의 주제 영역 목록에서 이 영역의 최신 값을 읽어 이름·상위·설명·순서를 비교한다. 없어졌으면 다시 저장할 수 없다
+  const recovery = useConflictRecovery<Values>({
+    initial: area ? valuesOf(area) : { name: '', parent: '', description: '', order: '' },
+    base: area?.modifiedAt,
+    fields: [
+      { key: 'name', label: t('주제 영역명'), get: (v) => v.name },
+      { key: 'parent', label: t('상위 주제 영역'), get: (v) => v.parent, show: (v) => areaName(v.parent) },
+      { key: 'description', label: t('설명'), get: (v) => v.description },
+      { key: 'order', label: t('표시 순서'), get: (v) => v.order },
+    ],
+    load: async () => {
+      const latest = (await api<SubjectAreaTree>(`/api/logical/model/${modelId}/subjectArea`, { silent: true })).areas.find((a) => a.id === area?.id);
+      if (!latest) throw new ApiError(400, t('주제 영역을 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+      return { values: valuesOf(latest), base: latest.modifiedAt ?? null };
+    },
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return dialog.alert(t('주제 영역명은(는) 필수 입력 항목입니다.'));
-    dialog.confirm(area ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), async () => {
-      const saved = await api<SubjectArea>('/api/logical/subjectArea', {
-        method: 'POST',
-        body: {
-          id: area?.id ?? null, modelId, parentId: parent ? Number(parent) : null, areaName: name.trim(), areaDescription: description.trim() || null,
-          sortOrder: order.trim() === '' ? null : Number(order), modifiedAt: area?.modifiedAt ?? null,
-        },
-      });
+    dialog.confirm(area ? t('수정하시겠습니까?') : t('저장하시겠습니까?'), () => void run(async () => {
+      let saved: SubjectArea;
+      try {
+        saved = await api<SubjectArea>('/api/logical/subjectArea', {
+          method: 'POST',
+          conflict: 'handled',
+          body: {
+            id: area?.id ?? null, modelId, parentId: parent ? Number(parent) : null, areaName: name.trim(), areaDescription: description.trim() || null,
+            sortOrder: order.trim() === '' ? null : Number(order), modifiedAt: area ? recovery.base : null, // 409 복구 뒤에는 최신 기준값
+          },
+        });
+      } catch (error) {
+        if (recovery.catchConflict(error, { name, parent, description, order })) return;
+        return; // 그 밖의 오류(이름 중복·깊이·잠금 충돌)는 공통 안내 — 입력은 그대로
+      }
       onSaved(saved);
-    });
+    }));
   };
 
   return (
     <form className="edit-form" onSubmit={onSubmit}>
+      {recovery.notice((latest, picks) => {
+        if (!picks.has('name')) setName(latest.name);
+        if (!picks.has('parent')) setParent(latest.parent);
+        if (!picks.has('description')) setDescription(latest.description);
+        if (!picks.has('order')) setOrder(latest.order);
+      })}
       <div className="form-group">
         <label htmlFor="areaName">{t('주제 영역명')}</label>
         <input type="text" className="form-control" id="areaName" maxLength={255} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -239,7 +274,7 @@ export function AreaForm({ modelId, tree, area, parentId, onSaved }: {
         <input type="number" className="form-control" id="areaOrder" min={0} max={1000000} step={1} value={order} placeholder={t('비우면 맨 뒤')}
           onChange={(e) => setOrder(e.target.value)} />
       </div>
-      <button type="submit" className="btn btn-primary">{t('저장')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : t('저장')}</button>
     </form>
   );
 }
@@ -272,14 +307,45 @@ export function ClassifyForm({ modelId, tree, targets, initialArea, onDone }: {
   });
   const targetLabel = target ? areaPath(byId.get(Number(target))) : t('미분류');
 
+  const [busy, run] = useSubmitting();
+  const areaLabel = (id: number | null) => (id == null ? t('미분류') : areaPath(byId.get(id)) || `#${id}`);
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    dialog.confirm(t('엔터티 {0}개를 {1} (으)로 분류하시겠습니까?', targets.length, targetLabel), () => {
-      api<{ changed: number; unchanged: number }>(`/api/logical/model/${modelId}/subjectArea/entities`, {
-        method: 'PUT',
-        body: { subjectAreaId: target ? Number(target) : null, entities: targets.map((x) => ({ entityId: x.id, expectedSubjectAreaId: x.subjectAreaId })) },
-      }).then(onDone, () => onDone(null)); // 실패(409 등)는 공통 안내가 띄운다 : 최신 상태만 다시 읽는다
-    });
+    dialog.confirm(t('엔터티 {0}개를 {1} (으)로 분류하시겠습니까?', targets.length, targetLabel), () => void run(async () => {
+      // 409 (그 사이 소속이 바뀐 엔터티가 있다 — 서버는 아무것도 바꾸지 않았다, M8-C4c-2) : 엔터티마다 확인한 영역 ↔ 지금 영역을 보여 주고,
+      // 사용자가 [최신 소속으로 다시 분류] 를 눌러야 지금 소속을 기준값으로 다시 보낸다 (자동 재시도 없음). 잠금 충돌은 공통 안내 뒤 그대로 다시 누른다
+      const seenAreas = new Map(targets.map((x) => [x.id, x.subjectAreaId]));
+      let latestAreas = seenAreas;
+      let reviewed = false;
+      let result: { changed: number; unchanged: number } | null = null;
+      const snapshot = (id: number | null) => ({ modifiedAt: null, fields: [{ key: 'area', label: t('주제 영역'), value: areaLabel(id) }] });
+      try {
+        const ok = await runListWithReview({
+          dialog, title: t('분류 변경'), intro: t('선택한 엔터티 중 다른 사용자가 소속을 바꾼 엔터티가 있어 아무것도 바꾸지 않았습니다.'),
+          items: targets.map((x) => ({ id: x.id, label: x.name, seen: snapshot(x.subjectAreaId) })),
+          load: async () => {
+            const found = new Map<number, number | null>();
+            for (let from = 0; from < targets.length; from += 10) {
+              const batch = await Promise.all(targets.slice(from, from + 10).map((x) => api<{ id: number; subjectAreaId?: number | null }>(`/api/logical/entity/${x.id}`, { silent: true }).catch(() => null)));
+              batch.forEach((entity) => { if (entity) found.set(entity.id, entity.subjectAreaId ?? null); });
+            }
+            latestAreas = found;
+            reviewed = true;
+            return new Map([...found].map(([id, areaId]) => [id, snapshot(areaId)]));
+          },
+          act: async () => {
+            const expected = reviewed ? latestAreas : seenAreas;
+            result = await api<{ changed: number; unchanged: number }>(`/api/logical/model/${modelId}/subjectArea/entities`, {
+              method: 'PUT', conflict: 'handled',
+              body: { subjectAreaId: target ? Number(target) : null, entities: targets.map((x) => ({ entityId: x.id, expectedSubjectAreaId: expected.get(x.id) ?? null })) },
+            });
+          },
+          note: t('엔터티마다 확인했던 주제 영역과 지금 영역입니다. 지금 소속을 기준으로 다시 분류할지 정해 주세요.'),
+          retryLabel: t('최신 소속으로 다시 분류'), onDone: () => onDone(result),
+        });
+        if (ok) onDone(result);
+      } catch { /* 잠금 충돌·권한 등 : 공통 안내 — 대화상자와 선택은 그대로 */ }
+    }));
   };
 
   return (
@@ -296,7 +362,7 @@ export function ClassifyForm({ modelId, tree, targets, initialArea, onDone }: {
         </select>
         <small className="gh-muted">{t('승인된 엔터티도 분류할 수 있습니다. 엔터티의 정의·승인 상태는 바뀌지 않습니다.')}</small>
       </div>
-      <button type="submit" className="btn btn-primary">{t('분류 변경')}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? t('처리 중…') : t('분류 변경')}</button>
     </form>
   );
 }
@@ -309,9 +375,33 @@ export function useAreaRemoval(onDeleted: (area: SubjectArea) => void) {
     if (area.childCount > 0) return dialog.alert(t('하위 주제 영역이 {0}개 있어 삭제할 수 없습니다. 하위 영역을 먼저 옮기거나 삭제해주세요.', area.childCount));
     if (area.directEntityCount > 0) return dialog.alert(t('주제 영역에 엔터티 {0}개가 소속되어 있어 삭제할 수 없습니다. 엔터티의 분류를 먼저 바꾸거나 해제해주세요.', area.directEntityCount));
     dialog.confirm(t('{0} 주제 영역을 삭제하시겠습니까? 엔터티·관계는 바뀌지 않고, 이 영역의 ERD 배치만 함께 지워집니다.', areaPath(area)), async () => {
-      await api(`/api/logical/subjectArea/${area.id}?modifiedAt=${encodeURIComponent(area.modifiedAt)}`, { method: 'DELETE' });
-      onDeleted(area);
-      toast.success(t('정상적으로 삭제되었습니다.'));
+      // 409 (확인한 뒤 이름·상위·소속이 바뀌었다) : 확인한 영역 ↔ 최신 영역을 보여 주고 사용자가 다시 삭제를 고른다 (M8-C4c-2). 없어졌거나 하위·소속이 생겼으면 다시 삭제할 수 없다
+      const snapshot = (a: SubjectArea) => ({
+        modifiedAt: a.modifiedAt ?? null,
+        fields: [
+          { key: 'name', label: t('주제 영역명'), value: areaPath(a) },
+          { key: 'description', label: t('설명'), value: a.areaDescription ?? '' },
+          { key: 'children', label: t('하위 주제 영역'), value: t('{0}개', a.childCount) },
+          { key: 'entities', label: t('소속 엔터티'), value: t('{0}개', a.directEntityCount) },
+        ],
+      });
+      let latestArea: SubjectArea | undefined = area;
+      const done = () => { onDeleted(area); toast.success(t('정상적으로 삭제되었습니다.')); };
+      try {
+        const ok = await runWithReview({
+          dialog, title: t('주제 영역 삭제'), intro: t('다른 사용자가 이 항목을 변경했습니다.'), seen: snapshot(area),
+          load: async () => {
+            latestArea = (await api<SubjectAreaTree>(`/api/logical/model/${area.modelId}/subjectArea`, { silent: true })).areas.find((a) => a.id === area.id);
+            if (!latestArea) throw new ApiError(400, t('주제 영역을 찾을 수 없습니다.'), 'LOGICAL_MODEL_IS_NOT_DEFINED');
+            return snapshot(latestArea);
+          },
+          act: async (state) => { await api(`/api/logical/subjectArea/${area.id}?modifiedAt=${encodeURIComponent(state.modifiedAt ?? '')}`, { method: 'DELETE', conflict: 'handled' }); },
+          block: () => (latestArea && (latestArea.childCount > 0 || latestArea.directEntityCount > 0)
+            ? t('지금은 하위 주제 영역이나 소속 엔터티가 있어 삭제할 수 없습니다. 먼저 옮기거나 해제해주세요.') : undefined),
+          retryLabel: t('최신 내용으로 삭제'), onDone: done,
+        });
+        if (ok) done();
+      } catch { /* 공통 안내 */ }
     });
   };
 }

@@ -54,7 +54,12 @@ public final class SourceRenameDto {
     }
 
     /** 컬럼 매핑 확정·변경 : TABLE 매핑 안의 원본 컬럼(이름) ↔ 모델 컬럼 */
-    public record ColumnRequest(Long connectionId, Integer reflectedOrder, Long tableMappingId, String sourceColumnName, Long columnId) {
+    public record ColumnRequest(Long connectionId, Integer reflectedOrder, Long tableMappingId, String sourceColumnName, Long columnId, Long mappingId,
+                                java.time.LocalDateTime modifiedAt) {
+        /** 내부 호출용 (기준값 없음) — mappingId · modifiedAt 은 화면이 본 그 원본 컬럼의 기존 컬럼 매핑 (M8-FINAL) */
+        public ColumnRequest(Long connectionId, Integer reflectedOrder, Long tableMappingId, String sourceColumnName, Long columnId) {
+            this(connectionId, reflectedOrder, tableMappingId, sourceColumnName, columnId, null, null);
+        }
     }
 
     public record History(Long id, Long tableMappingId, SourceMappingHistory.TargetType targetType, SourceMappingHistory.ChangeType changeType,

@@ -69,7 +69,8 @@ public class SourceRenameRestController {
     @PutMapping("/columns")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<SourceRenameDto.ColumnMapping>> confirmColumn(@AuthenticationPrincipal AccountDto accountDto, @RequestBody SourceRenameDto.ColumnRequest request) {
-        return ResponseEntity.ok(service.confirmColumn(accountDto, request));
+        if (request != null && request.mappingId() != null) com.lexorma.common.jpa.ModelBase.require(true, request.modifiedAt());
+        return ResponseEntity.ok(service.confirmColumn(accountDto, request, true)); // 기존 컬럼 매핑을 본 화면은 그 행의 기준값을 보낸다 (M8-FINAL)
     }
 
     @Operation(summary = "컬럼 매핑 해제", description = "매핑 행만 지운다. 모델 컬럼은 그대로이고 다시 이름으로 짝짓는다. modifiedAt(목록 행의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C4c-1)")

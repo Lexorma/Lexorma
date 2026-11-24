@@ -49,7 +49,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C3 (docs/ongoing/modeling-concurrency-m8.md 15장) 서버 쪽 : 컬럼 일괄 편집 기준값 범위 (M8-D04) — 바꾸지 않은 행(unchanged)은 값·순서·기준값을 보지 않는다.
+ * M8-C3 (docs/completed/modeling-concurrency-m8.md 15장) 서버 쪽 : 컬럼 일괄 편집 기준값 범위 (M8-D04) — 바꾸지 않은 행(unchanged)은 값·순서·기준값을 보지 않는다.
  * 화면 복구 흐름은 프론트엔드라 브라우저로 확인한다 (문서 15장).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

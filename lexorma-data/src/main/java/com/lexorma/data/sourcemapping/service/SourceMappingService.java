@@ -172,6 +172,12 @@ public class SourceMappingService {
     /** 원본 스키마를 모델 스키마에 매핑(새로 또는 바꾸기). 마지막 반영 시점에 있는 원본 스키마만 */
     @Transactional
     public SourceMappingDto.SchemaRow mapSchema(AccountDto accountDto, SourceMappingDto.SchemaRequest request) {
+        return mapSchema(accountDto, request, false);
+    }
+
+    /** checkBase (HTTP) : 화면이 본 기존 매핑 행과 지금 행을 비교한다 (M8-FINAL FINAL-D03, {@link #verifyMappingBase}) */
+    @Transactional
+    public SourceMappingDto.SchemaRow mapSchema(AccountDto accountDto, SourceMappingDto.SchemaRequest request, boolean checkBase) {
         Long projectId = manage(accountDto);
         if (request == null || request.sourceSchemaId() == null || request.schemaId() == null) throw invalid("원본 스키마와 모델 스키마를 골라주세요.");
         Long connectionId = lockBase(projectId);
@@ -184,7 +190,11 @@ public class SourceMappingService {
             throw new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "모델 스키마 {0} 은(는) 이미 원본 스키마 {1} 에 매핑되어 있습니다.", schema.getSchemaName(),
                     taken.getSourceSchemaName());
         }
-        SourceSchemaMapping mapping = Optional.ofNullable(state.schemaMappingBySource.get(source.id()))
+        SourceSchemaMapping current = state.schemaMappingBySource.get(source.id());
+        if (checkBase && !(current != null && schema.getId().equals(current.getSchemaId()))) {
+            verifyMappingBase(current == null ? null : current.getId(), current, request.mappingId(), request.modifiedAt(), source.schemaName());
+        }
+        SourceSchemaMapping mapping = Optional.ofNullable(current)
                 .orElseGet(() -> SourceSchemaMapping.builder().projectId(projectId).connectionId(connectionId).sourceSchemaId(source.id()).build());
         mapping.setPathKey(source.pathKey());
         mapping.setSourceSchemaName(source.schemaName());
@@ -230,6 +240,12 @@ public class SourceMappingService {
      */
     @Transactional
     public SourceMappingDto.TableRow mapTable(AccountDto accountDto, SourceMappingDto.TableRequest request) {
+        return mapTable(accountDto, request, false);
+    }
+
+    /** checkBase (HTTP) : 화면이 본 기존 매핑 행과 지금 행을 비교한다 (M8-FINAL FINAL-D03). 예외 행 거절은 그 앞이다 (예외 정책 그대로) */
+    @Transactional
+    public SourceMappingDto.TableRow mapTable(AccountDto accountDto, SourceMappingDto.TableRequest request, boolean checkBase) {
         Long projectId = manage(accountDto);
         if (request == null || request.sourceTableId() == null || request.tableId() == null) throw invalid("원본 테이블과 모델 테이블을 골라주세요.");
         Long connectionId = lockBase(projectId);
@@ -239,6 +255,10 @@ public class SourceMappingService {
         if (!"TABLE".equals(source.type())) throw invalid("VIEW 는 매핑할 수 없습니다. TABLE 만 매핑합니다.");
         SourceTableMapping existing = state.tableMappingBySource.get(source.id());
         if (existing != null && existing.isExclusion()) throw invalid("매핑 예외로 지정된 원본 테이블 {0} 은(는) 매핑할 수 없습니다. 예외를 먼저 취소해주세요.", source.name());
+        // 지금 그대로 같은 모델 TABLE 이면 덮어쓸 것이 없다 (멱등). 그 밖에는 화면이 본 행 그대로일 때만
+        if (checkBase && !(existing != null && Objects.equals(existing.getTableId(), request.tableId()))) {
+            verifyMappingBase(existing == null ? null : existing.getId(), existing, request.mappingId(), request.modifiedAt(), source.name());
+        }
         SourceSchemaMapping schemaMapping = state.schemaMappingBySource.get(source.schemaId());
         if (schemaMapping == null || state.schemaStatus(schemaMapping) != Status.MAPPED) {
             throw invalid("원본 스키마 {0} 의 스키마 매핑을 먼저 확정해주세요.", state.sourceSchemas.get(source.schemaId()).schemaName());
@@ -420,6 +440,27 @@ public class SourceMappingService {
 
     static CustomException concurrent() {
         return new CustomException(ErrorCode.SOURCE_MAPPING_CONFLICT, "다른 사용자가 같은 매핑을 바꾸었습니다. 화면을 새로 고친 뒤 다시 시도해주세요.");
+    }
+
+    /**
+     * 원본 매핑 등록·재지정 기준값 (M8-FINAL FINAL-D03) — 신규 등록과 기존 매핑 변경을 구분한다 : 화면이 매핑을 보지 않았으면(seenId null) 지금도 없어야 하고,
+     * 보았으면 지금 그 행(같은 ID — 지우고 다시 만든 행은 다른 행)이고 수정 일시가 같아야 한다. 아니면 409 MODEL_CONFLICT (전체 롤백, 오래된 요청을 신규 등록으로 바꾸지 않는다).
+     * 잠금은 호출한 쪽이 이미 잡은 기준 연결 행 배타 (매핑 쓰기 공통 — 새 잠금 없음)
+     */
+    static void verifyMappingBase(Long currentId, com.lexorma.common.jpa.BaseEntity current, Long seenId, java.time.LocalDateTime seenModifiedAt, String name) {
+        if (current == null) {
+            if (seenId != null) throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "확인한 {0} 의 매핑이 그 사이 해제되었습니다. 목록을 다시 확인한 뒤 매핑해 주세요.", name);
+            return;
+        }
+        if (seenId == null) throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "그 사이 다른 사용자가 {0} 을(를) 매핑했습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", name);
+        if (!seenId.equals(currentId)) {
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "확인한 {0} 의 매핑이 해제된 뒤 다시 만들어졌습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", name);
+        }
+        try {
+            com.lexorma.common.jpa.ModelBase.verify(current, seenModifiedAt, name);
+        } catch (CustomException e) {
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "확인한 뒤 다른 사용자가 {0} 의 매핑을 바꿨습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", name);
+        }
     }
 
     static CustomException invalid(String message, Object... args) {

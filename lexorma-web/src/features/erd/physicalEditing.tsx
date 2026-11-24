@@ -3,11 +3,11 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, Mono } from '../../components/grid/cells';
-import { api } from '../../lib/api';
-import { useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { api, ApiError, enc } from '../../lib/api';
+import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { keySnapshot, physicalKeyGuarded, type TableModelPart } from '../table/physicalConflicts';
 import { t, tc } from '../../lib/i18n';
-import { columnType, FK_RULES, fkRuleText, type Cardinality, type ErdColumn, type ErdRelation, type ErdTable, type FkRule } from './model';
+import { columnType, FK_RULES, fkRuleText, type Cardinality, type ErdColumn, type ErdRelation, type ErdTable, type FkRule, type RelationPage } from './model';
 import { childText, IDENTIFYING_TEXT, parentText, REASON_TEXT } from './cardinality';
 
 /**
@@ -261,11 +261,36 @@ export function RelationPanel({ relation: r, cardinality, outOfScope, onTable, o
   const dialog = useDialog();
   const [deleteRule, setDeleteRule] = useState<FkRule>(r.deleteRule ?? 'NO_ACTION');
   const [updateRule, setUpdateRule] = useState<FkRule>(r.updateRule ?? 'NO_ACTION');
-  const rulesChanged = deleteRule !== (r.deleteRule ?? 'NO_ACTION') || updateRule !== (r.updateRule ?? 'NO_ACTION');
-  const saveRules = () => dialog.confirm(t('FK 규칙을 저장하시겠습니까?'), async () => {
-    await api(`/api/physical/relation/${r.id}/rules`, { method: 'PUT', body: { deleteRule, updateRule, baseModifiedAt: r.modifiedAt ?? null } });
-    onRulesChanged?.();
+  const [busy, run] = useSubmitting();
+  type Rules = { deleteRule: FkRule; updateRule: FkRule };
+  // 409 복구 (M8-C4c-2 — M8-C3 공통) : 원본 테이블의 관계 목록에서 이 관계의 최신 규칙을 읽어 비교한다. 관계를 다시 만들거나 컬럼 구성을 바꾸지 않는다
+  const recovery = useConflictRecovery<Rules>({
+    initial: { deleteRule: r.deleteRule ?? 'NO_ACTION', updateRule: r.updateRule ?? 'NO_ACTION' },
+    base: r.modifiedAt,
+    fields: [
+      { key: 'deleteRule', label: t('삭제 규칙 (ON DELETE)'), get: (v) => v.deleteRule, show: (v) => fkRuleText(v.deleteRule) },
+      { key: 'updateRule', label: t('수정 규칙 (ON UPDATE)'), get: (v) => v.updateRule, show: (v) => fkRuleText(v.updateRule) },
+    ],
+    load: async () => {
+      for (let page = 0; page < 50; page++) {
+        const result = await api<RelationPage>(`/api/erd/tables/${enc(r.sourceTableId)}/relations?page=${page}&size=100`, { silent: true });
+        const latest = result.items.find((x) => x.id === r.id);
+        if (latest) return { values: { deleteRule: latest.deleteRule ?? 'NO_ACTION', updateRule: latest.updateRule ?? 'NO_ACTION' }, base: latest.modifiedAt ?? null };
+        if ((page + 1) * 100 >= result.totalCount) break;
+      }
+      throw new ApiError(400, t('관계를 찾을 수 없습니다.'), 'RELATION_IS_NOT_DEFINED');
+    },
   });
+  const rulesChanged = deleteRule !== recovery.start.deleteRule || updateRule !== recovery.start.updateRule;
+  const saveRules = () => dialog.confirm(t('FK 규칙을 저장하시겠습니까?'), () => void run(async () => {
+    try {
+      await api(`/api/physical/relation/${r.id}/rules`, { method: 'PUT', conflict: 'handled', body: { deleteRule, updateRule, baseModifiedAt: recovery.base } });
+    } catch (error) {
+      recovery.catchConflict(error, { deleteRule, updateRule });
+      return; // 그 밖의 오류(승인·잠금 충돌 등)는 공통 안내 — 고른 규칙은 그대로
+    }
+    onRulesChanged?.();
+  }));
   const derived = r.relationSource === 'REF_COLUMN';
   const blocked = derived ? t('컬럼의 참조 테이블명으로 만든 관계입니다. 컬럼 편집에서 참조 테이블을 비우면 없어집니다.') : r.isApproval ? APPROVED_NOTE : '';
   return (
@@ -299,8 +324,12 @@ export function RelationPanel({ relation: r, cardinality, outOfScope, onTable, o
       </ul>
       {r.relationType === 'FK' && (onRulesChanged && !r.isApproval ? (
         <>
+          {recovery.notice((latest, picks) => {
+            if (!picks.has('deleteRule')) setDeleteRule(latest.deleteRule);
+            if (!picks.has('updateRule')) setUpdateRule(latest.updateRule);
+          })}
           <FkRuleFields idPrefix={`rel${r.id}`} deleteRule={deleteRule} updateRule={updateRule} onDelete={setDeleteRule} onUpdate={setUpdateRule} />
-          {rulesChanged && <button type="button" className="btn btn-sm btn-primary" onClick={saveRules}>{t('FK 규칙 저장')}</button>}
+          {(rulesChanged || recovery.pending) && <button type="button" className="btn btn-sm btn-primary" disabled={busy || recovery.blocked} onClick={saveRules}>{busy ? t('처리 중…') : t('FK 규칙 저장')}</button>}
         </>
       ) : (
         <p className="erd-muted">{t('ON DELETE {0} · ON UPDATE {1}', fkRuleText(r.deleteRule), fkRuleText(r.updateRule))}</p>

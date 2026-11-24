@@ -56,7 +56,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C1 동시 편집 P1 회귀 (M-8 분석 L-01 · D-01 · D-02 · P-01 · P-02, docs/ongoing/modeling-concurrency-m8.md). 각 P1 의 첫 동시 시나리오는 수정 전 코드로
+ * M8-C1 동시 편집 P1 회귀 (M-8 분석 L-01 · D-01 · D-02 · P-01 · P-02, docs/completed/modeling-concurrency-m8.md). 각 P1 의 첫 동시 시나리오는 수정 전 코드로
  * 실제 손실을 재현했던 것이다 (H2 · PostgreSQL 모두 6건 실패 — 문서 기록) — 지금은 같은 실행 순서에서 손실 없이 거절·대기된다.
  * 두 트랜잭션을 실제로 엇갈린다 : A 가 트랜잭션 안에서 할 일을 마친 뒤 커밋 전에 B 를 다른 연결(다른 스레드)에서 실행하고, B 가 끝났거나 A 의 잠금을 기다리기
  * 시작한 것을 DB 세션 정보로 확인한 뒤(시간 대기 없음) A 를 커밋한다. 불변식 : B 가 성공했다고 답했으면 B 의 값이 남아 있어야 한다 (조용한 손실 없음).

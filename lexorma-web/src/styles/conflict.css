@@ -92,6 +92,16 @@
     .conflict-table td {
         padding: 4px 6px;
     }
+
+    /* 칸이 많은 비교(편집 시작 시 · 서버 · 내 변경 · 적용)를 가로로 넘겨도 어느 항목인지 보이게 항목 칸을 고정한다 (M8-FINAL 375px 확인) */
+    .conflict-table th[scope='row'],
+    .conflict-table thead th:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        min-width: 7em;
+        background-color: var(--gh-canvas-subtle);
+    }
 }
 
 .conflict-pre {

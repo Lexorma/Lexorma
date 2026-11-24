@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Label, type LabelVariant } from '../../components/grid/cells';
-import { ApiError, api } from '../../lib/api';
+import { ApiError, api, isConflict, isLocked } from '../../lib/api';
+import { CompareTable, isGone, loadFailure, modifiedAtRow } from '../../components/conflict/ConflictRecovery';
 import { t } from '../../lib/i18n';
 import type { ParentKey, PairState, PairStatus, PairWarning, RelationshipPairs } from './model';
 import '../../styles/logical.css';
@@ -58,6 +59,8 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  // 409 복구 (M8-C4c-2 — M8-C3 원칙) : 내 짝은 그대로 두고, 사용자가 최신 짝을 읽어 비교한 뒤 '내 짝 다시 적용' 또는 '최신 짝 사용' 을 고른다 (자동 병합·재저장 없음)
+  const [conflict, setConflict] = useState<null | { kind: 'conflict' } | { kind: 'loading' } | { kind: 'loaded'; latest: RelationshipPairs } | { kind: 'failed'; message: string; gone: boolean }>(null);
 
   /** 참조할 부모 식별자 (M7-AK-D09) : 주 식별자 또는 보조 식별자 하나 — 서로 다른 식별자의 속성은 섞지 않는다 (서버도 거절한다) */
   const [key, setKey] = useState<string>('P');
@@ -118,16 +121,71 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
         method: 'PUT', silent: true,
         body: { modifiedAt: data.modifiedAt, pairs: chosen.filter((r) => keyAttributes.has(r.parentId)).map((r) => ({ parentAttributeId: r.parentId, childAttributeId: r.childId })) },
       });
-      load(result); setSaved(true); onSaved?.(result);
+      load(result); setSaved(true); setConflict(null); onSaved?.(result);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('속성 짝을 저장하지 못했습니다.'));
+      if (isConflict(e)) setConflict({ kind: 'conflict' });
+      else if (isLocked(e)) setError(t('다른 작업이 같은 데이터를 처리하고 있어 저장하지 못했습니다. 고른 짝은 그대로입니다. 잠시 뒤 다시 저장해 주세요.'));
+      else setError(e instanceof ApiError ? e.message : t('속성 짝을 저장하지 못했습니다.'));
     } finally {
       setBusy(false);
     }
   };
 
+  // 짝 목록 문자열 (비교 표) : 부모 → 자식, 순서대로
+  const pairsText = (list: { parentId: number; childId: number | null }[], source: RelationshipPairs) => list.filter((r) => r.childId != null)
+    .map((r) => `${source.parentCandidates.find((c) => c.attributeId === r.parentId)?.attributeName ?? `#${r.parentId}`} → ${name(r.childId, source.childCandidates)}`).join(', ');
+  const storedRows = (source: RelationshipPairs) => source.state.pairs.map((p) => ({ parentId: p.parentAttributeId, childId: p.childAttributeId as number | null }));
+  const mine = rows.filter((r) => r.childId != null && keyAttributes.has(r.parentId));
+  const fetchLatest = async () => {
+    setConflict({ kind: 'loading' });
+    try {
+      setConflict({ kind: 'loaded', latest: await api<RelationshipPairs>(`/api/logical/relationship/${relationshipId}/attributes`, { silent: true }) });
+    } catch (e) {
+      setConflict({ kind: 'failed', message: loadFailure(e), gone: isGone(e) });
+    }
+  };
+  /** 내 짝을 최신 내용 위에 : 최신 후보에 없는 자식 속성은 비운다 (다른 속성을 대신 고르지 않는다), 기준값은 최신 */
+  const reapplyMine = (latest: RelationshipPairs) => {
+    const latestKeys = keysOf(latest);
+    const selected = latestKeys.find((k) => keyId(k) === key) ?? latestKeys.find((k) => k.keyType === 'PRIMARY') ?? latestKeys[0];
+    const valid = new Set(latest.childCandidates.map((c) => c.attributeId));
+    setData(latest);
+    setKey(selected ? keyId(selected) : 'P');
+    setRows(rowsFor(latest, selected, false, rows.map((r) => ({ ...r, childId: r.childId != null && valid.has(r.childId) ? r.childId : null }))));
+    setConflict(null); setSaved(false); setError(null);
+  };
+  const conflictNotice = conflict && (
+    <div className="conflict-notice" role="alert">
+      <strong>{t('다른 사용자가 이 관계의 속성 짝을 변경했습니다.')}</strong>
+      <p>{t('고른 짝은 그대로입니다. 최신 짝을 확인한 뒤 다시 저장해 주세요.')}</p>
+      {conflict.kind === 'conflict' && <div className="conflict-actions"><button type="button" className="btn btn-sm btn-primary" onClick={() => void fetchLatest()}>{t('최신 내용 확인')}</button></div>}
+      {conflict.kind === 'loading' && <p role="status">{t('최신 내용을 불러오는 중입니다.')}</p>}
+      {conflict.kind === 'failed' && (
+        <>
+          <p className="conflict-error">{conflict.message}</p>
+          {!conflict.gone && <div className="conflict-actions"><button type="button" className="btn btn-sm" onClick={() => void fetchLatest()}>{t('다시 불러오기')}</button></div>}
+        </>
+      )}
+      {conflict.kind === 'loaded' && (
+        <>
+          <CompareTable showMine rows={[
+            { key: 'pairs', label: t('속성 짝 (순서대로)'), before: pairsText(storedRows(data), data), latest: pairsText(storedRows(conflict.latest), conflict.latest), mine: pairsText(mine, data),
+              changedOnServer: pairsText(storedRows(data), data) !== pairsText(storedRows(conflict.latest), conflict.latest), changedByMe: pairsText(storedRows(data), data) !== pairsText(mine, data) },
+            modifiedAtRow(data.modifiedAt, conflict.latest.modifiedAt),
+          ]} />
+          <p className="gh-muted">{t('내 짝을 다시 적용하면 최신 후보에 없는 자식 속성은 비워 둡니다. 적용한 뒤 짝을 확인하고 직접 저장해 주세요.')}</p>
+          <div className="conflict-actions">
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => reapplyMine(conflict.latest)}>{t('최신 내용에 내 짝 다시 적용')}</button>
+            <button type="button" className="btn btn-sm" onClick={() => { load(conflict.latest); setConflict(null); setError(null); }}>{t('최신 짝 사용')}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="logical-pairs">
+      {conflictNotice}
       <p className="logical-pairs-head">
         <strong>{data.parentEntityName}</strong> ({t('출발 · 부모')}) → <strong>{data.childEntityName}</strong> ({t('도착 · 자식')}){' '}
         <PairStatusLabel state={data.state} />
@@ -204,7 +262,8 @@ export function RelationshipPairsEditor({ relationshipId, readOnly, onSaved }: {
       {saved && <div className="ai-dict-callout is-ok" role="status">{t('속성 짝을 저장했습니다.')}</div>}
       {!readOnly && (
         <div className="gh-dialog-actions">
-          <button type="button" className="btn btn-primary" disabled={busy || duplicates.size > 0 || (selectedKey?.attributeIds.length ?? 0) === 0} onClick={() => void save()}>{t('속성 짝 저장')}</button>
+          <button type="button" className="btn btn-primary" disabled={busy || duplicates.size > 0 || (selectedKey?.attributeIds.length ?? 0) === 0 || conflict?.kind === 'failed' && conflict.gone}
+            onClick={() => void save()}>{busy ? t('처리 중…') : t('속성 짝 저장')}</button>
         </div>
       )}
     </div>

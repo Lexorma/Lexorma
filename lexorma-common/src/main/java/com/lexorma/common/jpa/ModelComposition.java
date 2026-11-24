@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 하위 객체를 함께 지우는 삭제의 구성 기준값 (M8-C2, M8-D01 — docs/ongoing/modeling-concurrency-m8.md 14장).
+ * 하위 객체를 함께 지우는 삭제의 구성 기준값 (M8-C2, M8-D01 — docs/completed/modeling-concurrency-m8.md 14장).
  * 부모 행의 수정 일시(MDFCN_DT)는 자식이 더해지거나 바뀌어도 움직이지 않으므로, 삭제 확인 화면이 본 "함께 지워질 자식" 을 따로 비교한다.
  * <ul>
  *   <li>값 : 부분(section)마다 자식 (ID, 마지막 수정 일시) 를 ID 순으로 늘어놓은 정규 문자열의 SHA-256 — {@code v1:} + 16진수. 개수만 비교하지 않는다 (같은 수의 다른 자식, 고친 자식도 다르다)</li>

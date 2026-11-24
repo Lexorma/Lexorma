@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DialogApi, DialogControls } from '../dialog/DialogProvider';
 import { ApiError, isConflict } from '../../lib/api';
-import { formatDateTime } from '../../lib/format';
+import { formatTimestampPrecise } from '../../lib/format';
 import { t } from '../../lib/i18n';
 
 /**
- * 동시 편집 충돌(409) 복구 공통 부분 (M8-C3, docs/ongoing/modeling-concurrency-m8.md 15장 · 확정 정책 M8-C3-D01~D05).
+ * 동시 편집 충돌(409) 복구 공통 부분 (M8-C3, docs/completed/modeling-concurrency-m8.md 15장 · 확정 정책 M8-C3-D01~D05).
  * - 자동 병합·자동 재시도·최신 기준값으로 조용히 다시 보내기 없음 (D01). 사용자가 최신 내용을 보고 고른 뒤 직접 다시 저장한다 (D04)
  * - 409 가 나도 입력은 그대로, 폼·대화상자를 닫지 않는다 (D02). 최신 데이터 조회 실패(대상 없음·권한)는 409 와 구분해 보여 주고 다시 저장할 수 없게 한다 (D03)
  * - 중복 제출 방지 (D05) : {@link useSubmitting} — 서버 검증을 대신하지 않는다
@@ -99,7 +99,8 @@ export function CompareTable({ rows, showMine, picks, onPick }: {
 }
 
 const timeRow = (before: string | null | undefined, latest: string | null | undefined): CompareRow => ({
-  key: '__modifiedAt', label: t('수정 일시'), before: before ? formatDateTime(before) : null, latest: latest ? formatDateTime(latest) : null,
+  // 충돌 검토는 초·서버 소수 자리까지 (M8-C4c-2 — 같은 분 안의 변경도 구분)
+  key: '__modifiedAt', label: t('수정 일시'), before: before ? formatTimestampPrecise(before) : null, latest: latest ? formatTimestampPrecise(latest) : null,
   changedOnServer: (before ?? null) !== (latest ?? null),
 });
 

@@ -65,11 +65,13 @@ public class SourceMappingRestController {
         return ResponseEntity.ok(service.setBase(accountDto, request));
     }
 
-    @Operation(summary = "스키마 매핑 확정·변경", description = "마지막 반영 시점의 원본 스키마 → 같은 프로젝트의 모델 스키마 (기준 연결 안에서 1:1).")
+    @Operation(summary = "스키마 매핑 확정·변경", description = "마지막 반영 시점의 원본 스키마 → 같은 프로젝트의 모델 스키마 (기준 연결 안에서 1:1). 기존 매핑을 바꾸면 그 행의 mappingId·modifiedAt (목록 값), 신규 등록이면 둘 다 없음 — 지금 행과 다르면 409 (M8-FINAL)")
     @PutMapping("/schemas")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<SourceMappingDto.SchemaRow> mapSchema(@AuthenticationPrincipal AccountDto accountDto, @RequestBody SourceMappingDto.SchemaRequest request) {
-        return ResponseEntity.ok(service.mapSchema(accountDto, request));
+        // 기존 매핑을 본 화면은 그 행의 수정 일시도 보낸다 (M8-FINAL) — mappingId 만 있으면 400
+        if (request != null && request.mappingId() != null) com.lexorma.common.jpa.ModelBase.require(true, request.modifiedAt());
+        return ResponseEntity.ok(service.mapSchema(accountDto, request, true));
     }
 
     @Operation(summary = "스키마 매핑 해제", description = "그 원본 스키마의 TABLE 매핑도 함께 해제한다. modifiedAt·composition(목록 행의 값) 필수 — 그 사이 매핑이나 함께 해제할 TABLE 매핑이 바뀌었으면 409 (M8-C4c-1)")
@@ -83,11 +85,12 @@ public class SourceMappingRestController {
         return ResponseEntity.ok(service.unmapSchema(accountDto, sourceSchemaId, modifiedAt, composition));
     }
 
-    @Operation(summary = "TABLE 매핑 확정·변경", description = "원본 TABLE → 매핑된 모델 스키마의 모델 TABLE (기준 연결 안에서 1:1).")
+    @Operation(summary = "TABLE 매핑 확정·변경", description = "원본 TABLE → 매핑된 모델 스키마의 모델 TABLE (기준 연결 안에서 1:1). 기존 매핑을 바꾸면 그 행의 mappingId·modifiedAt, 신규 등록이면 둘 다 없음 — 지금 행과 다르면 409 (M8-FINAL)")
     @PutMapping("/tables")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<SourceMappingDto.TableRow> mapTable(@AuthenticationPrincipal AccountDto accountDto, @RequestBody SourceMappingDto.TableRequest request) {
-        return ResponseEntity.ok(service.mapTable(accountDto, request));
+        if (request != null && request.mappingId() != null) com.lexorma.common.jpa.ModelBase.require(true, request.modifiedAt());
+        return ResponseEntity.ok(service.mapTable(accountDto, request, true));
     }
 
     @Operation(summary = "TABLE 매핑 해제", description = "modifiedAt(목록 행의 매핑 수정 일시) 필수 — 그 사이 매핑이 바뀌었으면 409 (M8-C4c-1)")

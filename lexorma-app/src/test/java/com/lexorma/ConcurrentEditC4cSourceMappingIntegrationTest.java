@@ -64,7 +64,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /**
- * M8-C4c-1 C4c-D03 (docs/ongoing/modeling-concurrency-m8.md 20장) : 원본 매핑 해제는 화면이 본 매핑 행의 수정 일시(modifiedAt)와 같을 때만 지운다 — 매핑 변경은 같은 행을
+ * M8-C4c-1 C4c-D03 (docs/completed/modeling-concurrency-m8.md 20장) : 원본 매핑 해제는 화면이 본 매핑 행의 수정 일시(modifiedAt)와 같을 때만 지운다 — 매핑 변경은 같은 행을
  * 고쳐 쓰므로 ID 만으로는 오래된 화면이 바뀐 최신 매핑을 지웠다. 스키마 해제는 함께 해제할 TABLE 매핑 구성(composition)도 본다. 매핑 해제와 매핑 예외는 계속 별개다
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -178,6 +178,134 @@ class ConcurrentEditC4cSourceMappingIntegrationTest {
         Env other = ready("c4c-s4o");
         assertThat(code(() -> service.unmapTable(other.manager, seen.mappingId(), seen.modifiedAt()))).isEqualTo("SOURCE_MAPPING_INVALID");
         assertThat(mappingRows(seen.mappingId())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("C4c-D11 : 예외 취소 뒤 같은 원본을 다시 예외로 두면 새 ID — 이전 ID 로 새 예외를 취소할 수 없다 · 예외 ID 로 매핑 해제·매핑 ID 로 예외 취소 거절 · 다른 프로젝트")
+    void exclusionIdSafety() {
+        Env e = ready("c4c2-x1");
+        SourceMappingDto.TableRow orders = tables(e).get("public.orders");
+        service.unmapTable(e.manager, orders.mappingId(), orders.modifiedAt());
+        SourceMappingDto.TableRow first = service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(orders.sourceTableId()));
+        service.cancelExclusion(e.manager, first.mappingId());
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.UNMAPPED);
+        SourceMappingDto.TableRow second = service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(orders.sourceTableId()));
+        assertThat(second.mappingId()).isNotEqualTo(first.mappingId());
+        assertThat(code(() -> service.cancelExclusion(e.manager, first.mappingId()))).isEqualTo("SOURCE_MAPPING_INVALID");
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.EXCLUDED);
+        // 예외와 매핑은 서로의 API 로 다루지 않는다
+        assertThat(code(() -> service.unmapTable(e.manager, second.mappingId(), second.modifiedAt()))).isEqualTo("SOURCE_MAPPING_INVALID");
+        SourceMappingDto.TableRow user = tables(e).get("public.tb_user");
+        assertThat(code(() -> service.cancelExclusion(e.manager, user.mappingId()))).isEqualTo("SOURCE_MAPPING_INVALID");
+        assertThat(mappingRows(user.mappingId())).isEqualTo(1);
+        // 예외 원본은 매핑할 수 없다 (예외를 먼저 취소)
+        assertThat(code(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(orders.sourceTableId(), e.table("DEFAULT", "TB_ORDER_X").getId()))))
+                .isEqualTo("SOURCE_MAPPING_INVALID");
+        Env other = ready("c4c2-x1o");
+        assertThat(code(() -> service.cancelExclusion(other.manager, second.mappingId()))).isEqualTo("SOURCE_MAPPING_INVALID");
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.EXCLUDED);
+    }
+
+    @Test
+    @DisplayName("원본 재수집 뒤 : 매핑 행이 그대로면 재수집 전에 본 기준값으로도 해제된다 (재수집은 매핑 행을 고치지 않는다) · 스키마 해제 구성도 그대로")
+    void unmapAfterRecollect() {
+        Env e = ready("c4c2-x2");
+        SourceMappingDto.TableRow seen = tables(e).get("public.tb_user");
+        SourceMappingDto.SchemaRow seenSchema = schemaRow(service.overview(e.manager), "public");
+        collect(e, SourceCollectionSpec.Request.full(), catalog(true, true));
+        assertThat(tables(e).get("public.tb_user").modifiedAt()).isEqualTo(seen.modifiedAt());
+        assertThat(schemaRow(service.overview(e.manager), "public").composition()).isEqualTo(seenSchema.composition());
+        service.unmapTable(e.manager, seen.mappingId(), seen.modifiedAt());
+        assertThat(tables(e).get("public.tb_user").status()).isEqualTo(Status.UNMAPPED);
+    }
+
+    // ------------------------------------------------------------------ M8-FINAL FINAL-D03 원본 매핑 등록·재지정
+
+    private static SourceMappingDto.TableRequest seenTable(SourceMappingDto.TableRow seen, Long tableId) {
+        return new SourceMappingDto.TableRequest(seen.sourceTableId(), tableId, seen.mappingId(), seen.mappingId() == null ? null : seen.modifiedAt());
+    }
+
+    @Test
+    @DisplayName("FINAL-D03 : 같은 매핑을 본 두 사용자 — A 의 재지정 뒤 B(처음 본 상태)의 재지정은 409, A 의 매핑 유지 · 신규 등록끼리도 나중 쪽 409 · 같은 대상이면 그대로 (멱등)")
+    void remapUsesSeenMapping() {
+        Env e = ready("final-s1");
+        SourceMappingDto.TableRow orders = tables(e).get("public.orders");
+        service.unmapTable(e.manager, orders.mappingId(), orders.modifiedAt());
+        SourceMappingDto.TableRow seen = tables(e).get("public.tb_user");
+        service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_SPARE").getId()), true);
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_ORDER_X").getId()), true))).isEqualTo("MODEL_CONFLICT");
+        assertThat(tables(e).get("public.tb_user").tableName()).isEqualTo("TB_SPARE");
+        // 같은 대상(지금 그대로)이면 오래된 기준값이어도 덮어쓸 것이 없다
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_SPARE").getId()), true))).isEqualTo("OK");
+        // 최신 행으로는 재지정된다
+        service.mapTable(e.manager, seenTable(tables(e).get("public.tb_user"), e.table("DEFAULT", "TB_ORDER_X").getId()), true);
+        assertThat(tables(e).get("public.tb_user").tableName()).isEqualTo("TB_ORDER_X");
+
+        SourceMappingDto.TableRow unmapped = tables(e).get("public.orders"); // 둘 다 미매핑으로 본다
+        service.mapTable(e.manager, seenTable(unmapped, e.table("DEFAULT", "TB_SPARE").getId()), true);
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(unmapped, e.table("DEFAULT", "TB_USER").getId()), true))).isEqualTo("MODEL_CONFLICT");
+        assertThat(tables(e).get("public.orders").tableName()).isEqualTo("TB_SPARE");
+    }
+
+    @Test
+    @DisplayName("FINAL-D03 : 해제된 매핑을 본 오래된 재지정은 신규 등록으로 바뀌지 않는다 (409, 미매핑 그대로) · 지우고 다시 만든 행은 다른 행 (409) · 예외 원본은 예전처럼 400")
+    void staleRemapNeverRecreates() {
+        Env e = ready("final-s2");
+        SourceMappingDto.TableRow seen = tables(e).get("public.tb_user");
+        service.unmapTable(e.manager, seen.mappingId(), seen.modifiedAt());
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_SPARE").getId()), true))).isEqualTo("MODEL_CONFLICT");
+        assertThat(tables(e).get("public.tb_user").status()).isEqualTo(Status.UNMAPPED);
+        service.mapTable(e.manager, seenTable(tables(e).get("public.tb_user"), e.table("DEFAULT", "TB_USER").getId()), true); // 다시 만든다 (새 행)
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_SPARE").getId()), true))).isEqualTo("MODEL_CONFLICT");
+        assertThat(tables(e).get("public.tb_user").tableName()).isEqualTo("TB_USER");
+
+        SourceMappingDto.TableRow orders = tables(e).get("public.orders");
+        service.unmapTable(e.manager, orders.mappingId(), orders.modifiedAt());
+        SourceMappingDto.TableRow unmapped = tables(e).get("public.orders");
+        service.excludeTable(e.manager, new SourceMappingDto.ExclusionRequest(unmapped.sourceTableId()));
+        assertThat(code(() -> service.mapTable(e.manager, seenTable(unmapped, e.table("DEFAULT", "TB_SPARE").getId()), true))).isEqualTo("SOURCE_MAPPING_INVALID");
+        assertThat(tables(e).get("public.orders").status()).isEqualTo(Status.EXCLUDED);
+    }
+
+    @Test
+    @DisplayName("FINAL-D03 : 스키마 매핑 신규 등록끼리 나중 쪽 409 · HTTP 는 mappingId 만 있고 modifiedAt 이 없으면 400 · 기준값 없는 예전 요청은 기존 매핑을 덮어쓰지 않는다 (409) · 실패한 요청은 이력이 없다")
+    void schemaAndHttpContract() {
+        Env e = ready("final-s3");
+        SchemaInfo extra = tx.execute(s -> schemaRepository.save(SchemaInfo.builder().projectId(e.project.getId()).schemaName("EXTRA").isDefault(false).build()));
+        SourceMappingDto.SchemaRow archive = schemaRow(service.overview(e.manager), "archive");
+        service.unmapSchema(e.manager, archive.sourceSchemaId(), archive.modifiedAt(), archive.composition());
+        int historyBefore = jdbc.queryForObject("select count(*) from TB_SRC_MPNG_HSTRY where PRJ_SN = ?", Integer.class, e.project.getId());
+        service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(archive.sourceSchemaId(), e.archiveSchema.getId(), null, null), true);
+        assertThat(code(() -> service.mapSchema(e.manager, new SourceMappingDto.SchemaRequest(archive.sourceSchemaId(), extra.getId(), null, null), true))).isEqualTo("MODEL_CONFLICT");
+        assertThat(schemaRow(service.overview(e.manager), "archive").schemaName()).isEqualTo("ARCHIVE");
+
+        SourceMappingDto.TableRow seen = tables(e).get("public.tb_user");
+        assertThatThrownBy(() -> api.mapTable(e.manager, new SourceMappingDto.TableRequest(seen.sourceTableId(), e.table("DEFAULT", "TB_SPARE").getId(), seen.mappingId(), null)))
+                .isInstanceOf(CustomException.class).extracting("errorCode").isEqualTo(ErrorCode.MODEL_BASE_REQUIRED);
+        assertThat(code(() -> api.mapTable(e.manager, new SourceMappingDto.TableRequest(seen.sourceTableId(), e.table("DEFAULT", "TB_SPARE").getId())))).isEqualTo("MODEL_CONFLICT");
+        assertThat(tables(e).get("public.tb_user").tableName()).isEqualTo("TB_USER");
+        // 실패한 등록·재지정은 매핑 이력을 남기지 않는다 (성공한 스키마 등록은 이력이 아니라 스키마 매핑 행만)
+        assertThat(jdbc.queryForObject("select count(*) from TB_SRC_MPNG_HSTRY where PRJ_SN = ?", Integer.class, e.project.getId())).isEqualTo(historyBefore);
+        // 다른 프로젝트의 매핑 ID 를 기준값으로 써도 그 행이 아니다 (409)
+        Env other = ready("final-s3o");
+        SourceMappingDto.TableRow foreign = tables(other).get("public.tb_user");
+        assertThat(code(() -> service.mapTable(e.manager, new SourceMappingDto.TableRequest(seen.sourceTableId(), e.table("DEFAULT", "TB_SPARE").getId(), foreign.mappingId(),
+                foreign.modifiedAt()), true))).isEqualTo("MODEL_CONFLICT");
+    }
+
+    @Test
+    @DisplayName("FINAL-D03 동시 : A 가 재지정하는 동안 B 가 같은 처음 상태로 재지정 → B 는 기준 연결 잠금을 기다렸다가 409 (원인 없음 — 데이터 변경), A 의 매핑 유지")
+    void concurrentRemap() throws Exception {
+        Env e = ready("final-s4");
+        SourceMappingDto.TableRow orders = tables(e).get("public.orders");
+        service.unmapTable(e.manager, orders.mappingId(), orders.modifiedAt());
+        SourceMappingDto.TableRow seen = tables(e).get("public.tb_user");
+        String[] r = new ConcurrentEditC4cSupport(tx, jdbc, dataSource, projectRepository).both(e.manager, "ROLE_DBA",
+                () -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_SPARE").getId()), true),
+                () -> service.mapTable(e.manager, seenTable(seen, e.table("DEFAULT", "TB_ORDER_X").getId()), true));
+        ConcurrentEditC4cSupport.report("TABLE 재지정 vs 재지정", r);
+        assertThat(r).containsExactly("OK", "MODEL_CONFLICT");
+        assertThat(tables(e).get("public.tb_user").tableName()).isEqualTo("TB_SPARE");
     }
 
     @Test

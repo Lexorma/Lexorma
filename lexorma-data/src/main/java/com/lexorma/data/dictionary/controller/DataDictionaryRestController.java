@@ -167,34 +167,40 @@ public class DataDictionaryRestController {
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "도메인 삭제", description = "도메인 데이터를 삭제처리한다.")
+    @Operation(summary = "도메인 삭제", description = "도메인 데이터를 삭제처리한다. 행마다 modifiedAt(목록의 수정 일시) 필수 — 없으면 400, 그 사이 바뀌었으면 409, 아무것도 지우지 않는다 (M8-C4c-1)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping(value = "/deleteDataDictionary/standardDomains")
     public ResponseEntity<Map<String, Boolean>> deleteDataDictionaryStandardDomains(@RequestBody List<StandardDomainDto> standardDomains
             , @AuthenticationPrincipal AccountDto accountDto) {
 
+        // 행마다 화면이 본 수정 일시(목록의 modifiedAt) 필수 (M8-C4c-1 C4c-D02) — 없으면 400 MODEL_BASE_REQUIRED, 그 사이 바뀌었으면 409 (전체 롤백)
+        if (standardDomains != null) standardDomains.forEach(row -> com.lexorma.common.jpa.ModelBase.require(true, row == null ? null : row.getModifiedAt()));
         dataDictionaryService.deleteDataDictionaryStandardDomains(standardDomains, accountDto);
 
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "용어 삭제", description = "용어 데이터를 삭제처리한다.")
+    @Operation(summary = "용어 삭제", description = "용어 데이터를 삭제처리한다. 행마다 modifiedAt 필수 (M8-C4c-1). 논리 속성·물리 컬럼이 쓰는 용어는 400 RELATION_EXISTS")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping(value = "/deleteDataDictionary/standardTerms")
     public ResponseEntity<Map<String, Boolean>> deleteDataDictionaryStandardTerms(@RequestBody List<StandardTermDto> standardTerms
             , @AuthenticationPrincipal AccountDto accountDto) {
 
+        // 행마다 화면이 본 수정 일시(목록의 modifiedAt) 필수 (M8-C4c-1 C4c-D02) — 없으면 400 MODEL_BASE_REQUIRED, 그 사이 바뀌었으면 409 (전체 롤백)
+        if (standardTerms != null) standardTerms.forEach(row -> com.lexorma.common.jpa.ModelBase.require(true, row == null ? null : row.getModifiedAt()));
         dataDictionaryService.deleteDataDictionaryStandardTerms(standardTerms, accountDto);
 
         return ResponseEntity.ok(Map.of("result", true));
     }
 
-    @Operation(summary = "단어 삭제", description = "단어 데이터를 삭제처리한다.")
+    @Operation(summary = "단어 삭제", description = "단어 데이터를 삭제처리한다. 행마다 modifiedAt 필수 (M8-C4c-1)")
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping(value = "/deleteDataDictionary/standardWords")
     public ResponseEntity<Map<String, Boolean>> deleteDataDictionaryStandardWords(@RequestBody List<StandardWordDto> standardWords
             , @AuthenticationPrincipal AccountDto accountDto) {
 
+        // 행마다 화면이 본 수정 일시(목록의 modifiedAt) 필수 (M8-C4c-1 C4c-D02) — 없으면 400 MODEL_BASE_REQUIRED, 그 사이 바뀌었으면 409 (전체 롤백)
+        if (standardWords != null) standardWords.forEach(row -> com.lexorma.common.jpa.ModelBase.require(true, row == null ? null : row.getModifiedAt()));
         dataDictionaryService.deleteDataDictionaryStandardWords(standardWords, accountDto);
 
         return ResponseEntity.ok(Map.of("result", true));

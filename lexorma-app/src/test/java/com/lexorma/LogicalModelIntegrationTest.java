@@ -427,7 +427,7 @@ class LogicalModelIntegrationTest {
 
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "901", "ROLE_USER");
         assertThat(controller.saveEntity(user, new Entity(null, model.id(), "사용자 엔터티", null, null, null, null)).getBody().id()).isNotNull();
-        rejected(() -> controller.updateEntityApproval(user, entity.id(), true, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, entity.id())), ErrorCode.APPROVAL_PERMISSION_DENIED);
+        rejected(() -> controller.updateEntityApproval(user, entity.id(), true, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, entity.id()), null), ErrorCode.APPROVAL_PERMISSION_DENIED);
 
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, projectId, "902", "ROLE_NOT_APPROVE");
         assertThatThrownBy(() -> controller.selectModels(notApproved)).isInstanceOf(AccessDeniedException.class);

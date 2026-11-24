@@ -906,3 +906,117 @@ R2 중간 묶음 실행(`runs/…-r2-post2-pg`)에서 C2 `entityApprovalVsEdit` 
 3. 반복 잠금의 작은 ID NOWAIT : 빈 테이블 삭제와 겹친 드문 경우 동기화 쪽이 409 를 받을 수 있다 (19.6 — 교착 대신).
 4. 간헐 실패 `entityApprovalVsEdit` (감시가 B 의 DB 잠금 대기를 감지하지 못함 — 19.11) · `s4TwoRenames` : 원인 미확정.
 5. C4c 범위 그대로 (17.11 5).
+
+## 20. M8-C4c-1 (2026-11-24) — 승인 · 삭제 · 매핑 동시성 정책 최종 보완
+
+17.11 ⑤ 와 13장 결정 필요 ①~④ 를 사용자가 확정(C4c-D01~D07)한 뒤 구현했다. 새 마이그레이션·외부 서비스·전역 잠금 없음, 기존 데이터 그대로. 화면은 새 기준값을 보내는 최소 변경만 했고, 409 복구 화면 보강은 M8-C4c-2 (20.9).
+
+### 20.1 확정 정책 (사용자, 2026-11-24)
+
+| ID | 정책 |
+|---|---|
+| C4c-D01 | 승인 하위 구성 기준값은 **승인이 함께 승인하는 하위 구조만** — 독립 승인 단위(물리 컬럼·인덱스·제약조건·관계)는 넣지 않는다. 기준값은 검토 시점(상세 조회)에 받은 값이고 승인 직전 자동 재조회 없음. 순서 : 잠금 → 다시 읽기 → 기준값 → 구성 → 기존 조건 |
+| C4c-D02 | 표준 도메인·단어·용어 삭제 : 기준값(modifiedAt) + 잠금, 일괄 삭제는 행마다, 기존 참조 보호 유지 |
+| C4c-D03 | 원본 매핑 해제 : 매핑 행 `MDFCN_DT` 기준값. 해제와 매핑 예외는 계속 별개. 새 칸 없음 |
+| C4c-D04 | 승인된 표준 단어는 직접 수정 불가 (도메인과 같은 `APPROVED_DATA_CANNOT_BE_UPDATE`) |
+| C4c-D05 | 도메인 승인 취소는 기존 참조를 그대로 둔다. 영향 범위(용어·승인된 용어·속성·컬럼 수)만 최소 API 로 알린다 |
+| C4c-D06 | 계약 : 기준값 없음 400 `MODEL_BASE_REQUIRED`, 다름 409 `MODEL_CONFLICT`, 전체 롤백, 자동 덮어쓰기·재시도 없음 |
+| C4c-D07 | 마이그레이션·외부 서비스·전역 잠금 없음. 불명확한 정책은 보고 (20.13) |
+
+### 20.2 수정 전 재현 (수정 전 코드, 기존 API 만 — 임시 재현 테스트, 결과 보존 후 삭제)
+
+H2·PostgreSQL 18.6(새 빈 DB) 결과가 같았다 (`runs/20261124-125536-c4c-repro-h2`, `…-125548-c4c-repro-pg`, `…c4c-repro2-*`) :
+
+| 시나리오 | 수정 전 결과 |
+|---|---|
+| 엔터티 상세를 본 뒤 다른 사용자가 속성 추가 → 예전 기준값으로 승인 | **OK — 승인자가 본 적 없는 속성까지 승인됨** |
+| 도메인 목록을 본 뒤 다른 사용자가 설명 수정 → 예전 행으로 삭제 | **OK — 바뀐 도메인을 지움** (기준값 검사 없음) |
+| 물리 컬럼이 쓰는 표준 용어 삭제 | **ConstraintViolationException (500)** — 논리 속성 참조만 검사 |
+| 승인된 표준 단어 직접 수정 | **OK — 승인된 단어가 바뀜** |
+| TABLE 매핑을 본 뒤 다른 사용자가 다른 모델 TABLE 로 변경 → 예전 화면이 해제 | **OK — 바뀐 최신 매핑을 지움** (같은 행을 고쳐 쓰므로 ID 로 막지 못함) |
+| 스키마 해제 화면을 연 뒤 다른 사용자가 같은 스키마에 TABLE 매핑 추가 → 스키마 해제 | **OK — 본 적 없는 TABLE 매핑도 함께 해제** |
+
+### 20.3 엔터티 승인 구성 기준값 (C4c-D01)
+
+- 대상 판단 : 엔터티 승인은 그 엔터티가 **직접 정의한 속성·식별자**를 함께 승인한다(승인된 엔터티는 승인 권한 없는 사용자가 속성·식별자를 고칠 수 없다 — `rejectApprovedDetail`). 그래서 엔터티만 구성 기준값을 받는다. 구성은 삭제 확인과 같은 `LogicalModelDto.Entity.composition` (`attributes`·`identifiers` 의 (ID, 수정 일시), 식별자 구성 변경은 식별자 수정 일시를 올린다 — M8-C2). 관계·매핑·주제 영역 분류·배치·상속 그룹은 넣지 않는다(각자 승인·기준값이 따로).
+- **테이블 승인은 구성 기준값을 넣지 않았다** : 물리 컬럼·인덱스·제약조건·관계는 각자 승인되는 독립 단위다 (C4c-D01). 논리 모델에는 승인이 없다.
+- 상세 조회(`GET /api/logical/entity/{id}`)가 `composition` 을 준다(목록·ERD 응답에는 없음 — null). 승인 `PATCH /api/logical/entity/{id}/approval/true?modifiedAt=&composition=` 은 composition 필수(승인 권한자에게만 — 권한 오류가 먼저), 승인 취소는 아무것도 새로 승인하지 않으므로 `modifiedAt` 만.
+- 순서 (`LogicalModelService.updateEntityApproval`) : 승인 권한 → 모델 행 잠금(속성·식별자 추가·수정과 같은 잠금) → 다시 읽기 → 이미 그 상태면 그대로(예전 구성이어도 409 아님) → 엔터티 기준값 → (승인일 때만) 구성 → 기존 상속 승인 조건.
+
+### 20.4 표준 사전 삭제 (C4c-D02)
+
+`dictionary/service/DictionaryRowLocks.lockForDeletion` → 도메인·단어·용어 삭제 공통 :
+1. **프로젝트 행 배타**(맨 먼저) — 표준 용어 등록·키를 바꾸는 용어 수정·도메인 등록(DICT-2·M-5 5차)이 같은 행을 먼저 잡으므로, 참조 검사부터 삭제까지 새 참조가 끼어들지 않는다 (`deleteWhileNewReference` : A 의 용어 등록 커밋 뒤 B 는 참조를 보고 `RELATION_EXISTS`).
+2. 지울 행 `FOR UPDATE NOWAIT` (ID 오름차순, 1,000 개씩) — 프로젝트를 쥔 뒤에는 기다리지 않는다(ModelRowLocks 규칙 — 모델 쓰기가 그 용어의 FK 검사 KEY SHARE 를 쥔 채 커밋 때 프로젝트 공유 잠금을 기다리므로 기다리면 교착). 바쁘면 409.
+3. 다시 읽기(`refresh`) → 승인된 도메인·단어 거절(기존 400) / 승인된 용어는 예전처럼 건너뜀 → **화면이 본 `modifiedAt` 비교 409** (행별 문구) → 참조 검사 → 삭제. 하나라도 거절되면 전체 롤백, 없는(다른 프로젝트·이미 지운) 행은 예전처럼 건너뜀.
+- 용어 삭제에 **물리 컬럼 참조 검사** 추가 (`RELATION_EXISTS` — 예전 500).
+- HTTP `DELETE /api/deleteDataDictionary/{standardDomains|standardWords|standardTerms}` 본문 행마다 `modifiedAt` 필수 (목록 조회가 이미 주는 값 — 화면은 체크한 행을 그대로 보낸다).
+- 반대 순서 일괄 삭제끼리는 프로젝트 행에서 차례로 — 교착 없음 (`oppositeOrderBulkDelete` : 둘 다 OK, 늦은 쪽은 이미 없는 행을 건너뜀).
+
+### 20.5 원본 매핑 해제 (C4c-D03)
+
+- 매핑 변경(`mapTable`·`confirmColumn`)은 같은 행을 고쳐 쓴다(다른 모델 TABLE·컬럼으로). 그래서 해제는 매핑 행 수정 일시를 기준값으로 받는다 : `DELETE /api/sourceMapping/tables/{mappingId}?modifiedAt=`, `DELETE /api/sourceMapping/renames/columns/{id}?modifiedAt=`, 스키마는 `DELETE /api/sourceMapping/schemas/{sourceSchemaId}?modifiedAt=&composition=` — composition = 함께 해제하는 그 원본 스키마의 TABLE 매핑(예외 제외)의 (ID, 수정 일시) (M8-D01 하위 구성 규칙). 목록 응답(`SchemaRow.modifiedAt/composition`, `TableRow.modifiedAt`, 컬럼 매핑 `modifiedAt`)이 준다.
+- 순서 : 기준 연결 행 배타(`lockBase` — 매핑 쓰기 공통 잠금, 기존) → 매핑 행 → 기준값 → (스키마) 구성 → 해제. 지우고 다시 만든 매핑은 새 ID 라 예전 요청은 '찾을 수 없음'(400 `SOURCE_MAPPING_INVALID`), 다른 프로젝트 매핑도 같다.
+- 매핑 예외 : 해제 대상이 아니다(예외 행 ID 로 TABLE 해제 → 400). 예외 추가·취소는 스키마 해제 구성에 들지 않는다. **예외 취소에는 기준값을 넣지 않았다** — 예외 행은 고쳐 쓰지 않으므로(취소 = 삭제, 다시 만들면 새 ID) ID 만으로 같은 행이다.
+- 서비스의 기준값 없는 오버로드는 내부 호출용(null = 비교 생략, M8-C2 와 같은 규칙).
+
+### 20.6 승인된 표준 단어 직접 수정 차단 (C4c-D04)
+
+`StandardWordService.updateStandardWords` : 행 잠금(M8-C1) → 없음 → **승인된 단어 `APPROVED_DATA_CANNOT_BE_UPDATE`** (기준값 비교보다 먼저 — 도메인 M8-D03 과 같은 순서) → 기준값. 금칙어는 별도 API 가 없는 이 수정의 한 칸이라 승인된 단어의 금칙어도 승인 취소 → 수정 → 재승인 절차다 (금칙어 정책 자체는 바꾸지 않음). 엑셀 단어 업로드·등록은 바꾸지 않았다.
+
+### 20.7 도메인 승인 취소 영향 범위 (C4c-D05)
+
+- 승인 취소는 예전처럼 도메인 승인 여부만 바꾼다 — 참조 용어·속성·컬럼과 그 승인 상태는 그대로 (`domainRevokeImpact`).
+- `GET /api/dictionaryUsage/domain/{domainId}/impact` (VIEWER, 사용 현황 API 와 같은 권한) → `{domainId, domainName, isApproval, termCount, approvedTermCount, attributeCount, columnCount, approvedColumnCount}` — 로그인 프로젝트만(다른 프로젝트 도메인 `NOT_FOUND_DOMAIN_DATA`), 조회 시점의 참고 값(취소를 이 값으로 거절하지 않는다). 속성·컬럼은 그 도메인의 용어를 참조하는 것(도메인을 직접 참조하지 않는다).
+- 화면 표시(승인 취소 확인 대화상자에 영향 범위)는 C4c-2 (20.9).
+
+### 20.8 API 계약 변경 목록
+
+| API | 변경 | 없음 | 다름 |
+|---|---|---|---|
+| `GET /api/logical/entity/{id}` | 응답 `composition` 추가 | — | — |
+| `PATCH /api/logical/entity/{id}/approval/true` | `composition` 쿼리 필수 (승인 권한자) | 400 `MODEL_BASE_REQUIRED` | 409 `MODEL_CONFLICT` |
+| `PATCH /api/logical/entity/{id}/approval/false` | 변경 없음 (`modifiedAt` 만) | 400 | 409 |
+| `DELETE /api/deleteDataDictionary/standardDomains·standardWords·standardTerms` | 본문 행마다 `modifiedAt` 필수, 용어의 물리 컬럼 참조 400 `RELATION_EXISTS` | 400 | 409 (전체 롤백) · 잠금 중 409 |
+| `PUT /api/updateDataDictionary/standardWords` | 승인된 단어 400 `APPROVED_DATA_CANNOT_BE_UPDATE` | (기존 400) | (기존 409) |
+| `GET /api/dictionaryUsage/domain/{id}/impact` | 새 API (조회 전용) | — | — |
+| `GET /api/sourceMapping` (overview) | `schemas[].modifiedAt·composition`, `tables[].modifiedAt` 추가 | — | — |
+| `DELETE /api/sourceMapping/schemas/{id}` | `modifiedAt`·`composition` 쿼리 필수 | 400 | 409 |
+| `DELETE /api/sourceMapping/tables/{id}` | `modifiedAt` 쿼리 필수 | 400 | 409 |
+| `GET /api/sourceMapping/renames/columns` | 행 `modifiedAt` 추가 | — | — |
+| `DELETE /api/sourceMapping/renames/columns/{id}` | `modifiedAt` 쿼리 필수 | 400 | 409 |
+
+### 20.9 화면 (최소 변경) · C4c-2 로 넘기는 화면
+
+- 이번에 바꾼 것 : 엔터티 상세 승인이 상세의 `composition` 을 보낸다(기존 `runWithReview` 검토 — 구성이 바뀌면 '함께 승인되는 하위 항목(속성·식별자)이 변경되었습니다' 안내, 최신 구성으로 다시 승인); 표준 사전 삭제는 체크한 행(기준값 포함)을 보내고 성공·실패 모두 목록을 다시 읽는다(409 는 공통 알림 — `conflict: 'handled'` 를 쓰지 않음); 원본 스키마·TABLE·컬럼 매핑 해제는 목록 행의 기준값을 보내고 끝나면 다시 읽는다(409 공통 알림).
+- **C4c-2 대상 (이번에 하지 않음)** : ① 표준 사전 삭제 409 의 검토 대화상자(바뀐 행 비교·최신 행으로 다시 삭제 — 승인처럼 `runListWithReview`) ② 원본 매핑 해제 409 검토(기존·최신 매핑 비교) ③ 도메인 승인 취소 확인에 영향 범위 표시(`/impact`) ④ 승인된 표준 단어 수정 폼 잠금(승인된 단어는 수정 버튼 대신 '승인 취소 후 수정' 안내) ⑤ 15.9·17.11 의 남은 화면(주제 영역·서브타입 그룹·관계 속성 짝·FK 규칙·컬럼 순서 팝업·논리 속성 순서).
+
+### 20.10 기존 테스트 기대값 변경
+
+- `ConcurrentEditP1IntegrationTest.wordApprovalKeepsConcurrentEdit` : 승인 뒤 잠근 행을 본 단어 수정이 409 → `APPROVED_DATA_CANNOT_BE_UPDATE` (C4c-D04 — 조용한 손실 없음은 같다).
+- `SmokeTest` [DICT-1] : 승인 권한자가 등록한 단어(승인 상태)를 HTTP 로 고치던 부분 — 승인된 단어 수정 거절을 확인한 뒤 미승인으로 돌려 기존 검사를 이어 간다.
+- `SourceSyncIntegrationTest` : 컬럼 매핑 해제에 기준값 없음(400)·다름(409) 확인 추가.
+- 호출 형식 : `LogicalModelIntegrationTest`·`ConcurrentEditC2IntegrationTest` 의 컨트롤러 호출에 `composition` 인자, 사전 단위 테스트에 `DictionaryRowLocks`·`EntityManager` 목, 승인된 단어 수정 단위 테스트 추가.
+
+### 20.11 R2 엑셀 정책 확인
+
+컬럼 엑셀 업로드는 등록만 한다(기존 컬럼 수정·삭제 없음 — `ColumnManageServiceImpl` 업로드 경로, 19.5). 따라서 엑셀이 PK 구성을 바꾸는 경우는 PK 행이 들어 있는 등록뿐이고, R2-D02(PK 행이 있는 엑셀만 프로젝트 배타) 정책 그대로 둔다.
+
+### 20.12 테스트 · 검증
+
+- 새 테스트 : `ConcurrentEditC4cApprovalIntegrationTest` 6건 (속성 추가·수정·삭제·식별자 변경 뒤 승인 409, 관계·주제 영역 분류는 승인을 막지 않음, 엔터티 자신의 수정 409, HTTP composition 필수·승인 취소는 modifiedAt 만·같은 상태 재요청은 그대로, 동시 승인 ↔ 속성 추가 양방향), `ConcurrentEditC4cDictionaryIntegrationTest` 10건 (예전 행 삭제 409·일부 행만 달라도 전체 롤백·다른 프로젝트 건너뜀·HTTP 기준값 필수·용어의 컬럼/속성 참조 400·동시 수정↔삭제·새 참조↔삭제·반대 순서 일괄 삭제·승인↔삭제·승인된 단어 수정·도메인 승인 취소 영향 범위와 참조 유지·다른 프로젝트 조회 거절), `ConcurrentEditC4cSourceMappingIntegrationTest` 5건 (예전 TABLE 해제 409·다시 만든 매핑 새 ID·예외 행 보호·스키마 해제 구성·HTTP 기준값 필수·다른 프로젝트·동시 변경↔해제), `SourceSyncIntegrationTest` 컬럼 해제 기준값, 단위 테스트 1건. 동시 실행 도구는 `ConcurrentEditC4cSupport` (C1~C4b 와 같은 방식 — B 가 끝났거나 DB 잠금을 기다리는 것을 확인한 뒤 A 커밋).
+- 동시 결과 (H2·PostgreSQL 같음) : 도메인 수정 ↔ 삭제 [OK, MODEL_CONFLICT] · 용어 등록(새 참조) ↔ 도메인 삭제 [OK, RELATION_EXISTS] · 반대 순서 일괄 삭제 [OK, OK] · 단어 승인 ↔ 삭제 [OK, MODEL_CONFLICT] · 속성 추가 ↔ 승인 [OK, MODEL_CONFLICT] · 승인 ↔ 승인 권한 없는 USER 의 속성 추가 [OK, APPROVED_DATA_CANNOT_BE_UPDATE] · TABLE 매핑 변경 ↔ 해제 [OK, MODEL_CONFLICT].
+- 작성 중 발견 : 처음 '승인 ↔ 속성 추가' 테스트는 B 를 같은 계정(프로젝트 관리자 = 승인 권한자)으로 실행해 [OK, OK] 였다 — 승인 권한자는 승인된 엔터티를 고칠 수 있다는 기존 정책(20.13 ①) 그대로이고, 테스트를 관리자가 아닌 USER 계정으로 바꿨다. 첫 전체 실행은 `--continue` 없이 돌려 이 실패 뒤의 모듈 테스트가 빠졌으므로(1,078건) 결과로 쓰지 않고 다시 돌렸다 (`runs/…-131803-c4c-full-*`, 보존).
+- **전체 (격리 사본, 최종 코드)** : H2 `./gradlew build --continue --rerun-tasks` (npm ci + tsc + vite build 포함) 1,534건 실패 0 · 건너뜀 123 (`runs/20261124-133824-c4c-final-h2-build`), PostgreSQL 18.6 새 빈 DB 2회 `test --continue --rerun` 각 1,534건 실패 0 · 건너뜀 46 (`…-134310-c4c-final-pg1`, `…-135039-c4c-final-pg2`). 간헐 실패(`entityApprovalVsEdit`·`s4TwoRenames`)는 이번 실행들에서 재발하지 않았다.
+- `npm run typecheck` (저장소), vite build (사본 — 저장소 `lexorma-web/dist` 는 건드리지 않음).
+- **단일 JAR (사본 빌드, 임시 H2 데이터 디렉터리, HTTP API 로만)** : 최초 ADMIN 생성·로그인 → 엔터티 상세 composition, 승인 composition 없음 400, 속성 추가 뒤 예전 구성 409, 최신 구성 200; 도메인 영향 범위(새 도메인 0건, 예제 `일련번호L` 용어 107·속성 296·컬럼 296 — 목록 사용 건수 296 과 같음), 삭제 modifiedAt 없음 400, 수정 뒤 예전 행 삭제 409, 최신 행 삭제 200; 승인된 단어 수정 400; 원본 TABLE·스키마·컬럼 매핑 해제 기준값 없음 400 (원본 DB 연결이 필요한 해제 성공·409 경로는 통합 테스트로만).
+- **브라우저 : 미검증** (HTTP API 로만 확인).
+
+### 20.13 남은 위험 · 결정 필요 (C4c-1 이후)
+
+1. **승인 권한자는 승인된 엔터티의 속성·식별자를 계속 고칠 수 있다** (기존 정책 `rejectApprovedDetail` — 이번에 바꾸지 않음). 구성 기준값은 '승인 시점에 승인자가 본 구성'만 보장한다. 승인 권한자의 승인 후 수정을 막을지는 결정 필요.
+2. 승인된 표준 용어 삭제는 예전처럼 **조용히 건너뛴다**(도메인·단어는 400). 같은 오류로 맞출지 결정 필요 (이번 범위의 '기존 참조 보호 유지' 로 그대로 둠).
+3. 사전 삭제의 NOWAIT 409 는 '다른 사용자가 변경' 과 같은 `MODEL_CONFLICT` 다 — 그 용어를 참조하는 모델 쓰기가 진행 중이어서 바쁜 경우도 같은 코드·문구(바쁨 문구 `ModelRowLocks.busy`)라 화면이 구분하지 않는다.
+4. 원본 매핑 예외 취소에는 기준값이 없다 (20.5 — 예외 행은 고쳐 쓰지 않음). 예외 행을 고쳐 쓰는 경로가 생기면 다시 본다.
+5. 19.13 의 H2 재확인 잠금 시간 초과·간헐 실패(`entityApprovalVsEdit`·`s4TwoRenames`)는 원인 미확정 그대로 (이번 전체 3회에서는 재발 없음 — 20.12).
+6. 브라우저 미검증 (영어 화면·두 계정 동시 로그인 포함).

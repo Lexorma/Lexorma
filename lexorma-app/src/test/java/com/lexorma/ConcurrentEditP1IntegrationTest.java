@@ -204,7 +204,7 @@ class ConcurrentEditP1IntegrationTest {
     // ------------------------------------------------------------------ D-02 표준 단어
 
     @Test
-    @DisplayName("D-02 동시 : 단어 승인이 행을 잠근 채 커밋 전에 들어온 수정은 승인 뒤 기준값이 달라 409 — 조용한 손실 없음")
+    @DisplayName("D-02 동시 : 단어 승인이 행을 잠근 채 커밋 전에 들어온 수정은 승인 뒤 승인된 단어라 거절(C4c-D04, 예전 409) — 조용한 손실 없음")
     void wordApprovalKeepsConcurrentEdit() throws Exception {
         AccountDto admin = login("m8c1-word");
         StandardWord w = word(admin.getProjectId());
@@ -215,7 +215,8 @@ class ConcurrentEditP1IntegrationTest {
                 () -> dictionary.updateStandardWords(admin, edit));
         StandardWord saved = tx.execute(s -> words.findById(w.getId()).orElseThrow());
         if ("OK".equals(b)) assertThat(saved.getCommonStandardWordDescription()).as("B 는 성공했다고 답했다").isEqualTo("B 설명");
-        assertThat(b).isEqualTo("MODEL_CONFLICT");
+        // M8-C4c-1 C4c-D04 부터 승인된 단어는 직접 고칠 수 없다 : 승인 뒤 잠근 행을 본 수정은 기준값 비교보다 먼저 승인 거절 (예전 : 409). 조용한 손실이 없다는 점은 같다
+        assertThat(b).isEqualTo("APPROVED_DATA_CANNOT_BE_UPDATE");
         assertThat(saved.getIsApproval()).isTrue();
         assertThat(saved.getCommonStandardWordDescription()).isEqualTo("처음");
     }

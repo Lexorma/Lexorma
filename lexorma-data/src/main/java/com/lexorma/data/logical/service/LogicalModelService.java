@@ -338,9 +338,7 @@ public class LogicalModelService {
 
     /** 엔터티와 함께 지워지는 자식 : 직접 정의한 속성·식별자 (식별자 구성 변경은 식별자의 수정 일시를 올린다). 관계·매핑·상속이 있으면 삭제가 거절되므로 넣지 않는다 */
     private static com.lexorma.common.jpa.ModelComposition entityComposition(LogicalEntity entity) {
-        return com.lexorma.common.jpa.ModelComposition.of()
-                .addEntities("attributes", entity.getAttributes(), LogicalAttribute::getId)
-                .addEntities("identifiers", entity.getIdentifiers(), LogicalIdentifier::getId);
+        return LogicalModelDto.Entity.composition(entity);
     }
 
     /**
@@ -378,11 +376,22 @@ public class LogicalModelService {
      */
     @Transactional
     public void updateEntityApproval(AccountDto accountDto, Long entityId, boolean isApproval, java.time.LocalDateTime modifiedAt) {
+        updateEntityApproval(accountDto, entityId, isApproval, modifiedAt, null);
+    }
+
+    /**
+     * 승인 구성 기준값 (M8-C4c-1 C4c-D01) : 승인할 때만 — 엔터티 승인은 직접 정의한 속성·식별자를 함께 승인한다 (승인된 엔터티는 속성·식별자를 고칠 수 없다).
+     * 상세 조회가 준 composition 을 모델 행 잠금(속성·식별자를 더하고 고치는 쓰기와 같은 잠금) 뒤 다시 계산한 값과 비교해 다르면 409 — 승인자가 본 적 없는 속성이 승인되지 않는다.
+     * 승인 취소는 아무것도 새로 승인하지 않으므로 엔터티 기준값만 본다. composition null = 내부 호출 (HTTP 는 컨트롤러가 필수로)
+     */
+    @Transactional
+    public void updateEntityApproval(AccountDto accountDto, Long entityId, boolean isApproval, java.time.LocalDateTime modifiedAt, String composition) {
         requireApprover();
         LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
         refreshOrNotFound(entity, "엔터티");
         if (Boolean.TRUE.equals(entity.getIsApproval()) == isApproval) return;
         com.lexorma.common.jpa.ModelBase.verify(entity, modifiedAt, entity.getEntityName());
+        if (isApproval) entityComposition(entity).verify(composition, entity.getEntityName());
         // 서브타입 승인은 조상이 모두 승인된 뒤, 승인 취소는 승인된 하위 엔터티가 없을 때 (자동으로 함께 바꾸지 않는다 — M-6 후속 5차)
         subtypeService.checkApprovalChange(entity, isApproval);
         entity.setIsApproval(isApproval);

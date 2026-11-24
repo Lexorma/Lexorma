@@ -135,7 +135,7 @@ public class SourceRenameService {
             rows.add(new SourceRenameDto.ColumnMapping(c.getId(), c.getTableMappingId(), table == null ? null : table.getSourceTableId(),
                     table == null ? null : state.sourceTableName(table), c.getSourceColumnName(), c.getCompareName(), table == null ? null : table.getTableId(),
                     table == null ? null : state.modelTableName(table.getTableId()), c.getColumnId(), state.modelColumnName(c.getColumnId()), c.getReflectedOrder(), status,
-                    audit.created(), audit.createdBy()));
+                    audit.created(), audit.createdBy(), c.modifiedAt()));
         }
         return rows;
     }
@@ -240,10 +240,20 @@ public class SourceRenameService {
     /** 컬럼 매핑 해제 : 행만 지운다 (모델 컬럼은 그대로, 다시 이름으로 짝짓는다) */
     @Transactional
     public Map<String, Object> releaseColumn(AccountDto accountDto, Long columnMappingId) {
+        return releaseColumn(accountDto, columnMappingId, null);
+    }
+
+    /**
+     * 컬럼 매핑 해제 (M8-C4c-1 C4c-D03) : 기준 연결 행 배타(매핑 쓰기 공통 잠금) → 매핑 행 → 화면이 본 수정 일시(modifiedAt) 비교 — 그 사이 다른 모델 컬럼으로 바뀌었으면 409
+     * (같은 행을 고쳐 쓰므로 ID 만으로는 막지 못했다). 지우고 다시 만든 매핑은 새 ID 라 예전 요청은 '찾을 수 없음'. modifiedAt null = 내부 호출 (HTTP 는 필수)
+     */
+    @Transactional
+    public Map<String, Object> releaseColumn(AccountDto accountDto, Long columnMappingId, java.time.LocalDateTime modifiedAt) {
         Long projectId = mappingService.manage(accountDto);
         Long connectionId = mappingService.lockBase(projectId);
         SourceColumnMapping mapping = columnMappingRepository.findByIdAndProjectId(columnMappingId, projectId).filter(m -> m.getConnectionId().equals(connectionId))
                 .orElseThrow(() -> SourceMappingService.invalid("컬럼 매핑을 찾을 수 없습니다."));
+        com.lexorma.common.jpa.ModelBase.verify(mapping, modifiedAt, mapping.getSourceColumnName());
         SourceMappingService.State state = mappingService.state(projectId, connectionId);
         SourceTableMapping table = state.tableMappingById.get(mapping.getTableMappingId());
         history.record(projectId, connectionId, mapping.getTableMappingId(), TargetType.COLUMN, ChangeType.RELEASE,

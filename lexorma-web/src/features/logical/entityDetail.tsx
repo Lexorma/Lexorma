@@ -105,7 +105,8 @@ function EntityDetail({ entityId, options, controls }: { entityId: number; optio
       const ok = await runWithReview({
         dialog, title: approved ? t('엔터티 승인 취소') : t('엔터티 승인'), intro: t('다른 사용자가 이 항목을 변경했습니다.'),
         seen: entitySnapshot(data), load: async () => entitySnapshot(await loadEntity(entityId)),
-        act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${baseQuery(state.modifiedAt)}`, { method: 'PATCH', conflict: 'handled' }); },
+        // 승인은 상세 조회의 속성·식별자 구성 기준값도 보낸다 (M8-C4c-1 — 승인자가 본 속성만 승인), 승인 취소는 엔터티 기준값만
+        act: async (state) => { await api(`/api/logical/entity/${entityId}/approval/${!approved}${approved ? baseQuery(state.modifiedAt) : baseQuery(state.modifiedAt, state.composition ?? null)}`, { method: 'PATCH', conflict: 'handled' }); },
         retryLabel: approved ? t('최신 내용으로 승인 취소') : t('최신 내용으로 승인'), targetApproval: !approved,
         onDone: approvalDone, onClose: changed,
       });

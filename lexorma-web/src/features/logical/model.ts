@@ -54,6 +54,8 @@ export interface LogicalEntity {
   modifiedAt?: string | null;
   /** 소속 주제 영역 (M-6 후속 4차 — null = 미분류) */
   subjectAreaId?: number | null;
+  /** 승인 구성 기준값 (M8-C4c-1 — 상세 조회만 : 직접 정의한 속성·식별자). 승인 요청이 그대로 보낸다 */
+  composition?: string | null;
 }
 
 /**

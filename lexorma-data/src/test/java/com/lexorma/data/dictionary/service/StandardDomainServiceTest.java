@@ -29,6 +29,10 @@ class StandardDomainServiceTest {
 
     @Mock
     StandardDomainRepository standardDomainRepository;
+    @Mock
+    DictionaryRowLocks rowLocks; // 삭제 잠금 (M8-C4c-1)
+    @Mock
+    jakarta.persistence.EntityManager entityManager;
 
     @InjectMocks
     StandardDomainService service;

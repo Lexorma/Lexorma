@@ -30,8 +30,24 @@ public final class LogicalModelDto {
      * subjectAreaId (M-6 후속 4차) : 응답은 지금 소속 주제 영역(없으면 미분류), 등록 요청은 처음 소속(null = 미분류, 엔터티 등록과 한 트랜잭션).
      * 수정 요청에서는 보지 않는다 — 분류는 일괄 분류 API 로만 바꾼다 (엔터티 수정의 승인 검사·기준값과 섞지 않는다)
      */
+    /**
+     * composition (M8-C4c-1 C4c-D01) : 승인 구성 기준값 — 상세 조회(속성·식별자를 함께 줄 때)만 채운다. 엔터티 승인이 함께 승인하는 직접 정의 속성·식별자의 (ID, 수정 일시)
+     * (삭제 확인의 구성과 같은 부분 — {@link #composition(LogicalEntity)}). 승인 요청은 화면이 본 이 값을 보낸다
+     */
     public record Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
-                         List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt, Long subjectAreaId) {
+                         List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt, Long subjectAreaId, String composition) {
+        public Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
+                      List<Attribute> attributes, List<Identifier> identifiers, java.time.LocalDateTime modifiedAt, Long subjectAreaId) {
+            this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, modifiedAt, subjectAreaId, null);
+        }
+
+        /** 엔터티 승인·삭제가 함께 다루는 하위 구성 : 직접 정의한 속성·식별자 (식별자 구성 변경은 식별자의 수정 일시를 올린다). 관계·매핑·주제 영역 분류·배치는 넣지 않는다 */
+        public static com.lexorma.common.jpa.ModelComposition composition(LogicalEntity e) {
+            return com.lexorma.common.jpa.ModelComposition.of()
+                    .addEntities("attributes", e.getAttributes(), LogicalAttribute::getId)
+                    .addEntities("identifiers", e.getIdentifiers(), LogicalIdentifier::getId);
+        }
+
         public Entity(Long id, Long modelId, String entityName, String entityDescription, Boolean isApproval,
                       List<Attribute> attributes, List<Identifier> identifiers) {
             this(id, modelId, entityName, entityDescription, isApproval, attributes, identifiers, null, null);
@@ -53,7 +69,7 @@ public final class LogicalModelDto {
         public static Entity detail(LogicalEntity e, Long subjectAreaId) {
             return new Entity(e.getId(), e.getModel().getId(), e.getEntityName(), e.getEntityDescription(), e.getIsApproval(),
                     e.getAttributes().stream().map(Attribute::fromEntity).toList(),
-                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList(), e.modifiedAt(), subjectAreaId);
+                    e.getIdentifiers().stream().map(Identifier::fromEntity).toList(), e.modifiedAt(), subjectAreaId, composition(e).token());
         }
     }
 

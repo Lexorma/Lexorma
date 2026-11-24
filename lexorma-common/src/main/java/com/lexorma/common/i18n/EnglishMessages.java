@@ -595,6 +595,11 @@ final class EnglishMessages {
         add("관계 {0} 에서 사용 중인 엔터티입니다.", "The entity is used by relationship {0}.");
         add("식별자 {0} 에서 사용 중인 속성입니다.", "The attribute is used by identifier {0}.");
         add("논리 속성에서 사용 중인 표준 용어입니다 : {0}", "The standard term is used by a logical attribute: {0}");
+        add("물리 컬럼에서 사용 중인 표준 용어입니다 : {0}", "The standard term is used by a physical column: {0}");
+        // M8-C4c-1 : 표준 사전 삭제 기준값
+        add("화면을 연 뒤 다른 사용자가 표준 도메인 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.", "Another user changed the standard domain {0} after you opened this screen, so it was not deleted. Review the latest information and delete again.");
+        add("화면을 연 뒤 다른 사용자가 표준 단어 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.", "Another user changed the standard word {0} after you opened this screen, so it was not deleted. Review the latest information and delete again.");
+        add("화면을 연 뒤 다른 사용자가 표준 용어 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.", "Another user changed the standard term {0} after you opened this screen, so it was not deleted. Review the latest information and delete again.");
         add("엔터티의 속성 전체를 한 번씩 지정해주세요.", "Specify every attribute of the entity exactly once.");
         add("주 식별자는 엔터티에 하나만 둘 수 있습니다. (현재 주 식별자 : {0})", "An entity can have only one primary identifier. (Current primary identifier: {0})");
         add("식별자 속성을 1개 이상 지정해주세요.", "Specify at least one identifier attribute.");

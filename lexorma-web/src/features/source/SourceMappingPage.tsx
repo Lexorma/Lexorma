@@ -5,6 +5,7 @@ import { useDialog, type DialogControls } from '../../components/dialog/DialogPr
 import { Label, type LabelVariant } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, ApiError, enc } from '../../lib/api';
+import { baseQuery } from '../../lib/deletion';
 import { formatDateTime } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useTableDetail } from '../table/tableDetail';
@@ -27,11 +28,15 @@ interface Connection { id: number; name: string; dbType: string; enabled: boolea
 interface SchemaRow {
   sourceSchemaId: number; sourceSchemaName: string; tableCount: number; viewCount: number; mappingId: number | null; schemaId: number | null; schemaName: string | null;
   defaultSchema: boolean; confirmedOrder: number | null; status: Status; reason: Reason | null; candidate: Candidate | null;
+  /** 해제 기준값 (M8-C4c-1) : 매핑 행 수정 일시와 함께 해제할 TABLE 매핑 구성 — 서버가 준 값 그대로 보낸다 */
+  modifiedAt: string | null; composition: string | null;
 }
 interface TableRow {
   sourceTableId: number; sourceSchemaId: number; sourceSchemaName: string | null; sourceTableName: string; sourceComment: string | null; mappingId: number | null;
   tableId: number | null; tableName: string | null; tableKorName: string | null; tableDescription: string | null; tableSourceComment: string | null; schemaId: number | null; schemaName: string | null; confirmedOrder: number | null;
   status: Status; reason: Reason | null; candidate: Candidate | null;
+  /** 해제 기준값 (M8-C4c-1) : 매핑 행 수정 일시 */
+  modifiedAt: string | null;
 }
 interface Overview {
   base: Connection | null; connections: Connection[]; reflectedOrder: number | null; executionId: number | null; reflectedAt: string | null;
@@ -186,8 +191,12 @@ function SchemaMappings({ data, canManage, onChanged }: { data: Overview; canMan
   };
   const release = (row: SchemaRow) => {
     dialog.confirm(t('{0} 스키마 매핑을 해제하시겠습니까? 이 원본 스키마의 TABLE 매핑도 함께 해제됩니다. 물리 모델은 바뀌지 않습니다.', row.sourceSchemaName), async () => {
-      await api(`/api/sourceMapping/schemas/${enc(row.sourceSchemaId)}`, { method: 'DELETE' });
-      onChanged();
+      // 화면이 본 매핑·TABLE 매핑 구성과 같을 때만 해제한다 (M8-C4c-1). 그 사이 바뀌었으면 409 를 공통 알림으로 보여 주고 최신 목록을 다시 읽는다 (자동 재시도 없음)
+      try {
+        await api(`/api/sourceMapping/schemas/${enc(row.sourceSchemaId)}${baseQuery(row.modifiedAt, row.composition)}`, { method: 'DELETE' });
+      } finally {
+        onChanged();
+      }
     });
   };
 
@@ -279,8 +288,12 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
   };
   const release = (row: TableRow) => {
     dialog.confirm(t('{0}.{1} 의 TABLE 매핑을 해제하시겠습니까? 물리 모델은 바뀌지 않습니다.', row.sourceSchemaName ?? '', row.sourceTableName), async () => {
-      await api(`/api/sourceMapping/tables/${enc(row.mappingId)}`, { method: 'DELETE' });
-      reload();
+      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1) — 409 면 공통 알림 뒤 최신 목록
+      try {
+        await api(`/api/sourceMapping/tables/${enc(row.mappingId)}${baseQuery(row.modifiedAt)}`, { method: 'DELETE' });
+      } finally {
+        reload();
+      }
     });
   };
   // 매핑 예외 (M-4g) : 미매핑 원본 TABLE 을 매핑하지 않을 대상으로 둔다 (원본 수집은 그대로). 취소하면 미매핑으로 돌아간다

@@ -20,6 +20,14 @@ public final class DictionaryUsageDto {
     }
 
     /** 사용 컬럼 조회 조건 (모두 선택). searchColumn : tableName / columnName */
+    /**
+     * 표준 도메인 승인 취소 전 영향 범위 (M8-C4c-1 C4c-D05) : 도메인을 직접 참조하는 표준 용어 수(그중 승인된 수)와, 그 용어를 참조하는 논리 속성·물리 컬럼 수 (간접 참조).
+     * 승인 취소는 이 참조를 지우거나 그 승인 상태를 바꾸지 않는다 — 안내용 (같은 대상은 한 번만 센다)
+     */
+    public record DomainImpact(Long domainId, String domainName, Boolean isApproval, long termCount, long approvedTermCount, long attributeCount, long columnCount,
+                               long approvedColumnCount) {
+    }
+
     public record ColumnSearch(Long schemaId, Boolean isApproval, String searchColumn, String searchQuery) {
     }
 }

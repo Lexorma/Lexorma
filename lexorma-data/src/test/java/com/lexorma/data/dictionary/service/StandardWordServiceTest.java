@@ -37,6 +37,10 @@ class StandardWordServiceTest {
     @Mock
     StandardWordRepository standardWordRepository;
     @Mock
+    DictionaryRowLocks rowLocks; // 삭제 잠금 (M8-C4c-1)
+    @Mock
+    jakarta.persistence.EntityManager entityManager;
+    @Mock
     StandardDomainRepository standardDomainRepository;
 
     @InjectMocks
@@ -171,6 +175,18 @@ class StandardWordServiceTest {
         assertThat(word.getUseAbbreviation()).isTrue();
         assertThat(word.getIsFormatWord()).isFalse();
         assertThat(word.getRevisionNumber()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("승인된 단어는 직접 고칠 수 없다 (M8-C4c-1 C4c-D04 — 도메인과 같은 APPROVED_DATA_CANNOT_BE_UPDATE, 아무 값도 바뀌지 않는다)")
+    void updateApproved() {
+        StandardWord word = word(1L, "사용자", "-", true);
+        when(standardWordRepository.findForUpdate(1L, 1L)).thenReturn(java.util.Optional.of(word));
+
+        assertThatThrownBy(() -> service.updateStandardWords(StandardWordDto.builder().id(1L).projectId(1L)
+                .restrictedWords("유저").commonStandardWordDescription("고친 설명").build()))
+                .extracting("errorCode").isEqualTo(ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        assertThat(word.getCommonStandardWordDescription()).isNotEqualTo("고친 설명");
     }
 
     @Nested

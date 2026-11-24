@@ -72,10 +72,12 @@ public class SourceRenameRestController {
         return ResponseEntity.ok(service.confirmColumn(accountDto, request));
     }
 
-    @Operation(summary = "컬럼 매핑 해제", description = "매핑 행만 지운다. 모델 컬럼은 그대로이고 다시 이름으로 짝짓는다.")
+    @Operation(summary = "컬럼 매핑 해제", description = "매핑 행만 지운다. 모델 컬럼은 그대로이고 다시 이름으로 짝짓는다. modifiedAt(목록 행의 수정 일시) 필수 — 그 사이 바뀌었으면 409 (M8-C4c-1)")
     @DeleteMapping("/columns/{id}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Map<String, Object>> releaseColumn(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("id") Long id) {
-        return ResponseEntity.ok(service.releaseColumn(accountDto, id));
+    public ResponseEntity<Map<String, Object>> releaseColumn(@AuthenticationPrincipal AccountDto accountDto, @PathVariable("id") Long id,
+                                                             @RequestParam(value = "modifiedAt", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime modifiedAt) {
+        com.lexorma.common.jpa.ModelBase.require(true, modifiedAt);
+        return ResponseEntity.ok(service.releaseColumn(accountDto, id, modifiedAt));
     }
 }

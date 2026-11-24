@@ -69,6 +69,7 @@ public class SchemaServiceImpl implements SchemaService {
             projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
             projectWriteGuard.lock(projectId);
             rowLocks.schemasNoWait(List.of(schemaDto.id()));
+            rowLocks.schemasForKeyChange(List.of(schemaDto.id())); // 이름 = 키 (M8-C4b-R1) : 그 스키마로 참조 관계를 만드는 중(KEY SHARE)이면 기다리지 않고 409
             schema = schemaInfoRepository.findByIdAndProjectId(schemaDto.id(), projectId).orElseThrow(() -> new CustomException(ErrorCode.SCHEMA_IS_NOT_DEFINED));
             entityManager.refresh(schema);
         } else {

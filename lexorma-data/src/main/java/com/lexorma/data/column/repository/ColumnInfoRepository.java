@@ -78,6 +78,10 @@ public interface ColumnInfoRepository extends JpaRepository<ColumnInfo, Long>, J
     @Query("select c.id from ColumnInfo c where c.projectId = :projectId and c.id in :ids and c.isPk = true")
     List<Long> findPkColumnIds(@Param("projectId") Long projectId, @Param("ids") Collection<Long> ids);
 
+    /** 테이블 컬럼의 [ID, PK 여부, 승인 여부] — 일괄 저장의 PK 구성 변경 판정용 스칼라 조회 (M8-C4b-R2 — 영속성 컨텍스트에 옛 상태를 남기지 않는다) */
+    @Query("select c.id, c.isPk, c.isApproval from ColumnInfo c where c.projectId = :projectId and c.tableInfo.id = :tableId")
+    List<Object[]> findPkStates(@Param("projectId") Long projectId, @Param("tableId") Long tableId);
+
     /** 이 컬럼들의 소속 테이블 ID (엔티티를 읽지 않는다) */
     @Query("select distinct c.tableInfo.id from ColumnInfo c where c.projectId = :projectId and c.id in :ids")
     List<Long> findTableIdsOfColumns(@Param("projectId") Long projectId, @Param("ids") Collection<Long> ids);

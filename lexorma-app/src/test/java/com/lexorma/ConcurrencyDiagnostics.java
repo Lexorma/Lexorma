@@ -33,6 +33,7 @@ final class ConcurrencyDiagnostics {
         out.append("\n[AuthUtil.projectRepository 가 이 컨텍스트의 빈인가] ").append(authUtilSameContext(contextProjectRepository));
         out.append("\n[Hikari] ").append(hikari(dataSource));
         out.append("\n[ForkJoinPool.commonPool] ").append(commonPool());
+        out.append("\n[잠금 대기 수 — 호출 연결 / 별도 연결] ").append(lockWaitCounts(jdbc));
         out.append("\n[DB 세션] ").append(bounded(() -> sessions(jdbc)));
         out.append("\n[스레드]").append(threads());
         return out.toString();
@@ -86,6 +87,24 @@ final class ConcurrencyDiagnostics {
         } finally {
             single.shutdownNow();
         }
+    }
+
+    /**
+     * 감시 쿼리와 같은 잠금 대기 수를 호출한 스레드의 연결(보통 A 의 트랜잭션 연결 — 감시가 쓰는 연결)과 별도 연결에서 각각 센다 (M8-C4b-R2).
+     * C2 재발 때 B 는 처음부터 A 의 잠금을 기다렸는데(PostgreSQL 로그) A 쪽 감시가 감지하지 못했다 — 두 값이 다르면 감시 연결의 조회 문제, 같으면 다른 원인이다.
+     * pg_stat_activity 의 트랜잭션 스냅샷 가설은 실험 두 번으로 기각했다 (modeling-concurrency-m8.md 19.9)
+     */
+    private static String lockWaitCounts(JdbcTemplate jdbc) {
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
+        String caller;
+        try {
+            boolean postgres = jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
+            if (!postgres) return "PostgreSQL 전용";
+            caller = String.valueOf(jdbc.queryForObject(sql, Integer.class));
+        } catch (Exception e) {
+            caller = "확인 불가 : " + e.getClass().getSimpleName();
+        }
+        return caller + " / " + bounded(() -> String.valueOf(jdbc.queryForObject(sql, Integer.class)));
     }
 
     /** CompletableFuture.supplyAsync(실행기 없음)는 공용 풀에서 돈다 : 풀 스레드가 모두 막혀 있으면 B 가 시작조차 못 한다 (M8-C4b — RelationSync S 시나리오가 이 풀을 쓴다) */

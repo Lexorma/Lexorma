@@ -834,48 +834,53 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .toList();
         syncColumnIndexes(projectId, tableIds, ownColumns, Set.of());
 
-        // 대상 컬럼 : 이 테이블들의 컬럼(참조를 지웠을 수도 있음) + 이 테이블들을 참조하는 컬럼(대상 PK 가 바뀌었을 수 있음)
-        Map<Long, ColumnInfo> candidates = new LinkedHashMap<>();
-        ownColumns.forEach(c -> candidates.put(c.getId(), c));
-        if (!tableNames.isEmpty()) {
-            columnInfoRepository.findAllReferencing(projectId, tableNames).forEach(c -> candidates.putIfAbsent(c.getId(), c));
+        // 참조 대상 잠금 (M8-C4b-R1, docs/ongoing/modeling-concurrency-m8.md 18장) : 새로 만들거나 대상이 바뀌는 관계의 대상 테이블 행·대상 PK 컬럼 행을 PostgreSQL FOR KEY SHARE 로
+        // <b>읽기 전에</b> 잡고 다시 계산한다. 관계 INSERT 의 FK 검사가 원래 같은 두 행에 같은 잠금을 걸었다 (M7-FK-D11 14.3) — 시점만 '읽은 뒤 INSERT 때' 에서 '읽기 전' 으로 당긴 것이다.
+        // 그 행을 키 강도(FOR UPDATE)로 바꾸는 쓰기(PK 컬럼 삭제·테이블 이름 변경·스키마 이동·물리명 적용·원본 삭제 반영)는 모두 프로젝트 배타를 먼저 잡고 이 행을 NOWAIT 로 잡으므로,
+        // 그쪽이 먼저면 여기서 커밋을 기다린 뒤 최신 이름·PK 로 다시 계산하고(예전 : 지워지는 PK 로 관계를 만들어 FK 위반 500, 바뀌기 전 이름으로 관계를 만들어 참조 테이블명과 어긋남),
+        // 이쪽이 먼저면 그쪽이 기다리지 않고 409 다 (기존 D09 계약). KEY SHARE 는 일반 쓰기의 FOR NO KEY UPDATE·다른 동기화의 KEY SHARE 와 함께 잡혀, 서로 다른 테이블을 참조하는
+        // 일반 저장끼리(양방향 참조 포함)는 서로 기다리지 않는다 — 기다릴 상대는 기다리지 않는 구조 변경뿐이라 순환이 없다. 잠근 뒤 대상이 또 바뀌면 그 대상도 잠그고 다시 계산한다 (세 번까지, 그래도 바뀌면 409).
+        // 대상이 그대로인 관계·지우는 관계는 잠그지 않는다 (예전처럼 — 잠금 범위를 넓히지 않는다). H2 는 KEY SHARE 가 없어 이 잠금 대신 커밋 직전 경계가 프로젝트 행을 잡은 뒤 다시 맞춘다 (ReferenceSyncBoundary)
+        boolean keyShare = !(dialect() instanceof org.hibernate.dialect.H2Dialect);
+        Set<Long> sharedTables = new HashSet<>();
+        Set<Long> sharedColumns = new HashSet<>();
+        Set<Long> sharedSchemas = new HashSet<>();
+        ReferencePlan plan;
+        for (int round = 0; ; round++) {
+            plan = referencePlan(projectId, tableIds, tableNames, ownColumns);
+            if (plan == null || !keyShare) break;
+            // 대상 테이블 : 새로 만들거나 대상이 바뀌는 관계의 대상 + 참조가 그 테이블로 해석되지만 지금 PK 가 하나가 아니어서 관계를 만들지 않는 대상 (M8-C4b-R2 —
+            // 그 테이블의 PK 구성 변경(N→Y, 복합 일부 해제)이 진행 중이면 그 커밋을 기다린 뒤 다시 계산해 관계를 빠뜨리지 않는다)
+            Set<TableInfo> targetTables = new LinkedHashSet<>();
+            plan.newTargets().values().forEach(c -> targetTables.add(c.getTableInfo()));
+            targetTables.addAll(plan.keyless());
+            Set<Long> tables = targetTables.stream().map(TableInfo::getId).filter(id -> !sharedTables.contains(id)).collect(Collectors.toCollection(java.util.TreeSet::new));
+            Set<Long> columns = plan.newTargets().values().stream().map(ColumnInfo::getId).filter(id -> !sharedColumns.contains(id)).collect(Collectors.toCollection(java.util.TreeSet::new));
+            // 스키마 행도 (스키마 이름 변경이 키 강도로 잡는다 — 스키마명.테이블명 해석이 바뀐다)
+            Set<Long> schemas = targetTables.stream().map(TableInfo::getSchema).filter(Objects::nonNull).map(SchemaInfo::getId)
+                    .filter(id -> !sharedSchemas.contains(id)).collect(Collectors.toCollection(java.util.TreeSet::new));
+            if (tables.isEmpty() && columns.isEmpty() && schemas.isEmpty()) break;
+            if (round == 3) throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
+            // 종류 사이 순서 : 스키마 → 테이블 → 컬럼 (공통 정책), 같은 종류는 ID 순. 다시 계산해 새로 생긴 대상이 이미 잡은 같은 종류의 행보다 작은 ID 면 순서가 뒤집히므로
+            // 그 행은 기다리지 않는다(NOWAIT — 바쁘면 409). 큰 ID 는 순서대로라 기다려도 된다 (M8-C4b-R2 R2-D05, 19.6)
+            keyShare("TB_SCHM", "SCHM_SN", schemas, sharedSchemas);
+            keyShare("TB_TBL", "TBL_SN", tables, sharedTables);
+            keyShare("TB_COL", "COL_SN", columns, sharedColumns);
+            sharedSchemas.addAll(schemas);
+            sharedTables.addAll(tables);
+            sharedColumns.addAll(columns);
         }
-        // + 이 테이블들을 대상으로 만들어져 있는 관계의 컬럼 (테이블명이 바뀌어 더 이상 그 이름을 참조하지 않을 수 있다)
-        Set<Long> targetingColumnIds = relationRepository.findAllByProjectIdAndRelationSourceAndTargetTable_IdIn(projectId, TableRelation.Source.REF_COLUMN, tableIds).stream()
-                .map(TableRelation::getDerivedColumnId)
-                .filter(id -> id != null && !candidates.containsKey(id))
-                .collect(Collectors.toSet());
-        if (!targetingColumnIds.isEmpty()) {
-            columnInfoRepository.findAllById(targetingColumnIds).forEach(c -> candidates.putIfAbsent(c.getId(), c));
-        }
-        if (candidates.isEmpty()) return;
-
-        Map<Long, TableRelation> existing = relationRepository.findAllByDerivedColumnIdIn(candidates.keySet()).stream()
-                .collect(Collectors.toMap(TableRelation::getDerivedColumnId, Function.identity()));
-
-        Set<String> refNames = candidates.values().stream()
-                .map(c -> TableNameResolver.tableNameOf(c.getRefTableName()))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        List<TableInfo> namedTables = refNames.isEmpty() ? List.of() : tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, refNames);
-        Set<Long> targetIds = namedTables.stream().map(TableInfo::getId).collect(Collectors.toSet());
-        Map<Long, List<ColumnInfo>> pkByTable = targetIds.isEmpty() ? Map.of()
-                : columnInfoRepository.findAllByTableInfo_IdInAndIsPkTrue(targetIds).stream()
-                    .collect(Collectors.groupingBy(c -> c.getTableInfo().getId()));
+        if (plan == null) return;
+        Map<Long, ColumnInfo> candidates = plan.candidates();
+        Map<Long, TableRelation> existing = plan.existing();
+        List<TableInfo> namedTables = plan.namedTables();
+        Map<Long, List<ColumnInfo>> pkByTable = plan.pkByTable();
+        Map<Long, ColumnInfo> newTargets = plan.newTargets();
 
         // 역방향 중복 방지 (M7-INH D-INH-12, docs/completed/inheritance-reference-key-m7.md 6장) : 새로 만들거나 대상 키가 바뀌는 REF_COLUMN 관계와 같은 컬럼 쌍
         // (자식 컬럼 1개 → 같은 부모 PK 컬럼)의 다른 관계(USER 등)가 이미 있으면 만들지 않고 거절한다 — 기존 관계를 지우거나 바꾸지 않는다. 대상이 그대로인 관계(이름만 따라가는 경우)는
         // 보지 않는다 (예전 중복 데이터가 이름 변경을 막지 않게). 참조 테이블명을 쓰는 경로(컬럼 등록·일괄 저장·엑셀·이름 변경·생성·가져오기)와 관계를 만드는 경로(관계 등록·FK 보정·
         // 상속 FK 보정)는 모두 자식 테이블 행을 먼저 잠그므로 이 검사와 반대쪽 검사(buildRelation 의 참조 테이블명 컬럼 거절)가 서로 직렬화된다
-        Map<Long, ColumnInfo> newTargets = new LinkedHashMap<>();
-        for (ColumnInfo column : candidates.values()) {
-            TableRelation relation = existing.get(column.getId());
-            ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());
-            if (targetPk == null) continue;
-            boolean sameTarget = relation != null && relation.getColumns().get(0).getTargetColumn() != null
-                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId());
-            if (!sameTarget) newTargets.put(column.getId(), targetPk);
-        }
         if (!newTargets.isEmpty()) {
             Set<Long> sourceTables = candidates.values().stream().filter(c -> newTargets.containsKey(c.getId())).map(c -> c.getTableInfo().getId()).collect(Collectors.toSet());
             for (TableRelation other : entityManager.createQuery("select distinct r from TableRelation r join fetch r.columns where r.projectId = :projectId and r.sourceTable.id in :tables"
@@ -924,6 +929,199 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             relation.getColumns().get(0).setTargetColumn(targetPk);
             relationRepository.save(relation);
         }
+    }
+
+    /**
+     * 동기화 계획 : 대상 컬럼(최신), 그 컬럼의 기존 REF_COLUMN 관계(최신), 이름으로 찾은 참조 대상 테이블(최신), 대상 PK, 새로 만들거나 대상이 바뀌는 관계 (컬럼 ID → 대상 PK),
+     * 참조가 해석되지만 PK 가 하나가 아니어서 관계가 없는(만들지 않는) 대상 테이블
+     */
+    private record ReferencePlan(Map<Long, ColumnInfo> candidates, Map<Long, TableRelation> existing, List<TableInfo> namedTables,
+                                 Map<Long, List<ColumnInfo>> pkByTable, Map<Long, ColumnInfo> newTargets, Set<TableInfo> keyless) {
+    }
+
+    /** 계획을 DB 의 지금 값으로 계산한다 (잠근 뒤 다시 부르면 그 사이 커밋된 변경을 본다). 대상 컬럼이 없으면 null */
+    private ReferencePlan referencePlan(Long projectId, Collection<Long> tableIds, Set<String> tableNames, List<ColumnInfo> ownColumns) {
+        // 대상 컬럼 : 이 테이블들의 컬럼(참조를 지웠을 수도 있음) + 이 테이블들을 참조하는 컬럼(대상 PK 가 바뀌었을 수 있음)
+        Map<Long, ColumnInfo> candidates = new LinkedHashMap<>();
+        ownColumns.forEach(c -> candidates.put(c.getId(), c));
+        if (!tableNames.isEmpty()) {
+            columnInfoRepository.findAllReferencing(projectId, tableNames).forEach(c -> candidates.putIfAbsent(c.getId(), c));
+        }
+        // + 이 테이블들을 대상으로 만들어져 있는 관계의 컬럼 (테이블명이 바뀌어 더 이상 그 이름을 참조하지 않을 수 있다)
+        Set<Long> targetingColumnIds = relationRepository.findAllByProjectIdAndRelationSourceAndTargetTable_IdIn(projectId, TableRelation.Source.REF_COLUMN, tableIds).stream()
+                .map(TableRelation::getDerivedColumnId)
+                .filter(id -> id != null && !candidates.containsKey(id))
+                .collect(Collectors.toSet());
+        if (!targetingColumnIds.isEmpty()) {
+            columnInfoRepository.findAllById(targetingColumnIds).forEach(c -> candidates.putIfAbsent(c.getId(), c));
+        }
+        freshColumns(candidates);
+        if (candidates.isEmpty()) return null;
+
+        Map<Long, TableRelation> existing = new LinkedHashMap<>(relationRepository.findAllByDerivedColumnIdIn(candidates.keySet()).stream()
+                .collect(Collectors.toMap(TableRelation::getDerivedColumnId, Function.identity())));
+        freshRelations(existing);
+
+        Set<String> refNames = candidates.values().stream()
+                .map(c -> TableNameResolver.tableNameOf(c.getRefTableName()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<TableInfo> namedTables = refNames.isEmpty() ? List.of() : freshTables(tableInfoRepository.findAllByProjectIdAndTableNameIn(projectId, refNames));
+        Set<Long> targetIds = namedTables.stream().map(TableInfo::getId).collect(Collectors.toSet());
+        Map<Long, List<ColumnInfo>> pkByTable = targetIds.isEmpty() ? Map.of()
+                : columnInfoRepository.findAllByTableInfo_IdInAndIsPkTrue(targetIds).stream()
+                    .collect(Collectors.groupingBy(c -> c.getTableInfo().getId()));
+
+        Map<Long, ColumnInfo> newTargets = new LinkedHashMap<>();
+        Set<TableInfo> keyless = new LinkedHashSet<>();
+        for (ColumnInfo column : candidates.values()) {
+            TableRelation relation = existing.get(column.getId());
+            ColumnInfo targetPk = referencedPk(column, namedTables, pkByTable, relation == null ? null : relation.getTargetTable().getId());
+            if (targetPk == null) {
+                // 해석은 되는데 PK 가 하나가 아니다 (없음·복합) : 관계가 없고 지금은 만들지 않는다 — 그 테이블의 PK 구성이 바뀌는 중이면 기다려 다시 본다
+                if (relation == null && column.getTableInfo() != null && notBlank(column.getRefTableName())) {
+                    TableNameResolver.Result target = TableNameResolver.resolve(column.getRefTableName(), column.getTableInfo().getSchema(), namedTables, null);
+                    if (target.status() == TableNameResolver.Status.FOUND && !target.table().getId().equals(column.getTableInfo().getId())) keyless.add(target.table());
+                }
+                continue;
+            }
+            boolean sameTarget = relation != null && relation.getColumns().get(0).getTargetColumn() != null
+                    && relation.getColumns().get(0).getTargetColumn().getId().equals(targetPk.getId());
+            if (!sameTarget) newTargets.put(column.getId(), targetPk);
+        }
+        return new ReferencePlan(candidates, existing, namedTables, pkByTable, newTargets, keyless);
+    }
+
+    /**
+     * PostgreSQL FOR KEY SHARE (ID 순) — 관계 INSERT 의 FK 검사와 같은 강도. 키를 바꾸는 쓰기가 쥐고 있으면 그 커밋을 기다린다.
+     * 이미 잡은 같은 종류의 행(held)보다 작은 ID 는 순서가 뒤집힌 획득이라 NOWAIT (바쁘면 409 — 기다리면 ID 순으로 잡는 다른 트랜잭션과 순환할 수 있다)
+     */
+    private void keyShare(String table, String key, Set<Long> ids, Set<Long> held) {
+        if (ids.isEmpty()) return;
+        long maxHeld = held.stream().mapToLong(Long::longValue).max().orElse(Long.MIN_VALUE);
+        List<Long> below = ids.stream().filter(id -> id < maxHeld).sorted().toList();
+        List<Long> above = ids.stream().filter(id -> id >= maxHeld).sorted().toList();
+        if (!below.isEmpty()) {
+            com.lexorma.data.physical.sync.ModelRowLocks.noWait(() -> {
+                lockRows("select " + key + " from " + table + " where " + key + " in (:ids) order by " + key + " for key share nowait", below);
+                return null;
+            });
+        }
+        lockRows("select " + key + " from " + table + " where " + key + " in (:ids) order by " + key + " for key share", above);
+    }
+
+    private void lockRows(String sql, List<Long> sorted) {
+        for (int from = 0; from < sorted.size(); from += 1000) {
+            entityManager.createNativeQuery(sql).setParameter("ids", sorted.subList(from, Math.min(from + 1000, sorted.size()))).getResultList();
+        }
+    }
+
+    private org.hibernate.dialect.Dialect dialect() {
+        return entityManager.getEntityManagerFactory().unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class).getJdbcServices().getDialect();
+    }
+
+    /**
+     * 대상 컬럼을 DB 의 지금 값으로 맞춘다 (M8-C4b-R1). 같은 트랜잭션이 앞에서 읽어 둔 컬럼은 영속성 컨텍스트의 예전 값을 돌려받는다 — 그 사이 다른 트랜잭션의 테이블 이름 변경·
+     * 스키마 이름 변경이 이 컬럼의 참조 테이블명을 고쳐 커밋했으면, 예전 이름으로 계산해 멀쩡한 관계를 지웠다. 참조 테이블명·소속 테이블이 DB 와 다른 컬럼만 다시 읽고, 지워진 컬럼은 뺀다.
+     * 위에서 flush 했으므로 이 트랜잭션의 변경은 DB 와 같아 다시 읽히지 않는다 (잃지 않는다). 비교는 ID·참조 테이블명 스칼라 조회 한 번 (1,000개씩)
+     */
+    private void freshColumns(Map<Long, ColumnInfo> candidates) {
+        if (candidates.isEmpty()) return;
+        Map<Long, Object[]> current = new HashMap<>();
+        List<Long> ids = new ArrayList<>(candidates.keySet());
+        for (int from = 0; from < ids.size(); from += 1000) {
+            for (Object[] row : entityManager.createQuery("select c.id, c.refTableName, c.tableInfo.id from ColumnInfo c where c.id in :ids", Object[].class)
+                    .setParameter("ids", ids.subList(from, Math.min(from + 1000, ids.size()))).getResultList()) {
+                current.put((Long) row[0], row);
+            }
+        }
+        for (Long id : ids) {
+            ColumnInfo column = candidates.get(id);
+            Object[] now = current.get(id);
+            if (now == null) {
+                candidates.remove(id);
+                continue;
+            }
+            Long tableId = column.getTableInfo() == null ? null : column.getTableInfo().getId();
+            if (!Objects.equals(now[1], column.getRefTableName()) || !Objects.equals(now[2], tableId)) {
+                try {
+                    entityManager.refresh(column);
+                } catch (EntityNotFoundException e) {
+                    candidates.remove(id);
+                }
+            }
+        }
+    }
+
+    /**
+     * 기존 REF_COLUMN 관계를 DB 의 지금 값으로 맞춘다 (M8-C4b-R1) : 대상 테이블·관계명·대상 컬럼(첫 쌍)이 DB 와 다르면 다시 읽고, 지워진 관계는 뺀다.
+     * 대상 컬럼은 네이티브로 비교한다 (JPQL 경로 조인은 지워진 대상 컬럼을 가리키는 행 — H2 의 고아 관계 컬럼 — 을 걸러 '없는 관계' 로 오인한다)
+     */
+    private void freshRelations(Map<Long, TableRelation> existing) {
+        if (existing.isEmpty()) return;
+        Map<Long, Object[]> current = new HashMap<>();
+        List<Long> relationIds = existing.values().stream().map(TableRelation::getId).toList();
+        for (int from = 0; from < relationIds.size(); from += 1000) {
+            for (Object row : entityManager.createNativeQuery("select r.REL_SN, r.TRGT_TBL_SN, r.REL_NM, rc.TRGT_COL_SN from TB_TBL_REL r left join TB_TBL_REL_COL rc on rc.REL_SN = r.REL_SN and rc.COL_ORD = 1"
+                            + " where r.REL_SN in (:ids)").setParameter("ids", relationIds.subList(from, Math.min(from + 1000, relationIds.size()))).getResultList()) {
+                Object[] values = (Object[]) row;
+                current.put(((Number) values[0]).longValue(), values);
+            }
+        }
+        for (Map.Entry<Long, TableRelation> entry : List.copyOf(existing.entrySet())) {
+            TableRelation relation = entry.getValue();
+            Object[] now = current.get(relation.getId());
+            if (now == null) {
+                existing.remove(entry.getKey());
+                continue;
+            }
+            Long targetTable = now[1] == null ? null : ((Number) now[1]).longValue();
+            Long targetColumn = now[3] == null ? null : ((Number) now[3]).longValue();
+            ColumnInfo seenColumn = relation.getColumns().isEmpty() ? null : relation.getColumns().get(0).getTargetColumn();
+            boolean same = relation.getTargetTable() != null && Objects.equals(targetTable, relation.getTargetTable().getId())
+                    && Objects.equals(now[2], relation.getRelationName()) && Objects.equals(targetColumn, seenColumn == null ? null : seenColumn.getId());
+            if (!same) {
+                try {
+                    entityManager.refresh(relation);
+                } catch (EntityNotFoundException e) {
+                    existing.remove(entry.getKey());
+                }
+            }
+        }
+    }
+
+    /**
+     * 참조 대상 테이블과 그 스키마를 DB 의 지금 값으로 맞춘다 (M8-C4b-R1). 이름으로 찾은 조회 자체는 DB 기준이지만, 같은 트랜잭션이 앞에서(참조 테이블명 모호성 검사 등) 읽어 둔
+     * 엔티티는 영속성 컨텍스트의 예전 값(예 : 이름 변경 전 스키마명)을 그대로 돌려준다. 이름·스키마·스키마명이 DB 와 다른 테이블만 다시 읽는다 (위에서 flush 했으므로 이 트랜잭션의 변경은 잃지 않는다)
+     */
+    private List<TableInfo> freshTables(List<TableInfo> tables) {
+        if (tables.isEmpty()) return tables;
+        Map<Long, Object[]> current = new HashMap<>();
+        List<Long> ids = tables.stream().map(TableInfo::getId).toList();
+        for (int from = 0; from < ids.size(); from += 1000) {
+            for (Object[] row : entityManager.createQuery("select t.id, t.tableName, s.id, s.schemaName from TableInfo t left join t.schema s where t.id in :ids", Object[].class)
+                    .setParameter("ids", ids.subList(from, Math.min(from + 1000, ids.size()))).getResultList()) {
+                current.put((Long) row[0], row);
+            }
+        }
+        List<TableInfo> fresh = new ArrayList<>();
+        for (TableInfo table : tables) {
+            Object[] now = current.get(table.getId());
+            if (now == null) continue; // 지워졌다 : 대상이 아니다
+            SchemaInfo schema = table.getSchema();
+            boolean same = Objects.equals(now[1], table.getTableName()) && Objects.equals(now[2], schema == null ? null : schema.getId())
+                    && Objects.equals(now[3], schema == null ? null : schema.getSchemaName());
+            if (!same) {
+                try {
+                    entityManager.refresh(table);
+                    if (table.getSchema() != null) entityManager.refresh(table.getSchema());
+                } catch (EntityNotFoundException e) {
+                    continue;
+                }
+            }
+            fresh.add(table);
+        }
+        return fresh;
     }
 
     /**

@@ -106,7 +106,14 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         // 물리명 추천 일괄 적용(프로젝트 배타 뒤 이 행을 NOWAIT), 논리 → 물리 생성(M7-D39). 아래 이름 중복 검사는 이 잠금 뒤의 최신 상태로 한다 —
         // 같은 테이블에 같은 이름을 동시에 등록하거나, 그 이름으로 다른 컬럼의 이름을 바꾸는 적용과 함께 커밋되지 않는다 (M-7 물리명 일괄 적용 2차 후속, 2026-11-21).
         // 예전에는 새 PK 컬럼일 때만 잠갔다 (PK 가 아닌 등록은 업무 설명 직접 편집처럼 테이블 행을 쥔 짧은 작업을 이제 기다린다)
-        TableInfo tableInfo = columnInfoDto.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(columnInfoDto.getTableInfoId(), projectId).orElse(null);
+        // 새 PK 컬럼 등록은 PK 구성을 바꾸는 구조 변경이다 (M8-C4b-R2 R2-D01) : 일괄 저장의 PK 변경과 같은 경로 (프로젝트 배타 → 테이블·소속 컬럼·참조 컬럼 NOWAIT, 바쁘면 409)
+        TableInfo tableInfo;
+        if (columnInfoDto.getTableInfoId() != null && isY(columnInfoDto.getIsPk())) {
+            tableInfo = lockForKeyChange(projectId, List.of(columnInfoDto.getTableInfoId()), Set.of(),
+                    columnInfoRepository.findIdsByTableIds(List.of(columnInfoDto.getTableInfoId()))).stream().findFirst().orElse(null);
+        } else {
+            tableInfo = columnInfoDto.getTableInfoId() == null ? null : tableInfoRepository.findForUpdate(columnInfoDto.getTableInfoId(), projectId).orElse(null);
+        }
         StandardTerm standardTerm = standardTermRepository.findByIdAndProjectId(columnInfoDto.getTermId(), projectId);
 
         // 테이블/표준용어를 선택하지 않았거나 다른 프로젝트의 정보면 등록할 수 없다.
@@ -330,17 +337,40 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         // (업로드 A 청크 1 = T1 → 청크 2 = T2, 업로드 B 청크 1 = T2 → 청크 2 = T1 — PostgreSQL 40P01 재현). 파일을 한 번 먼저 읽어 대상 테이블명만 모으고
         // (행은 메모리에 두지 않는다), 그 테이블 행을 모두 ID 순으로 잠근 뒤 청크 처리를 시작한다. 청크·저장·전체 롤백은 그대로다
         Set<String> writtenTables = new HashSet<>();
-        // 첫 열(테이블명)만 값으로 만든다 (나머지 칸은 읽고 버린다 — 할당을 줄인다)
-        ExcelUtils.readExcelRows(file, 0, List.of(tableExcelHeaders.get(0)), FIRST_ROW, row -> {
+        // PK 행(PK 여부 Y)을 적은 테이블 (M8-C4b-R2) : 새 PK 컬럼 = PK 구성 변경. 같은 첫 읽기에서 모은다 (DB 잠금 전 — 파일 읽기 동안 잠그지 않는다)
+        Set<String> pkTables = new HashSet<>();
+        // 첫 열(테이블명)과 PK 여부 열만 값으로 만든다 (나머지 칸은 읽고 버린다 — 할당을 줄인다)
+        ExcelUtils.readExcelRows(file, 0, tableExcelHeaders.subList(0, tableExcelHeaders.indexOf("isPk") + 1), FIRST_ROW, row -> {
             String written = row.get("tableName");
-            if (written != null && !written.isEmpty()) writtenTables.add(written.toUpperCase());
+            if (written != null && !written.isEmpty()) {
+                writtenTables.add(written.toUpperCase());
+                if ("Y".equals(row.get("isPk"))) pkTables.add(written.toUpperCase());
+            }
         });
         resolveUploadTables(projectId, writtenTables, tableIdByName, tableNameById, ambiguousTableNames);
         Set<Long> lockedTables = new HashSet<>();
-        writtenTables.stream().map(tableIdByName::get).filter(Objects::nonNull).distinct().sorted().forEach(id -> {
-            tableInfoRepository.findForUpdate(id, projectId);
-            lockedTables.add(id);
-        });
+        List<Long> uploadTables = writtenTables.stream().map(tableIdByName::get).filter(Objects::nonNull).distinct().sorted().toList();
+        Set<Long> keyTables = pkTables.stream().map(tableIdByName::get).filter(Objects::nonNull).collect(Collectors.toCollection(java.util.TreeSet::new));
+        boolean keyMode = !keyTables.isEmpty();
+        if (keyMode) {
+            // PK 행이 있는 업로드만 구조 변경 경로 (R2-D02 — PK 행이 없는 업로드는 예전처럼 테이블 행을 기다린다) : 프로젝트 배타(맨 먼저) → 업로드 테이블 NOWAIT(ID 순) →
+            // PK 가 바뀌는 테이블은 키 강도 NOWAIT → 그 테이블을 참조 테이블명으로 가리키는 컬럼 NOWAIT. 업로드 전체가 한 트랜잭션(전체 롤백)이라 배타는 커밋까지 쥔다 —
+            // 잠금은 파일 첫 읽기·테이블명 해석이 끝난 뒤에 잡는다 (파일 읽기 동안 쥐지 않는다)
+            projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+            projectWriteGuard.lock(projectId);
+            rowLocks.tablesNoWait(uploadTables);
+            rowLocks.tablesForKeyChange(keyTables);
+            Set<String> names = tableInfoRepository.findAllById(keyTables).stream().flatMap(t -> TableNameResolver.namesOf(t).stream()).collect(Collectors.toSet());
+            if (!names.isEmpty()) {
+                rowLocks.columnsNoWait(columnInfoRepository.findAllReferencing(projectId, names).stream().map(ColumnInfo::getId).toList());
+            }
+            lockedTables.addAll(uploadTables);
+        } else {
+            uploadTables.forEach(id -> {
+                tableInfoRepository.findForUpdate(id, projectId);
+                lockedTables.add(id);
+            });
+        }
         confirmUploadTables(projectId, writtenTables, tableIdByName, tableNameById, ambiguousTableNames);
 
         // 청크(500행) 단위 : 테이블/용어/중복은 청크당 IN 조회 한 번씩, 저장은 JDBC 배치, 저장 후 영속성 컨텍스트 비우기
@@ -350,9 +380,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             loadColumnUploadReferences(projectId, columnRows, tableIdByName, tableNameById, ambiguousTableNames, termIdsByColumnName);
             // 이 청크가 컬럼을 더할 테이블 행은 위에서 업로드 전체 기준으로 이미 ID 순으로 잠갔다 (단건 등록과 같은 공통 잠금 — 그 뒤에 이미 있는 컬럼을 읽는다).
             // 먼저 읽은 테이블 집합에 없는 테이블은 없어야 하지만, 있으면 여기서 잠근다
-            columnRows.stream().map(map -> tableIdByName.get(map.get("tableName").toUpperCase())).filter(java.util.Objects::nonNull).distinct().sorted()
-                    .filter(id -> !lockedTables.contains(id))
-                    .forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
+            List<Long> unlocked = columnRows.stream().map(map -> tableIdByName.get(map.get("tableName").toUpperCase())).filter(java.util.Objects::nonNull).distinct().sorted()
+                    .filter(id -> !lockedTables.contains(id)).toList();
+            // 구조 변경 경로(프로젝트 배타)에서는 기다리지 않는다
+            if (keyMode) rowLocks.tablesNoWait(unlocked);
+            else unlocked.forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
             Set<String> existingColumns = findExistingColumns(projectId, columnRows, tableIdByName);
 
             List<ColumnInfo> columnInfos = new ArrayList<>();
@@ -706,8 +738,10 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         // 지운 PK 를 다른 저장의 관계 동기화가 참조(KEY SHARE)하고, 그 저장이 지운 PK 를 이쪽 동기화가 참조하던 교차 교착(40P01)을 없앤다. 다른 저장은 예전 그대로다
         Set<Long> requestedDeletes = request.getDeletedIds() == null ? Set.of()
                 : request.getDeletedIds().stream().filter(Objects::nonNull).collect(Collectors.toCollection(java.util.TreeSet::new));
-        boolean keyChange = request.getTableInfoId() != null && !requestedDeletes.isEmpty()
-                && !columnInfoRepository.findPkColumnIds(projectId, requestedDeletes).isEmpty();
+        // 구조 변경 판정 (M7-FK-D11 + M8-C4b-R2 R2-D01) : 저장 전후의 실제 PK 구성이 달라지면 — PK 컬럼 삭제, PK 여부 N→Y·Y→N, 새 PK 컬럼 — 구조 변경 경로다.
+        // 요청에 PK 컬럼이 들어 있다는 것만으로는 아니다 (설명만 고친 PK 행·Y→Y·N→N·unchanged 행·승인된 행(값을 쓰지 않는다)은 일반 저장). DB 의 저장 상태(스칼라 조회)와 비교한다
+        boolean keyChange = request.getTableInfoId() != null
+                && changesPrimaryKey(projectId, request.getTableInfoId(), request.getRows(), requestedDeletes);
         TableInfo tableInfo;
         if (keyChange) {
             List<Long> own = columnInfoRepository.findIdsByTableIds(List.of(request.getTableInfoId()));
@@ -738,8 +772,9 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             }
         }
 
-        // 잠그기 전에는 PK 가 아니던 삭제 대상이 잠근 뒤 PK 다 (그 사이 다른 저장이 바꿨다) : 이 행 잠금을 쥔 채 프로젝트 배타를 뒤늦게 잡지 않고 409 로 끝낸다 (D11)
-        if (!keyChange && deletedIds.stream().map(existing::get).anyMatch(column -> column != null && Boolean.TRUE.equals(column.getIsPk()))) {
+        // 잠그기 전에는 PK 구성을 바꾸지 않던 저장이 잠근 뒤에는 바꾼다 (그 사이 다른 저장이 PK 를 바꿨다 — 지울 컬럼이 PK 가 됐거나, 보낸 PK 여부가 이제 지금 값과 다르다) :
+        // 이 행 잠금을 쥔 채 프로젝트 배타를 뒤늦게 잡지 않고(잠금 승격 없음) 409 로 끝낸다 (D11 · R2). 전체 롤백 — 다시 읽고 다시 저장하면 구조 변경 경로로 간다
+        if (!keyChange && changesPrimaryKey(existing, request.getRows(), deletedIds)) {
             throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
         }
 
@@ -918,10 +953,55 @@ public class ColumnManageServiceImpl implements ColumnManageService {
      * 이 뒤 관계 동기화가 새 참조 관계로 거는 KEY SHARE 는 대상 테이블 행과 대상 PK 컬럼 행뿐이다. 그 행을 키 강도로 잡는 쓰기(PK 컬럼 삭제·이름 변경·스키마 이동·
      * 원본 삭제 반영)는 모두 프로젝트 배타를 먼저 잡으므로 여기서 기다릴 상대가 없다. 잠근 테이블 엔티티를 돌려준다 (ID 순)
      */
+    /**
+     * 일괄 저장이 실제 PK 구성을 바꾸는가 (잠그기 전 — DB 의 저장 상태를 스칼라로 읽는다, 영속성 컨텍스트에 옛 상태를 남기지 않는다) (M8-C4b-R2 R2-D01).
+     * 바꾸는 것 : 지금 PK 인 컬럼 삭제 / 기존 행의 PK 여부가 지금 값과 다름 / PK 여부 Y 인 새 행. 바꾸지 않는 것 : unchanged 행, 승인된 컬럼의 행(값을 쓰지 않는다),
+     * 요청에 없는 기존 컬럼, 다른 테이블·없는 컬럼의 행(행 오류가 된다). PK 순서는 PK 구성에 넣지 않는다 (FK 가 참조하는 키는 컬럼 집합 — TableDdlGenerator.referencesKey)
+     */
+    private boolean changesPrimaryKey(Long projectId, Long tableId, List<ColumnBulkSaveDto.Row> rows, Set<Long> deletes) {
+        // PK 컬럼 삭제 (D11 의 기존 판정 그대로 — ID 만 읽는 스칼라 조회)
+        if (!deletes.isEmpty() && !columnInfoRepository.findPkColumnIds(projectId, deletes).isEmpty()) return true;
+        Map<Long, Object[]> current = new HashMap<>();
+        for (Object[] row : columnInfoRepository.findPkStates(projectId, tableId)) {
+            current.put((Long) row[0], row);
+        }
+        for (ColumnBulkSaveDto.Row row : rows == null ? List.<ColumnBulkSaveDto.Row>of() : rows) {
+            if (row.getId() == null) {
+                if (isY(row.getIsPk())) return true;
+                continue;
+            }
+            Object[] now = current.get(row.getId());
+            if (now == null || Boolean.TRUE.equals(row.getUnchanged()) || Boolean.TRUE.equals(now[2]) || deletes.contains(row.getId())) continue;
+            if (isY(row.getIsPk()) != Boolean.TRUE.equals(now[1])) return true;
+        }
+        return false;
+    }
+
+    /** 같은 판정을 잠근 뒤 다시 읽은 컬럼으로 (잠그기 전 판정과 달라졌는지 보려고) */
+    private static boolean changesPrimaryKey(Map<Long, ColumnInfo> existing, List<ColumnBulkSaveDto.Row> rows, Set<Long> deletes) {
+        for (Long id : deletes) {
+            ColumnInfo column = existing.get(id);
+            if (column != null && Boolean.TRUE.equals(column.getIsPk())) return true;
+        }
+        for (ColumnBulkSaveDto.Row row : rows == null ? List.<ColumnBulkSaveDto.Row>of() : rows) {
+            if (row.getId() == null) {
+                if (isY(row.getIsPk())) return true;
+                continue;
+            }
+            ColumnInfo column = existing.get(row.getId());
+            if (column == null || Boolean.TRUE.equals(row.getUnchanged()) || Boolean.TRUE.equals(column.getIsApproval()) || deletes.contains(row.getId())) continue;
+            if (isY(row.getIsPk()) != Boolean.TRUE.equals(column.getIsPk())) return true;
+        }
+        return false;
+    }
+
     private List<TableInfo> lockForKeyChange(Long projectId, java.util.Collection<Long> tableIds, java.util.Collection<Long> deletedIds, java.util.Collection<Long> ownColumnIds) {
         projectRepository.findByIdForUpdate(projectId).orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
         projectWriteGuard.lock(projectId);
         List<TableInfo> tables = rowLocks.tablesNoWait(tableIds).stream().filter(t -> projectId.equals(t.getProjectId())).toList();
+        // PK 구성이 바뀌는 테이블 행은 키 강도로도 잡는다 (M8-C4b-R2) : 다른 저장의 관계 동기화는 이 테이블을 참조하는 관계를 계산하기 전에 이 행을 KEY SHARE 로 잡으므로
+        // (PhysicalModelServiceImpl.syncReferenceRelations), 이쪽이 먼저면 그쪽이 커밋을 기다렸다가 바뀐 PK 로 계산하고, 그쪽이 먼저면 이쪽이 기다리지 않고 409 다
+        rowLocks.tablesForKeyChange(tables.stream().map(TableInfo::getId).toList());
         rowLocks.columnsForKeyChange(deletedIds);
         // 이 저장이 고칠 수 있는 소속 컬럼은 읽기 전에 잠근다 (잠근 뒤 읽은 상태로 판정·저장)
         Set<Long> own = new java.util.TreeSet<>(ownColumnIds);

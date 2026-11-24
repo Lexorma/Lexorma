@@ -407,7 +407,8 @@ class ColumnManageServiceImplTest {
             verify(entityManager).getReference(TableInfo.class, 11L);
             // 청크마다 두 번 : 저장 직후 컬럼명 UNIQUE(UX_COL_01) 최종 방어 확인 (M7-U01), 관계 동기화 뒤 비우기 전
             verify(entityManager, org.mockito.Mockito.times(2)).flush();
-            verify(entityManager).clear();
+            // 비우기 두 번 : 테이블 행을 잠근 뒤 테이블명을 최신 데이터로 다시 해석하기 전 (M8-C4b P-03), 청크 저장 뒤
+            verify(entityManager, org.mockito.Mockito.times(2)).clear();
             // 테이블의 컬럼 목록 컬렉션은 건드리지 않는다 (FK 기준)
             assertThat(order.getColumns()).isEmpty();
         }

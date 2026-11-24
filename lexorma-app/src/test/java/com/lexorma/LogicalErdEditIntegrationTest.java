@@ -129,14 +129,14 @@ class LogicalErdEditIntegrationTest {
                 .containsExactly(tuple("등급번호", true, "회원_번호", null), tuple("등급명", false, null, "문자"), tuple("메모", false, null, null));
         rejected(() -> service.saveAttribute(admin, new Attribute(null, grade.id(), "등급명", null, null, false, null, null, null, null, null)), ErrorCode.SAVED_DATA_EXISTS);
         service.saveAttribute(admin, new Attribute(name, grade.id(), "등급 이름", "이름", "문자", true, null, memberId.getId(), null, null, null));
-        service.reorderAttributes(admin, grade.id(), List.of(memo, name, no));
+        service.reorderAttributes(admin, grade.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(memo, name, no)));
         assertThat(graphEntity(admin, model, "회원 등급").attributes()).extracting(GraphAttribute::name, GraphAttribute::isRequired, GraphAttribute::termName)
                 .containsExactly(tuple("메모", false, null), tuple("등급 이름", true, "회원_아이디"), tuple("등급번호", true, "회원_번호"));
         service.saveAttribute(admin, new Attribute(name, grade.id(), "등급 이름", "이름", "문자", true, null, null, null, null, null));
         assertThat(attribute(admin, model, "회원 등급", "등급 이름").termId()).isNull();
         // 다른 엔터티의 속성을 섞은 순서 변경은 거절되고 순서는 그대로다
         Long orderNo = service.saveAttribute(admin, new Attribute(null, order.id(), "주문번호", null, null, true, null, null, null, null, null)).id();
-        assertThatThrownBy(() -> service.reorderAttributes(admin, grade.id(), List.of(memo, name, orderNo))).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> service.reorderAttributes(admin, grade.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(memo, name, orderNo)))).isInstanceOf(CustomException.class);
         assertThat(graphEntity(admin, model, "회원 등급").attributes()).extracting(GraphAttribute::id).containsExactly(memo, name, no);
         assertThat(service.selectLayout(admin, model.id())).as("속성 편집은 배치를 바꾸지 않는다").isEqualTo(withNew);
 
@@ -172,7 +172,7 @@ class LogicalErdEditIntegrationTest {
         assertThatThrownBy(() -> controller.deleteEntity(viewer, order.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, order.id()), currentBase.entityComposition(viewer, order.id()))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.saveAttribute(viewer, new Attribute(null, grade.id(), "뷰어 속성", null, null, false, null, null, null, null, null))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.deleteAttribute(viewer, name, currentBase.of(com.lexorma.data.logical.domain.entity.LogicalAttribute.class, name))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.reorderAttributes(viewer, grade.id(), List.of(no, name, memo))).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.reorderAttributes(viewer, grade.id(), tools.jackson.databind.node.JsonNodeFactory.instance.arrayNode())).isInstanceOf(AccessDeniedException.class);
         assertThat(controller.saveLayout(viewer, model.id(), new Layout(null, Map.of(grade.id(), new Point(1, 2)), VIEWPORT)).getBody().version()).isNotNull();
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "931", "ROLE_USER");
         Entity userEntity = controller.saveEntity(user, new Entity(null, model.id(), "사용자 엔터티", null, null, null, null)).getBody();
@@ -194,7 +194,7 @@ class LogicalErdEditIntegrationTest {
         rejected(() -> service.deleteEntity(other, grade.id(), null, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.saveAttribute(other, new Attribute(null, grade.id(), "침입", null, null, false, null, null, null, null, null)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
         rejected(() -> service.deleteAttribute(other, name, null), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
-        rejected(() -> service.reorderAttributes(other, grade.id(), List.of(no, name, memo)), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
+        rejected(() -> service.reorderAttributes(other, grade.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(no, name, memo))), ErrorCode.LOGICAL_MODEL_IS_NOT_DEFINED);
 
         // ---- 삭제 : 참조를 정리한 뒤에만 지워지고, ERD 조회와 배치 조회에서 빠진다 (다른 노드의 위치는 그대로)
         SecurityTestSupport.loginAs(projectRepository, projectId, admin.getId(), "ROLE_ADMIN");

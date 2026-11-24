@@ -341,6 +341,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
             tableInfoRepository.findForUpdate(id, projectId);
             lockedTables.add(id);
         });
+        confirmUploadTables(projectId, writtenTables, tableIdByName, tableNameById, ambiguousTableNames);
 
         // 청크(500행) 단위 : 테이블/용어/중복은 청크당 IN 조회 한 번씩, 저장은 JDBC 배치, 저장 후 영속성 컨텍스트 비우기
         ExcelUtils.readExcelRowsInChunks(file, 0, tableExcelHeaders, FIRST_ROW, ExcelUtils.UPLOAD_CHUNK_SIZE, rows -> {
@@ -525,6 +526,38 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 if (target.status() == TableNameResolver.Status.FOUND) tableNameById.put(target.table().getId(), target.table().getTableName());
                 if (target.status() == TableNameResolver.Status.AMBIGUOUS) ambiguousTableNames.add(written);
             }
+        }
+    }
+
+    /**
+     * 테이블 행을 잠근 뒤 엑셀에 적은 테이블명을 최신 데이터로 다시 해석한다 (M8-C4b P-03). 잠그기 전에 푼 이름 → ID 는 그 사이 커밋된 이름 변경·스키마 이름 변경·삭제를 모른다 :
+     * 예전에는 지워진 테이블 ID 로 넣다 FK 위반(500)이 나거나, 이름이 바뀐 테이블에 예전 이름(TBL_NM 사본)으로 컬럼이 들어갔다.
+     * 잠근 행은 더 이상 이름이 바뀌거나 지워지지 않는다 (이름 변경은 그 행을 NOWAIT 로, 삭제는 대기로 잡는다). 처음 찾은 이름만 다시 본다 :
+     * <ul>
+     *   <li>같은 테이블 → 최신 테이블명으로 (대소문자만 바뀐 이름 변경 포함)</li>
+     *   <li>이제 없음·여러 스키마 → 처음부터 그랬던 것처럼 행 검증의 기존 오류 (대상 없음 400 — 그 변경 뒤에 올린 파일과 같은 결과)</li>
+     *   <li>같은 이름이 다른 테이블 (지우고 같은 이름으로 다시 만듦·다른 스키마로 이동 뒤 같은 이름 생성) → 409. 이름만 보고 다른 테이블에 넣지 않는다</li>
+     * </ul>
+     * 처음에 못 찾은 이름은 그대로 둔다 (그 사이 생긴 테이블은 잠그지 않았다 — 기존 대상 없음 오류). 영속성 컨텍스트에는 첫 조회의 테이블이 남아 있어 비운다 (아직 쓴 것이 없다)
+     */
+    private void confirmUploadTables(Long projectId, Set<String> writtenTables, Map<String, Long> tableIdByName, Map<Long, String> tableNameById,
+                                     Set<String> ambiguousTableNames) {
+        if (tableIdByName.values().stream().noneMatch(Objects::nonNull)) return;
+        entityManager.clear();
+        Map<String, Long> freshIds = new HashMap<>();
+        Map<Long, String> freshNames = new HashMap<>();
+        Set<String> freshAmbiguous = new HashSet<>();
+        resolveUploadTables(projectId, writtenTables.stream().filter(name -> tableIdByName.get(name) != null).collect(Collectors.toSet()), freshIds, freshNames, freshAmbiguous);
+        for (String written : writtenTables.stream().sorted().toList()) {
+            Long before = tableIdByName.get(written);
+            if (before == null) continue;
+            Long now = freshIds.get(written);
+            if (now != null && !now.equals(before)) {
+                throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "업로드를 시작한 뒤 {0} 이(가) 다른 테이블로 바뀌어 업로드하지 않았습니다. 테이블을 확인한 뒤 다시 업로드해주세요.", written);
+            }
+            tableIdByName.put(written, now);
+            if (now == null && freshAmbiguous.contains(written)) ambiguousTableNames.add(written);
+            if (now != null) tableNameById.put(now, freshNames.get(now));
         }
     }
 
@@ -815,6 +848,13 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         int created = 0;
         int updated = 0;
         int order = 0;
+        // 요청에 없는 기존 컬럼 (M8-C4b P-05) : 편집기를 연 뒤 다른 사용자가 더한 컬럼이다 (편집기는 순서를 바꾸는 저장이면 기존 행 전부를 보낸다 — M8-D04).
+        // 그 컬럼의 값·순서는 건드리지 않고, 이 저장이 매기는 번호가 그 컬럼의 번호와 겹치지 않게 비켜 간다 (예전에는 1..n 으로 매겨 같은 순서가 둘 생겼다).
+        // 요청에 없는 컬럼이 없으면 번호는 예전과 같다. 번호를 연속으로 맞추거나 기존 겹침을 정리하지는 않는다
+        Set<Long> inRequest = rows.stream().map(ColumnBulkSaveDto.Row::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Integer> heldOrders = existing.values().stream()
+                .filter(column -> !inRequest.contains(column.getId()) && !deletedIds.contains(column.getId()) && column.getSortOrder() != null)
+                .map(ColumnInfo::getSortOrder).collect(Collectors.toSet());
 
         for (ColumnBulkSaveDto.Row row : rows) {
             if (row.getId() != null) {
@@ -830,14 +870,15 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     // 단, 순서가 비어 있는 컬럼(예전 데이터)은 화면 순서대로 채운다. 비워 두면 목록 끝으로 밀려
                     // 새로 추가한 컬럼이 승인 컬럼보다 앞에 보인다. (값을 바꾸는 것이 아니라 없는 값을 채우는 것)
                     if (column.getSortOrder() == null) {
-                        column.setSortOrder(++order);
+                        order = nextOrder(order, heldOrders);
+                        column.setSortOrder(order);
                     } else {
                         order = Math.max(order, column.getSortOrder());
                     }
                     continue;
                 }
 
-                order++;
+                order = nextOrder(order, heldOrders);
                 if (applyRow(column, row, order)) updated++;
                 continue;
             }
@@ -851,7 +892,8 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                     .build();
             column.setTableInfo(tableInfo);
             column.setStandardTerms(term);
-            applyRow(column, row, ++order);
+            order = nextOrder(order, heldOrders);
+            applyRow(column, row, order);
 
             columnInfoRepository.save(column);
             tableInfo.getColumns().add(column);
@@ -935,6 +977,13 @@ public class ColumnManageServiceImpl implements ColumnManageService {
      * 행 값을 컬럼에 반영한다. PK 는 NULL 비허용 + 필수 + 고유값으로 본다. (단건 등록 ColumnInfoDto.toEntity 와 같은 규칙)
      * @return 값이 바뀌었는지
      */
+    /** 다음 순서 번호 : 요청에 없는 기존 컬럼(다른 사용자가 더한 컬럼)이 쓰는 번호는 건너뛴다 (M8-C4b P-05) */
+    private static int nextOrder(int order, Set<Integer> held) {
+        int next = order + 1;
+        while (held.contains(next)) next++;
+        return next;
+    }
+
     private static boolean applyRow(ColumnInfo column, ColumnBulkSaveDto.Row row, int sortOrder) {
         boolean pk = isY(row.getIsPk());
         List<Object> before = snapshot(column);

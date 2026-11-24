@@ -387,6 +387,11 @@ final class EnglishMessages {
         add("화면을 연 뒤 이 테이블의 컬럼이 추가되거나 삭제되어 순서를 저장하지 않았습니다. 컬럼 순서 변경을 다시 열어 주세요.", "Columns were added to or deleted from this table after you opened this screen, so the order was not saved. Open the column order dialog again.");
         add("화면을 연 뒤 다른 사용자가 컬럼 {0} 의 순서를 바꿔 순서를 저장하지 않았습니다. 컬럼 순서 변경을 다시 열어 주세요.", "Another user changed the position of column {0} after you opened this screen, so the order was not saved. Open the column order dialog again.");
         add("한 테이블의 컬럼 순서만 한 번에 저장할 수 있습니다.", "You can save the column order of only one table at a time.");
+        // M8-C4b : 논리 속성 순서 (L-02) · 컬럼 엑셀 테이블명 해석 (P-03)
+        add("엔터티 {0} 의 속성만 순서를 바꿀 수 있습니다.", "Only attributes of entity {0} can be reordered.");
+        add("화면을 연 뒤 엔터티 {0} 의 속성이 추가되거나 삭제되어 순서를 저장하지 않았습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요.", "Attributes of entity {0} were added or deleted after you opened this screen, so the order was not saved. Reload the latest data and try again.");
+        add("화면을 연 뒤 다른 사용자가 속성 {0} 의 순서를 바꿔 순서를 저장하지 않았습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요.", "Another user changed the position of attribute {0} after you opened this screen, so the order was not saved. Reload the latest data and try again.");
+        add("업로드를 시작한 뒤 {0} 이(가) 다른 테이블로 바뀌어 업로드하지 않았습니다. 테이블을 확인한 뒤 다시 업로드해주세요.", "{0} became a different table after the upload started, so nothing was uploaded. Check the table and upload again.");
         add("한 번에 {0}개 컬럼까지 바꿀 수 있습니다.", "Up to {0} columns can be changed at once.");
         add("같은 컬럼이 두 번 들어 있습니다.", "The same column is included twice.");
         add("{0} : 엑셀 셀에 담을 수 있는 길이({1}자)를 넘는 값이 있어 내려받을 수 없습니다.", "{0} : A value is longer than an Excel cell can hold ({1} characters), so it cannot be downloaded.");

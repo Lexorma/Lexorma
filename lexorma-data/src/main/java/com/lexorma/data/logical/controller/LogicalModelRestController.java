@@ -258,13 +258,19 @@ public class LogicalModelRestController {
         return ResponseEntity.ok(DONE);
     }
 
-    @Operation(summary = "속성 순서 변경", description = "엔터티의 속성 ID 전체를 원하는 순서대로 보낸다")
+    @Operation(summary = "속성 순서 변경", description = "엔터티의 속성 전체를 새 순서대로 [{id, baseSortOrder}] 로 보낸다 (M8-C4b). baseSortOrder 는 화면이 순서를 읽었을 때의 그 속성 정렬 순서(없던 순서는 0) — "
+            + "행마다 필수(없으면 400 MODEL_BASE_REQUIRED, 예전 형식 [id, …] 도 400). 그 사이 순서가 바뀌었거나 속성이 더해지거나 지워졌으면 409, 아무것도 바꾸지 않는다")
     @PreAuthorize("hasRole('USER')")
     @PutMapping("/entity/{entityId}/attribute/order")
     public ResponseEntity<List<LogicalModelDto.Attribute>> reorderAttributes(@AuthenticationPrincipal AccountDto accountDto,
                                                                              @PathVariable(name = "entityId") Long entityId,
-                                                                             @RequestBody List<Long> attributeIds) {
-        return ResponseEntity.ok(logicalModelService.reorderAttributes(accountDto, entityId, attributeIds));
+                                                                             @RequestBody tools.jackson.databind.JsonNode body) {
+        List<LogicalModelDto.AttributeOrder> orders = new java.util.ArrayList<>();
+        if (body != null && body.isArray()) body.forEach(n -> orders.add(n.isObject()
+                ? new LogicalModelDto.AttributeOrder(n.path("id").isNumber() ? n.path("id").asLong() : null, n.path("baseSortOrder").isNumber() ? n.path("baseSortOrder").asInt() : null)
+                : new LogicalModelDto.AttributeOrder(n.isNumber() ? n.asLong() : null, null)));
+        orders.forEach(order -> com.lexorma.common.jpa.ModelBase.require(true, order.baseSortOrder()));
+        return ResponseEntity.ok(logicalModelService.reorderAttributes(accountDto, entityId, orders));
     }
 
     // ------------------------------------------------------------------ 식별자

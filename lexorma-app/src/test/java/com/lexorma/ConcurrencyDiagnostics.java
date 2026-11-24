@@ -17,7 +17,8 @@ import java.util.Map;
  * <ul>
  *   <li>정적 필드로 저장소를 쥔 유틸(AuthUtil)이 이 테스트 컨텍스트의 빈을 가리키는지 — 테스트 JVM 에는 설정이 다른 컨텍스트가 여럿 있어 마지막에 만든 컨텍스트가 덮어쓴다</li>
  *   <li>이 컨텍스트 Hikari 풀 active·idle·pending(연결을 기다리는 스레드)·total</li>
- *   <li>DB 세션 상태별 수와 목록 (PostgreSQL pg_stat_activity / H2 SESSIONS)</li>
+ *   <li>공용 ForkJoin 풀 (실행기 없이 CompletableFuture 를 쓰는 테스트의 B 가 시작했는지) — M8-C4b</li>
+ *   <li>DB 세션 상태별 수와 목록 (PostgreSQL pg_stat_activity / H2 SESSIONS) — 별도 스레드에서 5초까지만 (진단이 연결을 기다리며 멈추지 않게, M8-C4b)</li>
  *   <li>모든 스레드 이름·상태·스택 (JVM 쪽에서 어디서 멈췄는지)</li>
  * </ul>
  */
@@ -31,7 +32,8 @@ final class ConcurrencyDiagnostics {
         out.append("\n=== 동시성 진단 : ").append(phase).append(" · 경과 ").append(Duration.ofNanos(System.nanoTime() - startedNanos).toMillis()).append("ms ===");
         out.append("\n[AuthUtil.projectRepository 가 이 컨텍스트의 빈인가] ").append(authUtilSameContext(contextProjectRepository));
         out.append("\n[Hikari] ").append(hikari(dataSource));
-        out.append("\n[DB 세션] ").append(sessions(jdbc));
+        out.append("\n[ForkJoinPool.commonPool] ").append(commonPool());
+        out.append("\n[DB 세션] ").append(bounded(() -> sessions(jdbc)));
         out.append("\n[스레드]").append(threads());
         return out.toString();
     }
@@ -63,6 +65,34 @@ final class ConcurrencyDiagnostics {
         } catch (Exception e) {
             return "확인 불가 : " + e.getClass().getSimpleName();
         }
+    }
+
+    /**
+     * DB 세션 조회는 연결이 필요하다 : 풀이 고갈된 상황이면 연결을 기다리며(Hikari connectionTimeout) 진단 자체가 멈출 수 있어 별도 스레드에서 5초까지만 기다린다 (M8-C4b).
+     * 시간 안에 끝나지 않으면 그 사실을 남긴다 — 그것도 원인 단서다 (연결 획득 대기)
+     */
+    private static String bounded(java.util.concurrent.Callable<String> work) {
+        java.util.concurrent.ExecutorService single = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "concurrency-diagnostics");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            return single.submit(work).get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            return "5초 안에 끝나지 않음 (연결 획득 대기 가능성 — 위 Hikari pending 참고)";
+        } catch (Exception e) {
+            return "확인 불가 : " + e.getClass().getSimpleName();
+        } finally {
+            single.shutdownNow();
+        }
+    }
+
+    /** CompletableFuture.supplyAsync(실행기 없음)는 공용 풀에서 돈다 : 풀 스레드가 모두 막혀 있으면 B 가 시작조차 못 한다 (M8-C4b — RelationSync S 시나리오가 이 풀을 쓴다) */
+    static String commonPool() {
+        java.util.concurrent.ForkJoinPool pool = java.util.concurrent.ForkJoinPool.commonPool();
+        return "parallelism=" + pool.getParallelism() + " poolSize=" + pool.getPoolSize() + " active=" + pool.getActiveThreadCount()
+                + " running=" + pool.getRunningThreadCount() + " queuedSubmissions=" + pool.getQueuedSubmissionCount() + " queuedTasks=" + pool.getQueuedTaskCount();
     }
 
     private static String sessions(JdbcTemplate jdbc) {

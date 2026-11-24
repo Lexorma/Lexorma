@@ -105,8 +105,13 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         Long projectId = accountDto.getProjectId();
         // 원본(자식) 테이블 행을 먼저 잠그고 같은 구성의 관계를 찾는다 : 누락 FK 보정(같은 행을 NOWAIT 로 잡고 같은 FK 를 만든다)이 다시 계획한 뒤 커밋하기 전에
         // 같은 FK 를 넣으면 중복 FK 가 생겼다 (docs/completed/physical-fk-correction-m7.md 14장). 보정이 끝나면 그 FK 를 보고 중복으로 거절한다
-        TableInfo source = lockTable(projectId, request.sourceTableId());
-        TableInfo target = requireTable(projectId, request.targetTableId());
+        // 대상(부모) 테이블 행도 잠근다 (M8-C4b P-04) : 대상 컬럼 삭제·PK/UNIQUE 구성 변경(일괄 저장·제약조건·인덱스 삭제)은 모두 대상 테이블 행을 잡으므로,
+        // 잡은 뒤 다시 읽은 대상 컬럼·키로 검증한다. 예전에는 원본만 잠가 그 사이 지워진 대상 컬럼을 가리키는 관계(H2 는 고아 관계 컬럼, PostgreSQL 은 커밋 때 FK 위반 500)나
+        // 키가 아닌 대상 FK 가 생겼다. 두 행은 처음부터 함께, 중복 없이 ID 오름차순으로 잡는다 (A → B 와 B → A 를 동시에 등록해도 교착하지 않는다. 자기 참조는 한 번).
+        // 대상 테이블 이름 변경·PK 컬럼 삭제는 프로젝트 배타 뒤 이 행을 NOWAIT 로 잡으므로 등록이 끝날 때까지 409 다 (기다리지 않는다 — ModelRowLocks)
+        Map<Long, TableInfo> locked = lockTablesInIdOrder(projectId, request.sourceTableId(), request.targetTableId());
+        TableInfo source = locked.get(request.sourceTableId());
+        TableInfo target = locked.get(request.targetTableId());
 
         List<PhysicalModelDto.ColumnPair> pairs = request.columns() == null ? List.of() : request.columns();
         if (pairs.isEmpty()) throw invalid("관계 컬럼 쌍을 1개 이상 지정해주세요.");
@@ -575,6 +580,14 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
     private TableInfo lockTable(Long projectId, Long tableId) {
         if (tableId == null) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
         return tableInfoRepository.findForUpdate(tableId, projectId).orElseThrow(() -> new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED));
+    }
+
+    /** 여러 테이블 행을 중복 없이 ID 오름차순으로 잠근다 (M8-C4b). 없거나 다른 프로젝트 테이블이면 대상 없음 400 — 잠근 행을 ID 로 돌려준다 */
+    private Map<Long, TableInfo> lockTablesInIdOrder(Long projectId, Long... tableIds) {
+        if (Arrays.stream(tableIds).anyMatch(Objects::isNull)) throw new CustomException(ErrorCode.TABLE_IS_NOT_DEFINED);
+        Map<Long, TableInfo> locked = new LinkedHashMap<>();
+        Arrays.stream(tableIds).distinct().sorted().forEach(id -> locked.put(id, lockTable(projectId, id)));
+        return locked;
     }
 
     private static void rejectColumnIndex(TableIndex index) {

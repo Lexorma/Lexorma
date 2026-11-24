@@ -468,20 +468,49 @@ public class LogicalModelService {
         entity.getAttributes().removeIf(a -> a.getId().equals(attributeId));
     }
 
-    /** 엔터티의 속성 순서를 attributeIds 순서대로 다시 매긴다. 그 엔터티의 속성 전체를 한 번씩 보내야 한다 */
+    /**
+     * 엔터티의 속성 순서를 요청 목록 순서대로(1부터) 다시 매긴다. 그 엔터티의 속성 전체를 한 번씩 보내야 한다.
+     * M8-C4b (L-02, 물리 컬럼 순서 P-01 과 같은 계약) : 행마다 화면이 본 정렬 순서(baseSortOrder) — 모델 행 잠금(속성을 더하고 지우고 고치는 쓰기의 공통 잠금) →
+     * 속성 행을 ID 순으로 잠가 다시 읽기 → 그 사이 속성이 더해지거나 지워졌으면 409, 한 행이라도 지금 순서가 화면이 본 순서와 다르면 409 (아무것도 바꾸지 않는다).
+     * 기준값을 MDFCN_DT 가 아니라 순서 값으로 둔 이유 : 다른 사용자가 속성의 설명·데이터 유형 등 순서 밖의 값만 고친 것을 충돌로 보지 않기 위해서다.
+     * 순서만 바꾸고 다른 칸은 다시 쓰지 않는다 (잠근 뒤 읽은 값 그대로, 순서가 그대로인 행은 UPDATE 하지 않는다). 내부 호출의 기준값 null 은 검사 밖 (DEC-08 경계 — HTTP 는 필수)
+     */
     @Transactional
-    public List<LogicalModelDto.Attribute> reorderAttributes(AccountDto accountDto, Long entityId, List<Long> attributeIds) {
-        LogicalEntity entity = lockEntity(accountDto.getProjectId(), entityId);
+    public List<LogicalModelDto.Attribute> reorderAttributes(AccountDto accountDto, Long entityId, List<LogicalModelDto.AttributeOrder> orders) {
+        Long projectId = accountDto.getProjectId();
+        if (orders == null || orders.isEmpty()) throw invalid("엔터티의 속성 전체를 한 번씩 지정해주세요.");
+        Map<Long, LogicalModelDto.AttributeOrder> requested = new java.util.LinkedHashMap<>();
+        for (LogicalModelDto.AttributeOrder order : orders) {
+            if (order == null || order.id() == null || requested.putIfAbsent(order.id(), order) != null) throw invalid("엔터티의 속성 전체를 한 번씩 지정해주세요.");
+        }
+        LogicalEntity entity = lockEntity(projectId, entityId);
         rejectApprovedDetail(entity.getIsApproval(), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         subtypeService.requireNoApprovedDescendant(entity, ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        Map<Long, LogicalAttribute> byId = entity.getAttributes().stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
-        if (attributeIds == null || attributeIds.size() != byId.size() || !new HashSet<>(attributeIds).equals(byId.keySet())) {
-            throw invalid("엔터티의 속성 전체를 한 번씩 지정해주세요.");
+        List<LogicalAttribute> current = entity.getAttributes().stream().sorted(java.util.Comparator.comparing(LogicalAttribute::getId)).toList();
+        for (LogicalAttribute attribute : current) entityManager.refresh(attribute, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        Map<Long, LogicalAttribute> byId = current.stream().collect(Collectors.toMap(LogicalAttribute::getId, Function.identity()));
+        for (Long id : requested.keySet()) {
+            if (byId.containsKey(id)) continue;
+            // 다른 엔터티의 속성을 섞어 보냈다 (요청 오류) — 없는 속성은 그 사이 지워진 것이다 (아래 409)
+            Long owner = attributeRepository.findEntityId(id, projectId).orElse(null);
+            if (owner != null && !owner.equals(entity.getId())) throw invalid("엔터티 {0} 의 속성만 순서를 바꿀 수 있습니다.", entity.getEntityName());
         }
-        for (int i = 0; i < attributeIds.size(); i++) {
-            byId.get(attributeIds.get(i)).setSortOrder(i + 1);
+        if (!byId.keySet().equals(requested.keySet())) {
+            throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "화면을 연 뒤 엔터티 {0} 의 속성이 추가되거나 삭제되어 순서를 저장하지 않았습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요.", entity.getEntityName());
         }
-        return attributeIds.stream().map(byId::get).map(LogicalModelDto.Attribute::fromEntity).toList();
+        for (LogicalAttribute attribute : current) {
+            Integer base = requested.get(attribute.getId()).baseSortOrder();
+            int now = attribute.getSortOrder() == null ? 0 : attribute.getSortOrder();
+            if (base != null && base != now) {
+                throw CustomException.withMessage(ErrorCode.MODEL_CONFLICT, "화면을 연 뒤 다른 사용자가 속성 {0} 의 순서를 바꿔 순서를 저장하지 않았습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요.", attribute.getAttributeName());
+            }
+        }
+        List<Long> ids = new java.util.ArrayList<>(requested.keySet());
+        for (int i = 0; i < ids.size(); i++) {
+            LogicalAttribute attribute = byId.get(ids.get(i));
+            if (!Integer.valueOf(i + 1).equals(attribute.getSortOrder())) attribute.setSortOrder(i + 1);
+        }
+        return ids.stream().map(byId::get).map(LogicalModelDto.Attribute::fromEntity).toList();
     }
 
     // ------------------------------------------------------------------ 식별자

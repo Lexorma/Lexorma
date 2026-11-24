@@ -38,6 +38,9 @@ class CommonColumnServiceImplTest {
     @Mock
     StandardTermRepository standardTermRepository;
 
+    @Mock
+    private com.lexorma.core.project.repository.ProjectRepository projectRepository;
+
     @InjectMocks
     CommonColumnServiceImpl service;
 

@@ -74,6 +74,17 @@ public final class LogicalModelDto {
         }
     }
 
+    /**
+     * 속성 순서 변경의 한 행 (M8-C4b L-02) : id = 속성, baseSortOrder = 화면이 순서를 읽었을 때의 그 속성 정렬 순서 (없던 순서는 0).
+     * 요청 목록의 위치가 새 순서다 (1부터)
+     */
+    public record AttributeOrder(Long id, Integer baseSortOrder) {
+        /** 서비스를 직접 부르는 내부 호출·테스트용 : 기준값 없이 (DEC-08 과 같은 경계 — HTTP 는 기준값 필수) */
+        public static List<AttributeOrder> withoutBase(List<Long> ids) {
+            return ids.stream().map(id -> new AttributeOrder(id, null)).toList();
+        }
+    }
+
     /** attributeIds : 식별자를 이루는 속성 (순서대로, 복합 가능). attributeNames 는 조회 전용 */
     public record Identifier(Long id, Long entityId, String identifierName, Boolean isPrimary, List<Long> attributeIds, List<String> attributeNames,
                              java.time.LocalDateTime modifiedAt) {

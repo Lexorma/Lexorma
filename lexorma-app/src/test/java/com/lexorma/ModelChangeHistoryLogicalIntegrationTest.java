@@ -149,8 +149,8 @@ class ModelChangeHistoryLogicalIntegrationTest {
 
         // 순서 변경 : 자리가 바뀐 속성만
         mark = mark();
-        logical.reorderAttributes(admin, member.id(), List.of(name.id(), number.id(), grade.id()));
-        logical.reorderAttributes(admin, member.id(), List.of(name.id(), number.id(), grade.id()));
+        logical.reorderAttributes(admin, member.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(name.id(), number.id(), grade.id())));
+        logical.reorderAttributes(admin, member.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(name.id(), number.id(), grade.id())));
         List<ModelChangeHistory> reordered = since(projectId, mark);
         assertThat(reordered).extracting(ModelChangeHistory::getTargetId).containsExactlyInAnyOrder(name.id(), number.id());
         assertThat(reordered).allSatisfy(h -> assertThat(changedFields(admin, h)).containsExactly("sortOrder"));

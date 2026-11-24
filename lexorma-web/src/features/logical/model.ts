@@ -106,6 +106,16 @@ export interface RelationshipPairs {
   parentKeys?: ParentKey[];
 }
 
+/**
+ * 속성 순서 변경 요청 본문 (M8-C4b L-02) : 화면이 보고 있는 순서에서 index 와 index + delta 를 맞바꾼 새 순서, 행마다 화면이 읽은 정렬 순서(baseSortOrder — 없던 순서는 0).
+ * 서버는 그 사이 순서가 바뀌었거나 속성이 더해지거나 지워졌으면 409 로 아무것도 바꾸지 않는다
+ */
+export function attributeOrderBody(attributes: { id: number; sortOrder: number | null }[], index: number, delta: number) {
+  const rows = attributes.map((a) => ({ id: a.id, baseSortOrder: a.sortOrder ?? 0 }));
+  [rows[index], rows[index + delta]] = [rows[index + delta], rows[index]];
+  return rows;
+}
+
 export interface GraphAttribute {
   id: number;
   name: string;

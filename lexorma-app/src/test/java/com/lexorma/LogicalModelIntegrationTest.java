@@ -155,11 +155,11 @@ class LogicalModelIntegrationTest {
         service.saveAttribute(admin, new Attribute(name.id(), null, "성명", null, "문자", true, null, term.getId(), null, null, null));
 
         // 순서 변경 : 전체를 한 번씩
-        assertThat(service.reorderAttributes(admin, customer.id(), List.of(grade.id(), no.id(), name.id()))).extracting(Attribute::attributeName).containsExactly("등급", "고객번호", "성명");
+        assertThat(service.reorderAttributes(admin, customer.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(grade.id(), no.id(), name.id())))).extracting(Attribute::attributeName).containsExactly("등급", "고객번호", "성명");
         assertThat(service.selectAttributes(admin, customer.id())).extracting(Attribute::attributeName, Attribute::sortOrder)
                 .containsExactly(tuple("등급", 1), tuple("고객번호", 2), tuple("성명", 3));
-        rejected(() -> service.reorderAttributes(admin, customer.id(), List.of(grade.id(), no.id())), ErrorCode.INVALID_LOGICAL_MODEL);
-        rejected(() -> service.reorderAttributes(admin, customer.id(), List.of(grade.id(), no.id(), no.id())), ErrorCode.INVALID_LOGICAL_MODEL);
+        rejected(() -> service.reorderAttributes(admin, customer.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(grade.id(), no.id()))), ErrorCode.MODEL_CONFLICT); // 일부만 = 화면을 연 뒤 구성이 바뀐 것과 구별할 수 없다 (M8-C4b L-02, 컬럼 순서 P-01 과 같다)
+        rejected(() -> service.reorderAttributes(admin, customer.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(grade.id(), no.id(), no.id()))), ErrorCode.INVALID_LOGICAL_MODEL);
 
         // 논리 속성이 쓰는 용어는 지울 수 없다
         rejected(() -> termService.deleteDataDictionaryStandardTerms(List.of(StandardTermDto.builder().id(term.getId()).build()), admin), ErrorCode.RELATION_EXISTS);
@@ -290,7 +290,7 @@ class LogicalModelIntegrationTest {
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, admin.getProjectId(), "920", "ROLE_USER");
         rejected(() -> service.saveAttribute(user, new Attribute(null, employee.id(), "입사일", null, null, null, null, null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.saveAttribute(user, new Attribute(badge.id(), null, "사원번호", null, null, null, null, null, null, null, null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
-        rejected(() -> service.reorderAttributes(user, employee.id(), List.of(badge.id())), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
+        rejected(() -> service.reorderAttributes(user, employee.id(), com.lexorma.data.logical.domain.dto.LogicalModelDto.AttributeOrder.withoutBase(List.of(badge.id()))), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.saveIdentifier(user, new Identifier(null, employee.id(), "사원 식별자", true, List.of(badge.id()), null)), ErrorCode.APPROVED_DATA_CANNOT_BE_UPDATE);
         rejected(() -> service.deleteAttribute(user, badge.id(), null), ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED);
         // 승인 권한이 없는 사용자가 등록한 엔터티·관계는 승인 대기로 들어간다
@@ -423,7 +423,7 @@ class LogicalModelIntegrationTest {
         assertThat(controller.selectGraph(viewer, model.id()).getBody().entities()).hasSize(1);
         assertThatThrownBy(() -> controller.saveModel(viewer, new Model(null, "조회자", null))).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.deleteEntity(viewer, entity.id(), currentBase.of(com.lexorma.data.logical.domain.entity.LogicalEntity.class, entity.id()), currentBase.entityComposition(viewer, entity.id()))).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.reorderAttributes(viewer, entity.id(), List.of())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.reorderAttributes(viewer, entity.id(), tools.jackson.databind.node.JsonNodeFactory.instance.arrayNode())).isInstanceOf(AccessDeniedException.class);
 
         AccountDto user = SecurityTestSupport.loginAs(projectRepository, projectId, "901", "ROLE_USER");
         assertThat(controller.saveEntity(user, new Entity(null, model.id(), "사용자 엔터티", null, null, null, null)).getBody().id()).isNotNull();

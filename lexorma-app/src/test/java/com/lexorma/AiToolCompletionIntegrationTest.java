@@ -76,7 +76,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * AI-4 잔여 기능 (H2 / PostgreSQL) : 유사 컬럼 Tool, 변경 이력 Tool, 토큰 예산, Tool Calling 미지원 모델의 서버 맥락 대체 흐름.
+ * AI-4 잔여 기능 : 유사 컬럼 Tool, 변경 이력 Tool, 토큰 예산, Tool Calling 미지원 모델의 서버 맥락 대체 흐름.
  * 가짜 Ollama(127.0.0.1)가 /api/show(모델 정보)와 /api/chat 을 돌려준다. 질의 전체 누적 상한은 20000 토큰으로 낮춰 둔다 (예산 초과 확인용).
  * <ul>
  *   <li>findSimilarColumns : 정해진 규칙의 점수·사유(물리명·표준 용어·논리명·이름 부분·단어 겹침·도메인), 20건 제한, 다른 프로젝트 제외, 권한 회수, 근거 검증</li>

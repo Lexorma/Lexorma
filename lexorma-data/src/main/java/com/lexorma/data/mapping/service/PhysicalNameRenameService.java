@@ -556,10 +556,10 @@ public class PhysicalNameRenameService {
         return Objects.requireNonNullElse(value, "").trim().toUpperCase(Locale.ROOT);
     }
 
-    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03, H2 오류 코드 50200 (PhysicalGenerationService 와 같은 판정) */
+    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03 (PhysicalGenerationService 와 같은 판정) */
     private static boolean lockNotAvailable(Throwable e) {
         for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState()) || sql.getErrorCode() == 50200;
+            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState());
         }
         return false;
     }

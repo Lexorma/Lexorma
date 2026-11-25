@@ -50,7 +50,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.time.LocalDateTime;
@@ -66,7 +65,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-7 5차 : 스냅샷 9 · 교환 6 의 상속 PK 매핑 보존·하위 호환·참조 재매핑·원자성·격리 (docs/completed/subtype-physical-transformation.md 32장).
  * 모델 버전 복원과 별도 "프로젝트 복사" 서비스는 없다 — 복원은 범위 밖(M-9·M-7 기록), 복사는 지금 프로젝트의 Export 를 다른 프로젝트에 가져오는 교환과 같은 경로(DEC-22 3장)라
- * 복사 검증 = 교환 가져오기 검증이다. 저장된 행을 직접 본다. H2·PostgreSQL 모두에서 돈다.
+ * 복사 검증 = 교환 가져오기 검증이다. 저장된 행을 직접 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -985,10 +984,7 @@ class SubtypePreservationIntegrationTest {
     @Test
     @DisplayName("파일 크기 30MB (바이트 기준) : 정확히 30MB(ASCII·한글 3바이트 채움 모두) 는 읽어 계획하고, 30MB + 1바이트는 거절 — 한글은 글자 수가 30M 보다 훨씬 적어도 바이트로 넘으면 거절, 길이 머리글이 30MB 를 넘으면 읽기 전에 거절. 상속 PK 매핑이 들어간 파일")
     void fileSizeBoundary() {
-        // 30MB 본문을 실제로 읽고 풀어 보므로 여유 힙 100MB 정도가 필요하다. H2 전체 실행은 캐시된 모든 테스트 컨텍스트의 메모리 DB 가 같은 1GB 테스트 힙에 있어
-        // 모자란다 (Java heap space) — PostgreSQL 전체 실행(DB 가 JVM 밖)에서 돌리고, H2 는 이 클래스만 따로 돌려 확인한다 (LEXORMA_EXCHANGE_SIZE_TEST=true)
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("LEXORMA_TEST_POSTGRES_URL") != null || "true".equals(System.getenv("LEXORMA_EXCHANGE_SIZE_TEST")),
-                "30MB 본문 검사는 PostgreSQL 전체 실행 또는 LEXORMA_EXCHANGE_SIZE_TEST=true 에서만");
+        // 30MB 본문을 실제로 읽고 풀어 보므로 여유 힙 100MB 정도가 필요하다 (DB 는 JVM 밖 — 예전 H2 메모리 DB 때의 실행 조건은 DB-1 3차에서 없앴다)
         Scenario s = scenario("pv-size", false);
         AccountDto user = s.f().member();
         SecurityTestSupport.loginAs(context.getBean(com.lexorma.core.project.repository.ProjectRepository.class), user.getProjectId(), user.getId(), "ROLE_ADMIN");

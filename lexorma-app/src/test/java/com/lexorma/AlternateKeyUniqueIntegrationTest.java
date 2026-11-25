@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M7-AK-01~03 보조 식별자 UNIQUE 생성·누락 UNIQUE 보정·보조 식별자 참조 FK (docs/completed/alternate-key-unique-m7.md). H2 / PostgreSQL 같은 기대값.
+ * M7-AK-01~03 보조 식별자 UNIQUE 생성·누락 UNIQUE 보정·보조 식별자 참조 FK (docs/completed/alternate-key-unique-m7.md).
  * 고객(PK 고객 번호) : 보조 식별자 AK_EMAIL(이메일 — 필수 아님 → NULL 경고), AK_BR(지점 코드, 고객 코드 — 복합), AK_DUP(이메일 — AK_EMAIL 과 같은 구성), AK_PK(고객 번호 — PK 와 같음).
  * 주문(PK 주문 번호) : 고객 이메일 → AK_EMAIL 참조 단일 FK, (주문 지점 코드, 주문 고객 코드) → AK_BR 참조 복합 FK.
  */
@@ -131,7 +131,7 @@ class AlternateKeyUniqueIntegrationTest {
         return row(x, CheckGroup.RELATIONSHIP, CheckType.RELATIONSHIP, x.r().get(rel));
     }
 
-    /** UNIQUE 제약조건 : 이름:승인:컬럼(구성 순서) — H2·PostgreSQL 공통으로 Java 에서 잇는다 */
+    /** UNIQUE 제약조건 : 이름:승인:컬럼(구성 순서) — Java 에서 잇는다 */
     private List<String> uniques(long table) {
         List<String> out = new ArrayList<>();
         for (Map<String, Object> c : jdbc.queryForList("select CNSTRT_SN, CNSTRT_NM, APRV_YN from TB_TBL_CNSTRT where TBL_SN = ? and CNSTRT_TYPE_CD = 'UNIQUE' order by CNSTRT_SN", table)) {

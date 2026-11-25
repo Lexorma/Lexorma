@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-15 VIEW 관리 (H2, 실제 JPA·이력·버전) : 독립 모델·정의 SQL 원문 보존·정적 검사(D-23), 출력 컬럼, 참조 객체·순환·삭제 제한(D-24),
+ * M-15 VIEW 관리 (실제 JPA·이력·버전) : 독립 모델·정의 SQL 원문 보존·정적 검사(D-23), 출력 컬럼, 참조 객체·순환·삭제 제한(D-24),
  * TABLE/VIEW 이름 공간, 승인·변경 요청의 원자적 반영, 동시성, 이력·모델 버전, DDL, 프로젝트 격리·권한
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

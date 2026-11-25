@@ -88,7 +88,7 @@ class LogicalM6FinalPerformanceTest {
     @Test
     @DisplayName("규모별 논리 모델·주제 영역·상속 조회와 쓰기, 상속 없는 모델 비교, 큰 그룹")
     void measure() throws IOException {
-        db = isPostgres() ? "postgresql" : "h2";
+        db = "postgresql";
         lines.add("db | model | call | median ms | min~max ms | statements | HQL rows | entity loads | JSON KB | alloc MB | note");
         int[][] sizes = {{100, 10}, {1000, 100}, {3000, 300}, {10000, 1000}};
         for (int[] size : sizes) inherited(size[0], size[1]);
@@ -101,10 +101,6 @@ class LogicalM6FinalPerformanceTest {
         Path out = Path.of("build/reports/m6-final-performance-" + db + ".txt");
         Files.createDirectories(out.getParent());
         Files.write(out, lines);
-    }
-
-    private boolean isPostgres() {
-        return jdbc.queryForObject("select count(*) from information_schema.tables where table_schema = 'pg_catalog'", Integer.class) > 0;
     }
 
     // ------------------------------------------------------------------ 모델별 측정

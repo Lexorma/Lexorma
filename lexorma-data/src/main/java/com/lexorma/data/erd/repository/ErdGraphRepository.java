@@ -29,7 +29,7 @@ public interface ErdGraphRepository {
 
     /**
      * 주어진 테이블별 관계 끝 수 : 원본인 관계 수 + 대상인 관계 수 (관계 행 = FK 제약조건 1개, 컬럼 쌍은 세지 않는다. 자기 참조는 2). 0 이면 키가 없다.
-     * 범위 밖 관계 수 = 이 값 − 양 끝이 범위 안인 관계의 끝 수 (서비스가 계산 — NOT IN 목록은 H2 에서 행마다 목록 전체를 비교해 느리다)
+     * 범위 밖 관계 수 = 이 값 − 양 끝이 범위 안인 관계의 끝 수 (서비스가 계산 — 긴 NOT IN 목록 조건을 쓰지 않는다)
      */
     Map<Long, Long> countRelationEnds(Long projectId, Collection<Long> tableIds);
 

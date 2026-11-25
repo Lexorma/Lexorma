@@ -2,7 +2,6 @@ package com.lexorma.data.mapping.repository;
 
 import org.hibernate.boot.model.FunctionContributions;
 import org.hibernate.boot.model.FunctionContributor;
-import org.hibernate.dialect.H2Dialect;
 import org.hibernate.type.StandardBasicTypes;
 
 /**
@@ -11,13 +10,13 @@ import org.hibernate.type.StandardBasicTypes;
  * <ul>
  *   <li>{@code standard_name_plain(x)} : 1 = x 가 null 이거나 인쇄 가능한 ASCII(U+0020~U+007E)로만 이뤄졌다. 이 범위에서는 SQL {@code trim}(공백만 제거)과 자바 {@code trim}
  *       (U+0020 이하 모두 제거)이 같고, 아래 ASCII 대문자와 {@code equalsIgnoreCase} 가 같다. 탭·줄바꿈·비 ASCII 글자가 하나라도 있으면 0 — 그 행은 서비스가 자바로 판정한다</li>
- *   <li>{@code standard_name_upper(x)} : ASCII a~z 만 A~Z 로. 그냥 {@code upper} 는 로캘(H2 = JVM 기본 로캘, PostgreSQL = DB ctype — 터키어 i → İ)과
- *       Unicode 확장 대문자(ß → SS)를 따르므로 쓰지 않는다. PostgreSQL = {@code upper(x collate "C")} ("C" 정렬 규칙의 대소문자 변환은 ASCII 글자만 — {@code translate} 는
- *       같은 결과지만 9,000행 기준 약 5배 느렸다), H2 = {@code translate} (H2 UPPER 는 정렬 규칙과 관계없이 JVM 로캘)</li>
+ *   <li>{@code standard_name_upper(x)} : ASCII a~z 만 A~Z 로. 그냥 {@code upper} 는 DB ctype 로캘(터키어 i → İ)과
+ *       Unicode 확장 대문자(ß → SS)를 따르므로 쓰지 않는다. {@code upper(x collate "C")} ("C" 정렬 규칙의 대소문자 변환은 ASCII 글자만 — {@code translate} 는
+ *       같은 결과지만 9,000행 기준 약 5배 느렸다)</li>
  * </ul>
  *   <li>{@code standard_name_trim(x)} : 자바 {@code String.trim()} 과 같은 뜻 — 앞뒤의 U+0020 이하 글자(공백·탭·줄바꿈 등 제어 문자)만 지운다. 안쪽 글자와
  *       U+0020 을 넘는 Unicode 공백(U+00A0·U+3000 …)은 그대로 (M7-NAME-1 최종 보완 NAME-F01 — 표준 용어 약어 후보 조회). SQL {@code TRIM} 은 공백만 지우므로 쓰지 않는다.
- *       두 DB 모두 정규식 {@code ^[\x01-\x20]+|[\x01-\x20]+$} 를 빈 문자열로 (U+0000 은 PostgreSQL text 에 저장될 수 없고 H2 도 다루지 않는다)</li>
+ *       정규식 {@code ^[\x01-\x20]+|[\x01-\x20]+$} 를 빈 문자열로 (U+0000 은 PostgreSQL text 에 저장될 수 없다)</li>
  * 컬럼명 중복(DB UNIQUE) 판정은 이 식이 아니라 {@code ColumnNameKeySql}·{@code COL_NM_CMPR_VL} 이다 (NAME-P02 — 섞지 않는다).
  * 등록은 {@code META-INF/services/org.hibernate.boot.model.FunctionContributor}.
  */
@@ -27,24 +26,15 @@ public final class StandardNameSql implements FunctionContributor {
     public static final String UPPER_FUNCTION = "standard_name_upper";
     public static final String TRIM_FUNCTION = "standard_name_trim";
 
-    private static final String LOWER_ASCII = "abcdefghijklmnopqrstuvwxyz";
-    private static final String UPPER_ASCII = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
     @Override
     public void contributeFunctions(FunctionContributions contributions) {
-        // H2 REGEXP_LIKE 는 자바 정규식 : '$' 는 끝의 줄바꿈 앞에서도 맞으므로 입력 끝 '\z' 를 쓴다. PostgreSQL 의 '$' 는 문자열 끝만 (줄바꿈 감지 모드가 아니다)
-        String plain = contributions.getDialect() instanceof H2Dialect
-                ? "(case when ?1 is null or regexp_like(?1, '^[ -~]*\\z') then 1 else 0 end)"
-                : "(case when ?1 is null or ?1 ~ '^[ -~]*$' then 1 else 0 end)";
+        // PostgreSQL 의 '$' 는 문자열 끝만 맞는다 (줄바꿈 감지 모드가 아니다)
+        String plain = "(case when ?1 is null or ?1 ~ '^[ -~]*$' then 1 else 0 end)";
         var integer = contributions.getTypeConfiguration().getBasicTypeRegistry().resolve(StandardBasicTypes.INTEGER);
         var string = contributions.getTypeConfiguration().getBasicTypeRegistry().resolve(StandardBasicTypes.STRING);
         contributions.getFunctionRegistry().registerPattern(PLAIN_FUNCTION, plain, integer);
-        String upper = contributions.getDialect() instanceof H2Dialect ? "translate(?1, '" + LOWER_ASCII + "', '" + UPPER_ASCII + "')" : "upper((?1) collate \"C\")";
-        contributions.getFunctionRegistry().registerPattern(UPPER_FUNCTION, upper, string);
-        // H2 REGEXP_REPLACE 는 기본으로 모두 바꾼다 (자바 정규식 — 입력 끝은 '\z'), PostgreSQL 은 'g' 가 있어야 모두 바꾼다
-        String trim = contributions.getDialect() instanceof H2Dialect
-                ? "regexp_replace(?1, '^[\\x01-\\x20]+|[\\x01-\\x20]+\\z', '')"
-                : "regexp_replace(?1, '^[\\x01-\\x20]+|[\\x01-\\x20]+$', '', 'g')";
-        contributions.getFunctionRegistry().registerPattern(TRIM_FUNCTION, trim, string);
+        contributions.getFunctionRegistry().registerPattern(UPPER_FUNCTION, "upper((?1) collate \"C\")", string);
+        // regexp_replace 는 'g' 가 있어야 모두 바꾼다
+        contributions.getFunctionRegistry().registerPattern(TRIM_FUNCTION, "regexp_replace(?1, '^[\\x01-\\x20]+|[\\x01-\\x20]+$', '', 'g')", string);
     }
 }

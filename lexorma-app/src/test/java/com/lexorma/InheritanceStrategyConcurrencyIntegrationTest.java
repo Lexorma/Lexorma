@@ -10,7 +10,6 @@ import com.lexorma.data.mapping.domain.dto.PhysicalGenerationDto;
 import com.lexorma.data.mapping.service.ModelMappingService;
 import com.lexorma.data.mapping.service.PhysicalGenerationService;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +33,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M-7 상속 A·C PostgreSQL 동시성 (docs/completed/inheritance-strategy-ac-m7.md 7장). PostgreSQL 에서만 (H2 는 행 잠금 강도가 다르다 — 건너뛴다).
+ * M-7 상속 A·C PostgreSQL 동시성 (docs/completed/inheritance-strategy-ac-m7.md 7장).
  * 먼저 시작한 작업 A 를 같은 트랜잭션 안에서 서비스가 끝난 뒤(커밋 전 — 잠금을 쥔 채) 멈추고 작업 B 를 실행해, B 가 잠금을 기다리는지(pg_locks) 또는 기다리지 않고 409 인지 본 뒤 A 를 놓는다.
  * sleep 으로 순서를 정하지 않는다. 시나리오마다 방향별 3번. 허용하지 않는 결과 : 40P01, 중복 테이블·기록·매핑, 부분 적용, 혼합 전략.
  * 번호는 작업 지시(M-7 AC 후속 보완 7.2)의 AC-C01~C18 을 따른다 (2026-11-23 다시 매김 — 예전 C03 = C06, 예전 C08 = C15, 예전 C05·C06·C07 = 추가 시나리오 X01~X03).
@@ -62,9 +61,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
         SecurityTestSupport.clear();
     }
 
-    boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     // ------------------------------------------------------------------ 준비
 
@@ -224,7 +220,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C01·C02 : 같은 계층 A형(C형) 생성 두 건 — 둘째는 프로젝트 행을 기다린 뒤 계획 불일치 409. 테이블·기록·GENERATE 버전은 한 번만 (각 3회)")
     void sameGenerationTwice() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (String strategy : List.of(A, C)) {
             for (int i = 0; i < 3; i++) {
                 M m = model("c01-" + strategy + i);
@@ -244,7 +239,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C06 (예전 번호 C03) : A형 생성 ↔ 분류 값 변경 — 생성 선행이면 변경은 모델 행을 기다린 뒤 성공(생성 뒤 변경은 진단), 변경 선행이면 생성은 NOWAIT 409·아무것도 만들지 않음 (각 3회)")
     void generationVersusClassificationChange() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M m = model("c03a-" + i);
             String token = token(m, A);
@@ -270,7 +264,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C04 (그룹 삭제) : C형 생성 ↔ 상속 그룹 삭제 — 생성 선행이면 삭제는 기다린 뒤 기록 때문에 거절(RELATION_EXISTS), 삭제 선행이면 생성은 409. 기록 없는 그룹·그룹 없는 기록 없음 (각 3회)")
     void generationVersusGroupDelete() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M m = model("c04a-" + i);
             String token = token(m, C);
@@ -295,7 +288,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-X01 (예전 번호 C05, 추가 시나리오) : A형 생성 ↔ 서브타입만 B형으로 생성(혼합) — 둘째는 기다린 뒤 거절, 서브타입 자기 테이블 없음·전략 섞임 없음 (각 3회)")
     void generationVersusMixedStrategy() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M m = model("c05-" + i);
             String token = token(m, A);
@@ -312,7 +304,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-X02 (예전 번호 C06, 추가 시나리오) : C형 같은 상속 일반 속성 매핑 등록 두 건 — 둘째는 매핑 행을 기다린 뒤 SAVED_DATA_EXISTS, 한 행만 (3회)")
     void sameInheritedAttributeMappingTwice() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M m = model("c06-" + i);
             generate(m, token(m, C), C);
@@ -333,7 +324,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-X03 (예전 번호 C07, 추가 시나리오) : 변환 기록 삭제 두 건(관련 매핑을 모두 해제한 뒤) — 둘째는 모델 행을 기다린 뒤 없음(404 계열). 기록 0 (3회)")
     void sameConversionDeleteTwice() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M m = model("c07-" + i);
             generate(m, token(m, A), A);
@@ -352,7 +342,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C15 (예전 번호 C08) : 변환 기록 삭제 ↔ 통합 엔터티의 속성 매핑 재등록 — 재등록 선행이면 삭제는 기다린 뒤 RELATION_EXISTS, 삭제 선행이면 재등록은 기다린 뒤 거절(기록 없는 통합 속성 매핑 없음) (각 3회)")
     void conversionDeleteVersusMergedMapping() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             for (boolean deleteFirst : List.of(false, true)) {
                 M m = model("c08-" + deleteFirst + i);
@@ -505,7 +494,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C03 : 같은 계층 A형·C형 동시 생성 — 둘째는 프로젝트 행을 기다린 뒤 거절(계획 불일치 또는 이미 생성), 전략 하나·테이블 한 벌만 (방향별 3회)")
     void singleVersusConcreteSameTree() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             for (String first : List.of(A, C)) {
                 String second = first.equals(A) ? C : A;
@@ -527,7 +515,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C04 (그룹 변경) : C형 생성 ↔ 상속 그룹 완전·부분 변경 — 생성 선행이면 변경은 모델 행을 기다린 뒤 성공(물리 자동 변경 없음, 진단 대상), 변경 선행이면 생성 NOWAIT 409 (방향별 3회)")
     void generationVersusGroupChange() throws Exception {
-        Assumptions.assumeTrue(postgres());
         bothWays("AC-C04", C, m -> { }, m -> () -> saveGroup(m, false, members(m), null),
                 (m, r) -> {
                     generatedOnce(m, r, "OK", C);
@@ -539,7 +526,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C05 : A형 생성 ↔ 상속 구성원 추가·삭제 — 생성 선행이면 구성원 변경은 기다린 뒤 성공(새 구성원 테이블·매핑 자동 생성 없음), 변경 선행이면 생성 409 (방향별 3회)")
     void generationVersusMemberChange() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] extra = new long[1];
         // 추가
         bothWays("AC-C05 추가", A, m -> extra[0] = entity(m.f(), "특수 회원"), m -> () -> saveGroup(m, null, members(m, extra[0]), null),
@@ -564,7 +550,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C07 : A형 생성 ↔ 분류 속성 변경·삭제 — 변경은 양방향(생성 선행 : 기다린 뒤 성공, 변경 선행 : 생성 409). 분류 속성 삭제는 정책상 항상 거절이라 '삭제 선행' 경합은 만들 수 없다 — 생성 선행에서 기다린 뒤 거절, 단독 삭제 거절을 확인 (방향별 3회)")
     void generationVersusClassificationAttribute() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] other = new long[1];
         bothWays("AC-C07 변경", A, m -> other[0] = m.f().attr(m.member(), "회원 구분 코드", true, "MBR_SE_CD"), m -> () -> saveGroup(m, null, members(m), other[0]),
                 (m, r) -> {
@@ -596,7 +581,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C08 : A형·C형 생성 ↔ 루트 PK 변경·삭제 — 생성 선행이면 PK 변경은 기다린 뒤 성공(물리 PK 자동 변경 없음), PK 변경 선행이면 생성 409 (PK 없는 통합 테이블을 만들지 않는다) (방향별 3회)")
     void generationVersusRootKey() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (String strategy : List.of(A, C)) {
             bothWays("AC-C08 변경", strategy, m -> { }, m -> () -> saveKey(m, m.member(), true, List.of(m.memberNo(), m.memberName())),
                     (m, r) -> {
@@ -624,7 +608,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C09 : A형 생성 ↔ 자체 AK 변경·삭제 — 생성 선행이면 AK 변경은 기다린 뒤 성공(UNIQUE 자동 변경 없음), AK 변경 선행이면 생성 409 (방향별 3회)")
     void generationVersusAlternateKey() throws Exception {
-        Assumptions.assumeTrue(postgres());
         String unique = "select count(*) from TB_TBL_CNSTRT c join TB_TBL t on t.TBL_SN = c.TBL_SN where t.PRJ_SN = ? and c.CNSTRT_TYPE_CD = 'UNIQUE'";
         bothWays("AC-C09 변경", A, m -> { }, m -> () -> saveKey(m, m.corp(), false, List.of(m.bizNo(), m.corpName())),
                 (m, r) -> {
@@ -645,7 +628,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C10 : A형 생성 ↔ 구성원 엔터티 매핑 등록 — 생성 선행이면 매핑은 모델 행을 기다린 뒤 거절(통합 서브타입은 따로 매핑할 수 없다), 매핑 선행이면 생성 409 (방향별 3회)")
     void generationVersusEntityMapping() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] other = new long[1];
         bothWays("AC-C10", A, m -> other[0] = existingTable(m, "고객", "CUST"),
                 m -> () -> mappings.saveEntityMapping(m.f().user, new ModelMappingDto.EntityMapping(null, m.person(), other[0])),
@@ -667,7 +649,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C11 : A형 생성 ↔ 같은 물리명(MBR) 테이블 등록 — 어느 쪽이 먼저든 MBR 은 하나, 뒤 작업은 기다리거나 409·이름 충돌로 거절 (방향별 3회)")
     void generationVersusSameNameTable() throws Exception {
-        Assumptions.assumeTrue(postgres());
         bothWays("AC-C11", A, m -> { }, m -> () -> existingTable(m, "회원", "MBR"),
                 (m, r) -> {
                     assertThat(r[0]).isEqualTo("OK");
@@ -687,7 +668,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C12 : A형 생성 ↔ 다른 테이블을 생성 예정 물리명(MBR)으로 이름 변경 — 둘 다 프로젝트 행에서 직렬화, MBR 은 하나, 뒤 작업은 바뀐 상태를 보고 거절 (방향별 3회)")
     void generationVersusRename() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] other = new long[1];
         bothWays("AC-C12", A, m -> other[0] = existingTable(m, "고객", "CUST"), m -> () -> renameTable(m, other[0], "MBR"),
                 (m, r) -> {
@@ -709,7 +689,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C13 : A형 생성(기존 부모 UNIQUE 를 참조하는 FK) ↔ 그 UNIQUE 삭제 — 생성 선행이면 삭제는 부모 테이블 행을 기다린 뒤 성공(FK 는 남고 FK_KEY_INVALID 진단 — DEC-09), 삭제 선행이면 생성 NOWAIT 409 (방향별 3회)")
     void generationVersusReferencedUnique() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] unique = new long[1];
         long[] branchTable = new long[1];
         bothWays("AC-C13", A, m -> {
@@ -748,7 +727,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C14 : A형 생성 ↔ 같은 프로젝트의 다른 B형 계층 상속 FK 보정 — 둘 다 프로젝트 배타라 직렬화(뒤 작업이 프로젝트 행을 기다린다), 교착 없이 둘 다 성공 (방향별 3회)")
     void generationVersusInheritanceCorrection() throws Exception {
-        Assumptions.assumeTrue(postgres());
         long[] sub = new long[1];
         java.util.function.Function<M, Supplier<Object>> correct = m -> () -> {
             var plan = inheritanceCorrection.preview(m.f().user, new com.lexorma.data.mapping.domain.dto.InheritanceForeignKeyCorrectionDto.Request(m.f().modelId, List.of(sub[0]), null));
@@ -792,7 +770,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C16 : 변환 기록 삭제 ↔ 관련 물리 객체 변경 — 통합 테이블 이름 변경은 양방향 교착 없이 둘 다 성공, 분류 컬럼 삭제는 기록이 보이는 동안 거절 (분류 컬럼 삭제 선행은 정책상 항상 거절이라 경합 불가) (방향별 3회)")
     void conversionDeleteVersusPhysicalChange() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             for (boolean deleteFirst : List.of(true, false)) {
                 M m = model("c16-" + deleteFirst + i);
@@ -835,7 +812,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C17 : A형 생성 ↔ 루트 엔터티 승인 — 생성 선행이면 승인은 모델 행을 기다린 뒤 성공(생성된 테이블은 미승인 그대로), 승인 선행이면 생성 409 (방향별 3회)")
     void generationVersusApproval() throws Exception {
-        Assumptions.assumeTrue(postgres());
         bothWays("AC-C17", A, m -> { }, m -> () -> {
                     logical.updateEntityApproval(m.f().user, m.member(), true, null);
                     return null;
@@ -851,7 +827,6 @@ class InheritanceStrategyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AC-C18 : 독립 상속 계층 동시 생성 — 다른 프로젝트는 서로 기다리지 않고 둘 다 성공, 같은 프로젝트의 다른 계층은 프로젝트 행에서 직렬화(기존 DEC-10 계약)된 뒤 둘 다 성공 (3회)")
     void independentTrees() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             M a = model("c18a-" + i);
             M b = model("c18b-" + i);

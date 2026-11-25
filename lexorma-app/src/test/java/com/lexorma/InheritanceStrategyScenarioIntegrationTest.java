@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-7 상속 A형·C형 시나리오 (docs/completed/inheritance-strategy-ac-m7.md) : 다단계 회원 계층 + 외부 관계(지점 → 회원, 회원·기업 회원·외국 기업 회원 → 주문).
- * 생성 구조·관계 정책(D-AC-09·10·17)·정합성·매핑률(D-AC-16)·보정 차단(D-AC-13)·기록 삭제(D-AC-18)·혼합 차단(D-AC-11)·토큰 무효화·스냅샷 10·교환 7. H2·PostgreSQL 모두에서 돈다.
+ * 생성 구조·관계 정책(D-AC-09·10·17)·정합성·매핑률(D-AC-16)·보정 차단(D-AC-13)·기록 삭제(D-AC-18)·혼합 차단(D-AC-11)·토큰 무효화·스냅샷 10·교환 7.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

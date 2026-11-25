@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-6 1차 : 논리 데이터 모델 (H2 / PostgreSQL, 실제 JPA 매핑·쿼리·제약).
+ * M-6 1차 : 논리 데이터 모델 (실제 JPA 매핑·쿼리·제약).
  * 모델·엔터티·속성·식별자·관계의 등록·수정·삭제 정책, 표준 용어 연결, 논리 ERD, 프로젝트 격리, 권한, 동시 요청, DB 제약을 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -86,7 +86,7 @@ class LogicalModelIntegrationTest {
         assertThat(sales.modelName()).isEqualTo("Sales");
         assertThat(service.saveModel(admin, new Model(sales.id(), "Sales", "영업 논리 모델")).modelDescription()).isEqualTo("영업 논리 모델");
         Model hr = service.saveModel(admin, new Model(null, "인사", null));
-        // 이름순 조회지만 한글·영문 사이의 순서는 DB 정렬 규칙(H2 / PostgreSQL)에 따라 다르다
+        // 이름순 조회지만 한글·영문 사이의 순서는 DB 정렬 규칙(로캘)에 따라 다르다
         assertThat(service.selectModels(admin)).extracting(Model::modelName).containsExactlyInAnyOrder("Sales", "인사");
 
         rejected(() -> service.saveModel(admin, new Model(null, "sales", null)), ErrorCode.SAVED_DATA_EXISTS);

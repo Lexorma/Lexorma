@@ -33,26 +33,25 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 최초 관리자 계정 만들기 (2026-11-19 : V1 에서 기본 계정 admin/admin 제거) : 실제 서버(랜덤 포트) + Security Filter Chain.
  * <p>
  * 다른 통합 테스트는 테스트 전용 Flyway 콜백(db/test-account)으로 admin 계정을 넣지만, 이 테스트는 운영 마이그레이션만 적용한
- * 전용 DB(H2 인메모리 / PostgreSQL 별도 스키마)에서 계정이 하나도 없는 새 설치를 확인한다.
+ * 전용 스키마(테스트 DB 안)에서 계정이 하나도 없는 새 설치를 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class InitialSetupHttpTest {
 
-    private static final String CONFIGURED_URL = System.getProperty("spring.datasource.url", System.getenv("SPRING_DATASOURCE_URL"));
-    private static final boolean POSTGRESQL = CONFIGURED_URL != null && CONFIGURED_URL.startsWith("jdbc:postgresql:");
+    /** 테스트 DB (LEXORMA_TEST_POSTGRES_URL — TestDatabaseGuard 가 확인) 안에 이 클래스 전용 스키마를 만든다 */
+    private static final String CONFIGURED_URL = TestDatabaseGuard.url();
     private static final String SCHEMA = "setup_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    private static final Map<String, String> DB_PROPERTIES = POSTGRESQL
-            ? Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                     "spring.flyway.default-schema", SCHEMA)
-            : Map.of("spring.datasource.url", "jdbc:h2:mem:lexorma-setup;DB_CLOSE_DELAY=-1");
+    private static final Map<String, String> DB_PROPERTIES = CONFIGURED_URL == null ? Map.of()
+            : Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
+                     "spring.flyway.default-schema", SCHEMA);
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         DB_PROPERTIES.forEach((key, value) -> registry.add(key, () -> value));
         // 운영 마이그레이션만 (테스트용 admin 계정 콜백 없음)
-        registry.add("spring.flyway.locations", () -> "classpath:db/migration/{vendor}");
+        registry.add("spring.flyway.locations", () -> "classpath:db/migration/postgresql");
     }
 
     private static final String PASSWORD = "Setup!Pass1";
@@ -81,7 +80,7 @@ class InitialSetupHttpTest {
     @AfterAll
     void cleanup() throws Exception {
         if (PREVIOUS_AUTH_UTIL_REPOSITORY != null) AUTH_UTIL_REPOSITORY.set(null, PREVIOUS_AUTH_UTIL_REPOSITORY);
-        if (POSTGRESQL) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
+        if (CONFIGURED_URL != null) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
     }
 
     @Test

@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.tuple;
 /**
  * D-35 D35-2 : 논리 모델 AI·MCP 공통 조회 ({@link LogicalMetadataService}) — 모델 목록·개요(주제 영역 계층·그룹), 엔터티 검색(영역·하위 포함·미분류·검색어·페이지),
  * 엔터티 상세(상속 구조·유효 속성·상속 주 식별자 순서·보조 식별자·직접/상속 관계), 대상 해석(ID·이름 일치·불일치), 프로젝트·모델 격리, 로그인 세션 없는 조회,
- * 상속 계산 공통화 뒤 화면 응답(editable 포함) 호환, 직렬화 칸. H2·PostgreSQL 모두에서 돈다.
+ * 상속 계산 공통화 뒤 화면 응답(editable 포함) 호환, 직렬화 칸.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

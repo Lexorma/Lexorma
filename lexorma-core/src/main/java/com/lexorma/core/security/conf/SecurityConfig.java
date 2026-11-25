@@ -79,7 +79,7 @@ public class SecurityConfig {
                                 AuthenticatedAuthorizationManager.authenticated(),
                                 AuthorizationManagers.not(AuthorityAuthorizationManager.hasRole("RECOVERY"))))
 
-                        // React 화면(index.html / SPA 경로)과 정적 리소스, Swagger·H2 콘솔(로컬 프로필에서만 활성화)
+                        // React 화면(index.html / SPA 경로)과 정적 리소스, Swagger(로컬 프로필에서만 활성화)
                         .anyRequest().permitAll())
                 .formLogin(form -> form
                         // 화면이 없는 JSON 로그인 : POST /api/auth/login (username, password, project_id - form-urlencoded)

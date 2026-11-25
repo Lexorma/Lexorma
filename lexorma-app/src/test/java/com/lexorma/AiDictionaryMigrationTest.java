@@ -1,32 +1,27 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * AI-5 스키마 신규 설치 (H2 / PostgreSQL) : 업무 설명(TASK_EXPLN)은 비어 있고 원본 COMMENT 칸과 따로 있다.
+ * AI-5 스키마 신규 설치 : 업무 설명(TASK_EXPLN)은 비어 있고 원본 COMMENT 칸과 따로 있다.
  * 제안·이력·실행 테이블은 비어 있다 (자동으로 아무것도 만들지 않는다). 예제 물리 모델에 새 테이블과 업무 설명 컬럼이 있다.
  * (예전 V9 → V10, V3 → V4 업그레이드 검증은 2026-11-15 Flyway 초기화·두 번째 합침으로 V0·V1 만 남아 없어졌다)
  */
 class AiDictionaryMigrationTest {
 
-    @ParameterizedTest(name = "신규 설치 {0} : 예제 테이블·컬럼 모두 업무 설명이 있고 AI 제안 테이블은 비어 있다")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstall(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : 예제 테이블·컬럼 모두 업무 설명이 있고 AI 제안 테이블은 비어 있다")
+    void freshInstall() {
         String schema = "ai_dict_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             flyway.migrate();
             JdbcTemplate db = new JdbcTemplate(dataSource);

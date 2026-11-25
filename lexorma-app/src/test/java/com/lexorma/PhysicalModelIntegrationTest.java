@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-1 물리 모델 (H2, 실제 JPA 매핑·쿼리·FK) : 스키마, 참조 테이블명 → 관계 동기화, 복합 FK·인덱스·제약조건 DDL,
+ * M-1 물리 모델 (실제 JPA 매핑·쿼리·FK) : 스키마, 참조 테이블명 → 관계 동기화, 복합 FK·인덱스·제약조건 DDL,
  * 컬럼 삭제 정책, 프로젝트 격리, 승인 제한
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

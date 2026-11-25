@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-7 3차 : 표준 사전 기반 물리명 추천 (H2 / PostgreSQL, 실제 조회 쿼리).
+ * M-7 3차 : 표준 사전 기반 물리명 추천 (실제 조회 쿼리).
  * 컬럼명(표준 용어 영문약어)·테이블명(표준 단어 + 접두어) 추천과 상태(추천 가능·일치·추천 불가·충돌), 요약 = 목록, 조건·정렬·페이징,
  * 정합성 명칭 진단과의 일치, 표준 용어 변경 후 갱신, 엔터티 ID 조건, 프로젝트 격리, 권한, 조회 후 데이터 불변.
  */

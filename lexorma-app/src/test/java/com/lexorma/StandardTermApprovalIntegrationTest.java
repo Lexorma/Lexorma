@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-5 7차 : 표준 용어 영문약어는 저장값(TRM_ENG_ABBR_NM)으로 조회·표시·수정한다 (단어 약어 조합으로 덮어쓰지 않는다),
  * 승인된 용어는 수정 API 에서도 고칠 수 없고(400 APPROVED_DATA_CANNOT_BE_UPDATE — 테이블·컬럼·논리 모델과 같은 오류), 수정은 승인 여부를 바꾸지 않는다.
- * 승인·승인 취소와 수정은 용어 행 잠금으로 직렬화된다. H2·PostgreSQL 모두에서 돈다.
+ * 승인·승인 취소와 수정은 용어 행 잠금으로 직렬화된다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -472,7 +472,7 @@ class StandardTermApprovalIntegrationTest {
 
     /**
      * first 를 한 트랜잭션에서 실행한 뒤 커밋하지 않고 잡아 두고, 그동안 다른 스레드에서 second 를 실행한다.
-     * second 가 잠깐 동안 끝나지 않으면(행 잠금 대기) first 를 커밋한다. H2 의 잠금 대기 한도(기본 1초) 안에서 끝나도록 짧게 잡는다
+     * second 가 잠깐 동안 끝나지 않으면(행 잠금 대기) first 를 커밋한다.
      */
     private Raced hold(Context context, Runnable first, Runnable second) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);

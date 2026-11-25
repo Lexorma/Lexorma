@@ -1,34 +1,29 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * DEC-31 내장 MCP 설정·토큰·호출 이력 스키마 신규 설치 : 설정 행이 없어 모든 프로젝트의 MCP 가 꺼져 있고, 토큰도 없으며,
  * 프로젝트당 설정 한 행·토큰 해시 UNIQUE·프로젝트 FK 가 DB 제약으로 동작하는지, 예제(프로젝트 0)의 세 테이블이 표준 용어 컬럼(ACTVTN_YN 포함)으로 들어 있는지.
- * 다시 migrate 해도 아무것도 실행되지 않는다. H2 와 PostgreSQL 모두. (예전 V5 → V6 업그레이드 검증은 2026-11-18 세 번째 합침으로 없어졌다)
+ * 다시 migrate 해도 아무것도 실행되지 않는다. (예전 V5 → V6 업그레이드 검증은 2026-11-18 세 번째 합침으로 없어졌다)
  */
 class EmbeddedMcpMigrationTest {
 
-    @ParameterizedTest(name = "신규 설치 {0} : MCP 설정·토큰 제약")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstall(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : MCP 설정·토큰 제약")
+    void freshInstall() {
         String schema = "mcp_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         String s = "\"" + schema + "\".";
         try {
             flyway.migrate();

@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-14 1차 인덱스 관리 (H2, 실제 JPA·동기화·이력) : 컬럼 인덱스 여부 → COLUMN 인덱스(D-19), 미승인 직접 수정·승인된 인덱스 변경 요청(D-20),
+ * M-14 1차 인덱스 관리 (실제 JPA·동기화·이력) : 컬럼 인덱스 여부 → COLUMN 인덱스(D-19), 미승인 직접 수정·승인된 인덱스 변경 요청(D-20),
  * 유형 검증(D-21), 목록·상세·DDL, 프로젝트 격리
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -277,7 +277,7 @@ class IndexManagementIntegrationTest {
     @DisplayName("예제 인덱스 : 화면이 보여 주는 DDL 이 Lexorma 의 실제 create index 문과 같다 (이름·테이블·UNIQUE·컬럼·순서)")
     void seededIndexDdlMatchesRealDefinition() {
         AccountDto admin = SecurityTestSupport.loginAsAdmin(0L);
-        var declared = LexormaIndexSeedTest.declaredIndexes("h2");
+        var declared = LexormaIndexSeedTest.declaredIndexes();
         // 다른 테스트가 프로젝트 0 에 만든 인덱스와 섞이지 않게 초기 등록 행만 본다
         List<Long> ids = jdbc.queryForList("select IDX_SN from TB_TBL_IDX where PRJ_SN = 0 and IDX_SRC_CD = 'USER' and RGTR_ID = 'SYSTEM'", Long.class);
         // 152 : V0 의 create index 전부 (2026-11-18 세 번째 합침까지) + V2 주제 영역 6개 + V3 서브타입 6개 + V4 서브타입 식별자 컬럼 매핑 3개

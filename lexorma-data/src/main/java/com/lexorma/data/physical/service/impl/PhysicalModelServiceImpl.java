@@ -106,7 +106,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         // 원본(자식) 테이블 행을 먼저 잠그고 같은 구성의 관계를 찾는다 : 누락 FK 보정(같은 행을 NOWAIT 로 잡고 같은 FK 를 만든다)이 다시 계획한 뒤 커밋하기 전에
         // 같은 FK 를 넣으면 중복 FK 가 생겼다 (docs/completed/physical-fk-correction-m7.md 14장). 보정이 끝나면 그 FK 를 보고 중복으로 거절한다
         // 대상(부모) 테이블 행도 잠근다 (M8-C4b P-04) : 대상 컬럼 삭제·PK/UNIQUE 구성 변경(일괄 저장·제약조건·인덱스 삭제)은 모두 대상 테이블 행을 잡으므로,
-        // 잡은 뒤 다시 읽은 대상 컬럼·키로 검증한다. 예전에는 원본만 잠가 그 사이 지워진 대상 컬럼을 가리키는 관계(H2 는 고아 관계 컬럼, PostgreSQL 은 커밋 때 FK 위반 500)나
+        // 잡은 뒤 다시 읽은 대상 컬럼·키로 검증한다. 예전에는 원본만 잠가 그 사이 지워진 대상 컬럼을 가리키는 관계(커밋 때 FK 위반 500)나
         // 키가 아닌 대상 FK 가 생겼다. 두 행은 처음부터 함께, 중복 없이 ID 오름차순으로 잡는다 (A → B 와 B → A 를 동시에 등록해도 교착하지 않는다. 자기 참조는 한 번).
         // 대상 테이블 이름 변경·PK 컬럼 삭제는 프로젝트 배타 뒤 이 행을 NOWAIT 로 잡으므로 등록이 끝날 때까지 409 다 (기다리지 않는다 — ModelRowLocks)
         Map<Long, TableInfo> locked = lockTablesInIdOrder(projectId, request.sourceTableId(), request.targetTableId());
@@ -840,15 +840,14 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         // 그쪽이 먼저면 여기서 커밋을 기다린 뒤 최신 이름·PK 로 다시 계산하고(예전 : 지워지는 PK 로 관계를 만들어 FK 위반 500, 바뀌기 전 이름으로 관계를 만들어 참조 테이블명과 어긋남),
         // 이쪽이 먼저면 그쪽이 기다리지 않고 409 다 (기존 D09 계약). KEY SHARE 는 일반 쓰기의 FOR NO KEY UPDATE·다른 동기화의 KEY SHARE 와 함께 잡혀, 서로 다른 테이블을 참조하는
         // 일반 저장끼리(양방향 참조 포함)는 서로 기다리지 않는다 — 기다릴 상대는 기다리지 않는 구조 변경뿐이라 순환이 없다. 잠근 뒤 대상이 또 바뀌면 그 대상도 잠그고 다시 계산한다 (세 번까지, 그래도 바뀌면 409).
-        // 대상이 그대로인 관계·지우는 관계는 잠그지 않는다 (예전처럼 — 잠금 범위를 넓히지 않는다). H2 는 KEY SHARE 가 없어 이 잠금 대신 커밋 직전 경계가 프로젝트 행을 잡은 뒤 다시 맞춘다 (ReferenceSyncBoundary)
-        boolean keyShare = !(dialect() instanceof org.hibernate.dialect.H2Dialect);
+        // 대상이 그대로인 관계·지우는 관계는 잠그지 않는다 (예전처럼 — 잠금 범위를 넓히지 않는다).
         Set<Long> sharedTables = new HashSet<>();
         Set<Long> sharedColumns = new HashSet<>();
         Set<Long> sharedSchemas = new HashSet<>();
         ReferencePlan plan;
         for (int round = 0; ; round++) {
             plan = referencePlan(projectId, tableIds, tableNames, ownColumns);
-            if (plan == null || !keyShare) break;
+            if (plan == null) break;
             // 대상 테이블 : 새로 만들거나 대상이 바뀌는 관계의 대상 + 참조가 그 테이블로 해석되지만 지금 PK 가 하나가 아니어서 관계를 만들지 않는 대상 (M8-C4b-R2 —
             // 그 테이블의 PK 구성 변경(N→Y, 복합 일부 해제)이 진행 중이면 그 커밋을 기다린 뒤 다시 계산해 관계를 빠뜨리지 않는다)
             Set<TableInfo> targetTables = new LinkedHashSet<>();
@@ -1016,10 +1015,6 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
         }
     }
 
-    private org.hibernate.dialect.Dialect dialect() {
-        return entityManager.getEntityManagerFactory().unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class).getJdbcServices().getDialect();
-    }
-
     /**
      * 대상 컬럼을 DB 의 지금 값으로 맞춘다 (M8-C4b-R1). 같은 트랜잭션이 앞에서 읽어 둔 컬럼은 영속성 컨텍스트의 예전 값을 돌려받는다 — 그 사이 다른 트랜잭션의 테이블 이름 변경·
      * 스키마 이름 변경이 이 컬럼의 참조 테이블명을 고쳐 커밋했으면, 예전 이름으로 계산해 멀쩡한 관계를 지웠다. 참조 테이블명·소속 테이블이 DB 와 다른 컬럼만 다시 읽고, 지워진 컬럼은 뺀다.
@@ -1055,7 +1050,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
 
     /**
      * 기존 REF_COLUMN 관계를 DB 의 지금 값으로 맞춘다 (M8-C4b-R1) : 대상 테이블·관계명·대상 컬럼(첫 쌍)이 DB 와 다르면 다시 읽고, 지워진 관계는 뺀다.
-     * 대상 컬럼은 네이티브로 비교한다 (JPQL 경로 조인은 지워진 대상 컬럼을 가리키는 행 — H2 의 고아 관계 컬럼 — 을 걸러 '없는 관계' 로 오인한다)
+     * 대상 컬럼은 네이티브로 비교한다 (JPQL 경로 조인은 지워진 대상 컬럼을 가리키는 행을 걸러 '없는 관계' 로 오인한다)
      */
     private void freshRelations(Map<Long, TableRelation> existing) {
         if (existing.isEmpty()) return;

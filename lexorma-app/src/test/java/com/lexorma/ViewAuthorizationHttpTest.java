@@ -34,20 +34,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * M-15 안정화 : VIEW API 의 역할·승인 권한·프로젝트 격리를 실제 서버(랜덤 포트, Security Filter Chain, 세션·CSRF)로 확인한다.
  * USER = 조회·등록·미승인 수정·삭제·변경 요청·미리보기, 승인·반려 불가(400 APPROVAL_PERMISSION_DENIED).
  * VIEWER = 조회·DDL·ERD 만, 변경 API 는 역할에서 403 ACCESS_DENIED. 다른 프로젝트의 VIEW·요청·테이블 ID 는 찾을 수 없음(400). 로그인 없이는 401.
- * DB 는 ProjectAccessRevokeTest 와 같은 방식으로 이 클래스 전용 (H2 별도 인메모리 / PostgreSQL 별도 스키마).
+ * DB 는 ProjectAccessRevokeTest 와 같은 방식으로 이 클래스 전용 (테스트 DB 안의 별도 스키마).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ViewAuthorizationHttpTest {
 
-    private static final String CONFIGURED_URL = System.getProperty("spring.datasource.url", System.getenv("SPRING_DATASOURCE_URL"));
-    private static final boolean POSTGRESQL = CONFIGURED_URL != null && CONFIGURED_URL.startsWith("jdbc:postgresql:");
+    /** 테스트 DB (LEXORMA_TEST_POSTGRES_URL — TestDatabaseGuard 가 확인) 안에 이 클래스 전용 스키마를 만든다 */
+    private static final String CONFIGURED_URL = TestDatabaseGuard.url();
     private static final String SCHEMA = "viewauth_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    private static final Map<String, String> DB_PROPERTIES = POSTGRESQL
-            ? Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                     "spring.flyway.default-schema", SCHEMA)
-            : Map.of("spring.datasource.url", "jdbc:h2:mem:lexorma-viewauth;DB_CLOSE_DELAY=-1");
+    private static final Map<String, String> DB_PROPERTIES = CONFIGURED_URL == null ? Map.of()
+            : Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
+                     "spring.flyway.default-schema", SCHEMA);
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -108,7 +107,7 @@ class ViewAuthorizationHttpTest {
     @AfterAll
     void restore() throws Exception {
         if (PREVIOUS_AUTH_UTIL_REPOSITORY != null) AUTH_UTIL_REPOSITORY.set(null, PREVIOUS_AUTH_UTIL_REPOSITORY);
-        if (POSTGRESQL) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
+        if (CONFIGURED_URL != null) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
     }
 
     @Test

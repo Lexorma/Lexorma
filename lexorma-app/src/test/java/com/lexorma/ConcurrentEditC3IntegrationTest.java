@@ -13,19 +13,15 @@ import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.column.service.ColumnManageService;
 import com.lexorma.data.logical.domain.dto.LogicalModelDto;
-import com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto;
 import com.lexorma.data.logical.repository.LogicalAttributeRepository;
 import com.lexorma.data.logical.repository.LogicalEntityRepository;
 import com.lexorma.data.logical.service.LogicalModelService;
 import com.lexorma.data.mapping.domain.dto.ModelMappingDto;
 import com.lexorma.data.mapping.repository.AttributeColumnMappingRepository;
 import com.lexorma.data.mapping.service.ModelMappingService;
-import com.lexorma.data.physical.domain.dto.PhysicalModelDto;
 import com.lexorma.data.physical.repository.TableConstraintRepository;
 import com.lexorma.data.physical.service.PhysicalModelService;
-import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.schema.service.SchemaService;
-import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
 import com.lexorma.data.table.service.TableDesignService;
@@ -248,14 +244,13 @@ class ConcurrentEditC3IntegrationTest {
     }
 
     private void awaitDoneOrLockWait(Future<?> work) {
-        String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long started = System.nanoTime();
         long deadline = started + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return;
             // 같은 연결에서 pg_stat_clear_snapshot() 뒤에 센다 (AES-D17 — A 의 트랜잭션 안에서는 pg_stat_activity 가 첫 조회 값으로 고정된다)
-            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql, postgres()) > 0) return;
+            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql) > 0) return;
             try {
                 Thread.sleep(2);
             } catch (InterruptedException e) {
@@ -268,13 +263,6 @@ class ConcurrentEditC3IntegrationTest {
                 + ConcurrencyDiagnostics.describe("B 대기", started, jdbc, dataSource, projectRepository));
     }
 
-    private boolean postgres() {
-        try {
-            return jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private <T> T inTx(Supplier<T> supplier) {
         return tx.execute(s -> supplier.get());

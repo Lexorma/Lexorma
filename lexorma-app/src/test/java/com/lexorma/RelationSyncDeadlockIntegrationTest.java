@@ -41,15 +41,21 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.ClassUtils;
+import org.springframework.jdbc.datasource.ConnectionHolder;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import javax.sql.DataSource;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -59,15 +65,16 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * M7-FK-02 관계 동기화 교착 회귀 (docs/completed/physical-fk-correction-m7.md). PostgreSQL 에서만 (H2 는 FK 검사가 KEY SHARE 를 잡지 않는다).
+ * M7-FK-02 관계 동기화 교착 회귀 (docs/completed/physical-fk-correction-m7.md).
  * 별도 스레드·트랜잭션·연결로, 테스트 전용 대기점(관계 동기화 안 — 쓰기 flush 뒤, 또는 엑셀 두 번째 청크 동기화 직전)에서 한쪽을 멈춰 세운 채 다른 쪽을 실행하고,
- * 다른 쪽이 실제로 잠금을 기다리는지는 pg_stat_activity 로 확인한다 (sleep 으로 순서를 정하지 않는다).
+ * 다른 쪽이 실제로 잠금을 기다리는지는 PostgreSQL 로 확인한다 (sleep 으로 순서를 정하지 않는다). 감시 (DB-1 3차 — postgresql-only-migration.md 50장) :
+ * A 의 PID = 대기점에서 A 트랜잭션에 묶인 연결의 {@code pg_backend_pid()}, B 의 PID = B 스레드가 풀에서 받은 연결마다 그 연결로 읽은 {@code pg_backend_pid()}
+ * ({@link Hooks} 의 DataSource 감시). "B 가 A 를 기다린다" = B 의 백엔드가 {@code pg_blocking_pids} 에 A 를 두고 {@code state = 'active'} 로 같은 문장에서
+ * 두 번 연속 기다린다 ({@link ConcurrencyDiagnostics#confirmedLockWaits}) — DB 의 다른 세션 대기나 '직전 문장 + 지금 대기' 행을 B 의 대기로 보지 않는다.
  * 고치기 전 구현(HEAD c20f2e2)은 S4·S6b 에서 SQLSTATE 40P01 이 났다. 고친 뒤 : S4 = 둘째가 프로젝트 행에서 기다렸다가 둘 다 성공, S6b = 물리명 적용이 기다리지 않고 409.
  * D11 (M7-FK-D11, 기록 14장) : PK 컬럼 삭제 + 상대 참조 추가 일괄 저장 둘은 D11 수정 전 40P01 3/3 이었다 — 지금은 PK 삭제가 구조 변경 경로(프로젝트 배타 + NOWAIT)라 둘째가 프로젝트 행에서 기다린다.
- * 'H2·PostgreSQL' 이 붙은 테스트는 H2 에서도 돈다 (분류·409 계약·업무 오류·판정 재검증).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -80,6 +87,10 @@ class RelationSyncDeadlockIntegrationTest {
     static final ThreadLocal<AtomicInteger> SYNC_CALLS = ThreadLocal.withInitial(AtomicInteger::new);
     static volatile CountDownLatch paused;
     static volatile CountDownLatch release;
+    /** 감시 대상 스레드 → 그 스레드가 풀에서 받은 연결들의 백엔드 PID */
+    static final Map<Thread, Set<Integer>> TRACKED = new ConcurrentHashMap<>();
+    /** 대기점에 멈춘 A 의 트랜잭션 연결 PID (대기점마다 다시 기록) */
+    static volatile Integer pausedPid;
 
     @TestConfiguration
     static class Hooks {
@@ -88,6 +99,22 @@ class RelationSyncDeadlockIntegrationTest {
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String name) {
+                    if (bean instanceof DataSource) {
+                        // 감시 대상 스레드(B)가 받은 연결마다 그 연결로 pg_backend_pid() 를 읽어 둔다 — 다른 연결에서 얻은 PID 를 B 의 것으로 보지 않는다
+                        return Proxy.newProxyInstance(bean.getClass().getClassLoader(), ClassUtils.getAllInterfaces(bean), (proxy, method, args) -> {
+                            Object result;
+                            try {
+                                result = method.invoke(bean, args);
+                            } catch (InvocationTargetException e) {
+                                throw e.getCause();
+                            }
+                            Set<Integer> pids = TRACKED.get(Thread.currentThread());
+                            if (pids != null && method.getName().equals("getConnection") && result instanceof Connection connection) {
+                                pids.add(ConcurrencyDiagnostics.backendPid(connection));
+                            }
+                            return result;
+                        });
+                    }
                     if (bean instanceof PhysicalModelService) {
                         return Proxy.newProxyInstance(bean.getClass().getClassLoader(), ClassUtils.getAllInterfaces(bean), (proxy, method, args) -> {
                             if (method.getName().equals("createGeneratedForeignKey") && ARMED.get(Thread.currentThread()) == Pause.BEFORE_FK_CREATE) {
@@ -143,6 +170,7 @@ class RelationSyncDeadlockIntegrationTest {
         }
 
         private static void hold() {
+            pausedPid = transactionPid();
             paused.countDown();
             try {
                 release.await(30, TimeUnit.SECONDS);
@@ -150,9 +178,23 @@ class RelationSyncDeadlockIntegrationTest {
                 Thread.currentThread().interrupt();
             }
         }
+
+        /** 지금 스레드의 트랜잭션에 묶인 JDBC 연결의 백엔드 PID (없으면 null — 다른 연결을 빌려 대신하지 않는다) */
+        private static Integer transactionPid() {
+            for (Object resource : TransactionSynchronizationManager.getResourceMap().values()) {
+                if (resource instanceof ConnectionHolder holder && holder.getConnectionHandle() != null) {
+                    try {
+                        return ConcurrencyDiagnostics.backendPid(holder.getConnection());
+                    } catch (SQLException e) {
+                        return null;
+                    }
+                }
+            }
+            return null;
+        }
     }
 
-    @Autowired javax.sql.DataSource dataSource;
+    @Autowired DataSource dataSource;
     @Autowired ApplicationContext context;
     @Autowired TableDesignService tables;
     @Autowired ColumnManageService columns;
@@ -169,12 +211,9 @@ class RelationSyncDeadlockIntegrationTest {
     @AfterEach
     void tearDown() {
         ARMED.clear();
+        TRACKED.clear();
         if (release != null) release.countDown();
         SecurityTestSupport.clear();
-    }
-
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
     }
 
     /** 결과 : OK · 오류 코드 · SQLSTATE */
@@ -194,28 +233,24 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     private CompletableFuture<String> async(SecurityContext login, Pause pause, Supplier<Object> work) {
+        return async(login, pause, null, work);
+    }
+
+    /** pids 가 있으면 이 작업 스레드가 받은 연결의 백엔드 PID 를 모은다 (작업 전에 등록 — 첫 문장보다 먼저 기록된다) */
+    private CompletableFuture<String> async(SecurityContext login, Pause pause, Set<Integer> pids, Supplier<Object> work) {
         return CompletableFuture.supplyAsync(() -> {
             SecurityContextHolder.setContext(login);
             if (pause != null) ARMED.put(Thread.currentThread(), pause);
+            if (pids != null) TRACKED.put(Thread.currentThread(), pids);
             SYNC_CALLS.get().set(0);
             try {
                 return outcome(work);
             } finally {
                 ARMED.remove(Thread.currentThread());
+                TRACKED.remove(Thread.currentThread());
                 SecurityContextHolder.clearContext();
             }
         });
-    }
-
-    /** 이 DB 의 다른 연결이 잠금을 기다리기 시작할 때까지 (최대 10초) — 기다리는 문장 */
-    private String waitForLockWait() {
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < until) {
-            List<String> w = jdbc.queryForList("select left(query, 600) from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()", String.class);
-            if (!w.isEmpty()) return String.join(" / ", w);
-            LockSupport.parkNanos(20_000_000);
-        }
-        return null;
     }
 
     /** 대기점에 멈춘 첫 작업 A 와 두 번째 작업 B : B 가 끝나거나 잠금을 기다리기 시작하면 A 를 놓는다. [A 결과, B 결과, B 가 기다린 문장(없으면 null)] */
@@ -225,13 +260,20 @@ class RelationSyncDeadlockIntegrationTest {
         SecurityContext login = SecurityContextHolder.getContext();
         paused = new CountDownLatch(1);
         release = new CountDownLatch(1);
+        pausedPid = null;
         CompletableFuture<String> first = async(login, pause, a);
         assertThat(paused.await(30, TimeUnit.SECONDS)).as("A 가 대기점에 오지 않았다 : " + (first.isDone() ? first.get() : "")).isTrue();
-        CompletableFuture<String> second = async(login, null, b);
+        Integer aPid = pausedPid;
+        if (aPid == null) {
+            release.countDown();
+            throw new AssertionError("A 의 트랜잭션 연결 PID 를 확인하지 못했다 (대기점에 트랜잭션 연결이 없다) — 감시 대상을 정할 수 없다");
+        }
+        Set<Integer> bPids = ConcurrentHashMap.newKeySet();
+        CompletableFuture<String> second = async(login, null, bPids, b);
         String waited = null;
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (!second.isDone() && System.nanoTime() < until) {
-            waited = waitForLockWaitOnce();
+            waited = waitForLockWaitOnce(bPids, aPid);
             if (waited != null) break;
             LockSupport.parkNanos(20_000_000);
         }
@@ -242,9 +284,11 @@ class RelationSyncDeadlockIntegrationTest {
         return new String[]{first.get(60, TimeUnit.SECONDS), second.get(60, TimeUnit.SECONDS), waited};
     }
 
-    private String waitForLockWaitOnce() {
-        List<String> w = jdbc.queryForList("select left(query, 600) from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()", String.class);
-        return w.isEmpty() ? null : String.join(" / ", w);
+    /** B 의 백엔드 중 A 에 막혀 같은 문장에서 두 번 연속 기다리는 것의 문장 (없으면 null). B 가 아직 연결을 받기 전이면 null */
+    private String waitForLockWaitOnce(Set<Integer> bPids, int aPid) {
+        if (bPids.isEmpty()) return null;
+        Map<Integer, String> w = ConcurrencyDiagnostics.confirmedLockWaits(jdbc, Set.copyOf(bPids), Set.of(aPid));
+        return w.isEmpty() ? null : String.join(" / ", w.values());
     }
 
     // ------------------------------------------------------------------ S4 : 테이블 이름 변경 ↔ 테이블 이름 변경
@@ -289,7 +333,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("S4 : 서로 다른 스키마의 테이블 이름 변경 둘 (서로의 새 이름을 미리 참조) — 교착(40P01) 없이 둘째가 프로젝트 행에서 기다렸다가 둘 다 성공하고 관계가 둘 다 생긴다 (3회)")
     void s4TwoRenames() throws Exception {
-        assumeTrue(postgres());
         for (int round = 0; round < 3; round++) {
             S4 x = s4("r" + round);
             String[] r = pausedThen(Pause.AFTER_SYNC_FLUSH, () -> renameTable(x.f(), x.t1(), "TA_NEW"), () -> renameTable(x.f(), x.t2(), "TB_NEW"));
@@ -373,7 +416,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("S6b : 엑셀(501행)이 첫 청크에서 참조 관계를 만든(KEY SHARE) 뒤 멈춘 사이 물리명 일괄 적용 — 적용은 기다리지 않고 409, 엑셀은 끝까지 성공, 이름·관계 그대로 (3회)")
     void s6bRenameApplyVersusExcel() throws Exception {
-        assumeTrue(postgres());
         for (int round = 0; round < 3; round++) {
             S6 x = s6("r" + round);
             String prefix = "XS" + round + "_";
@@ -396,7 +438,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("테이블 이름 변경 ↔ 엑셀 업로드 : 엑셀이 그 테이블을 참조하는 관계를 만든 채 멈춘 사이 이름 변경은 기다리지 않고 409, 엑셀은 성공")
     void tableRenameVersusExcel() throws Exception {
-        assumeTrue(postgres());
         S6 x = s6("tr");
         byte[] file = excel(x, "XT_");
         String[] r = pausedThen(Pause.SECOND_SYNC, () -> upload(x.f(), file), () -> renameTable(x.f(), x.renamed(), x.recommended()));
@@ -410,7 +451,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("스키마 이동 ↔ 엑셀 업로드 : 엑셀이 그 테이블을 참조하는 관계를 만든 채 멈춘 사이 다른 스키마로 옮기기(UX_TBL_01 키 변경)는 기다리지 않고 409, 엑셀은 성공")
     void schemaMoveVersusExcel() throws Exception {
-        assumeTrue(postgres());
         S6 x = s6("mv");
         long target = GenerationFixture.nextId();
         jdbc.update("insert into TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, BSC_YN) values (?, ?, 'S_MOVE', false)", target, x.f().user.getProjectId());
@@ -503,7 +543,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("FK 보정 ↔ 500행 초과 엑셀 : 엑셀이 보정 대상 테이블을 참조(KEY SHARE)한 채 멈춰도 보정은 기다리지 않고 성공, 엑셀도 성공 (교착 없음). 엑셀이 자식 테이블에 올리는 중이면 보정은 409")
     void correctionVersusExcel() throws Exception {
-        assumeTrue(postgres());
         Fk x = fk("xl");
         // 엑셀 : 부서를 참조하는 컬럼을 다른 테이블(새로 만든 TB_FC_OTHER)에
         long other = GenerationFixture.nextId();
@@ -535,7 +574,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("FK 보정 ↔ 테이블 이름 변경·같은 보정 : 프로젝트 행에서 직렬화 — 교착 없이 뒤의 것이 바뀐 계획을 보고 409, FK 는 하나")
     void correctionVersusRenameAndItself() throws Exception {
-        assumeTrue(postgres());
         Fk x = fk("rn");
         ForeignKeyCorrectionDto.Plan plan = plan(x);
         // 이름 변경(자식 테이블)이 동기화 안에서 멈춘 사이 보정 : 보정은 프로젝트 행에서 기다리고, 이름이 바뀐 계획이라 409
@@ -570,7 +608,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("이름 변경 없는 일반 저장은 그대로 : 테이블 설명 수정은 프로젝트 행을 먼저 잡지 않는다 (엑셀이 멈춘 사이에도 바로 끝난다)")
     void descriptionOnlyUpdateUnchanged() throws Exception {
-        assumeTrue(postgres());
         S6 x = s6("desc");
         byte[] file = excel(x, "XD_");
         String[] r = pausedThen(Pause.SECOND_SYNC, () -> upload(x.f(), file), () -> renameTable(x.f(), x.renamed(), "O_" + x.recommended()));
@@ -634,7 +671,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("D11 : 일괄 저장 A(TA PK 삭제 + TB 참조 추가) ↔ B(TB PK 삭제 + TA 참조 추가) — 교착(40P01) 없이 B 는 프로젝트 행에서 기다렸다가 진행, 둘 다 성공, 잘못된 FK 없음 (3회)")
     void d11CrossPkDeletingBulkSaves() throws Exception {
-        assumeTrue(postgres());
         for (int round = 0; round < 3; round++) {
             Bulk x = bulk("x" + round);
             long refB = newTerm(x, "RB_X" + round), refA = newTerm(x, "RA_X" + round);
@@ -658,7 +694,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("D11 : PK 삭제 일괄 저장(A, 멈춤) ↔ 그 PK 를 참조하는 컬럼을 추가하는 일반 일괄 저장(B) — 교착 없음, B 는 A 를 기다린 뒤 지워진 PK 를 보고 관계 없이 성공 (M8-C4b-R1 — 예전 FK 위반 롤백), 잘못된 관계 없음")
     void d11PkDeleteVersusReferencingSave() throws Exception {
-        assumeTrue(postgres());
         Bulk x = bulk("rf");
         long refA = newTerm(x, "RA_RF");
         String[] r = pausedThen(Pause.AFTER_SYNC_FLUSH,
@@ -678,7 +713,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("D11 : PK 삭제 일괄 저장(A, 멈춤) ↔ 다른 테이블의 일반 일괄 저장(B) — B 는 커밋 때 프로젝트 행에서 기다렸다가 성공 (구조 변경 동안의 비용). 일반 저장끼리는 기다리지 않는다")
     void d11StructureVersusOrdinaryAndOrdinaryStayConcurrent() throws Exception {
-        assumeTrue(postgres());
         Bulk x = bulk("in");
         long plainA = newTerm(x, "PA_IN"), plainB = newTerm(x, "PB_IN"), plainC = newTerm(x, "PC_IN"), plainD = newTerm(x, "PD_IN");
         String[] r = pausedThen(Pause.AFTER_SYNC_FLUSH,
@@ -711,7 +745,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("D11 : 엑셀(501행)이 첫 청크에서 TA PK 를 참조(KEY SHARE)한 채 멈춘 사이 TA PK 삭제 일괄 저장 — 기다리지 않고 409, 엑셀 성공, PK 그대로")
     void d11PkDeleteVersusExcel() throws Exception {
-        assumeTrue(postgres());
         S6 x = s6("pk");
         jdbc.update("update TB_TBL set APRV_YN = true where TBL_SN = ?", x.renamed());
         long pk = jdbc.queryForObject("select COL_SN from TB_COL where TBL_SN = ? and PK_YN = true", Long.class, x.renamed());
@@ -728,7 +761,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("D11 : 컬럼 단건 삭제(PK, 멈춤) ↔ 그 PK 를 참조하는 일괄 저장 — 교착 없음, 참조 쪽은 기다린 뒤 관계 없이 성공 (M8-C4b-R1 — 예전 FK 위반 롤백). 테이블 행이 바쁘면 PK 삭제는 409")
     void d11SingleDeleteOfPk() throws Exception {
-        assumeTrue(postgres());
         Bulk x = bulk("sd");
         long refA = newTerm(x, "RA_SD");
         String[] r = pausedThen(Pause.AFTER_SYNC_FLUSH,
@@ -753,14 +785,16 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     /**
-     * 다른 트랜잭션이 테이블 행을 쥔 동안 work 를 실행한다 (H2·PostgreSQL 공통). 구조 변경은 기다리지 않으므로 그 결과를 돌려준다.
-     * work 가 잠금을 기다리기 시작하면(PostgreSQL pg_stat_activity, H2 INFORMATION_SCHEMA.SESSIONS.BLOCKER_ID) 행을 놓고 "WAITED:" + 결과
+     * 다른 트랜잭션이 테이블 행을 쥔 동안 work 를 실행한다. 구조 변경은 기다리지 않으므로 그 결과를 돌려준다.
+     * work 의 백엔드가 행을 쥔 트랜잭션(그 연결의 PID)에 막혀 기다리기 시작하면 행을 놓고 "WAITED:" + 결과
      */
     private String whileTableHeld(long table, Supplier<Object> work) throws Exception {
         CountDownLatch held = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(1);
+        int[] holderPid = new int[1];
         CompletableFuture<Void> holder = CompletableFuture.runAsync(() -> tx.executeWithoutResult(s -> {
             jdbc.queryForList("select TBL_SN from TB_TBL where TBL_SN = ? for update", Long.class, table);
+            holderPid[0] = jdbc.queryForObject("select pg_backend_pid()", Integer.class); // 이 트랜잭션에 묶인 연결
             held.countDown();
             try {
                 done.await(30, TimeUnit.SECONDS);
@@ -770,11 +804,12 @@ class RelationSyncDeadlockIntegrationTest {
         }));
         try {
             assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
-            CompletableFuture<String> run = async(SecurityContextHolder.getContext(), null, work);
+            Set<Integer> pids = ConcurrentHashMap.newKeySet();
+            CompletableFuture<String> run = async(SecurityContextHolder.getContext(), null, pids, work);
             long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             boolean waited = false;
             while (!run.isDone() && System.nanoTime() < until) {
-                if (blockedSessions() > 0) {
+                if (waitForLockWaitOnce(pids, holderPid[0]) != null) {
                     waited = true;
                     break;
                 }
@@ -789,15 +824,8 @@ class RelationSyncDeadlockIntegrationTest {
         }
     }
 
-    private int blockedSessions() {
-        if (postgres()) {
-            return jdbc.queryForObject("select count(*) from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()", Integer.class);
-        }
-        return jdbc.queryForObject("select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null", Integer.class);
-    }
-
     @Test
-    @DisplayName("D11 (H2·PostgreSQL) : 테이블 행이 바쁘면 PK 를 지우는 일괄 저장·단건 삭제는 기다리지 않고 409 (아무것도 지우지 않음), 일반 저장은 예전처럼 기다렸다가 성공")
+    @DisplayName("D11 : 테이블 행이 바쁘면 PK 를 지우는 일괄 저장·단건 삭제는 기다리지 않고 409 (아무것도 지우지 않음), 일반 저장은 예전처럼 기다렸다가 성공")
     void d11NoWaitContract() throws Exception {
         Bulk x = bulk("nw");
         assertThat(whileTableHeld(x.ta(), () -> bulkSave(x.f(), x.ta(), List.of(x.taPk()), List.of()))).isEqualTo("MODEL_CONFLICT");
@@ -811,7 +839,7 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     @Test
-    @DisplayName("D11 (H2·PostgreSQL) : 경합이 없으면 기존 업무 오류 그대로 — 승인된 PK 컬럼 삭제는 행 오류, 관계에 쓰인 PK 는 RELATION_EXISTS, 구조 변경 판정이 업무 검사를 건너뛰지 않는다")
+    @DisplayName("D11 : 경합이 없으면 기존 업무 오류 그대로 — 승인된 PK 컬럼 삭제는 행 오류, 관계에 쓰인 PK 는 RELATION_EXISTS, 구조 변경 판정이 업무 검사를 건너뛰지 않는다")
     void d11BusinessErrorsUnchanged() {
         Bulk x = bulk("be");
         jdbc.update("update TB_COL set APRV_YN = true where COL_SN = ?", x.tbPk());
@@ -830,7 +858,7 @@ class RelationSyncDeadlockIntegrationTest {
     }
 
     @Test
-    @DisplayName("D11 (H2·PostgreSQL) : 잠그기 전에는 PK 가 아니던 삭제 대상이 잠근 뒤 PK 면(그 사이 다른 저장이 PK 로 바꿈) 프로젝트 배타를 뒤늦게 잡지 않고 409 — 아무것도 지우지 않는다")
+    @DisplayName("D11 : 잠그기 전에는 PK 가 아니던 삭제 대상이 잠근 뒤 PK 면(그 사이 다른 저장이 PK 로 바꿈) 프로젝트 배타를 뒤늦게 잡지 않고 409 — 아무것도 지우지 않는다")
     void d11StaleClassification() throws Exception {
         Bulk x = bulk("st");
         SecurityContext login = SecurityContextHolder.getContext();
@@ -866,7 +894,6 @@ class RelationSyncDeadlockIntegrationTest {
     @Test
     @DisplayName("FK 보정 적용 중 동시 변경 : 같은 FK 관계 등록·속성 매핑 해제·관계 속성 짝 변경·자식 테이블 승인·부모 PK 삭제는 보정이 끝날 때까지 기다리거나 409 — 보정이 본 상태가 커밋 전에 바뀌지 않는다")
     void correctionVersusConcurrentWrites() throws Exception {
-        assumeTrue(postgres());
         // 1) 같은 FK 를 관계 등록으로 (자식 테이블 행을 먼저 잠근다 — 기다린 뒤 보정이 만든 FK 를 보고 중복 거절)
         Fk a = fk("tw1");
         String[] r1 = duringCorrection(a, () -> physical.saveRelation(a.f().user, new PhysicalModelDto.Relation(null, null, "FK", null, a.team(), null, a.dept(), null,

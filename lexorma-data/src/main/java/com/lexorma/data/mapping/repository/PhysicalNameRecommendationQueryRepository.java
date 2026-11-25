@@ -103,18 +103,6 @@ public class PhysicalNameRecommendationQueryRepository {
 
     private final JPAQueryFactory query;
 
-    @jakarta.persistence.PersistenceContext
-    private jakarta.persistence.EntityManager entityManager;
-
-    /**
-     * 이 DB 가 바인딩 변수 {@code IN} 목록을 행마다 처음부터 훑는가 (H2 2.4 — 상수 목록과 달리 해시 집합으로 바꾸지 않는다, M7-NAME-F02 측정 12.12).
-     * 서비스가 덮어쓰기 목록과 전체 자바 판정 중 하나를 고르는 기준값을 DB 별로 정한다
-     */
-    public boolean scansBoundInListPerRow() {
-        return entityManager.getEntityManagerFactory().unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class).getJdbcServices().getDialect()
-                instanceof org.hibernate.dialect.H2Dialect;
-    }
-
     /**
      * SQL 로 판정하지 않는 행(ASCII 밖의 글자가 있는 행)의 자바 판정 결과 : complex = 그 행들의 속성 ID 전체, byStatus = 자바가 정한 상태별 속성 ID.
      * 비어 있으면 상태 조건은 SQL 식 그대로다

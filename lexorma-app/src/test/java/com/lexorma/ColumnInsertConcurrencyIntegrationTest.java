@@ -47,7 +47,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * M-7 물리명 추천 일괄 적용 2차 후속 (2026-11-21) : 컬럼 등록과 물리명 변경·컬럼 등록끼리의 이름 경쟁. 컬럼 단건 등록(insertColumn)·엑셀 업로드는 이제
  * 컬럼을 더할 테이블 행을 먼저 잠그고(기다림) 그 뒤 최신 상태로 이름 중복을 본다. 물리명 일괄 적용은 프로젝트 배타 뒤 그 행을 NOWAIT 로 잡는다.
  * 서로 다른 DB 연결의 두 트랜잭션을 실제로 겹친다 — 첫째는 작업을 마치고 커밋 전에 잠금을 쥔 채 멈추고, 그 사이 둘째를 보낸다 (SubtypeGenerationConcurrencyIntegrationTest 와 같은 방식).
- * PostgreSQL 실행이 기준이다 (H2 는 같은 결과를 확인하지만 잠금 구현이 다르다 — 잠금 대기 한도 등).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

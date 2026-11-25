@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-15 안정화 : D-25 TABLE/VIEW 이름 유일성(2026-11-13 프로젝트 단위 → 스키마 단위, 모든 이름 경로), D-26 승인 대기 이름 비선점·승인 시 재검증,
  * 동시 승인·등록·이름 변경·삭제가 겹쳐도 확정 모델의 이름이 겹치지 않고 일부만 반영되지 않는다.
- * H2 와 PostgreSQL(SPRING_DATASOURCE_URL 을 주고 전체 테스트를 돌릴 때) 모두에서 같은 기대값이다.
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

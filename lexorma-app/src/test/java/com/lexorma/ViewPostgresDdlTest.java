@@ -9,13 +9,11 @@ import com.lexorma.data.view.domain.entity.PhysicalViewReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * M-15 : 생성한 CREATE VIEW DDL 을 격리된 PostgreSQL 스키마에서 실제로 실행한다 (LEXORMA_TEST_POSTGRES_URL 이 있을 때만, UUID 스키마를 만들고 지운다).
@@ -26,9 +24,7 @@ class ViewPostgresDdlTest {
     @Test
     @DisplayName("PostgreSQL 에서 생성 DDL 이 실행된다 : 원문 보존·세미콜론 처리·스키마·COMMENT ON VIEW·참조 순서")
     void generatedViewDdlRunsOnPostgresql() {
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(url != null, "PostgreSQL 검증 DB 미지정");
-        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(url, "lexorma", "lexorma"));
+        JdbcTemplate jdbc = new JdbcTemplate(TestDatabaseGuard.directDataSource());
         String base = "view_ddl_" + UUID.randomUUID().toString().replace("-", "");
         String sales = base + "_sales";
         jdbc.execute("create schema " + base);

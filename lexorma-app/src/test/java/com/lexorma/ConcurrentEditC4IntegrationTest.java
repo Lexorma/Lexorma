@@ -13,7 +13,6 @@ import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.column.service.ColumnManageService;
 import com.lexorma.data.logical.domain.dto.LogicalModelDto;
-import com.lexorma.data.logical.domain.dto.LogicalSubjectAreaDto;
 import com.lexorma.data.logical.repository.LogicalAttributeRepository;
 import com.lexorma.data.logical.repository.LogicalEntityRepository;
 import com.lexorma.data.logical.service.LogicalModelService;
@@ -23,7 +22,6 @@ import com.lexorma.data.mapping.service.ModelMappingService;
 import com.lexorma.data.physical.domain.dto.PhysicalModelDto;
 import com.lexorma.data.physical.repository.TableConstraintRepository;
 import com.lexorma.data.physical.service.PhysicalModelService;
-import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.schema.service.SchemaService;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.domain.entity.TableInfo;
@@ -131,7 +129,7 @@ class ConcurrentEditC4IntegrationTest {
     }
 
     @Test
-    @DisplayName("테이블 삭제가 행을 잡은 동안의 CHECK·UNIQUE 제약조건 등록은 기다렸다가 H2·PostgreSQL 모두 대상 없음 400 (예전 H2 는 500) — 고아 제약조건 없음")
+    @DisplayName("테이블 삭제가 행을 잡은 동안의 CHECK·UNIQUE 제약조건 등록은 기다렸다가 대상 없음 400 — 고아 제약조건 없음")
     void deleteVsConstraintRegistration() throws Exception {
         AccountDto admin = login("c4a4");
         TableInfo empty = table(admin.getProjectId(), "TB_C4_EMPTY", false);
@@ -177,7 +175,7 @@ class ConcurrentEditC4IntegrationTest {
 
     /**
      * 3단계 : 한 트랜잭션에서 a1 을 실행(첫 잠금) → 다른 스레드에서 b 를 시작해 끝나거나 잠금을 기다릴 때까지 확인 → 같은 트랜잭션에서 a2 (둘째 잠금) → 커밋.
-     * 잠금 순서가 반대면 a2 와 b 가 서로 기다려 교착(PostgreSQL 40P01, H2 시간 초과)이 난다. 결과 = b 의 결과 (A 쪽 실패는 예외로 드러난다)
+     * 잠금 순서가 반대면 a2 와 b 가 서로 기다려 교착(40P01)이 난다. 결과 = b 의 결과 (A 쪽 실패는 예외로 드러난다)
      */
     private String interleave3(AccountDto account, Runnable a1, Runnable b, Runnable a2) throws Exception {
         ExecutorService pool = Executors.newSingleThreadExecutor();
@@ -293,14 +291,13 @@ class ConcurrentEditC4IntegrationTest {
     }
 
     private void awaitDoneOrLockWait(Future<?> work) {
-        String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long started = System.nanoTime();
         long deadline = started + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return;
             // 같은 연결에서 pg_stat_clear_snapshot() 뒤에 센다 (AES-D17 — A 의 트랜잭션 안에서는 pg_stat_activity 가 첫 조회 값으로 고정된다)
-            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql, postgres()) > 0) return;
+            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql) > 0) return;
             try {
                 Thread.sleep(2);
             } catch (InterruptedException e) {
@@ -313,13 +310,6 @@ class ConcurrentEditC4IntegrationTest {
                 + ConcurrencyDiagnostics.describe("B 대기", started, jdbc, dataSource, projectRepository));
     }
 
-    private boolean postgres() {
-        try {
-            return jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private <T> T inTx(Supplier<T> supplier) {
         return tx.execute(s -> supplier.get());

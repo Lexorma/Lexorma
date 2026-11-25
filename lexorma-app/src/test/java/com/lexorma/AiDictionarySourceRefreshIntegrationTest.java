@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.tuple;
  * AI-5 후속 : 실제 원본 PostgreSQL → JDBC 수집(원본 카탈로그 최신화) → 원본 매핑·가져오기 → AI 설명 제안 → 원본 변경 → 다시 최신화 → 승인.
  * 원본 DB·수집·매핑·가져오기·모델 변경 이력·재검증·승인은 실제 경로이고, AI 서버만 가짜({@link ScriptedOllama})다 (응답 문구가 아니라 재검증이 대상).
  * 원본 DB 는 테스트마다 새로 만든다 ({@link SourceJdbcTestSupport}, LEXORMA_TEST_SOURCE_POSTGRES_URL 이 없으면 건너뛴다).
- * 속성은 {@link SourceJdbcSecurityIntegrationTest} 와 같게 둔다 : 같은 Spring 컨텍스트를 함께 써 테스트 JVM 의 힙을 늘리지 않는다 (H2 전체 실행에서 컨텍스트가 하나 더 생기면 힙이 부족했다).
+ * 속성은 {@link SourceJdbcSecurityIntegrationTest} 와 같게 둔다 : 같은 Spring 컨텍스트를 함께 써 테스트 JVM 의 힙을 늘리지 않는다 (컨텍스트마다 연결 풀·캐시가 따로 생긴다 — 예전 H2 전체 실행에서는 힙이 부족했다).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {"lexorma.secret.keys=t1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=", "lexorma.secret.active-key-id=t1",

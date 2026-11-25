@@ -1,5 +1,6 @@
 # AI 공통 실행 안정성 개선 — 토큰 예산 · 부분 답변 · 출력 한도 (1차 분석 · 2차 서버 · 3차 최종)
 
+- 관리 DB 참고 (2026-11-25, DB-1) : 이 문서의 측정·검증에 쓴 임시 H2 는 그 뒤 지원이 끝났다 — 관리 DB 는 PostgreSQL 전용이다 ([postgresql-only-migration.md](postgresql-only-migration.md)). 아래 H2 기록은 당시 기록으로 그대로 둔다.
 - 단계 : 1차 분석·설계 (2026-11-24, 1~14장) → 사용자 확정 AES-D01~D12 (13장) → 2차 서버 구현 (2026-11-25, 15장) → AES-D13~D16 확정 → 3차 서버 최종 보완·화면·실제 Provider·전체 회귀 (2026-11-25, 16장 — M-8 시험 감시 결함으로 완료 보류) → AES-D17~D19 확정 → **최종 검증 보완 (2026-11-25, 17장) — 완료**. 1~15장은 그때의 기록이며, 3차에서 바뀐 것은 16장이 우선한다 (사유 분리·구조화 단계 Tool 요청·서버 맥락·작은 컨텍스트 문구).
 - 관리 : completed-work.md [AI-4] AI 공통 실행 안정성 개선 (D-35 는 완료 상태 유지 — 커밋 `95636a3`). D-35 후속 결정 ①(부분 답변)·④(R4 출력 한도)를 여기서 다뤘다. 이 작업으로 풀지 않은 후속은 pending-work.md [AI-4] (17.6).
 - 근거 : 코드 읽기 + 측정. 측정은 세션 scratchpad `stab/` (격리 사본으로 만든 최종 JAR `95636a3` = cur 과 D-35 이전 `c1404f0` = base, 임시 H2, D35-FINAL 과 같은 격리 예제 데이터, 이미 실행 중인 로컬 Ollama 0.40.18 `gemma4:e4b` — 외부 전송 없음). Lexorma 와 Ollama 사이에 로컬 기록 프록시를 두어 요청·응답 원문(prompt_eval_count·eval_count·done_reason·thinking)을 남겼다 (`capture-*.jsonl`). 가짜 Provider 재현은 격리 사본에만 둔 측정 테스트 `AiStabilityProbeTest` (저장소에 넣지 않음).

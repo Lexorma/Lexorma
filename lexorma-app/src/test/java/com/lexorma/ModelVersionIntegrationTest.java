@@ -62,7 +62,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * M-9 3차 (H2 / PostgreSQL) : 모델 버전 만들기·조회·비교.
+ * M-9 3차 : 모델 버전 만들기·조회·비교.
  * 화면이 부르는 컨트롤러·서비스로 모델을 바꾸면서, 저장된 버전이 그대로 남는지와 버전 사이·버전과 현재 모델의 차이가 객체 ID 기준으로 판정되는지 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

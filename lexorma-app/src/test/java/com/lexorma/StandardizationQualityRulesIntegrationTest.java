@@ -36,11 +36,8 @@ import com.lexorma.common.exception.CustomException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto;
 import com.lexorma.data.dictionary.quality.TableNameRules;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules;
@@ -59,11 +56,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-5 잔여 : 테이블명 규칙 · 표준 용어 중복·유사어 · 컬럼명 개선 후보 (H2 / PostgreSQL, 실제 JPA 쿼리).
+ * M-5 잔여 : 테이블명 규칙 · 표준 용어 중복·유사어 · 컬럼명 개선 후보 (실제 JPA 쿼리).
  * 프로젝트 격리, 권한, 조회 전후 데이터 불변, 기존 컬럼 진단 요약이 그대로인지(D2) 확인한다. AI Provider 를 등록하지 않은 상태로 실행한다.
  * 판정 규칙의 세부 사례는 lexorma-data 의 TableNameRulesTest·TermDuplicateRulesTest·ColumnNameSuggestionsTest 에 있다.
  */
@@ -322,16 +318,13 @@ class StandardizationQualityRulesIntegrationTest {
      * 예제는 이 클래스와 같은 DB 를 쓰는 다른 테스트가 프로젝트 0 에 테이블·용어를 더하므로, 새로 마이그레이션한 빈 DB 에서 판정 규칙을 직접 돌린다
      * (V0SeedMigrationTest 와 같은 방식, PostgreSQL 은 LEXORMA_TEST_POSTGRES_URL 이 있을 때). 서비스·쿼리 경로는 위 테스트들이 확인한다.
      */
-    @ParameterizedTest(name = "LEXORMA 예제 {0} : 테이블명 규칙 0건, 용어 진단은 오류·주의 0건과 참고 1건 (예제를 고치지 않는다)")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void example(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("LEXORMA 예제 PostgreSQL : 테이블명 규칙 0건, 용어 진단은 오류·주의 0건과 참고 1건 (예제를 고치지 않는다)")
+    void example() {
         String schema = "m5_example_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
+        var dataSource = TestDatabaseGuard.directDataSource();
         Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema)
-                .locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+                .locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             flyway.migrate();
             var jdbc = new JdbcTemplate(dataSource);

@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-7 상속 A형(SINGLE_TABLE)·C형(TABLE_PER_CONCRETE) 물리 생성 (docs/completed/inheritance-strategy-ac-m7.md, D-AC-01~18). 저장된 행을 직접 확인한다. H2·PostgreSQL 모두에서 돈다.
+ * M-7 상속 A형(SINGLE_TABLE)·C형(TABLE_PER_CONCRETE) 물리 생성 (docs/completed/inheritance-strategy-ac-m7.md, D-AC-01~18). 저장된 행을 직접 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

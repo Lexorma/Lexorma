@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 요청 로그(TB_LOG)의 응답 상태 = 실제 HTTP 응답 상태 (7차 P0). 실제 서버(랜덤 포트, Security Filter Chain, 세션·CSRF)로 요청마다 로그가 한 건이고
  * 상태가 같은지 본다 : 일반 API 200, {@code @PreAuthorize} 거부 403 (예전에는 200 으로 남았다), 프로젝트 권한 거부(서비스) 403, VIEW 정의 원문 거부 403,
  * 모델 Import 권한 거부 403, 프로젝트 접근 취소 401, 처리되지 않은 예외 500. 로그인하지 않은 401 은 지금처럼 남기지 않는다.
- * DB 는 이 클래스 전용 (H2 별도 인메모리 / PostgreSQL 별도 스키마).
+ * DB 는 이 클래스 전용 (테스트 DB 안의 별도 스키마).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -45,13 +45,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import(RequestLogStatusHttpTest.FailingController.class)
 class RequestLogStatusHttpTest {
 
-    private static final String CONFIGURED_URL = System.getProperty("spring.datasource.url", System.getenv("SPRING_DATASOURCE_URL"));
-    private static final boolean POSTGRESQL = CONFIGURED_URL != null && CONFIGURED_URL.startsWith("jdbc:postgresql:");
+    /** 테스트 DB (LEXORMA_TEST_POSTGRES_URL — TestDatabaseGuard 가 확인) 안에 이 클래스 전용 스키마를 만든다 */
+    private static final String CONFIGURED_URL = TestDatabaseGuard.url();
     private static final String SCHEMA = "reqlog_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    private static final Map<String, String> DB_PROPERTIES = POSTGRESQL
-            ? Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                     "spring.flyway.default-schema", SCHEMA)
-            : Map.of("spring.datasource.url", "jdbc:h2:mem:lexorma-reqlog;DB_CLOSE_DELAY=-1");
+    private static final Map<String, String> DB_PROPERTIES = CONFIGURED_URL == null ? Map.of()
+            : Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
+                     "spring.flyway.default-schema", SCHEMA);
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -116,7 +115,7 @@ class RequestLogStatusHttpTest {
     @AfterAll
     void restore() throws Exception {
         if (PREVIOUS_AUTH_UTIL_REPOSITORY != null) AUTH_UTIL_REPOSITORY.set(null, PREVIOUS_AUTH_UTIL_REPOSITORY);
-        if (POSTGRESQL) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
+        if (CONFIGURED_URL != null) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
     }
 
     @Test

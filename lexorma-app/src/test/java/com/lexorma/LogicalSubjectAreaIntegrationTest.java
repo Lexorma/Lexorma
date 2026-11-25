@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * M-6 후속 4차 : 논리 모델 주제 영역 — 계층(3단계·이동·순환·이름 중복), 엔터티 분류(승인 정책 분리·동시성·원자성), 삭제·무결성, 목록·ERD 범위,
- * 주제 영역별 독립 배치, 변경 이력·모델 버전·교환 형식 4, 권한·격리, 실제 독립 트랜잭션 동시성. H2·PostgreSQL 모두에서 돈다.
+ * 주제 영역별 독립 배치, 변경 이력·모델 버전·교환 형식 4, 권한·격리, 실제 독립 트랜잭션 동시성.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

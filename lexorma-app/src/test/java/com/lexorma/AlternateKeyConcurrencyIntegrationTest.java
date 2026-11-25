@@ -1,7 +1,6 @@
 package com.lexorma;
 
 import com.lexorma.common.exception.CustomException;
-import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.logical.domain.dto.LogicalModelDto;
@@ -34,10 +33,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * M7-AK-D15 동시성 (docs/completed/alternate-key-unique-m7.md 동시성 장). PostgreSQL 에서만 — H2 는 행 잠금 대기·NOWAIT 의미가 다르다.
+ * M7-AK-D15 동시성 (docs/completed/alternate-key-unique-m7.md 동시성 장).
  * 일반 UNIQUE 등록·제약조건 삭제는 테이블 행을 잡고(대기), UNIQUE 보정·FK 보정 반영은 프로젝트 행 배타 뒤 테이블 행을 NOWAIT 로 잡는다 (바쁘면 409).
  * 한쪽 트랜잭션을 열어 둔 채(커밋 전) 다른 쪽을 실행해 순서를 고정한다.
  */
@@ -62,9 +60,6 @@ class AlternateKeyConcurrencyIntegrationTest {
         SecurityTestSupport.clear();
     }
 
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     private record Fx(GenerationFixture f, long customer, long order, long akEmail, long relEmail) {
     }
@@ -181,7 +176,6 @@ class AlternateKeyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AK-C01 (TOCTOU 회귀) : 같은 컬럼 집합의 UNIQUE 등록 둘 — 둘째가 테이블 행에서 기다렸다가 SAVED_DATA_EXISTS, UNIQUE 는 1개")
     void twoSaveConstraints() throws Exception {
-        assumeTrue(postgres());
         Fx x = fixture("c01");
         dropUniquesAndRelations(x);
         String[] r = holdThen(() -> physicalModelService.saveConstraint(x.f().user, unique(x)), () -> physicalModelService.saveConstraint(x.f().user, unique(x)), 1500);
@@ -195,7 +189,6 @@ class AlternateKeyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AK-C02 : UNIQUE 등록이 커밋 전인 동안 같은 테이블의 UNIQUE 보정 반영은 기다리지 않고 409 — 커밋 뒤 보정은 막힌다 (같은 구성 있음), UNIQUE 1개")
     void saveConstraintThenUniqueCorrection() throws Exception {
-        assumeTrue(postgres());
         Fx x = fixture("c02");
         dropUniquesAndRelations(x);
         UniqueCorrectionDto.Plan plan = uniqueCorrection.preview(x.f().user, new UniqueCorrectionDto.Request(x.f().modelId, List.of(x.akEmail()), null));
@@ -213,7 +206,6 @@ class AlternateKeyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AK-C03 : UNIQUE 보정과 UNIQUE 보정 동시 — 하나만 만든다 (다른 쪽은 409 또는 이미 일치로 400)")
     void twoUniqueCorrections() throws Exception {
-        assumeTrue(postgres());
         Fx x = fixture("c03");
         dropUniquesAndRelations(x);
         UniqueCorrectionDto.Plan plan = uniqueCorrection.preview(x.f().user, new UniqueCorrectionDto.Request(x.f().modelId, List.of(x.akEmail()), null));
@@ -234,7 +226,6 @@ class AlternateKeyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AK-C04 (TOCTOU 회귀) : 부모 UNIQUE 삭제가 커밋 전인 동안 그 UNIQUE 를 참조하는 FK 보정은 409 — 커밋 뒤에는 PARENT_UNIQUE_MISSING 으로 막혀 만드는 시점에 무효인 FK 가 생기지 않는다")
     void deleteUniqueThenForeignKeyCorrection() throws Exception {
-        assumeTrue(postgres());
         Fx x = fixture("c04");
         for (Long id : jdbc.queryForList("select REL_SN from TB_TBL_REL where ORGNL_TBL_SN = ? and TRGT_TBL_SN = ?", Long.class, x.order(), x.customer())) {
             jdbc.update("delete from TB_TBL_REL_COL where REL_SN = ?", id);
@@ -256,7 +247,6 @@ class AlternateKeyConcurrencyIntegrationTest {
     @Test
     @DisplayName("AK-C05 : 부모 UNIQUE 삭제가 커밋 전인 동안 같은 테이블의 UNIQUE 등록은 테이블 행에서 기다렸다가 성공 (교착 없음)")
     void deleteThenSave() throws Exception {
-        assumeTrue(postgres());
         Fx x = fixture("c05");
         for (Long id : jdbc.queryForList("select REL_SN from TB_TBL_REL where ORGNL_TBL_SN = ? and TRGT_TBL_SN = ?", Long.class, x.order(), x.customer())) {
             jdbc.update("delete from TB_TBL_REL_COL where REL_SN = ?", id);

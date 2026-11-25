@@ -1,4 +1,6 @@
-# H2 파일 DB 저장 (h2-local · 단일 JAR)
+# H2 파일 DB 저장 (h2-local · 단일 JAR) — 지원 종료 기록
+
+> **지원 종료 (2026-11-25, DB-1 2차 — [completed/postgresql-only-migration.md](postgresql-only-migration.md))** : 관리 DB 는 PostgreSQL 만 지원한다. `h2-local`·`h2-docker` 프로필, H2 드라이버·콘솔, `H2FileDatabaseCheck`, H2 마이그레이션은 모두 제거됐다. 이 문서는 당시 구현의 기록이며 현재 사용 안내가 아니다 (실제 사용자가 없어 이전 도구·이전 안내는 제공하지 않는다 — PG-D16·D31). `docs/reference/` 에서 옮겼다.
 
 > 2026-11-14. PostgreSQL 없이 Lexorma 를 실행할 때(`h2-local`) 데이터가 재시작·JAR 교체 후에도 남도록 H2 를 **파일 모드**로 바꿨다.
 > PostgreSQL 프로필(`local`·`dev`·`docker`)과 Docker H2 이미지(`h2-docker`)는 바꾸지 않았다.

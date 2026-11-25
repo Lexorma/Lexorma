@@ -164,15 +164,13 @@ public class PhysicalNameRecommendationService {
 
     /**
      * 자바로 판정할 행이 이 수 이상이면 상태 조건·요약을 SQL 덮어쓰기 대신 전체 자바 판정으로 한다 (M7-NAME-F02, docs/completed/physical-name-recommendation-m7.md 12.12).
-     * 덮어쓰기는 그 행들의 속성 ID 를 {@code not in}·{@code in} 바인딩 목록으로 넘긴다. H2 는 바인딩 목록을 행마다 훑어 비용이 (모델 행 수 × 목록 길이) 로 늘고
-     * (10,000건 상태 필터 약 50초), 전체 자바 판정은 목록 없이 모델 행 수에만 비례한다 — H2 기준값 = 두 방식의 측정이 만나는 곳.
-     * PostgreSQL 은 목록이 길어도 빨라(10,000건 0.4초 — 자바 판정과 같다) 그 지점까지 예전 경로를 쓴다 (바인딩 수 15,004 — 드라이버 한도 32,767 안)
+     * 덮어쓰기는 그 행들의 속성 ID 를 {@code not in}·{@code in} 바인딩 목록으로 넘긴다. PostgreSQL 은 목록이 길어도 빨라(10,000건 0.4초 — 자바 판정과 같다)
+     * 그 지점까지 예전 경로를 쓴다 (바인딩 수 15,004 — 드라이버 한도 32,767 안)
      */
-    static final int JAVA_JUDGE_MIN_ROWS_H2 = 500;
     static final int JAVA_JUDGE_MIN_ROWS = 10_000;
 
     int javaJudgeMinRows() {
-        return queryRepository.scansBoundInListPerRow() ? JAVA_JUDGE_MIN_ROWS_H2 : JAVA_JUDGE_MIN_ROWS;
+        return JAVA_JUDGE_MIN_ROWS;
     }
 
     /** 전체 자바 판정에서 이름 충돌(DB 비교 값)을 한 번에 조회하는 행 수 — 한 조회의 바인딩은 이 행들의 추천명 + 테이블 ID 뿐이다 */
@@ -194,7 +192,7 @@ public class PhysicalNameRecommendationService {
     /**
      * 행마다 목록 행과 같은 {@link #columnRow} 로 정한 상태 (같은 순서). 이름 충돌은 추천명이 있는 행을 테이블 ID 순으로 {@link #JUDGE_CHUNK} 행씩 묶어
      * 그 행들의 테이블·추천명만 한 번에 조회한다 — 한 행의 충돌 후보(같은 테이블 · 같은 추천명)는 늘 그 행이 든 조각의 조회 결과에 있다.
-     * 목록 순서(예 : 컬럼명 정렬)대로 자르면 한 조각이 모델의 거의 모든 테이블에 걸쳐 조회가 무거워진다 (H2 10,000건 컬럼명 정렬 48초 → 테이블 순 묶음, 12.12)
+     * 목록 순서(예 : 컬럼명 정렬)대로 자르면 한 조각이 모델의 거의 모든 테이블에 걸쳐 조회가 무거워진다 (측정 12.12 — 10,000건 컬럼명 정렬 48초 → 테이블 순 묶음)
      */
     List<Status> judgeStatuses(List<ColumnSource> sources) {
         List<ColumnSource> named = sources.stream().filter(source -> source.tableId() != null && recommendColumnName(source.termId(), source.termAbbreviation()).available())

@@ -33,10 +33,7 @@ import com.lexorma.data.table.repository.TableInfoRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.flywaydb.core.Flyway;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
@@ -53,10 +50,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * DBMS 식별자 진단 (M-7 보강 1차 — M-5 D3, H2 / PostgreSQL, 실제 JPA 쿼리) : 프로젝트 DBMS 기준 판정, 요약 = 목록, 조건, fingerprint, 프로젝트 격리, 권한,
+ * DBMS 식별자 진단 (M-7 보강 1차 — M-5 D3, 실제 JPA 쿼리) : 프로젝트 DBMS 기준 판정, 요약 = 목록, 조건, fingerprint, 프로젝트 격리, 권한,
  * 조회 전후 데이터 불변, 기존 컬럼 요약(대시보드)·모델 진단에 식별자 결과가 섞이지 않는지. 판정 규칙의 세부 사례는 lexorma-data 의 DbIdentifierRulesTest·DbIdentifierCheckTest.
  * AI Provider 를 등록하지 않은 상태로 실행한다.
  */
@@ -219,15 +215,12 @@ class IdentifierQualityIntegrationTest {
      * LEXORMA 예제(프로젝트 0)를 새로 마이그레이션한 빈 DB 에서 판정한다 (StandardizationQualityRulesIntegrationTest.example 과 같은 방식 — 같은 DB 를 쓰는 다른 테스트가
      * 프로젝트 0 에 테이블을 더한다). 예제의 대상 DB(PostgreSQL)에서는 0건이어야 한다. 다른 DBMS 의 결과는 판정 기준 차이를 보여 주는 값이라 고정한다 (예제를 고치지 않는다)
      */
-    @ParameterizedTest(name = "LEXORMA 예제 {0} : 프로젝트 DBMS(PostgreSQL)·MySQL·MariaDB 기준 0건, Oracle 기준 FK 자동 이름 잘림 7건")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void example(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("LEXORMA 예제 PostgreSQL : 프로젝트 DBMS(PostgreSQL)·MySQL·MariaDB 기준 0건, Oracle 기준 FK 자동 이름 잘림 7건")
+    void example() {
         String schema = "m7_ident_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             flyway.migrate();
             var example = new JdbcTemplate(dataSource);

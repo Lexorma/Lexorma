@@ -41,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-7 자동 매핑 후보·ERD 매핑 표시 (H2 / PostgreSQL 같은 판정). 모델은 논리 → 물리 생성으로 만든 뒤 매핑을 JDBC 로 지워 "매핑하지 않은 상태" 를 만든다.
+ * M-7 자동 매핑 후보·ERD 매핑 표시. 모델은 논리 → 물리 생성으로 만든 뒤 매핑을 JDBC 로 지워 "매핑하지 않은 상태" 를 만든다.
  * 추천·표시는 조회 전용이고, 저장은 기존 매핑 저장 서비스로만 한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

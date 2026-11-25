@@ -73,7 +73,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 권한별 UI 액션 점검 (H2 / PostgreSQL) : 화면이 버튼을 숨기는 것과 별개로 서버가 지키는 것.
+ * 권한별 UI 액션 점검 : 화면이 버튼을 숨기는 것과 별개로 서버가 지키는 것.
  * ① 모든 API 가 역할을 선언하고, 변경 API 는 USER 이상이다 (조회 권한이 바꿀 수 있는 API 가 새로 생기지 않게 한다)
  * ② 프로젝트 관리·공지 변경은 그 프로젝트의 관리자만 (역할만으로 다른 프로젝트를 건드리지 못한다)
  * ③ /api/auth/me 의 approvalAvailable 은 변경 API 를 쓸 수 있는 역할일 때만 true

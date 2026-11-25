@@ -37,19 +37,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * AI-2b 원본 DB(PostgreSQL) 통합 테스트 공통 준비. 원본 역할의 데이터베이스를 테스트마다 새로 만들고(ai2b_…) 끝나면 지운다 — Lexorma 내부 DB(H2 또는 검증용 PostgreSQL)와 따로다.
+ * AI-2b 원본 DB(PostgreSQL) 통합 테스트 공통 준비. 원본 역할의 데이터베이스를 테스트마다 새로 만들고(ai2b_…) 끝나면 지운다 — Lexorma 관리 테스트 DB 와 따로다.
  * <pre>
- * LEXORMA_TEST_SOURCE_POSTGRES_URL=jdbc:postgresql://127.0.0.1:15439/postgres   (데이터베이스를 만들 수 있는 계정, 없으면 건너뛴다)
- * LEXORMA_TEST_SOURCE_POSTGRES_USER / _PASSWORD                                 (기본 lexorma / lexorma)
+ * LEXORMA_TEST_SOURCE_POSTGRES_URL=jdbc:postgresql://127.0.0.1:5432/postgres   (데이터베이스를 만들 수 있는 계정이 접속할 DB — 없으면 이 테스트들만 건너뛴다 : 명시적 실행 조건)
+ * LEXORMA_TEST_SOURCE_POSTGRES_USER                                            (URL 을 주면 필수 — 기본 계정 없음, DB-1 3차)
+ * LEXORMA_TEST_SOURCE_POSTGRES_PASSWORD                                        (인증 방식에 따라)
  * </pre>
+ * URL 을 주고 계정을 빼거나, 관리 테스트 DB(LEXORMA_TEST_POSTGRES_URL)와 같은 DB 를 가리키거나, 주소가 하나로 풀리지 않으면 건너뛰지 않고 실패한다.
  * SEC-1 : 외부 연결은 관리자 허용 규칙이 있어야 열린다 (기본 차단). 원본 DB 의 주소·포트를 여는 JDBC 규칙을 한 번 만든다 ({@link #allowSource()}).
  * 한 규칙이 이름이 풀린 모든 주소를 담아야 하므로 localhost 처럼 IPv4·IPv6 둘 다로 풀리는 이름 대신 숫자 주소(127.0.0.1)를 쓴다.
  */
 abstract class SourceJdbcTestSupport {
 
     static final String ADMIN_URL = System.getenv("LEXORMA_TEST_SOURCE_POSTGRES_URL");
-    static final String USER = System.getenv().getOrDefault("LEXORMA_TEST_SOURCE_POSTGRES_USER", "lexorma");
-    static final String PASSWORD = System.getenv().getOrDefault("LEXORMA_TEST_SOURCE_POSTGRES_PASSWORD", "lexorma");
+    static final String USER = System.getenv("LEXORMA_TEST_SOURCE_POSTGRES_USER");
+    static final String PASSWORD = System.getenv("LEXORMA_TEST_SOURCE_POSTGRES_PASSWORD");
     static final String APPLICATION = "Lexorma metadata collector";
 
     @Autowired SourceCollectionRestController collectionApi;
@@ -69,6 +71,10 @@ abstract class SourceJdbcTestSupport {
     @BeforeEach
     void requireSource() throws Exception {
         assumeTrue(ADMIN_URL != null, "원본 PostgreSQL 미지정 (LEXORMA_TEST_SOURCE_POSTGRES_URL)");
+        assertThat(USER).as("LEXORMA_TEST_SOURCE_POSTGRES_USER 가 필요하다 (기본 계정 없음)").isNotBlank();
+        assertThat(ADMIN_URL).as("원본 수집 테스트는 jdbc:postgresql: URL").startsWithIgnoringCase("jdbc:postgresql:");
+        assertThat(TestDatabaseGuard.base(ADMIN_URL)).as("원본 수집 테스트 URL 이 관리 테스트 DB 와 같다 — 원본 역할 DB 를 만들고 지우는 계정·DB 는 따로 지정한다")
+                .isNotEqualTo(TestDatabaseGuard.url() == null ? null : TestDatabaseGuard.base(TestDatabaseGuard.url()));
         allowSource();
     }
 
@@ -76,7 +82,7 @@ abstract class SourceJdbcTestSupport {
     Long allowSource() throws Exception {
         URI uri = URI.create(ADMIN_URL.substring("jdbc:".length()));
         java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(uri.getHost());
-        assumeTrue(addresses.length == 1, "원본 주소가 하나로 풀려야 한다 (LEXORMA_TEST_SOURCE_POSTGRES_URL 의 호스트를 127.0.0.1 처럼 숫자 주소로)");
+        assertThat(addresses).as("원본 주소가 하나로 풀려야 한다 (LEXORMA_TEST_SOURCE_POSTGRES_URL 의 호스트를 127.0.0.1 처럼 숫자 주소로)").hasSize(1);
         String cidr = addresses[0].getHostAddress() + (addresses[0].getAddress().length == 4 ? "/32" : "/128");
         var existing = connectionRules.list("JDBC", null).stream().filter(r -> r.port() == uri.getPort() && r.host() == null).findFirst();
         if (existing.isPresent()) {

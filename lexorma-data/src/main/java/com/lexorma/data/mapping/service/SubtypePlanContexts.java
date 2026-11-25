@@ -59,7 +59,7 @@ class SubtypePlanContexts {
 
     /**
      * {@link #light} 의 모델 전체용 (정합성 비교 — 모델의 매핑된 서브타입 전부를 한 번에 판정). 엔터티 수천 개의 긴 IN 목록은 DB 가 행마다 목록을 훑어 느려서
-     * (H2 측정 — 4차 31.9) 엔터티·매핑·상속 PK 매핑·FK 쌍·PK 를 모델 조건으로 한 번씩 읽고 요청한 ID 만 남긴다. 루트 주 식별자 직접 매핑은 루트 수만큼이라 그대로 IN
+     * (측정 — 4차 31.9) 엔터티·매핑·상속 PK 매핑·FK 쌍·PK 를 모델 조건으로 한 번씩 읽고 요청한 ID 만 남긴다. 루트 주 식별자 직접 매핑은 루트 수만큼이라 그대로 IN
      */
     SubtypePlanContext lightForModel(Long projectId, Long modelId, LogicalHierarchy hierarchy, DbType db) {
         return new SubtypePlanContext(hierarchy, db, new SubtypePlanContext.Loaders(

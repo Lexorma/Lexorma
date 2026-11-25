@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-6 후속 3차 : 논리 모델 관리 화면의 서버 조회 — 요약(모델 전체 엔터티·관계 수), 엔터티 목록 페이지(검색·정렬·속성/관계 수 집계),
- * 관계 목록 페이지(속성 짝 판정), 엔터티의 관계. 집계는 예전 화면이 전체 그래프(selectGraph)로 세던 값과 같아야 한다. H2·PostgreSQL 모두에서 돈다.
+ * 관계 목록 페이지(속성 짝 판정), 엔터티의 관계. 집계는 예전 화면이 전체 그래프(selectGraph)로 세던 값과 같아야 한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -329,7 +329,7 @@ class LogicalModelManagementIntegrationTest {
         }
         assertThat(relationIds(relationRows(m, null, null, 0, 100, "relationshipName,asc")).getLast()).isEqualTo(unnamed.id());
         assertThat(relationIds(relationRows(m, null, null, 0, 100, "relationshipName,desc")).getLast()).as("내림차순에서도 이름 없음은 뒤").isEqualTo(unnamed.id());
-        // 이름 순서는 DB 콜레이션을 따른다 (H2 = 글자 코드 순, PostgreSQL = DB 로캘 — 엔터티 이름 정렬과 같다). 위치는 가정하지 않고, 출발이 고객인 5개가 붙어 있고 ID 순인지만 본다
+        // 이름 순서는 DB 콜레이션을 따른다 (DB 로캘 — 엔터티 이름 정렬과 같다). 위치는 가정하지 않고, 출발이 고객인 5개가 붙어 있고 ID 순인지만 본다
         List<LogicalModelDto.Relationship> bySource = relationRows(m, null, null, 0, 100, "sourceEntityName,asc").getContent();
         List<Integer> positions = new ArrayList<>();
         for (int i = 0; i < bySource.size(); i++) if ("고객".equals(bySource.get(i).sourceEntityName())) positions.add(i);

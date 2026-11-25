@@ -102,9 +102,8 @@ class LogicalModelManagementPerformanceTest {
         return lines;
     }
 
-    /** PostgreSQL 실행 계획 (목록 쿼리와 같은 모양으로 손으로 쓴 SQL, 마지막 페이지 기준). H2 에서는 남기지 않는다 */
+    /** PostgreSQL 실행 계획 (목록 쿼리와 같은 모양으로 손으로 쓴 SQL, 마지막 페이지 기준) */
     private List<String> plans(long modelId, long base, int offset) {
-        if (!jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName()).toLowerCase().contains("postgres")) return List.of();
         String ids = java.util.stream.LongStream.range(base + offset, base + offset + 10).mapToObj(Long::toString).collect(java.util.stream.Collectors.joining(","));
         List<String> lines = new ArrayList<>();
         for (String sql : List.of(

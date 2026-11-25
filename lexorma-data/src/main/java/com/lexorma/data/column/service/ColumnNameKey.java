@@ -15,8 +15,7 @@ import java.util.function.Supplier;
  * {@code String.toUpperCase(Locale.ROOT)} — 문자열 전체 변환이라 글자 수가 늘 수 있다 (ß → SS, ﬁ → FI, ΐ → Ϊ́). JVM 기본 로캘(터키어 i → İ 등)에 의존하지 않는다.
  * Unicode Case Folding · NFC · NFKC 정규화가 아니다 (é 와 e + U+0301 은 다르고, ＡＢＣ 와 ABC 도 다르다).
  * DB 는 같은 뜻의 생성 컬럼 {@code TB_COL.COL_NM_CMPR_VL} (varchar(765)) 과 UNIQUE {@code UX_COL_01 (TBL_SN, COL_NM_CMPR_VL)} 로 최종 방어한다 :
- * PostgreSQL {@code upper(trim(COL_NM) collate "und-x-icu")} (DB 기본 로캘과 무관, 컬럼은 collate "C"), H2 {@code FN_UPPER_ROOT(trim(COL_NM))}
- * (= H2 의 {@code StringUtils.toUpperEnglish}, Locale.ENGLISH — 대소문자 변환은 ROOT 와 같다).
+ * PostgreSQL {@code upper(trim(COL_NM) collate "und-x-icu")} (DB 기본 로캘과 무관, 컬럼은 collate "C").
  * 이 값은 비교에만 쓴다 — 저장된 컬럼명(COL_NM)을 바꾸지 않는다.
  * <p>
  * DB 에 있는 컬럼과 비교할 때는 DB 가 계산해 둔 {@code COL_NM_CMPR_VL} 을 이 값과 비교한다 ({@code ColumnInfoRepository.findSameName}).
@@ -43,7 +42,7 @@ public final class ColumnNameKey {
 
     /**
      * 빈 컬럼명인가 (M7-U05) : null, 빈 문자열, 또는 ASCII 공백류(U+0020 · 탭 · LF · VT · FF · CR)만으로 된 이름. DB 의 CK_COL_01
-     * ({@code trim(translate(COL_NM, 탭·LF·VT·FF·CR, 공백 5개)) <> ''}, V5) 과 같은 기준이다 — PostgreSQL·H2 가 같은 뜻으로 계산한다.
+     * ({@code trim(translate(COL_NM, 탭·LF·VT·FF·CR, 공백 5개)) <> ''}, V5) 과 같은 기준이다.
      * NBSP·전각 공백 같은 다른 유니코드 공백만으로 된 이름은 빈 이름으로 보지 않는다 (기존 식별자 허용 범위 그대로 — 비교 값의 trim 범위(U+0020)와는 다른 판단이다)
      */
     public static boolean isBlankName(String name) {

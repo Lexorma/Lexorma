@@ -92,7 +92,7 @@ class StandardizationQualityPerformanceTest {
         Statistics stats = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         stats.setStatisticsEnabled(true);
         List<String> report = new ArrayList<>();
-        report.add("DB : " + System.getenv().getOrDefault("SPRING_DATASOURCE_URL", "H2 in-memory (test profile)") + " · JVM max heap " + Runtime.getRuntime().maxMemory() / 1024 / 1024 + " MB");
+        report.add("DB : PostgreSQL (테스트 DB — LEXORMA_TEST_POSTGRES_URL)" + " · JVM max heap " + Runtime.getRuntime().maxMemory() / 1024 / 1024 + " MB");
         report.add(String.format("%-6s | %-30s | %8s | %8s | %8s | %5s | %9s | %s", "data", "case", "avg ms", "median", "max", "SQL", "alloc MB", "rows/total"));
         measure(stats, report, "C10K", 200, 1_000);
         measure(stats, report, "C100K", 2_000, 1_000);

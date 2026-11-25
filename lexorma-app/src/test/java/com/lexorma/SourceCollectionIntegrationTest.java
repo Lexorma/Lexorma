@@ -64,7 +64,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI-1c (H2 / PostgreSQL, lexorma-source) : 원본 카탈로그 수집 실행·테이블 단위 버전(Copy-on-Write)·스키마 버전·객체별 변경 이력·과거 상태 재구성·
+ * AI-1c (lexorma-source) : 원본 카탈로그 수집 실행·테이블 단위 버전(Copy-on-Write)·스키마 버전·객체별 변경 이력·과거 상태 재구성·
  * 전체/부분 수집·실패 시 보존·멱등성·동시성(연결 삭제·프로젝트 삭제·중복 수집·한 건 단위 경로).
  * 원본 DB 에 접속하지 않는다 : 수집 도구(AI-2) 대신 수집 결과(SourceCollectionSpec)를 직접 만들어 넘긴다.
  */
@@ -399,7 +399,7 @@ class SourceCollectionIntegrationTest {
             }));
             assertThat(registered.await(30, TimeUnit.SECONDS)).isTrue();
             Future<Object> second = pool.submit(call(() -> collections.start(e.manager(), e.connection, SourceCollectionSpec.Request.full())));
-            assertThat(awaitLockWait(second)).containsIgnoringCase(postgres() ? "TB_SRC_CNTN" : "TB_PRJ");
+            assertThat(awaitLockWait(second)).containsIgnoringCase("TB_SRC_CNTN");
             release.countDown();
             SourceCollectionDto.Execution winner = (SourceCollectionDto.Execution) first.get(30, TimeUnit.SECONDS);
             assertThat(second.get(30, TimeUnit.SECONDS)).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_COLLECTION_IN_PROGRESS));
@@ -473,8 +473,8 @@ class SourceCollectionIntegrationTest {
                 SecurityTestSupport.loginAs(projectRepository, a.project.getId(), String.valueOf(a.managerAccount.getId()), "ROLE_DBA");
                 return connectionApi.delete(a.managerDto, a.connection).getBody();
             }));
-            // 삭제는 프로젝트를 공유 잠금으로 잡은 뒤 반영이 잡은 연결 행에서 기다린다 (H2 는 공유 잠금이 배타라 프로젝트 행에서)
-            assertThat(awaitLockWait(delete)).containsIgnoringCase(postgres() ? "TB_SRC_CNTN" : "TB_PRJ");
+            // 삭제는 프로젝트를 공유 잠금으로 잡은 뒤 반영이 잡은 연결 행에서 기다린다
+            assertThat(awaitLockWait(delete)).containsIgnoringCase("TB_SRC_CNTN");
             release.countDown();
             assertThat(apply.get(30, TimeUnit.SECONDS)).isInstanceOf(SourceCollectionDto.Execution.class);
             assertThat(delete.get(30, TimeUnit.SECONDS)).isInstanceOf(Map.class);
@@ -494,7 +494,7 @@ class SourceCollectionIntegrationTest {
             }));
             assertThat(deleted.await(30, TimeUnit.SECONDS)).isTrue();
             Future<Object> apply2 = pool.submit(call(() -> collections.apply(b.manager(), run2.jobId(), base())));
-            assertThat(awaitLockWait(apply2)).containsIgnoringCase(postgres() ? "TB_SRC_CNTN" : "TB_PRJ");
+            assertThat(awaitLockWait(apply2)).containsIgnoringCase("TB_SRC_CNTN");
             release2.countDown();
             assertThat(delete2.get(30, TimeUnit.SECONDS)).isInstanceOf(Map.class);
             assertThat(apply2.get(30, TimeUnit.SECONDS)).isInstanceOfSatisfying(CustomException.class, code(ErrorCode.SOURCE_CONNECTION_NOT_FOUND));
@@ -969,26 +969,22 @@ class SourceCollectionIntegrationTest {
     }
 
     /**
-     * waiter 가 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다 (DB 가 알려 주는 잠금 대기 : PostgreSQL pg_stat_activity, H2 SESSIONS.BLOCKER_ID).
-     * 기다리는 문장을 돌려준다 : 어느 행(테이블)의 잠금에서 막혔는지로 잠금 순서를 확인한다. 잠금을 기다리지 않고 끝나면 실패한다 (경합이 일어나지 않았다)
+     * waiter 가 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다 (pg_stat_activity).
+     * 기다리는 문장을 돌려준다 : 어느 행(테이블)의 잠금에서 막혔는지로 잠금 순서를 확인한다. 잠금을 기다리지 않고 끝나면 실패한다 (경합이 일어나지 않았다).
+     * 문장은 같은 세션이 state = 'active' 로 같은 문장에서 두 번 연속 기다릴 때만 읽는다 ({@link ConcurrencyDiagnostics#confirmedLockWaits}) —
+     * 한 행이 '직전 문장 + 지금 대기' 를 보일 수 있어서다 (s4TwoRenames 와 같은 감시 결함, DB-1 3차 50장)
      */
     private String awaitLockWait(Future<?> waiter) throws InterruptedException {
-        String sql = postgres()
-                ? "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select EXECUTING_STATEMENT from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             assertThat(waiter.isDone()).as("잠금을 기다리지 않고 끝났다 (경합이 일어나지 않았다)").isFalse();
-            List<String> waiting = jdbc.queryForList(sql, String.class);
-            if (!waiting.isEmpty()) return String.join("\n", waiting);
+            java.util.Map<Integer, String> waiting = ConcurrencyDiagnostics.confirmedLockWaits(jdbc, java.util.Set.of(), java.util.Set.of());
+            if (!waiting.isEmpty()) return String.join("\n", waiting.values());
             Thread.sleep(5);
         }
         throw new AssertionError("잠금 대기가 생기지 않았다");
     }
 
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     private static List<String> concat(List<String> a, List<String> b) {
         List<String> all = new ArrayList<>(a);

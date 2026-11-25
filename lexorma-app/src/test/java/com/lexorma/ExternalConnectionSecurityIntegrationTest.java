@@ -69,7 +69,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * SEC-1 외부 연결 보안 (H2 / PostgreSQL) : 관리자 허용 규칙(기본 차단·유형 분리·한 규칙이 모든 조건), 절대 차단, DNS(혼합 응답·실패·재바인딩),
+ * SEC-1 외부 연결 보안 : 관리자 허용 규칙(기본 차단·유형 분리·한 규칙이 모든 조건), 절대 차단, DNS(혼합 응답·실패·재바인딩),
  * AI HTTP 어댑터(실제 연결·리다이렉트·프록시·TLS 검증), 관리자 권한, 정책 변경·연결 시도 감사. DNS 는 테스트 이름풀이(FakeResolver)로 흉내 낸다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -345,21 +345,23 @@ class ExternalConnectionSecurityIntegrationTest {
         Project project = project(manager);
         AccountDto managerDto = SecurityTestSupport.loginAs(projectRepository, project.getId(), String.valueOf(manager.getId()), "ROLE_DBA");
         String host = "src-" + UUID.randomUUID().toString().substring(0, 8) + ".sec.test";
+        // 다른 테스트처럼 쓰지 않는 포트 : 고정 5432 면 같은 DB 의 다른 JDBC 규칙(예 : 원본 수집 테스트가 여는 127.0.0.1:5432 — CI 원본 DB)이 포트로 먼저 걸려 NO_RULE 이 아니게 된다 (DB-1 3차)
+        int port = 19000 + (int) (Math.random() * 1000);
         dns.answer(host, new String[]{"10.60.0.5"});
         // 원본 연결 테스트 : 규칙이 없어 차단 (사유가 응답에 있다)
-        SourceConnectionDto.Request request = new SourceConnectionDto.Request(null, "POSTGRESQL", host, 5432, "app", null, "reader", "secret-pw", null, null, null, null);
+        SourceConnectionDto.Request request = new SourceConnectionDto.Request(null, "POSTGRESQL", host, port, "app", null, "reader", "secret-pw", null, null, null, null);
         SourceConnectionDto.TestResult result = connectionApi.testDraft(managerDto, null, request).getBody();
         assertThat(result.errorCode()).isEqualTo("SOURCE_HOST_NOT_ALLOWED");
         assertThat(result.message()).contains("관리자가 허용한 규칙이 없습니다");
         // 등록한 연결은 "허용 규칙이 없는 등록 연결" 로 보인다
-        connectionApi.create(managerDto, new SourceConnectionDto.Request("감사 연결", "POSTGRESQL", host, 5432, "app", null, "reader", "secret-pw", null, null, null, null));
+        connectionApi.create(managerDto, new SourceConnectionDto.Request("감사 연결", "POSTGRESQL", host, port, "app", null, "reader", "secret-pw", null, null, null, null));
         assertThat(rules.unmatched()).anySatisfy(u -> {
             assertThat(u.host()).isEqualTo(host);
             assertThat(u.reason()).isEqualTo(Reason.NO_RULE);
             assertThat(u.label()).contains("감사 연결");
         });
         // 규칙을 만들면 안내에서 빠지고, 연결 시도는 허용 → 실패(서버 없음)로 남는다
-        rule("JDBC", host, "10.60.0.0/16", 5432);
+        rule("JDBC", host, "10.60.0.0/16", port);
         assertThat(rules.unmatched()).noneMatch(u -> u.host().equals(host));
 
         List<ExternalConnectionDto.Attempt> attempts = rules.attempts("JDBC", null, host, null, null, null, 0, 20).rows();

@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 데이터 사전 엑셀 업로드 : 표준용어명이 영문약어명과 맞지 않을 때 (실제 업로드 경로, H2)
+ * 데이터 사전 엑셀 업로드 : 표준용어명이 영문약어명과 맞지 않을 때 (실제 업로드 경로)
  * - 영문약어명의 표준 단어로 용어명을 만들고, 표준용어설명 끝에 생성 근거를 남긴다. (업로드는 취소하지 않는다)
  * - 약어에 해당하는 표준 단어가 없으면 기존처럼 업로드 전체를 취소한다.
  *

@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-7 1차 : 논리·물리 모델 매핑 (H2 / PostgreSQL, 실제 JPA 매핑·쿼리·제약).
+ * M-7 1차 : 논리·물리 모델 매핑 (실제 JPA 매핑·쿼리·제약).
  * 엔터티 ↔ 테이블, 속성 ↔ 컬럼 매핑의 등록·조회·변경·삭제, 1:1 과 부모·자식 제약, 원본 삭제 정책, 현황·후보 조회,
  * 프로젝트 격리, 권한, 동시 요청, DB 제약을 확인한다.
  */

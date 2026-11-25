@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * [DICT-2] 표준 도메인 이름 중복 : 같은 프로젝트에서 대소문자를 무시하고 같은 이름은 등록 거절(400 DUPLICATE_STANDARD_DOMAIN_NAME), 다른 프로젝트는 허용,
  * 예전 중복 데이터는 진단만(지우거나 합치지 않음), 이름으로 찾은 도메인이 여럿이면 임의로 고르지 않고 409 AMBIGUOUS_STANDARD_DOMAIN + 전체 롤백,
- * 동시 등록은 프로젝트 행 배타 잠금으로 하나만. 예전 중복 데이터는 지금 API 로 만들 수 없어 JDBC 로 넣는다. H2·PostgreSQL 모두에서 돈다.
+ * 동시 등록은 프로젝트 행 배타 잠금으로 하나만. 예전 중복 데이터는 지금 API 로 만들 수 없어 JDBC 로 넣는다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

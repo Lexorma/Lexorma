@@ -99,7 +99,7 @@ public class ErdGraphRepositoryImpl implements ErdGraphRepository {
             return List.of();
         }
         // 1) 범위 테이블이 원본인 관계의 ID·대상만 (원본 인덱스) → 대상도 범위 안인 것만 남긴다 2) 그 관계만 컬럼 쌍까지.
-        // 두 IN 을 한 조건에 함께 쓰면 H2 가 인덱스 대신 행마다 목록 전체를 비교했다 (범위 300 에서 약 180ms, M-2 개선 2차 측정)
+        // 두 IN 을 한 조건에 함께 쓰지 않는다 (인덱스 대신 행마다 목록 전체를 비교하는 계획이 나왔다 — M-2 개선 2차 측정)
         QTableRelation relation = QTableRelation.tableRelation;
         Set<Long> scope = new HashSet<>(tableIds);
         List<Long> inner = query.select(relation.id, relation.targetTable.id).from(relation)

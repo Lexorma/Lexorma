@@ -18,10 +18,8 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
 
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    // 관리 DB 는 PostgreSQL 만 (DB-1). 원본 DB 수집도 이 드라이버를 쓴다
     runtimeOnly 'org.postgresql:postgresql'
-    runtimeOnly 'com.h2database:h2'
-    // H2 콘솔(/h2-console)은 Boot 4에서 별도 모듈 (h2-local에서만 활성화)
-    runtimeOnly 'org.springframework.boot:spring-boot-h2console'
 
     testImplementation testFixtures(project(':lexorma-core'))
     testImplementation 'org.springframework.security:spring-security-test'
@@ -29,6 +27,12 @@ dependencies {
 
 bootJar {
     archiveFileName = 'lexorma.jar'
+}
+
+// ./gradlew bootRun : 프로필을 주지 않으면 로컬 개발 프로필(local — lexorma/docker-compose.yml 의 PostgreSQL)로 띄운다.
+// 애플리케이션 자체에는 기본 프로필이 없다 (JAR · Docker 는 DB 설정을 명시해야 뜬다). 다른 프로필은 --args='--spring.profiles.active=…' 또는 SPRING_PROFILES_ACTIVE
+tasks.named('bootRun') {
+    environment 'SPRING_PROFILES_ACTIVE', System.getenv('SPRING_PROFILES_ACTIVE') ?: 'local'
 }
 
 jar {

@@ -12,9 +12,37 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
+
+    # 관리 DB 는 PostgreSQL 만 지원한다 (DB-1). 이 Job 전용 일회성 컨테이너 — 계정·비밀번호는 CI 안에서만 쓰는 값이다 (운영 기본값이 아니다)
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_DB: lexorma_test
+          POSTGRES_USER: lexorma_test
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lexorma_test -d lexorma_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # 테스트 전용 키 (README 7장) — 일반 SPRING_DATASOURCE_* 는 테스트가 쓰지 않는다. DB 이름에 test 가 있어야 한다 (TestDatabaseGuard)
+      LEXORMA_TEST_POSTGRES_URL: jdbc:postgresql://127.0.0.1:5432/lexorma_test
+      LEXORMA_TEST_POSTGRES_USER: lexorma_test
+      LEXORMA_TEST_POSTGRES_PASSWORD: ci_test_password
+      # 원본 DB 수집 테스트 : 같은 서버의 다른 DB(postgres)로 접속해 테스트마다 원본 역할 DB 를 만들고 지운다 (관리 테스트 DB 와 따로).
+      # SEC-1 허용 규칙이 주소 하나로 풀려야 하므로 localhost 가 아니라 127.0.0.1
+      LEXORMA_TEST_SOURCE_POSTGRES_URL: jdbc:postgresql://127.0.0.1:5432/postgres
+      LEXORMA_TEST_SOURCE_POSTGRES_USER: lexorma_test
+      LEXORMA_TEST_SOURCE_POSTGRES_PASSWORD: ci_test_password
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,12 +60,42 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # 프론트 타입 검사·빌드 + 모든 모듈 테스트 (H2 인메모리, 외부 DB 불필요)
+      # 프론트 타입 검사·빌드 + 모든 모듈 테스트 (PostgreSQL 통합·동시성·원본 수집 포함, 성능 시험은 LEXORMA_PERF 가 없어 건너뜀) + bootJar
       - run: ./gradlew build
+
+      - if: failure()
+        name: PostgreSQL log
+        run: docker logs "${{ job.services.postgres.id }}" > postgres.log 2>&1 || true
 
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: '**/build/reports/tests/'
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/test/
+            postgres.log
           retention-days: 7
+
+  # 운영 이미지(Dockerfile)가 빌드되는지만 확인한다 — 이미지를 올리거나 배포하지 않는다 (레지스트리 인증정보 없음).
+  # Dockerfile 이 React 빌드와 bootJar 를 직접 하므로 테스트는 다시 돌지 않는다
+  docker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker build -f Dockerfile -t lexorma:ci .
+
+      # 이미지 안의 JAR : React 정적 리소스가 있고 H2 라이브러리는 없다
+      - name: Inspect image JAR
+        run: |
+          id=$(docker create lexorma:ci)
+          docker cp "$id":/app/lexorma.jar lexorma.jar
+          docker rm "$id"
+          unzip -l lexorma.jar > jar.txt
+          grep -q 'BOOT-INF/classes/static/index.html' jar.txt
+          grep -q 'BOOT-INF/lib/postgresql-' jar.txt
+          if grep -qi 'BOOT-INF/lib/h2' jar.txt; then echo "H2 library found in the image JAR"; exit 1; fi

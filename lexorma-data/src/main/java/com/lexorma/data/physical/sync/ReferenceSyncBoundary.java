@@ -37,12 +37,9 @@ public class ReferenceSyncBoundary implements TransactionExecutionListener {
     private EntityManager entityManager;
 
     private final ObjectProvider<PhysicalModelService> physicalModelService;
-    private final ObjectProvider<com.lexorma.core.project.guard.ProjectWriteGuard> projectWriteGuard;
 
-    public ReferenceSyncBoundary(ObjectProvider<PhysicalModelService> physicalModelService,
-                                 ObjectProvider<com.lexorma.core.project.guard.ProjectWriteGuard> projectWriteGuard) {
+    public ReferenceSyncBoundary(ObjectProvider<PhysicalModelService> physicalModelService) {
         this.physicalModelService = physicalModelService;
-        this.projectWriteGuard = projectWriteGuard;
     }
 
     @Override
@@ -59,13 +56,12 @@ public class ReferenceSyncBoundary implements TransactionExecutionListener {
         }
     }
 
-    /** 직접 동기화한 테이블은 커밋 직전 대상에서 뺀다 (H2 의 커밋 직전 재확인 대상에는 남긴다) */
+    /** 직접 동기화한 테이블은 커밋 직전 대상에서 뺀다 */
     public static void synced(Long projectId, Collection<Long> tableIds) {
         Pending pending = current();
         if (pending == null) return;
         Set<Long> marked = pending.tables.get(projectId);
         if (marked != null) marked.removeAll(tableIds);
-        if (projectId != null) pending.synced.computeIfAbsent(projectId, key -> new LinkedHashSet<>()).addAll(tableIds);
     }
 
     private static Pending current() {
@@ -80,9 +76,6 @@ public class ReferenceSyncBoundary implements TransactionExecutionListener {
 
         /** 프로젝트 ID → 바뀐 테이블 ID */
         private final Map<Long, Set<Long>> tables = new LinkedHashMap<>();
-        /** 프로젝트 ID → 이 트랜잭션에서 동기화한 테이블 ID (직접 부른 것 포함 — H2 재확인용) */
-        private final Map<Long, Set<Long>> synced = new LinkedHashMap<>();
-        private boolean rechecked;
 
         /** 모델 변경 이력(ModelChangeRecorder)보다 먼저 실행한다 : 여기서 바꾼 관계도 같은 트랜잭션의 이력에 남는다 */
         @Override
@@ -108,30 +101,6 @@ public class ReferenceSyncBoundary implements TransactionExecutionListener {
                     }
                 });
             }
-            recheckOnH2();
-        }
-
-        /**
-         * H2 전용 커밋 직전 재확인 (M8-C4b-R1) : PostgreSQL 은 동기화가 참조 대상 행을 FOR KEY SHARE 로 먼저 잡아 키를 바꾸는 쓰기와 직렬화되지만, H2 에는 KEY SHARE 가 없다
-         * (같은 문장이 배타 잠금이라 양방향 참조 저장끼리 교착한다). 대신 여기서 프로젝트 행을 잡는다 — 원래 커밋 직전 ProjectWriteGuard 가 잡던 같은 잠금을 조금 앞당긴 것이고,
-         * 키를 바꾸는 쓰기는 프로젝트 행을 배타로 먼저 잡으므로 진행 중이면 그 커밋을 기다린다. 잡은 뒤 이 트랜잭션이 동기화한 테이블을 최신 상태로 한 번 더 맞춘다
-         * (보통 아무것도 바꾸지 않는다 — 그 사이 커밋된 이름 변경·PK 삭제가 있으면 예전 상태로 만든 관계를 고치거나 지운다). 커밋 단계에서만 잡으므로 일반 저장끼리의 동시성은 예전과 같다
-         */
-        private void recheckOnH2() {
-            if (rechecked || synced.isEmpty()) return;
-            if (!(entityManager.getEntityManagerFactory().unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class).getJdbcServices().getDialect()
-                    instanceof org.hibernate.dialect.H2Dialect)) return;
-            rechecked = true;
-            PhysicalModelService service = physicalModelService.getObject();
-            Map<Long, List<Long>> all = new LinkedHashMap<>();
-            synced.forEach((projectId, tableIds) -> all.put(projectId, new ArrayList<>(tableIds)));
-            all.forEach((projectId, tableIds) -> {
-                projectWriteGuard.getObject().lock(projectId);
-                for (int from = 0; from < tableIds.size(); from += BATCH_SIZE) {
-                    service.syncReferenceRelations(projectId, tableIds.subList(from, Math.min(from + BATCH_SIZE, tableIds.size())));
-                }
-            });
-            entityManager.flush();
         }
     }
 }

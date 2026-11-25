@@ -622,7 +622,7 @@ class SourceSyncIntegrationTest {
         int history = jdbc.queryForObject("select count(*) from TB_MDL_CHG_HSTRY where PRJ_SN = ?", Integer.class, e.project.getId());
         int mappingHistory = jdbc.queryForObject("select count(*) from TB_SRC_MPNG_HSTRY where PRJ_SN = ?", Integer.class, e.project.getId());
 
-        // 테스트 DB 에만 거는 임시 CHECK : 이 TABLE 에 지금 있는 것 말고 새로 넣는 IX_CUSTOMER_NAME 행은 거절 (UNIQUE 교체는 이미 지나간 뒤). H2·PostgreSQL 같은 문장.
+        // 테스트 DB 에만 거는 임시 CHECK : 이 TABLE 에 지금 있는 것 말고 새로 넣는 IX_CUSTOMER_NAME 행은 거절 (UNIQUE 교체는 이미 지나간 뒤).
         // 새 행의 번호로 가르지 않는다 — Hibernate 가 미리 받아 둔 시퀀스 묶음에 따라 기존 번호보다 작을 수 있다
         Long existingIndex = jdbc.queryForObject("select IDX_SN from TB_TBL_IDX where TBL_SN = ? and IDX_NM = 'IX_CUSTOMER_NAME'", Long.class, customerTable);
         jdbc.execute("alter table TB_TBL_IDX add constraint CK_TEST_FAIL_INDEX check (IDX_NM <> 'IX_CUSTOMER_NAME' or TBL_SN <> " + customerTable

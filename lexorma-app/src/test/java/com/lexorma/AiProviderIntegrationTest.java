@@ -59,7 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI Provider (AI-3, H2 / PostgreSQL) : Provider 가 없어도 기동하고 모델 Bean 이 없다, 설정 관리(검증·중복·유형), SEC-1 을 거치는 Spring AI Ollama 호출
+ * AI Provider (AI-3) : Provider 가 없어도 기동하고 모델 Bean 이 없다, 설정 관리(검증·중복·유형), SEC-1 을 거치는 Spring AI Ollama 호출
  * (연결 테스트·모델 목록·테스트 프롬프트·이후 기능용 call), 오류 분류(차단·거부·시간 초과·모델 없음·서버 오류·리다이렉트·잘못된 응답), 재시도 없음,
  * 스트리밍 차단, 설정 변경의 즉시 적용, ADMIN 권한. AI 서버는 가짜 Ollama HTTP 서버(127.0.0.1), DNS 는 테스트 이름풀이(FakeResolver)로 흉내 낸다. 비밀값 키를 설정하지 않는다.
  */

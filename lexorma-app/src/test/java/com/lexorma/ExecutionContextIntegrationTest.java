@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI-1a 공통 기반 (H2 / PostgreSQL) : 실행 컨텍스트의 DB 재검증과 프로젝트 관리자 판정.
+ * AI-1a 공통 기반 : 실행 컨텍스트의 DB 재검증과 프로젝트 관리자 판정.
  * 로그인 세션 없이(SecurityContext 비움) 돌려, 비동기·정기 배치에서도 같은 확인이 되는지 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

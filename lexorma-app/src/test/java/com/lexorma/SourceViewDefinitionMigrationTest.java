@@ -1,34 +1,29 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * DEC-16 출처 VIEW 정의·확인 이력 스키마 신규 설치 : 정의는 비어 있고(다음 수집부터) 두 테이블이 예제 물리 모델에 있으며,
- * VIEW 하나에 정의 한 행(UNIQUE)·VIEW 행을 지우면 정의도 지워짐(FK ON DELETE CASCADE)·확인 이력은 남음이 DB 제약으로 동작하는지. H2 와 PostgreSQL 모두.
+ * VIEW 하나에 정의 한 행(UNIQUE)·VIEW 행을 지우면 정의도 지워짐(FK ON DELETE CASCADE)·확인 이력은 남음이 DB 제약으로 동작하는지.
  * (예전 V4 → V5 업그레이드 검증은 2026-11-18 세 번째 합침으로 V0·V1 만 남아 없어졌다)
  */
 class SourceViewDefinitionMigrationTest {
 
-    @ParameterizedTest(name = "신규 설치 {0} : 출처 VIEW 정의 제약")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstall(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : 출처 VIEW 정의 제약")
+    void freshInstall() {
         String schema = "src_view_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         String s = "\"" + schema + "\".";
         try {
             flyway.migrate();

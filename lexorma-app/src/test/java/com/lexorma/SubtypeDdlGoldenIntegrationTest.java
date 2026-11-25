@@ -2,7 +2,6 @@ package com.lexorma;
 
 import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.ddl.service.DdlExportService;
-import com.lexorma.data.logical.domain.dto.LogicalModelDto;
 import com.lexorma.data.logical.domain.dto.LogicalSubtypeDto;
 import com.lexorma.data.logical.domain.dto.LogicalSubtypeDto.MemberInput;
 import com.lexorma.data.logical.service.LogicalSubtypeService;
@@ -17,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -31,7 +29,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * M-7 3차 DDL 골든 (M7-D41) : 상속 생성 결과를 통합 DDL Export(4개 DBMS)로 내보낸 글자 그대로를 고정한다 (ddl-golden-subtype/*.sql).
@@ -129,9 +126,7 @@ class SubtypeDdlGoldenIntegrationTest {
         compare(f, "one-step");
 
         // PostgreSQL 실제 실행 (격리 스키마 — 지정된 검증 DB 에서만) : PK 이면서 FK 인 상속 PK·복합 FK 가 그대로 만들어진다
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(url != null, "PostgreSQL 검증 DB 미지정 — 실제 실행은 건너뜀");
-        JdbcTemplate pg = new JdbcTemplate(new DriverManagerDataSource(url, "lexorma", "lexorma"));
+        JdbcTemplate pg = new JdbcTemplate(TestDatabaseGuard.directDataSource());
         String target = "sub_ddl_" + UUID.randomUUID().toString().replace("-", "");
         pg.execute("create schema " + target);
         try {

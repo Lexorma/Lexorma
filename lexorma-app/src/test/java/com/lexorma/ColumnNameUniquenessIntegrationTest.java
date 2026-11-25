@@ -44,7 +44,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-7 컬럼명 UNIQUE (M7-U01~U04, V5 — docs/completed/column-name-uniqueness-m7.md) : 같은 테이블 안 물리 컬럼명은 UPPER(TRIM(COL_NM)) 기준으로 하나.
  * 등록·중복 확인·일괄 저장·엑셀·이름 변경이 같은 기준으로 거절하고(기존 오류 계약 그대로), 저장된 이름은 입력 그대로이며, DB 생성 컬럼 + UX_COL_01 이 최종 방어한다.
- * H2·PostgreSQL 모두 (PostgreSQL 은 SPRING_DATASOURCE_URL 로 같은 테스트를 돌린다).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -135,10 +134,6 @@ class ColumnNameUniquenessIntegrationTest {
 
     private int count(String sql, Object... args) {
         return jdbc.queryForObject(sql, Integer.class, args);
-    }
-
-    private boolean h2() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toUpperCase().contains("H2")));
     }
 
     // ------------------------------------------------------------------ 등록 · 중복 확인
@@ -373,10 +368,6 @@ class ColumnNameUniquenessIntegrationTest {
         String lambdaUpper = "\uA7DC_CD";  // Ƛ : Unicode 16.0 에 생긴 대문자
         boolean icuKnows = dbKey(x, lambda).equals(dbKey(x, lambdaUpper));
         assertThat(ColumnNameKey.same(lambda, lambdaUpper)).isFalse();
-        if (h2()) {
-            assertThat(icuKnows).as("H2 는 같은 JVM 의 Java 로 계산한다").isFalse();
-            return;
-        }
         org.junit.jupiter.api.Assumptions.assumeTrue(icuKnows, "이 PostgreSQL 의 ICU 가 Unicode 16.0 보다 오래돼 재현할 수 없다");
         long l1 = x.f().term(lambda, "VARCHAR", 20);
         long l2 = x.f().term(lambdaUpper, "VARCHAR", 20);

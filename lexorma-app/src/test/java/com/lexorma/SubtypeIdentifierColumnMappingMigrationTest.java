@@ -1,42 +1,34 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * V4 서브타입 식별자 컬럼 매핑 (M-7 3차) : 이미 V3 까지 쓰던 설치(논리·물리 모델, 서브타입 그룹, 엔터티·속성 매핑, ERD 배치, 변경 이력, 모델 버전)를 올려도
  * 기존 행은 값까지 그대로이고 V0~V3 의 체크섬도 그대로다. 새 테이블은 비어 있다 (기존 상속 구조에서 매핑을 추정해 넣지 않는다 — 예제에도 행이 없다).
  * DB 제약 : (엔터티 매핑, 원본 속성)·컬럼 UNIQUE, 같은 원본 속성은 여러 서브타입 테이블에서 쓸 수 있다(속성 단독 UNIQUE 없음), 없는 매핑·속성·컬럼 금지(FK),
- * 매핑이 쓰는 엔터티 매핑·속성·컬럼은 DB 도 지우지 못한다. 직접 속성 매핑과의 교차 중복은 서비스 검사다 (DB 제약으로 표현할 수 없다). H2·PostgreSQL 모두.
+ * 매핑이 쓰는 엔터티 매핑·속성·컬럼은 DB 도 지우지 못한다. 직접 속성 매핑과의 교차 중복은 서비스 검사다 (DB 제약으로 표현할 수 없다).
  */
 class SubtypeIdentifierColumnMappingMigrationTest {
 
     private static final String[] KEPT = {"TB_LGCL_MDL", "TB_LGCL_ENTT", "TB_LGCL_ATRB", "TB_LGCL_IDNTFR", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP", "TB_TBL", "TB_COL",
             "TB_ENTT_TBL_MPNG", "TB_ATRB_COL_MPNG", "TB_LGCL_ERD_LYT", "TB_MDL_CHG_HSTRY", "TB_MDL_VER"};
 
-    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V4 합침) {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeKeepsExistingData(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("새 설치 (V0·V1, 예전 V4 합침) PostgreSQL")
+    void upgradeKeepsExistingData() {
         String schema = "sbtypkey_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
+        var dataSource = TestDatabaseGuard.directDataSource();
         String s = "\"" + schema + "\".";
-        Flyway v3 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor)
+        Flyway v3 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql")
                 .cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V4(상속 PK 컬럼 매핑)는 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다

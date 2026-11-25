@@ -130,7 +130,7 @@ public class AiDescriptionEvaluationService {
      *   <li>같은 대상의 동시 등록이 둘 다 만들지 않는다 (프로젝트 행은 공유 잠금이라 등록끼리 줄 세우지 못한다 — PostgreSQL)</li>
      * </ul>
      * 잠금 순서 : 테이블 → 컬럼 (ID 순), 프로젝트 행은 다른 모델 저장처럼 커밋 직전에 공유 잠금(ProjectWriteGuard 자동). 승인은 제안 → 테이블 또는 컬럼 하나 → 평가 대상이고
-     * 등록은 제안을 잠그지 않아 서로 엇갈리지 않는다. 프로젝트 행을 먼저 잡지 않는다 : H2 는 그 공유 잠금을 배타로 잡아, 같은 행을 쥔 승인이 커밋 때 프로젝트를 기다리면 교착한다
+     * 등록은 제안을 잠그지 않아 서로 엇갈리지 않는다. 프로젝트 행을 먼저 잡지 않는다 (다른 모델 저장과 같이 커밋 직전 공유 잠금만)
      */
     @Transactional
     public AiEvaluationDto.RegisterResult register(ExecutionContext context, AiEvaluationDto.RegisterRequest request) {

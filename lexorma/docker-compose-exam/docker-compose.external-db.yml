@@ -1,0 +1,35 @@
+# Lexorma — application only, connected to an existing PostgreSQL server (Docker Compose)
+#
+# Use this file instead of docker-compose.yml when you already run PostgreSQL (15 or later, 18 recommended, built with ICU).
+# Create the database and an account that may create tables in it first; Lexorma creates its schema on the first start (Flyway).
+# Values are read from the same .env file (section "External PostgreSQL" in .env.example) — the standard Spring Boot keys:
+#   docker compose -f docker-compose.external-db.yml -p lexorma up -d
+# SPRING_DATASOURCE_URL and SPRING_DATASOURCE_USERNAME are required. SPRING_DATASOURCE_PASSWORD follows the server's
+# authentication method: set it for password authentication; leave it out (or empty) when the server does not ask for one
+# (for example certificate authentication). A wrong or missing password the server needs stops the start-up.
+# The JDBC URL must not contain credentials (Lexorma refuses to start): give the password in SPRING_DATASOURCE_PASSWORD.
+# SSL and other PostgreSQL JDBC options go in the URL, for example ?sslmode=verify-full&sslrootcert=/certs/root.crt
+# (mount the certificate with an extra volume). From a container, "localhost" is the container itself:
+# use the server's host name or address (on Docker Desktop: host.docker.internal).
+
+services:
+  lexorma-app:
+    image: ${LEXORMA_IMAGE:-lexorma/lexorma}
+    container_name: lexorma-app
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?Set SPRING_DATASOURCE_URL in .env (see .env.example)}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?Set SPRING_DATASOURCE_USERNAME in .env (see .env.example)}
+      # Passed through as given: not set = no password, empty = empty password (the server's authentication method decides)
+      SPRING_DATASOURCE_PASSWORD:
+      SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+      LEXORMA_SECRET_ACTIVE_KEY_ID: ${LEXORMA_SECRET_ACTIVE_KEY_ID:-}
+    secrets:
+      - source: lexorma_secret_keys
+        target: lexorma.secret.keys
+    ports:
+      - ${LEXORMA_PORT:-9940}:9940
+
+secrets:
+  lexorma_secret_keys:
+    environment: LEXORMA_SECRET_KEYS

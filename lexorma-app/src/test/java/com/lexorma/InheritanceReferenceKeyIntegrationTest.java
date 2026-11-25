@@ -40,10 +40,9 @@ import java.util.Map;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M7-INH-01·02 상속 공통 참조 키 (docs/completed/inheritance-reference-key-m7.md, D-INH-01~06·11·12). H2 / PostgreSQL 같은 기대값.
+ * M7-INH-01·02 상속 공통 참조 키 (docs/completed/inheritance-reference-key-m7.md, D-INH-01~06·11·12).
  * <pre>
  * 당사자 (루트, PK 당사자 번호 PTY_NO) : AK_CD (당사자 코드 PTY_CD), AK_NAT (국가 코드 NAT_CD, 등록 번호 REG_NO — 복합)
  *  └ 조직 (서브타입) : AK_BRNO (사업자 번호 BRNO), AK_BR (지점 A BR_A, 지점 B BR_B — 복합), 상위 당사자 번호 UP_PTY_NO
@@ -222,15 +221,11 @@ class InheritanceReferenceKeyIntegrationTest {
         return n;
     }
 
-    boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     /**
-     * 44.1 : 생성된 DDL 을 격리 스키마(테스트용 임시 DB 안)에서 실제 실행하고 PK·UNIQUE·FK 수, 정상 입력·없는 부모 키 거절(단일·복합·AK 참조)을 확인한다. H2 실행에서는 건너뛴다
+     * 44.1 : 생성된 DDL 을 격리 스키마(테스트용 임시 DB 안)에서 실제 실행하고 PK·UNIQUE·FK 수, 정상 입력·없는 부모 키 거절(단일·복합·AK 참조)을 확인한다.
      */
     void executeOnPostgres(String ddl) {
-        if (!postgres()) return;
         String schema = "inh_ddl_" + System.nanoTime();
         jdbc.execute((java.sql.Connection c) -> {
             boolean auto = c.getAutoCommit();

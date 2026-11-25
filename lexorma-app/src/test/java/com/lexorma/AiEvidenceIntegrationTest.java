@@ -65,7 +65,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * AI-4 후속 : 구조화 응답(JSON Schema 검증·1회 재요청)과 근거 검증 (H2 / PostgreSQL). 가짜 Ollama(127.0.0.1)가 Tool 호출과 최종 답변을 돌려준다.
+ * AI-4 후속 : 구조화 응답(JSON Schema 검증·1회 재요청)과 근거 검증. 가짜 Ollama(127.0.0.1)가 Tool 호출과 최종 답변을 돌려준다.
  * 흐름 : 1단계 Tool 조회·초안 → 2단계 구조화(JSON) → 근거 검증.
  * <ul>
  *   <li>구조화 응답 : 스키마 위반(필드 누락·타입·허용하지 않은 근거 종류·정의하지 않은 필드·JSON 아님)은 한 번만 다시 요청하고 — Tool 을 다시 실행하지 않고

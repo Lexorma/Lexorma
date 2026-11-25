@@ -1,13 +1,17 @@
 # Lexorma — PostgreSQL + application (Docker Compose)
 #
-# Every environment-specific value (database account, data directories, ports, encryption key) is read from
+# Every environment-specific value (database account, data directory, ports, encryption key) is read from
 # the .env file next to this file. Create it once before the first start:
-#   cp .env.example .env      # then edit .env
+#   cp .env.example .env      # then edit .env (at least POSTGRES_PASSWORD)
 #   docker compose -p lexorma up -d
 # .env is ignored by Git. Never put real passwords or keys in this file.
+# The database settings are entered once in .env and shared by both containers. There are no default credentials:
+# Compose stops with "Set … in .env" when a required value is missing or empty.
+# To use an existing PostgreSQL server instead of the container below, use docker-compose.external-db.yml.
 
 services:
   lexorma-postgres:
+    # PostgreSQL 15 or later is supported; 18 is recommended. Do not reuse a data directory created by another major version.
     image: postgres:18.6
     restart: always
     environment:
@@ -32,11 +36,12 @@ services:
   lexorma-app:
     image: ${LEXORMA_IMAGE:-lexorma/lexorma}
     container_name: lexorma-app
+    restart: unless-stopped
     depends_on:
       lexorma-postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://lexorma-postgres:5432/${POSTGRES_DB}?charSet=UTF-8&reWriteBatchedInserts=true
+      SPRING_DATASOURCE_URL: jdbc:postgresql://lexorma-postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       # Optional secret encryption key (needed only to store source database passwords).
@@ -48,8 +53,6 @@ services:
     secrets:
       - source: lexorma_secret_keys
         target: lexorma.secret.keys
-    volumes:
-      - ${LEXORMA_DATA_DIR:?Set LEXORMA_DATA_DIR in .env (see .env.example)}:/data
     ports:
       - ${LEXORMA_PORT:-9940}:9940
     networks:

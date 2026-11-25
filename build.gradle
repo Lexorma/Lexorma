@@ -53,8 +53,8 @@ subprojects {
         useJUnitPlatform()
         // 루트에서 --tests 로 단일 테스트를 지정해도 해당 테스트가 없는 모듈이 실패하지 않도록
         filter.failOnNoMatchingTests = false
-        // 테스트 JVM 힙 (Gradle 기본 512MB) : 구성이 다른 Spring 테스트 컨텍스트를 캐시해 두고 H2 메모리 DB 의 데이터도 힙에 있어,
-        // 원본 PostgreSQL 테스트까지 함께 돌리는 H2 전체 실행에서 512MB 가 부족했다 (Java heap space)
+        // 테스트 JVM 힙 (Gradle 기본 512MB) : 구성이 다른 Spring 테스트 컨텍스트를 캐시해 두어 512MB 가 부족했다 (Java heap space — 당시 H2 메모리 DB 실행).
+        // PostgreSQL 전용 전체 실행의 GC 측정은 docs/completed/postgresql-only-migration.md 53장·70장 — CI 에서 확인하기 전까지 값은 그대로 둔다
         maxHeapSize = '2g'
     }
 }

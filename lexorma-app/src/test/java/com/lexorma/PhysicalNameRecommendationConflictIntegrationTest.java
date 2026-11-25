@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M7-U10 물리명 추천 컬럼명 충돌 판정 통일 (docs/completed/column-name-uniqueness-m7.md 15장) : 추천 목록(행 상태·적용 가능·상태 필터·요약)·미리보기·적용이
- * 같은 기준 — 저장된 COL_NM_CMPR_VL ↔ 추천명의 DB 비교 값 (그 DB 의 UNIQUE 와 같다). 표준화 일치(ALREADY_MATCHED) 판정·추천명은 그대로. H2 / PostgreSQL.
+ * 같은 기준 — 저장된 COL_NM_CMPR_VL ↔ 추천명의 DB 비교 값 (그 DB 의 UNIQUE 와 같다). 표준화 일치(ALREADY_MATCHED) 판정·추천명은 그대로.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -87,10 +87,6 @@ class PhysicalNameRecommendationConflictIntegrationTest {
     private record Case(String label, String abbreviation, String current, String other, boolean otherTable, Boolean conflict, Long attributeId, Long columnId) {
     }
 
-    private boolean h2() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toUpperCase().contains("H2")));
-    }
-
     @Test
     @DisplayName("충돌 판정 : 대소문자·확장 대문자(ß·합자)·앞뒤 공백은 충돌, 다른 테이블·자기 자신·결합 문자·전각은 아님 — 목록 상태·적용 가능·필터·요약·미리보기·적용이 같다")
     void sameRuleEverywhere() {
@@ -98,7 +94,7 @@ class PhysicalNameRecommendationConflictIntegrationTest {
         long projectId = admin.getProjectId();
         SchemaInfo schema = tx.execute(s -> schemaService.resolveSchema(projectId, null));
         Model model = logicalService.saveModel(admin, new Model(null, "충돌 판정", null));
-        boolean icuKnows = !h2() && "Ƛ_CD".equals(jdbc.queryForObject("select upper('ƛ_CD' collate \"und-x-icu\")", String.class));
+        boolean icuKnows = "Ƛ_CD".equals(jdbc.queryForObject("select upper('ƛ_CD' collate \"und-x-icu\")", String.class));
         List<Case> specs = List.of(
                 new Case("대소문자", "CUSTOMER_ID", "O_CUSTOMER_ID", "customer_id", false, true, null, null),
                 new Case("확장 대문자 ß", "ROLE_CLASS_CD", "O_ROLE_CLASS_CD", "role_claß_cd", false, true, null, null),
@@ -108,7 +104,7 @@ class PhysicalNameRecommendationConflictIntegrationTest {
                 new Case("결합 문자 é ↔ e+U+0301", "É_CD", "O_E_CD", "é_cd", false, false, null, null),
                 new Case("전각 ↔ ASCII", "ＦＵＬＬ_CD", "O_FULL_CD", "FULL_CD", false, false, null, null),
                 new Case("자기 자신 (STRAßE_CD → STRASSE_CD)", "STRASSE_CD", "STRAßE_CD", "UNRELATED_CD", false, false, null, null),
-                // Java 21 이 모르는 대소문자 짝 (Unicode 16.0) : PostgreSQL ICU 는 같은 이름, H2(Java) 는 다른 이름 — 각 DB 의 UNIQUE 와 같게
+                // Java 21 이 모르는 대소문자 짝 (Unicode 16.0) : PostgreSQL ICU 는 같은 이름 — DB 의 UNIQUE 와 같게
                 new Case("Unicode 판 차이 Ƛ ↔ ƛ", "Ƛ_CD", "O_LAMBDA_CD", "ƛ_CD", false, icuKnows, null, null));
         List<Case> cases = new ArrayList<>();
         for (Case c : specs) {
@@ -148,7 +144,7 @@ class PhysicalNameRecommendationConflictIntegrationTest {
                 assertThat(name(c.columnId())).as(c.label() + " 이름 그대로").isEqualTo(c.current());
             }
         }
-        System.out.println("[M7-U10 판정] " + (h2() ? "H2" : "PostgreSQL") + " " + report);
+        System.out.println("[M7-U10 판정] PostgreSQL " + report);
         // 요약 = 필터 건수 = 행 상태 수
         ColumnSummary summary = service.selectColumnSummary(admin, model.id());
         assertThat(summary.conflict()).isEqualTo(conflictFilter.size()).isEqualTo(rows.stream().filter(r -> r.status() == Status.CONFLICT).count());

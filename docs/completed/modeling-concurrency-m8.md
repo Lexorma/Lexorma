@@ -1330,3 +1330,35 @@ M-8 의 감시(`awaitDoneOrLockWait`)는 A 의 트랜잭션(`tx.execute`) 안에
 | `entityApprovalVsEdit` · `s4TwoRenames` | 통과 · 건너뜀 | 통과 · 통과 | 통과 · 통과 |
 
 바로 앞 실행에서는 새 재현 테스트의 PostgreSQL 판별(`select version()`)이 H2 에서 예외로 2건 실패했다 → 기존 테스트와 같은 판별로 고친 뒤 위 세 번을 다시 돌렸다. 운영 코드 변경 없음. 이 수정은 `entityApprovalVsEdit` 의 감시 결함만 다루며, `s4TwoRenames` 를 포함한 다른 간헐 실패를 해결했다고 보지 않는다. 기록 : [ai-execution-stability.md 17장](ai-execution-stability.md).
+
+## 24. 후속 보완 (2026-11-25, DB-1 3차) — H2 감시 제거 · `s4TwoRenames` 감시를 PID·차단 관계로
+
+M-8 의 완료 상태와 잠금 정책은 그대로다. 운영 코드는 바꾸지 않았고 테스트 감시 코드만 고쳤다. 16.4·19.11·23장의 기록은 지우지 않는다. 상세 : [completed/postgresql-only-migration.md 50장](postgresql-only-migration.md).
+
+### 24.1 H2 감시 제거
+
+관리 DB 가 PostgreSQL 만 남아(DB-1) 감시 SQL 의 H2 분기(`INFORMATION_SCHEMA.SESSIONS … BLOCKER_ID`)와 DB 판별(`postgres()`)을 모두 지웠다 (14곳 + `ConcurrencyDiagnostics`). 23.3 의 수정(같은 연결에서 `pg_stat_clear_snapshot()` 뒤 감시)은 그대로이고 플래그 인자만 없어졌다. `PostgresLockWaitWatchIntegrationTest` 의 결정적 재현 2건도 그대로 돈다.
+
+### 24.2 `s4TwoRenames` 감시의 한계 (1차 분석, 이번에 재현)
+
+23.5 에 남긴 재발은 감시가 **B 의 PID 로 거르지 않고** `pg_stat_activity` 한 행의 `query` 를 대기 문장으로 읽었기 때문으로 본다 : 그 행의 `state`·`query` 는 상태 복사본, `wait_event` 는 실시간 값이라 한 행이 'B 의 직전 문장(잠금 없는 `TB_TBL` 조회) + 지금의 잠금 대기' 를 함께 보일 수 있고, 감시는 그 문장을 기록하고 바로 A 를 놓았다. 보존된 실패 문장이 B 의 `updateTable` 첫 문장과 같다. DB 전체를 보므로 관련 없는 세션의 대기도 B 의 대기로 읽을 수 있었다.
+
+### 24.3 보완 (테스트 코드만)
+
+- A 의 PID = 대기점에서 A 트랜잭션에 묶인 연결의 `pg_backend_pid()`. B 의 PID = 이 테스트 컨텍스트의 DataSource 를 감싸 B 스레드가 받은 연결마다 그 연결로 읽은 `pg_backend_pid()` (새 연결도 따라간다).
+- 'B 가 A 를 기다린다' = `ConcurrencyDiagnostics.confirmedLockWaits` : 같은 연결에서 스냅숏을 지우고 두 번 읽어 B 의 백엔드가 두 번 모두 `state = 'active'` · Lock 대기 · `pg_blocking_pids` 에 A · 같은 문장. 같은 판정을 `whileTableHeld`(D11) 에도 썼고, `SourceCollectionIntegrationTest.awaitLockWait`(대기 문장 단언) 에는 '같은 세션 두 번 active + 같은 문장' 만 적용했다.
+- 시나리오·대기점·시간 제한·반복 수·단언은 그대로. sleep·재시도·제외·순서 고정 없음.
+
+### 24.4 결정적 재현 (`PostgresLockWaitWatchIntegrationTest.staleStatementAndForeignWait`)
+
+관련 없는 세션의 권고 잠금 대기를 예전 감시는 대기로 보고(1건) 고친 감시는 보지 않는다(0). 고정된 상태 복사본에서 B 의 행은 `idle in transaction` + `Lock` + 직전 문장 `select count(*) from TB_TBL …` 이고(예전 감시가 기록하던 것 — s4 실패 증상), 고친 감시는 B 의 실제 대기 `TB_PRJ … for no key update` 를 본다. A 가 아닌 차단자 기준이면 0, A 종료 뒤 0.
+
+### 24.5 반복 검증 · 판정
+
+- 동시성 묶음 3회 (실행마다 새 빈 DB, 2차와 같은 37 클래스) : 272건 · 실행 271 · 실패 0 × 3. `entityApprovalVsEdit` 3/3 통과.
+- `s4TwoRenames` 독립 10회 : 10/10 통과. 묶음 포함 39라운드 모두 B 의 대기 문장 = `TB_PRJ … for no key update` (B 의 PID·A 의 차단·두 번 확인으로 본 값) — 기대한 잠금 순서, 운영 결함 없음.
+- 판정 : **감시 보완은 끝났다.** 예전 간헐 실패의 원인은 실패 순간의 PID 기록이 없어 **확정이 아니다** (유력 원인 = 24.2). 이번 반복에서 재발은 없었고, 바뀐 감시에서는 '직전 문장 기록' 증상이 나올 수 없다. `entityApprovalVsEdit` 는 23장의 수정 그대로이며 이번에 다시 다루지 않았다.
+
+### 24.6 DB-1 FINAL 확인 (2026-11-25)
+
+FINAL 전체 회귀 3회 (PostgreSQL 18.6 새 빈 DB 2회 · 15.20 1회, 같은 최종 코드) 에서 동시성 테스트 실패 0, `s4TwoRenames` 9라운드 모두 B 의 대기 = `TB_PRJ … for no key update` (3차 39라운드와 합쳐 48라운드), `entityApprovalVsEdit` 3/3 통과. 최종 판정은 24.5 그대로 : 감시 보완 완료 · 예전 간헐 실패의 원인은 유력 원인 확인, **확정 아님** · 운영 잠금 결함 미발견 · 재발 시 PID·차단 관계 기록으로 분석. 관리 DB 는 이제 PostgreSQL 만 지원한다 — 이 문서의 H2 실행 기록(16.4·19.11·23장 등)은 당시 기록으로 그대로 둔다. 상세 : [completed/postgresql-only-migration.md 66장](postgresql-only-migration.md).

@@ -504,8 +504,7 @@ class SourceImportIntegrationTest {
             });
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (!importer.isDone() && System.nanoTime() < deadline) {
-                String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                        : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+                String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
                 if (jdbc.queryForObject(sql, Integer.class) > 0) break;
                 Thread.sleep(5);
             }
@@ -809,9 +808,7 @@ class SourceImportIntegrationTest {
     }
 
     private void awaitLockWait(Future<?> waiter) throws InterruptedException {
-        String sql = postgres()
-                ? "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select EXECUTING_STATEMENT from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             assertThat(waiter.isDone()).as("잠금을 기다리지 않고 끝났다 (경합이 일어나지 않았다)").isFalse();
@@ -821,9 +818,6 @@ class SourceImportIntegrationTest {
         throw new AssertionError("잠금 대기가 생기지 않았다");
     }
 
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     private static void await(CountDownLatch latch) {
         try {

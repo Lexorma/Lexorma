@@ -18,7 +18,6 @@ import com.lexorma.data.physical.service.PhysicalModelService;
 import com.lexorma.data.table.domain.dto.TableInfoDto;
 import com.lexorma.data.table.service.TableDesignService;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +51,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M7-INH-03 · D-INH-12 PostgreSQL 동시성 (docs/completed/inheritance-reference-key-m7.md 7장). PostgreSQL 에서만 (H2 는 행 잠금 강도가 다르다 — 건너뛴다).
+ * M7-INH-03 · D-INH-12 PostgreSQL 동시성 (docs/completed/inheritance-reference-key-m7.md 7장).
  * 독립 스레드·트랜잭션·연결로 먼저 시작한 작업 A 를 잠금을 쥔 채 멈춰 세우고(상속 FK 보정은 FK 생성 직전, 다른 작업은 서비스가 끝난 뒤 커밋 전 — 같은 트랜잭션),
  * 작업 B 를 실행해 B 가 실제로 잠금을 기다리는지(pg_stat_activity·pg_locks) 또는 기다리지 않고 409 인지 확인한 뒤 A 를 놓는다. sleep 으로 순서를 정하지 않는다. 시나리오마다 3번 반복한다.
  * 허용 결과 : 둘 다 성공 · 뒤 작업의 업무 거절 · NOWAIT·계획 불일치 409. 허용하지 않는 결과 : 40P01, 같은 FK 중복, 부분 적용.
@@ -112,9 +111,6 @@ class InheritanceConcurrencyIntegrationTest {
         SecurityTestSupport.clear();
     }
 
-    boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     // ------------------------------------------------------------------ 준비
 
@@ -290,7 +286,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C01 : 같은 서브타입 상속 FK 보정 두 건 — 둘째는 프로젝트 행에서 기다린 뒤 계획 불일치 409, FK 1개·INHFIX 버전 1개 (3회)")
     void sameCorrectionTwice() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c01-" + i);
             Plan plan = correction.preview(x.f().user, new Request(x.f().modelId, List.of(x.e().get("조직")), null));
@@ -307,7 +302,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C02 : 상속 FK 보정 ↔ 같은 쌍의 일반 USER 관계 등록 — 보정 선행이면 등록이 자식 테이블 행에서 기다린 뒤 SAVED_DATA_EXISTS, 등록 선행이면 보정이 NOWAIT 409. FK 1개 (각 3회)")
     void correctionVersusUserRelation() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c02a-" + i);
             String[] r = duringCorrection(x, () -> userRelation(x));
@@ -332,7 +326,6 @@ class InheritanceConcurrencyIntegrationTest {
     @DisplayName("D-INH-12 36.2 : 상속 FK 보정 ↔ 같은 자식 테이블의 컬럼 일괄 저장(참조 테이블명) — 보정 선행이면 저장이 자식 테이블 행에서 기다린 뒤 업무 거절, 저장(잠금 보유) 선행이면 보정 NOWAIT 409. 중복 REF_COLUMN 없음 (각 3회)."
             + " 보정 대상 자식 테이블은 미승인이어야 하고 일괄 저장·엑셀 수정은 승인된 테이블에만 쓰므로 같은 컬럼에 둘 다 성공하는 순서는 앱 경로로 만들 수 없다 — 잠금 직렬화만 확인한다")
     void correctionVersusRefColumn() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c03a-" + i);
             String[] r = duringCorrection(x, () -> setRefTable(x));
@@ -354,7 +347,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("D-INH-12 36.1 : 일반 USER 관계 등록 ↔ 같은 쌍의 참조 테이블명 저장 — 어느 쪽이 먼저든 뒤 작업이 자식 테이블 행에서 기다린 뒤 거절, 같은 쌍 FK 1개 (각 3회)")
     void userRelationVersusRefColumn() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("u-a-" + i);
             approveTable(x.table("조직"));
@@ -379,7 +371,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C03(그룹)·C08 : 상속 FK 보정 ↔ 상속 그룹 변경·자식 테이블 승인 — 보정 선행이면 뒤 작업이 기다린 뒤 성공, 그룹 변경·승인 선행이면 보정 409 (각 3회)")
     void correctionVersusGroupAndApproval() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c08a-" + i);
             String[] r = duringCorrection(x, () -> approve(x));
@@ -427,7 +418,6 @@ class InheritanceConcurrencyIntegrationTest {
     @DisplayName("INH-C04~C06 : 상속 FK 보정 ↔ 자식 상속 PK 컬럼 삭제(구조 변경 경로) — 보정 선행이면 삭제가 프로젝트 행에서 기다린 뒤 업무 거절, 삭제(거절되었지만 잠금 보유) 선행이면 보정이 기다린 뒤 성공."
             + " 이 모델의 PK 컬럼은 매핑·관계에 쓰여 삭제가 항상 거절된다 (그 계약을 확인한다). 컬럼·FK 는 그대로, 부분 적용 없음 (각 3회)")
     void correctionVersusPkDelete() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c04a-" + i);
             String[] r = duringCorrection(x, () -> deleteOrgPk(x));
@@ -459,7 +449,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C12 : 서로 다른 프로젝트의 상속 FK 보정·일반 컬럼 저장은 서로 기다리지 않고 둘 다 성공. 같은 프로젝트의 무관한 테이블 저장은 보정이 끝날 때까지 커밋을 기다린 뒤 성공 (구조 변경 경로의 프로젝트 배타 — 기존 계약) (3회)")
     void independentWork() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c12a-" + i);
             Fx other = generated("c12b-" + i);
@@ -492,7 +481,7 @@ class InheritanceConcurrencyIntegrationTest {
     }
 
     @Test
-    @DisplayName("H2·PostgreSQL : 위 시나리오의 준비 데이터 (보정 가능, 승인 전 자식 테이블의 일괄 저장은 업무 거절, 승인 뒤 참조 테이블명 저장은 REF_COLUMN 1개) — H2 에서도 돈다")
+    @DisplayName("위 시나리오의 준비 데이터 (보정 가능, 승인 전 자식 테이블의 일괄 저장은 업무 거절, 승인 뒤 참조 테이블명 저장은 REF_COLUMN 1개)")
     void fixtureIsCorrectable() {
         Fx x = generated("fixture");
         assertThat(correction.status(x.f().user, x.f().modelId, List.of(x.e().get("조직"))).get(0).correctable()).isTrue();
@@ -522,7 +511,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C05 (PK 변경) : 상속 FK 보정 ↔ 자식 테이블 PK 컬럼 추가 — 보정 선행이면 추가는 자식 테이블 행을 기다린 뒤 진행, 추가 선행이면 보정 NOWAIT 409. FK 중복·부분 적용 없음 (각 3회)")
     void correctionVersusPkChange() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c05p-" + i);
             String[] r = duringCorrection(x, () -> addOrgPk(x));
@@ -552,7 +540,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C07 : 상속 FK 보정 ↔ 자식의 상속 PK 매핑 해제 — 보정 선행이면 해제는 모델 행을 기다린 뒤 진행, 해제 선행이면 보정 409 (보정이 본 매핑이 커밋 전에 바뀌지 않는다) (각 3회)")
     void correctionVersusKeyMapping() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c07a-" + i);
             String[] r = duringCorrection(x, () -> deleteOrgKeyMapping(x));
@@ -586,7 +573,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C09 : 상속 FK 보정 ↔ 부모 테이블 이름 변경 — 둘 다 프로젝트 배타라 직렬화(뒤 작업이 프로젝트 행을 기다린다), 교착 없음, FK 는 하나·이름 변경 반영 (각 3회)")
     void correctionVersusRename() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c09a-" + i);
             String[] r = duringCorrection(x, () -> renameParty(x, "PTY_NEW"));
@@ -624,7 +610,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C10 : 상속 FK 보정 ↔ 같은 모델 다른 엔터티의 신규 물리 생성 — 둘 다 프로젝트 배타라 직렬화, 교착 없이 둘 다 성공, 테이블·FK 중복 없음 (각 3회)")
     void correctionVersusGeneration() throws Exception {
-        Assumptions.assumeTrue(postgres());
         for (int i = 0; i < 3; i++) {
             Fx x = generated("c10a-" + i);
             long cust = otherEntity(x);
@@ -698,7 +683,6 @@ class InheritanceConcurrencyIntegrationTest {
     @Test
     @DisplayName("INH-C11 : 자체 AK 를 참조하는 누락 FK 보정 ↔ 그 참조 UNIQUE 삭제 — 둘 중 하나가 반드시 실패한다고 가정하지 않는다. 보정 선행이면 삭제는 부모 테이블 행을 기다린 뒤 성공 → FK 는 남고 키 무효로 진단(DEC-09, 자동 삭제 없음), 삭제 선행이면 보정 NOWAIT 409·FK 없음 (각 3회)")
     void akCorrectionVersusUniqueDelete() throws Exception {
-        Assumptions.assumeTrue(postgres());
         Ak probe = akFixture("c11-probe");
         assertThat(fkCorrection.status(probe.f().user, probe.f().modelId, List.of(probe.relationship())).get(0).correctable()).as("준비 : 보정 가능").isTrue();
         for (int i = 0; i < 3; i++) {

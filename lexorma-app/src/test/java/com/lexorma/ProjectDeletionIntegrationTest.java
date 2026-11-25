@@ -83,7 +83,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 프로젝트 영구 삭제 (H2 / PostgreSQL) : 프로젝트에 딸린 데이터가 DB 에 한 행도 남지 않고, 다른 프로젝트와 공통 데이터는 그대로이며,
+ * 프로젝트 영구 삭제 : 프로젝트에 딸린 데이터가 DB 에 한 행도 남지 않고, 다른 프로젝트와 공통 데이터는 그대로이며,
  * 중간에 실패하면 전부 되돌아가는지 본다. 조회 API 가 아니라 테이블의 행 수를 직접 센다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

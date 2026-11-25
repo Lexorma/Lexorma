@@ -34,9 +34,42 @@ public final class AiMetadataQueryDto {
      * @param mode           조회 방식 : 모델의 Tool 호출(TOOL_CALLING) / Tool Calling 을 지원하지 않는 모델이라 서버가 조회한 맥락(SERVER_CONTEXT)
      * @param fallback       서버 맥락으로 바꾼 이유 (TOOL_CALLING 이면 null)
      * @param usage          토큰 사용량 (AI 서버가 알려 준 실측과 서버의 추정을 나눠 담는다)
+     * @param completion     실행 완료 상태 (AI 공통 실행 안정성 2차 — 서버가 정한다. 근거 검증 상태 verification 과 따로다)
      */
     public record QueryResult(String answer, String model, List<MetadataToolSession.Call> tools, long durationMillis,
                               List<EvidenceVerifier.Result> evidence, EvidenceVerifier.Summary verification, int structuredRetries,
-                              MetadataToolSession.Mode mode, AiMetadataQueryService.FallbackReason fallback, TokenMeter.Usage usage) {
+                              MetadataToolSession.Mode mode, AiMetadataQueryService.FallbackReason fallback, TokenMeter.Usage usage,
+                              Completion completion) {
+    }
+
+    /**
+     * 완료 상태 (AES-D05) : COMPLETE = 실행 제한으로 멈추지 않고 정해진 절차를 끝냈다 (모든 메타데이터를 빠짐없이 조회했다거나 답이 사실이라는 뜻이 아니다) /
+     * PARTIAL = 허용된 사유로 추가 조회·초안 생성이 멈췄고, 그때까지 모델에게 전달된 결과 중 최종 답변 요청에 넣을 수 있는 앞부분으로 답했다
+     */
+    public enum CompletionStatus { COMPLETE, PARTIAL }
+
+    /** 부분 답변의 종료 사유 (서버가 정한다. 모델이 정하지 않는다) */
+    public enum TerminationReason {
+        /** 다음 요청(또는 최종 답변 요청)의 추정 입력이 요청 입력 상한을 넘었다 */
+        INPUT_BUDGET_EXCEEDED,
+        /** 질의 전체 누적 토큰 상한에 닿았다 */
+        QUERY_BUDGET_EXCEEDED,
+        /** 질의당 전체 Tool 호출 상한(8)에 닿았다 */
+        TOTAL_TOOL_LIMIT_REACHED,
+        /** 같은 Tool 호출 상한(4)에 닿았다 */
+        SAME_TOOL_LIMIT_REACHED,
+        /** Tool 단계의 초안 답변이 출력 한도에서 잘렸다 (잘린 초안은 쓰지 않는다) */
+        DRAFT_OUTPUT_LIMIT_REACHED,
+        /** 최종 구조화 요청의 조회 결과 원문 24,000자 상한으로 결과 일부를 넣지 못했다 (AES-D13 — 개별 Tool 의 RESULT_TOO_LARGE 와 다르다) */
+        CONTEXT_RESULT_LIMIT_REACHED
+    }
+
+    /**
+     * @param status        COMPLETE · PARTIAL
+     * @param reason        PARTIAL 의 종료 사유 (COMPLETE 면 null)
+     * @param executedTools 실제 실행 경로에 들어간 Tool 호출 수 (성공·실패·결과 상한 초과 포함, 허용 목록 밖 이름 거절·상한으로 실행 전에 막힌 호출 제외).
+     *                      성공 결과 수·근거 수가 아니다
+     */
+    public record Completion(CompletionStatus status, TerminationReason reason, int executedTools) {
     }
 }

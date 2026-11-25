@@ -11,8 +11,6 @@ import com.lexorma.ai.provider.service.AiDefaultProviderService;
 import com.lexorma.ai.provider.service.AiProviderService;
 import com.lexorma.ai.service.AiMetadataQueryService;
 import com.lexorma.ai.tool.MetadataToolSession;
-import com.lexorma.common.exception.CustomException;
-import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.execution.ExecutionContext;
 import com.lexorma.core.network.domain.dto.ExternalConnectionDto.RuleRequest;
 import com.lexorma.core.network.service.ExternalConnectionRuleService;
@@ -38,7 +36,6 @@ import java.util.UUID;
 import static com.lexorma.MetadataToolIntegrationTest.answer;
 import static com.lexorma.MetadataToolIntegrationTest.toolCalls;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * D-35 D35-FINAL : 내부 AI 질의 전체 흐름을 가짜 Ollama(결정적 스크립트)로 — 질문 → 질의 서비스 → 모델의 Tool 호출 → 논리 Tool 실행(실제 실행 경계·결과 변환) → Tool 결과를 담은
@@ -196,19 +193,23 @@ class LogicalAiQueryFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("흐름 : 같은 Tool 5번째 호출 → AI_TOOL_CALL_LIMIT_EXCEEDED (4번까지만 실행 — 질의는 답 없이 끝나 전부 조회했다고 답하지 않는다)")
+    @DisplayName("흐름 : 같은 Tool 5번째 호출 → 실행하지 않고 Tool 단계 종료 → 전달된 4개 결과로 부분 답변 (AI 공통 실행 안정성 2차 B10 — 예전에는 AI_TOOL_CALL_LIMIT_EXCEEDED)")
     void sameToolLimit() throws Exception {
         LogicalD35Fixture x = LogicalD35Fixture.create(context, "d35-flow-limit", false);
         ScriptedOllama same = ollama();
-        for (int page = 0; page < 6; page++) same.then(toolCalls(MODEL, call("searchLogicalEntities", "modelId", x.f.modelId, "page", page, "limit", 1)));
-        assertThatThrownBy(() -> queries.query(user(x), new AiMetadataQueryDto.QueryRequest("엔터티를 하나씩 전부")))
-                .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED));
-        assertThat(same.chats).as("4번 실행 + 모델 호출 5번, 5번째 Tool 은 실행하지 않는다").hasSize(5);
+        for (int page = 0; page < 5; page++) same.then(toolCalls(MODEL, call("searchLogicalEntities", "modelId", x.f.modelId, "page", page, "limit", 1)));
+        same.then(answer(MODEL, "조회 상한에 닿아 엔터티 4개만 확인했습니다."));
+        AiMetadataQueryDto.QueryResult r = queries.query(user(x), new AiMetadataQueryDto.QueryRequest("엔터티를 하나씩 전부"));
+        assertThat(r.completion()).isEqualTo(new AiMetadataQueryDto.Completion(AiMetadataQueryDto.CompletionStatus.PARTIAL,
+                AiMetadataQueryDto.TerminationReason.SAME_TOOL_LIMIT_REACHED, 4));
+        assertThat(r.tools()).as("5번째 Tool 은 실행하지 않는다").hasSize(4);
+        assertThat(same.chats).as("4번 실행 + 모델 호출 5번 + 부분 구조화 1번").hasSize(6);
+        assertThat(same.chats.get(5)).contains("same tool", "Tool results given below: 4");
         requestSizes("같은 Tool 상한", same);
     }
 
     @Test
-    @DisplayName("흐름 : 전체 9번째 Tool 호출 → AI_TOOL_CALL_LIMIT_EXCEEDED (Tool 3종을 3번씩 — 같은 Tool 상한 4 안)")
+    @DisplayName("흐름 : 전체 9번째 Tool 호출 → 실행하지 않고 8개 결과로 부분 답변 (Tool 3종을 3번씩 — 같은 Tool 상한 4 안, 2차 B11 — 예전에는 AI_TOOL_CALL_LIMIT_EXCEEDED)")
     void totalLimit() throws Exception {
         LogicalD35Fixture x = LogicalD35Fixture.create(context, "d35-flow-total", false);
         ScriptedOllama total = ollama();
@@ -219,27 +220,28 @@ class LogicalAiQueryFlowIntegrationTest {
                     : tool.equals("searchLogicalEntities") ? call(tool, "modelId", x.f.modelId, "page", i, "limit", 1)
                     : call(tool, "entityId", x.order, "section", "IDENTIFIERS")));
         }
-        assertThatThrownBy(() -> queries.query(user(x), new AiMetadataQueryDto.QueryRequest("반복")))
-                .isInstanceOfSatisfying(CustomException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED));
-        assertThat(total.chats).as("8번 실행 + 모델 호출 9번").hasSize(9);
+        total.then(answer(MODEL, "조회 상한에 닿아 일부만 확인했습니다."));
+        AiMetadataQueryDto.QueryResult r = queries.query(user(x), new AiMetadataQueryDto.QueryRequest("반복"));
+        assertThat(r.completion()).isEqualTo(new AiMetadataQueryDto.Completion(AiMetadataQueryDto.CompletionStatus.PARTIAL,
+                AiMetadataQueryDto.TerminationReason.TOTAL_TOOL_LIMIT_REACHED, 8));
+        assertThat(total.chats).as("8번 실행 + 모델 호출 9번 + 부분 구조화 1번").hasSize(10);
         requestSizes("전체 상한", total);
     }
 
     @Test
-    @DisplayName("흐름 : 속성 105개를 설명과 함께 limit 20 페이지로 이어 받기 — 기본 토큰 예산(입력 12,288 추정 토큰) 안에서 어디까지 되는지, 넘으면 보내지 않고 오류로 끝난다")
+    @DisplayName("흐름 : 속성 105개를 설명과 함께 limit 20 페이지로 이어 받기 — 기본 토큰 예산(입력 12,288 추정 토큰)을 넘는 요청은 보내지 않고, 전달된 페이지로 부분 답변 (2차 B09 — 예전에는 오류)")
     void descriptionPagesAgainstBudget() throws Exception {
         LogicalD35Fixture x = LogicalD35Fixture.create(context, "d35-flow-budget", true);
         ScriptedOllama ai = ollama();
-        for (int page = 0; page < 6; page++) {
-            ai.then(toolCalls(MODEL, call("getLogicalEntityDetail", "entityId", x.bigLeaf, "section", "ATTRIBUTES", "includeAttributeDescriptions", true, "page", page,
-                    "limit", 20)));
-        }
-        Throwable error = org.assertj.core.api.Assertions.catchThrowable(() -> queries.query(user(x), new AiMetadataQueryDto.QueryRequest("대형말단 속성 전부를 설명과 함께")));
-        assertThat(error).isInstanceOfSatisfying(CustomException.class,
-                e -> assertThat(e.getErrorCode()).isIn(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED, ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED));
-        long results = ai.chats.isEmpty() ? 0 : JSON.readTree(ai.chats.getLast()).path("messages").findValues("role").stream().filter(n -> "tool".equals(n.asString())).count();
-        lines.add("[D35-FINAL 측정] 설명 포함 limit 20 이어 받기 : 종료 " + ((CustomException) error).getErrorCode() + " | 모델 요청 " + ai.chats.size()
-                + " | 마지막 요청에 실린 Tool 결과 " + results + "페이지 (" + Math.min(105, results * 20) + "/105)");
+        ai.then(toolCalls(MODEL, call("getLogicalEntityDetail", "entityId", x.bigLeaf, "section", "ATTRIBUTES", "includeAttributeDescriptions", true, "page", 0, "limit", 20)))
+                .then(toolCalls(MODEL, call("getLogicalEntityDetail", "entityId", x.bigLeaf, "section", "ATTRIBUTES", "includeAttributeDescriptions", true, "page", 1, "limit", 20)))
+                .then(answer(MODEL, "처음 20개만 확인했습니다."));
+        AiMetadataQueryDto.QueryResult r = queries.query(user(x), new AiMetadataQueryDto.QueryRequest("대형말단 속성 전부를 설명과 함께"));
+        assertThat(r.completion().status()).isEqualTo(AiMetadataQueryDto.CompletionStatus.PARTIAL);
+        assertThat(r.completion().reason()).isEqualTo(AiMetadataQueryDto.TerminationReason.INPUT_BUDGET_EXCEEDED);
+        long results = JSON.readTree(ai.chats.get(ai.chats.size() - 2)).path("messages").findValues("role").stream().filter(n -> "tool".equals(n.asString())).count();
+        lines.add("[2차 측정] 설명 포함 limit 20 이어 받기 : " + r.completion() + " | 모델 요청 " + ai.chats.size()
+                + " | 마지막 Tool 단계 요청에 실린 Tool 결과 " + results + "페이지 (" + Math.min(105, results * 20) + "/105)");
         requestSizes("설명 페이지 예산", ai);
     }
 

@@ -100,9 +100,15 @@ public final class AiProviderDto {
      *
      * @param toolCalling   Tool Calling 지원 여부 (Ollama capabilities 의 tools). null 이면 알 수 없다
      * @param contextLength 모델의 최대 컨텍스트 길이(토큰). null 이면 알 수 없다
+     * @param thinking      생각(thinking) 기능 지원 여부 (Ollama capabilities 의 thinking — AI 공통 실행 안정성 2차 AES-D09). null 이면 알 수 없다
      */
-    public record ModelInfo(Boolean toolCalling, Integer contextLength) {
-        public static final ModelInfo UNKNOWN = new ModelInfo(null, null);
+    public record ModelInfo(Boolean toolCalling, Integer contextLength, Boolean thinking) {
+        public static final ModelInfo UNKNOWN = new ModelInfo(null, null, null);
+
+        /** 생각 기능을 모르는 모델 정보 */
+        public ModelInfo(Boolean toolCalling, Integer contextLength) {
+            this(toolCalling, contextLength, null);
+        }
     }
 
     /**

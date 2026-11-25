@@ -2,9 +2,12 @@ package com.lexorma;
 
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.time.Duration;
@@ -27,13 +30,32 @@ final class ConcurrencyDiagnostics {
     private ConcurrencyDiagnostics() {
     }
 
+    /**
+     * 잠금 대기 감시 한 번 (AI 공통 실행 안정성 최종 보완 AES-D17 — modeling-concurrency-m8.md 23장). PostgreSQL 은 한 트랜잭션 안에서 {@code pg_stat_activity} 를
+     * 처음 읽은 때의 값으로 고정한다 : A 의 트랜잭션 연결에서 감시하면 첫 조회가 B 의 대기 시작보다 빠를 때 그 트랜잭션이 끝날 때까지 대기를 못 본다.
+     * 그래서 <b>같은 연결</b>({@link ConnectionCallback} — 트랜잭션 안이면 그 트랜잭션에 묶인 연결, 밖이면 이 호출 동안 빌린 연결 하나)에서
+     * {@code pg_stat_clear_snapshot()} 을 먼저 부르고 sql(행 하나·정수 하나)을 실행한다. H2 는 sql 만 (PostgreSQL 전용 함수를 부르지 않는다).
+     * 감시 조건(sql)·시간 제한·단언은 각 테스트 그대로다
+     */
+    static int lockWaitCount(JdbcTemplate jdbc, String sql, boolean postgres) {
+        Integer count = jdbc.execute((ConnectionCallback<Integer>) connection -> {
+            try (Statement statement = connection.createStatement()) {
+                if (postgres) statement.execute("select pg_stat_clear_snapshot()");
+                try (ResultSet rows = statement.executeQuery(sql)) {
+                    return rows.next() ? rows.getInt(1) : 0;
+                }
+            }
+        });
+        return count == null ? 0 : count;
+    }
+
     static String describe(String phase, long startedNanos, JdbcTemplate jdbc, DataSource dataSource, Object contextProjectRepository) {
         StringBuilder out = new StringBuilder();
         out.append("\n=== 동시성 진단 : ").append(phase).append(" · 경과 ").append(Duration.ofNanos(System.nanoTime() - startedNanos).toMillis()).append("ms ===");
         out.append("\n[AuthUtil.projectRepository 가 이 컨텍스트의 빈인가] ").append(authUtilSameContext(contextProjectRepository));
         out.append("\n[Hikari] ").append(hikari(dataSource));
         out.append("\n[ForkJoinPool.commonPool] ").append(commonPool());
-        out.append("\n[잠금 대기 수 — 호출 연결 / 별도 연결] ").append(lockWaitCounts(jdbc));
+        out.append("\n[잠금 대기 수 — 호출 연결 / 호출 연결(스냅숏 초기화 뒤) / 별도 연결] ").append(lockWaitCounts(jdbc));
         out.append("\n[DB 세션] ").append(bounded(() -> sessions(jdbc)));
         out.append("\n[스레드]").append(threads());
         return out.toString();
@@ -92,7 +114,7 @@ final class ConcurrencyDiagnostics {
     /**
      * 감시 쿼리와 같은 잠금 대기 수를 호출한 스레드의 연결(보통 A 의 트랜잭션 연결 — 감시가 쓰는 연결)과 별도 연결에서 각각 센다 (M8-C4b-R2).
      * C2 재발 때 B 는 처음부터 A 의 잠금을 기다렸는데(PostgreSQL 로그) A 쪽 감시가 감지하지 못했다 — 두 값이 다르면 감시 연결의 조회 문제, 같으면 다른 원인이다.
-     * pg_stat_activity 의 트랜잭션 스냅샷 가설은 실험 두 번으로 기각했다 (modeling-concurrency-m8.md 19.9)
+     * 19.11 에서 기각했던 '트랜잭션 안 스냅숏 고정' 은 뒤에 결정적으로 재현돼 원인으로 확인됐다 (modeling-concurrency-m8.md 23장) — 가운데 값은 같은 연결에서 스냅숏을 지운 뒤 센 값
      */
     private static String lockWaitCounts(JdbcTemplate jdbc) {
         String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
@@ -104,7 +126,13 @@ final class ConcurrencyDiagnostics {
         } catch (Exception e) {
             caller = "확인 불가 : " + e.getClass().getSimpleName();
         }
-        return caller + " / " + bounded(() -> String.valueOf(jdbc.queryForObject(sql, Integer.class)));
+        String cleared;
+        try {
+            cleared = String.valueOf(lockWaitCount(jdbc, sql, true));
+        } catch (Exception e) {
+            cleared = "확인 불가 : " + e.getClass().getSimpleName();
+        }
+        return caller + " / " + cleared + " / " + bounded(() -> String.valueOf(jdbc.queryForObject(sql, Integer.class)));
     }
 
     /** CompletableFuture.supplyAsync(실행기 없음)는 공용 풀에서 돈다 : 풀 스레드가 모두 막혀 있으면 B 가 시작조차 못 한다 (M8-C4b — RelationSync S 시나리오가 이 풀을 쓴다) */

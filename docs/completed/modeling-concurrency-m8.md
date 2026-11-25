@@ -1263,3 +1263,70 @@ C4c-2 의 Chrome 확장은 JAR 와 다른 기기에 연결돼 있었다. 이번�
 3. 도메인 영향은 도메인마다 요청 (FINAL-D02 — 성능 문제는 관찰되지 않음).
 4. 컬럼 단건 등록 API 가 요청의 테이블명 복사본을 그대로 저장 (22.5 ④, M-8 무관).
 5. 375px 에서 칸 많은 비교 표는 표 안 가로 스크롤 (항목 칸 고정) — 카드형 배치는 하지 않았다.
+
+## 23. 후속 검증 (2026-11-25, AI 공통 실행 안정성 최종 보완 AES-D17) — PostgreSQL 잠금 대기 감시 결함
+
+M-8 의 완료 상태는 그대로다. 운영 코드는 바꾸지 않았고, 테스트 감시 코드만 고쳤다. 19.11 까지의 기록은 지우지 않는다 — 이 장은 그 뒤에 확인한 것이다.
+
+### 23.1 경위
+
+- `ConcurrentEditC2IntegrationTest.entityApprovalVsEdit` 간헐 실패는 16.4(원인 미확정)·19.11(재발, 'B 는 처음부터 A 를 기다렸는데 A 쪽 감시가 못 봤다', 트랜잭션 안 스냅숏 가설은 탐침 두 번으로 기각)로 남아 있었다.
+- AI 공통 실행 안정성 3차(2026-11-25)의 PostgreSQL 전체 실행에서 6번 중 5번 같은 실패가 났다 (그 작업의 새 테스트 클래스를 빼면 통과, C2 단독·작은 묶음은 통과). 진단(19.11 에서 더한 값)은 매번 '호출 연결 0 / 별도 연결 1' — A 의 트랜잭션 연결에서 본 잠금 대기 수만 0 이었다.
+
+### 23.2 원인 (결정적 재현으로 확인)
+
+PostgreSQL 은 한 트랜잭션 안에서 `pg_stat_activity` 의 **백엔드 목록**을 처음 읽은 때로 고정한다. 목록에 있던 백엔드의 대기 상태(`wait_event_type`)는 읽을 때마다 새로 보이지만, 첫 조회 뒤에 연결된 백엔드는 그 트랜잭션이 끝날 때까지 보이지 않는다 (`pg_stat_clear_snapshot()` 을 부르면 다시 읽는다).
+
+M-8 의 감시(`awaitDoneOrLockWait`)는 A 의 트랜잭션(`tx.execute`) 안에서 A 와 같은 연결로 `pg_stat_activity` 를 2ms 마다 읽는다. B 가 풀에 이미 있던 연결을 쓰면 B 의 대기가 보이지만, 풀이 다 쓰여 B 가 **새 연결**을 열면(그 새 백엔드는 A 의 첫 조회 뒤에 생겼다) A 의 연결에서는 끝까지 보이지 않아 20초 뒤 실패한다. 실패 때 진단의 Hikari 는 매번 `active=6 idle=0` 이었다 — 테스트 묶음·컨텍스트 수에 따라 풀 상태가 달라져 간헐적이었다.
+
+| 조건 (PostgreSQL 18.6) | 같은 트랜잭션 재조회 | 다른 연결 | 같은 연결에서 `pg_stat_clear_snapshot()` 뒤 |
+|---|---|---|---|
+| psql, B 가 A 의 첫 조회 뒤 접속 | 0 | 1 | 1 |
+| JDBC(Spring 트랜잭션, 같은 pid·같은 `now()`·같은 xid 확인), B 가 첫 조회 **전부터 있던** 연결 | **1** | 1 | 1 |
+| JDBC, B 가 첫 조회 **뒤 새로 연** 연결 | **0** | 1 | 1 |
+
+19.11 의 탐침이 가설을 '기각' 한 것은 B 의 연결이 감시 전부터 있던 조건(두 번째 줄)만 봤기 때문이다 — 같은 트랜잭션에서도 이미 목록에 있던 백엔드의 대기는 보인다. 그 결론은 그 조건에서는 맞았고, 원인은 '스냅숏이 통째로 고정' 이 아니라 '목록이 고정' 이었다. 같은 pgJDBC 문장을 10번 되풀이해도(서버 준비문 전환) 결과는 같았다 — 준비문은 원인이 아니다.
+
+### 23.3 수정 (테스트 코드만)
+
+- `ConcurrencyDiagnostics.lockWaitCount(jdbc, sql, postgres)` : `JdbcTemplate.execute(ConnectionCallback)` 로 **같은 연결**(트랜잭션 안이면 그 트랜잭션에 묶인 연결)을 받아 PostgreSQL 이면 `select pg_stat_clear_snapshot()` 뒤에 감시 sql 을 실행한다. H2 는 sql 만 (PostgreSQL 함수를 부르지 않는다). 감시 조건·20초 제한·단언·대기 간격은 그대로.
+- 진단 `lockWaitCounts` 에 '호출 연결(스냅숏 초기화 뒤)' 값을 더했다.
+- 대기 시간 늘리기·재시도·제외·실행 순서 고정·sleep 추가·격리 수준이나 잠금 정책 변경은 하지 않았다.
+
+### 23.4 감시 코드 전수 점검
+
+| 클래스 | 감시 | 연결 구조 | 영향 | 변경 |
+|---|---|---|---|---|
+| `ConcurrentEditC2IntegrationTest` | `awaitDoneOrLockWait` — `pg_stat_activity` 잠금 대기 수 | A 의 `tx.execute` 안, A 와 같은 연결 | 있음 | 수정 |
+| `ConcurrentEditC3IntegrationTest` | 같음 | 같음 | 있음 | 수정 |
+| `ConcurrentEditC4IntegrationTest` (호출 2곳, 메서드 1개) | 같음 | 같음 | 있음 | 수정 |
+| `ConcurrentEditC4bIntegrationTest` | 같음 | A 의 `tx.executeWithoutResult` 안 | 있음 | 수정 |
+| `ConcurrentEditC4bRefColumnIntegrationTest` | 같음 | 같음 | 있음 | 수정 |
+| `ConcurrentEditC4bPkChangeIntegrationTest` | 같음 (결과를 boolean 으로) | 같음 | 있음 | 수정 |
+| `ConcurrentEditC4cSupport` (C4c 테스트들이 씀) | 같음 | 같음 | 있음 | 수정 |
+| `ConcurrentEditP1IntegrationTest` | 같음 | A 의 `tx.execute` 안 | 있음 | 수정 |
+| `ModelVersionConcurrencyIntegrationTest` | `awaitLockWait` | 한 곳은 `tx.execute` 안(프로젝트 잠금 고정 시나리오), 한 곳은 트랜잭션 밖 | 있음 (안쪽 호출) | 수정 (같은 메서드 — 밖에서는 효과 없음) |
+| `RelationSyncDeadlockIntegrationTest` | `waitForLockWaitOnce`·`blockedSessions` (`waitForLockWait` 는 호출 없음) | 잠금 쥔 쪽은 다른 스레드, 감시는 트랜잭션 밖(매번 새 자동 커밋) | 없음 | 유지 |
+| `InheritanceConcurrencyIntegrationTest` · `InheritanceStrategyConcurrencyIntegrationTest` | `lockWait` — `pg_locks` ⋈ `pg_stat_activity` | 같은 구조 (밖) | 없음 | 유지 |
+| `SourceCollectionIntegrationTest` · `SourceImportIntegrationTest` · `SourceMappingIntegrationTest` | `awaitLockWait`·대기 루프 | 같은 구조 (밖) | 없음 | 유지 |
+| `SourceJdbcCollectionIntegrationTest` · `SourceJdbcTestSupport` | 원본 DB 관리자 연결의 `pg_stat_activity` | 별도 관리자 연결 (밖) | 없음 | 유지 |
+| `ConcurrencyDiagnostics` | 진단 (`sessions` 는 별도 스레드, `lockWaitCounts`) | — | — | 헬퍼 추가·진단 값 추가 |
+
+### 23.5 검증
+
+- 결정적 재현 `PostgresLockWaitWatchIntegrationTest` (PostgreSQL 전용, H2 건너뜀) : A 가 행을 잠금 → 고친 감시(대기 전) 0 → 예전 감시 첫 조회 0 → B 대기(다른 연결로 확인 1, `pg_blocking_pids` 로 막은 쪽이 A 임을 확인) → 예전 감시 재조회 / 고친 감시 → A 종료 → B 행 획득 → 고친 감시 0. B 가 새 연결이면 예전 0 · 고친 1, 이미 있던 연결이면 둘 다 1. PostgreSQL 3회 모두 같은 값.
+- `entityApprovalVsEdit` 독립 10회 (실행마다 새 빈 DB, 그 메서드만) : 10/10 통과, 각 0.55~0.59초.
+- 영향 묶음 3회 (실행마다 새 빈 DB — `*Concurren*`·`*Deadlock*`·잠금 감시 재현·원본 매핑/가져오기/수집, 24 클래스 231건) : 1·2회 실패 0, **3회 실패 1 — `RelationSyncDeadlockIntegrationTest.s4TwoRenames`** (아래).
+- 전체 회귀 : 23.6.
+
+**`s4TwoRenames` 재발 (원인 미확정 그대로)** : 단언 'B 는 A 가 끝날 때까지 프로젝트 행에서 기다린다' 에서, 감시가 본 대기 문장이 `TB_PRJ` 가 아니라 `TB_TBL` 한 행 조회(`select … from tb_tbl … where tbl_sn=$1 and prj_sn=$2`)였다. 이 테스트의 감시는 트랜잭션 밖이라 23.2 의 결함과 관계없고, 이번에 감시도 바꾸지 않았다. 감시가 DB 전체에서 잠금 대기 세션 아무것이나 고르는 구조라 B 가 아닌 세션을 본 것인지, 실제 잠금 순서가 다른 경로가 있는 것인지는 이 실행만으로 가리지 못했다 — **해결로 보지 않으며 고치지 않았다** (작업 지시 : 독립 기존 결함은 기록만). 결과는 scratchpad `runs/20261125-093450-bundle3` 에 보존.
+
+### 23.6 전체 회귀 (격리 사본, 같은 최종 코드)
+
+| 항목 | H2 `build --continue --rerun-tasks` | PostgreSQL 18.6 1차 (새 빈 DB) | PostgreSQL 18.6 2차 (새 빈 DB) |
+|---|---|---|---|
+| 전체 / 실패 / 건너뜀 | 1,612 / 0 / 125 (재현 2건은 H2 건너뜀) | 1,612 / 0 / 46 | 1,612 / 0 / 46 |
+| 시간 | 4분 53초 | 7분 0초 | 6분 56초 |
+| `entityApprovalVsEdit` · `s4TwoRenames` | 통과 · 건너뜀 | 통과 · 통과 | 통과 · 통과 |
+
+바로 앞 실행에서는 새 재현 테스트의 PostgreSQL 판별(`select version()`)이 H2 에서 예외로 2건 실패했다 → 기존 테스트와 같은 판별로 고친 뒤 위 세 번을 다시 돌렸다. 운영 코드 변경 없음. 이 수정은 `entityApprovalVsEdit` 의 감시 결함만 다루며, `s4TwoRenames` 를 포함한 다른 간헐 실패를 해결했다고 보지 않는다. 기록 : [ai-execution-stability.md 17장](ai-execution-stability.md).

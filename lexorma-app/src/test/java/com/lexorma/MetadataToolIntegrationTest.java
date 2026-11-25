@@ -507,7 +507,12 @@ class MetadataToolIntegrationTest {
         ExecutionContext context = ExecutionContext.user(principal(viewer, EXAMPLE_PROJECT));
         assertThatThrownBy(() -> queries.query(context, new AiMetadataQueryDto.QueryRequest("반복")))
                 .extracting("errorCode").isEqualTo(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED);
-        assertThat(ollama.chats).as("상한(같은 Tool 4번)을 넘는 호출은 실행하지 않고 모델도 더 부르지 않는다").hasSize(5);
+        // AI 공통 실행 안정성 : 상한 뒤 전달된 결과로 부분 답변을 시도한다(2차). 가짜 모델이 구조화 요청에도 Tool 을 불러 그 응답에서 구조화가 바로 끝나므로(3차 AES-D16 —
+        // 거절을 되돌려 다시 부르지 않는다) 최초 사유(AI_TOOL_CALL_LIMIT_EXCEEDED)가 그대로 나간다. Tool 단계 5번 + 구조화 요청 1번 (2차에서는 구조화 안 거절 반복으로 5번)
+        assertThat(ollama.chats).as("상한(같은 Tool 4번)을 넘는 호출은 실행하지 않는다").hasSize(6);
+        assertThat(ollama.chats.subList(0, 5)).allSatisfy(chat -> assertThat(JSON.readTree(chat).path("tools").size()).isEqualTo(13));
+        assertThat(ollama.chats.get(5)).contains("Why the answer is partial");
+        assertThat(JSON.readTree(ollama.chats.get(5)).path("tools").size()).as("구조화 요청에는 Tool 정의가 없다").isZero();
 
         ScriptedOllama noTools = ollama();
         ready(noTools, "gemma2:2b");

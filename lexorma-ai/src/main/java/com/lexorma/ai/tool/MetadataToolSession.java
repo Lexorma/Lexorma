@@ -26,6 +26,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Tool 결과 원문 : 구조화 응답을 다시 요청할 때 Tool 을 다시 실행하지 않고 넘긴다 (이 질의 안에서만, 저장하지 않는다)</li>
  * </ul>
  * 전역 저장소(ThreadLocal 등)에 두지 않고 요청마다 만든다.
+ * <p>
+ * AI 공통 실행 안정성 2차 (docs/completed/ai-execution-stability.md) : Tool 실행마다 그 직전의 근거 기록 위치를 함께 남기고({@link #executed}),
+ * AI 서버가 응답한 요청에 실린 Tool 응답 수로 모델에게 전달된 범위를 센다({@link #delivered}). 부분 답변은 전달된 결과의 앞부분만 쓰고,
+ * 쓰지 않는 결과가 남긴 근거는 {@link #limitEvidenceTo} 로 지운다 (같은 대상을 앞 결과가 남겼으면 그대로). 이 상태는 질의 안에서만 둔다.
  */
 public final class MetadataToolSession {
 
@@ -64,6 +68,18 @@ public final class MetadataToolSession {
     private final Map<String, DescriptionView> described = new ConcurrentHashMap<>();
     private final List<ToolResult> results = Collections.synchronizedList(new ArrayList<>());
     private volatile Mode mode = Mode.TOOL_CALLING;
+    /** 실행 순서대로 Tool 실행 한 번마다 : 그 전의 결과 수, 결과를 남겼는지, 그 직전의 근거 기록 위치 */
+    private final List<Invocation> invocations = new ArrayList<>();
+    /** AI 서버가 응답한 요청에 실린 Tool 응답 수 (실행 순서의 앞에서부터) */
+    private int deliveredInvocations;
+    /** Spring AI 호출 상한에 걸린 종류 (걸리지 않았으면 null) */
+    private volatile ToolLimit toolLimit;
+
+    /** Tool 호출 상한의 종류 : 같은 Tool {@value MetadataToolset#MAX_CALLS_PER_TOOL}번 / 전체 {@value MetadataToolset#MAX_TOOL_CALLS}번 */
+    public enum ToolLimit { SAME_TOOL, TOTAL }
+
+    private record Invocation(int resultsBefore, boolean hasResult, EvidenceCheckpoint before) {
+    }
 
     /** 실행된 Tool 의 결과 원문 (모델에게 보낸 그대로) */
     public record ToolResult(String name, String result) {
@@ -120,8 +136,60 @@ public final class MetadataToolSession {
                 .build();
     }
 
-    void record(String name, Status status, long durationMillis) {
+    /**
+     * Tool 실행 한 번 (허용 목록의 Tool 이 실행 경계를 지났거나, 목록 밖 이름을 거절했다) : 기록 · 결과 원문(거절은 null) · 그 직전의 근거 기록 위치를 함께 남긴다
+     */
+    synchronized void executed(String name, Status status, long durationMillis, String result, EvidenceCheckpoint before) {
+        invocations.add(new Invocation(results.size(), result != null, before));
         calls.add(new Call(name, status, durationMillis));
+        if (result != null) results.add(new ToolResult(name, result));
+    }
+
+    /**
+     * 모델에게 전달된 범위 (AES-D04) : AI 서버가 응답을 돌려준 요청에 실린 Tool 응답 수(대화 전체). Spring AI 는 실행 순서대로 Tool 응답을 대화에 붙이므로
+     * 실행 순서의 앞에서부터 이만큼이 전달됐다. 줄지 않는다
+     */
+    public synchronized void delivered(int toolResponses) {
+        deliveredInvocations = Math.max(deliveredInvocations, Math.min(toolResponses, invocations.size()));
+    }
+
+    /** 모델에게 전달이 확인된 Tool 결과 수 (실행 순서의 앞에서부터. 거절한 이름은 결과가 없어 세지 않는다) */
+    public synchronized int deliveredResults() {
+        int count = 0;
+        for (int i = 0; i < deliveredInvocations; i++) if (invocations.get(i).hasResult()) count++;
+        return count;
+    }
+
+    /**
+     * 최종 답변에 쓰는 결과를 앞의 count 개로 줄인다 : 그 뒤 결과의 실행 직전 근거 위치로 되돌린다 — 뒤 결과에만 있던 대상·설명 기록은 지우고,
+     * 앞 결과가 이미 남긴 같은 대상은 그대로 둔다 (D-35 {@link #discardSince} 재사용). count 가 결과 수 이상이면 아무것도 하지 않는다
+     */
+    public synchronized void limitEvidenceTo(int count) {
+        for (Invocation invocation : invocations) {
+            if (invocation.hasResult() && invocation.resultsBefore() == count) {
+                discardSince(invocation.before());
+                return;
+            }
+        }
+    }
+
+    /** Spring AI 호출 상한에 걸렸다 (처음 것만 남긴다) */
+    public void toolLimitReached(ToolLimit limit) {
+        if (toolLimit == null) toolLimit = limit;
+    }
+
+    public ToolLimit toolLimit() {
+        return toolLimit;
+    }
+
+    /**
+     * 실제 실행 경로에 들어간 Tool 호출 수 (응답의 completion.executedTools) : 성공·실패·결과 상한 초과 포함, 허용 목록 밖 이름의 거절과 호출 상한으로 실행 전에 막힌 호출은 뺀다.
+     * Spring AI 호출 상한 계산(대화의 Tool 응답 수)과는 다른 값이다
+     */
+    public int executedTools() {
+        synchronized (calls) {
+            return (int) calls.stream().filter(c -> c.status() != Status.REJECTED).count();
+        }
     }
 
     /** Tool 이 돌려준 메타데이터의 그 시점 스냅숏을 남긴다 (같은 대상은 처음 본 것을 둔다 : 질의 중의 변경은 검증에서 드러난다) */
@@ -173,10 +241,6 @@ public final class MetadataToolSession {
     /** 이 질의에서 Tool 이 돌려준 근거 후보 (없으면 null) */
     public EvidenceCatalog.Snapshot seen(EvidenceType type, Long id) {
         return seen.get(key(type, id));
-    }
-
-    void result(String name, String result) {
-        results.add(new ToolResult(name, result));
     }
 
     public List<ToolResult> results() {

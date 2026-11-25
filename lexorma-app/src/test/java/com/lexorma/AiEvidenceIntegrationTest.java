@@ -214,17 +214,17 @@ class AiEvidenceIntegrationTest {
     }
 
     @Test
-    @DisplayName("재요청에서 모델이 Tool 을 불러도 실행하지 않는다 (허용 목록 밖으로 거절, 조회 없음)")
+    @DisplayName("재요청에서 모델이 Tool 을 불러도 실행하지 않는다 — 그 응답에서 구조화가 바로 끝난다 (AI 공통 실행 안정성 3차 AES-D16 : 예전에는 거절을 돌려주고 모델을 다시 불렀다), 조회 없음")
     void retryCannotRunTools() {
         Long table = exampleTable("TB_AI_STNG");
         afterTools(toolCalls(MODEL, Map.of("getTableDetail", Map.of("tableId", table))))
                 .then(raw(MODEL, "not json"))
                 .then(toolCalls(MODEL, Map.of("getTableColumns", Map.of("tableId", table))))
                 .then(answer(MODEL, "ok", List.of(evidence("TABLE", table, "TB_AI_STNG"))));
-        AiMetadataQueryDto.QueryResult result = queries.query(user(viewer, EXAMPLE_PROJECT), question("AI 설정?"));
-        assertThat(result.tools()).extracting(c -> c.name(), c -> c.status())
-                .containsExactly(tuple("getTableDetail", com.lexorma.ai.tool.MetadataToolSession.Status.OK),
-                        tuple("getTableColumns", com.lexorma.ai.tool.MetadataToolSession.Status.REJECTED));
+        int before = ollama.chats.size();
+        assertThatThrownBy(() -> queries.query(user(viewer, EXAMPLE_PROJECT), question("AI 설정?")))
+                .extracting("errorCode").isEqualTo(com.lexorma.common.exception.domain.ErrorCode.AI_STRUCTURED_OUTPUT_INVALID);
+        assertThat(ollama.chats.size() - before).as("Tool 단계 2번 + 구조화 2번 (형식 오류 재요청 1번 — 그 응답의 Tool 요청에서 끝, 거절 결과로 다시 부르지 않는다)").isEqualTo(4);
     }
 
     // ------------------------------------------------------------------ 근거 검증

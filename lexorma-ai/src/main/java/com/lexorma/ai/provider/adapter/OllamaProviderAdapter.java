@@ -10,6 +10,7 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.ollama.api.ThinkOption;
 import org.springframework.ai.ollama.management.ModelManagementOptions;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.retry.RetryUtils;
@@ -142,6 +143,8 @@ public class OllamaProviderAdapter implements AiProviderAdapter {
         }
         if (show == null) return AiProviderDto.ModelInfo.UNKNOWN;
         Boolean tools = show.capabilities() == null ? null : show.capabilities().contains("tools");
+        // 생각 기능 (Ollama capabilities 의 thinking) : 모델 이름으로 짐작하지 않는다. capabilities 가 없으면 알 수 없음
+        Boolean thinking = show.capabilities() == null ? null : show.capabilities().contains("thinking");
         Integer context = null;
         if (show.modelInfo() != null) {
             for (Map.Entry<String, Object> entry : show.modelInfo().entrySet()) {
@@ -150,7 +153,7 @@ public class OllamaProviderAdapter implements AiProviderAdapter {
                 }
             }
         }
-        return new AiProviderDto.ModelInfo(tools, context);
+        return new AiProviderDto.ModelInfo(tools, context, thinking);
     }
 
     /**
@@ -174,6 +177,17 @@ public class OllamaProviderAdapter implements AiProviderAdapter {
     @Override
     public ToolCallingChatOptions chatOptions(String model, Integer contextTokens, Integer maxOutputTokens) {
         return OllamaChatOptions.builder().model(model).numCtx(contextTokens).numPredict(maxOutputTokens).build();
+    }
+
+    /**
+     * 구조화 답변 요청 (AES-D09) : 생각 기능이 있는 모델이면 요청 최상위 think=false. 1차 분석에서 구조화 단계의 출력 한도 초과(R4)는 생각 토큰이 num_predict 를
+     * 써서였다. 생각 기능을 모르는·없는 모델에는 think 를 보내지 않는다 (예전 요청 그대로). 요청마다 새 옵션 객체다
+     */
+    @Override
+    public ToolCallingChatOptions structuringOptions(String model, Integer contextTokens, Integer maxOutputTokens, boolean disableThinking) {
+        OllamaChatOptions.Builder builder = OllamaChatOptions.builder().model(model).numCtx(contextTokens).numPredict(maxOutputTokens);
+        if (disableThinking) builder.thinkOption(ThinkOption.ThinkBoolean.DISABLED);
+        return builder.build();
     }
 
     private static OllamaApi api(AiProvider provider, ClientHttpRequestFactory requestFactory) {

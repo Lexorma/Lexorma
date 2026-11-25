@@ -233,6 +233,7 @@
 - 상태: 검증 필요 · 우선순위: P2 (임시) · 관련 기능: AI
 - 남은 작업 : Tool Calling 미지원 실제 모델로 서버 맥락 대체 흐름 검증(설치된 모델이 없어 못 함), 운영 지표(U-22).
 - 참고 사항 : [ai-tool-calling-ai4.md 8장](completed/ai-tool-calling-ai4.md). 버전 검증이 `MDFCN_DT` 기준이고 토큰 수가 추정인 것은 설계상 제약이다.
+- **AI 공통 실행 안정성 개선 — 완료 (2026-11-25, AES-D01~D19)** : completed-work.md [AI-4] AI 공통 실행 안정성 개선, 상세 [completed/ai-execution-stability.md](completed/ai-execution-stability.md). **남은 후속 (해결하지 않음)** : 작은 컨텍스트 모델 실행 구조 (6,144 이하는 질의를 시작하지 못하거나 결과를 실을 수 없음 — 안내만 개선), TokenEstimator 정확도 (첫 요청 추정 1.8배·숫자 과소 — 계산 방식 유지), Tool 정의 증가에 따른 확장성 (20개 이상이면 결과 자리 부족, 동적 선택은 장기 후보), 설명 근거 의미 검증·엔터티/주제 영역 설명 근거(D-35 규칙상 UNVERIFIABLE), 상속 문맥 복합 버전, 실제 외부 MCP 클라이언트 검증. 미검증(비차단) : 생각을 끌 수 없는 실제 모델, 실제 Tool 미지원 모델의 서버 맥락, 대규모 동시 부하, 브라우저 12개 조합 중 4개.
 
 ### [AUTH-1] 권한 정책 후속 (권한별 UI 액션 점검의 남은 것)
 
@@ -361,7 +362,7 @@
 - 지켜야 할 기존 원칙 : 단일 서버(별도 MCP 서버 프로세스를 요구하지 않는다 — [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6), 원본 DB 도구는 AI 에 공개하지 않는다(AI 로드맵 원칙 12), 프로젝트 범위는 검증된 실행 컨텍스트에서만(`ExecutionContextVerifier`, 도구 인수로 받지 않음), 읽기 전용(쓰기·승인 도구 없음), 요청 로그 본문 보호(`LogBodyPolicy`), AI 없이도 핵심 기능 동작.
 - **DEC-31 확정 (2026-11-16)** : 외부 AI 도구가 Lexorma 메타데이터를 조회하는 **선택형 MCP 서버를 기존 Spring Boot 에 내장**한다(별도 MCP 서버 운영 요구 없음). 기본 비활성, 켤 때만 추가 설정, 읽기 전용 Tool 만(기존 AI-4 도구·조회 로직 재사용), 프로젝트 권한·격리 유지, 검증된 사용자 인증 컨텍스트 사용, 원본 DB 직접 접근·DDL/DML 실행 Tool 없음, 비밀번호·토큰·Secret 반환 금지, 요청·응답 본문에 민감정보 기록 금지, 외부 인증 서버·추가 인프라를 필수로 만들지 않음, 미승인 추정 관계(DEC-21) 비공개.
 - 구현 전 상세 설계 : 인증 방식, 프로젝트 선택 방식, 토큰 발급·폐기(저장 시 새 테이블 → 증분 마이그레이션), 감사 기록, 접근 제한. [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6 과 4장(원본 수집용 MCP Connector, [U-07] — 반대 방향)과의 관계를 그 문서에 반영해 두었다.
-- [M-6] 완료(2026-11-20)로 옮겨 온 후속 D-35 는 **완료 (2026-11-24)** — completed-work.md [AI-MCP]·[AI-4] D-35, 상세 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md). **남은 D-35 후속 (사용자 결정 대기, 문서 37장)** : ① 토큰 예산 초과 시 부분 답변 정책 (지금은 질의 전체 `AI_TOKEN_BUDGET_EXCEEDED` — 설명 포함 속성 20개 한 페이지면 다음 요청이 입력 상한) ② 설명 근거의 의미 검증 한계 (`usesDescription` 표시와 실제 조회만 대조) ③ 상속 문맥 변경의 근거 버전 (행 단위 수정 일시만) ④ 관계가 많은 물리 질문의 답이 출력 한도 4,096 을 넘는 경우 (최종 3회 중 2회, 기준선 2회 중 0회 — 원인 미확정) ⑤ 실제 MCP 클라이언트 연결 검증.
+- [M-6] 완료(2026-11-20)로 옮겨 온 후속 D-35 는 **완료 (2026-11-24)** — completed-work.md [AI-MCP]·[AI-4] D-35, 상세 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md). **남은 D-35 후속 (문서 37장 — ①·④ 는 [AI-4] AI 공통 실행 안정성 개선으로 해결 2026-11-25, ②는 현재 구현 유지·한계 명시, ③은 보류, ⑤는 릴리스 검증 항목으로 확정 2026-11-24)** : ① 토큰 예산 초과 시 부분 답변 정책 (지금은 질의 전체 `AI_TOKEN_BUDGET_EXCEEDED` — 설명 포함 속성 20개 한 페이지면 다음 요청이 입력 상한) ② 설명 근거의 의미 검증 한계 (`usesDescription` 표시와 실제 조회만 대조) ③ 상속 문맥 변경의 근거 버전 (행 단위 수정 일시만) ④ 관계가 많은 물리 질문의 답이 출력 한도 4,096 을 넘는 경우 (→ 원인 분석 완료 : 구조화 단계의 생각 토큰, D-35 이전에도 발생 — [AI-4] AI 공통 실행 안정성 개선) ⑤ 실제 MCP 클라이언트 연결 검증.
 - 완료 조건 : 정한 인증·전송으로 외부 MCP 클라이언트가 허용된 읽기 전용 도구만 프로젝트 범위 안에서 부르고, 기존 AI-4 의 권한·재검증·감사 규칙을 그대로 지킨다.
 
 ### [M-DDL-PERF] DDL Export 반복 조회 측정
@@ -656,4 +657,8 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-2 공통 조회 서비스·AI/MCP 공통 DTO 구현 (Tool 등록 없음) — 상속 계산 공통화·AuthUtil 분리, 응답 크기·조회 수 실측, H2·PostgreSQL 전체 실패 0, 대형 엔터티 상세 상한 초과는 결정 대기 (completed/ai-logical-model-query-d35.md 12~18장) | [AI-MCP] |
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-3a·3b — 상세 section·속성 설명 선택·next 분할(3단계 말단 상세 49,936 → 20,835자), 내부 AI·MCP 논리 Tool 3개 등록, getLogicalModel 호환 보완, 논리 근거 7종, H2·PostgreSQL×2 실패 0 (completed/ai-logical-model-query-d35.md 19~26장) | [AI-MCP] |
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-FINAL — 설명 근거 검증(usesDescription)·참조 근거 기록 결함 수정·검색 입력 설명 보완, 토큰 예산 실측(질문당 프롬프트 +약 1,440), 가짜 Provider 흐름 7, 실제 Ollama gemma4:e4b 20문항, MCP·화면, H2·PostgreSQL×2 1,584/실패 0. **D-35 완료** (completed-work.md), 후속 결정 ①~⑤ 남김 | [AI-MCP] |
+| 2026-11-24 | [AI-4] AI 공통 실행 안정성 개선 1차 분석·설계 (운영 코드 변경 없음) — 실행 흐름·예산 검증 위치, 요청별 추정/실측(로컬 Ollama 캡처 82건), 부분 답변 대안 D 추천, R4 원인 = 구조화 단계 생각 토큰 (D-35 회귀 아님), 결정 12개 (completed/ai-execution-stability.md) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 2차 서버 구현 — 부분 답변(AES-D01~D06), 전달 확인·결과 단위 최종 답변 범위·근거 범위, completion 응답 칸, Ollama 구조화 단계 think=false, 작은 컨텍스트 안내, 결정적 통합 테스트 16건 추가·기존 4건 계약 변경 (completed/ai-execution-stability.md 15장, 3차 대기) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 3차 (AES-D13~D16) — 결과 문자 수 사유 분리, 서버 맥락 부분 답변, 구조화 단계 Tool 요청 차단, 부분 답변 화면, 실제 Ollama 31회·R4·B08 반복, 브라우저·단일 JAR. H2 전체 실패 0, PostgreSQL 2회 각 1건(M-8 감시 결함 — 원인 확인) 때문에 완료 처리 보류 (completed/ai-execution-stability.md 16장) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 최종 검증 보완 (AES-D17~D19) — M-8 PostgreSQL 테스트 감시 결함(트랜잭션 안 `pg_stat_activity` 백엔드 목록 고정) 수정·결정적 재현, executedTools 계약 확정, H2 1,612 실패 0 · PostgreSQL 2회 각 1,612 실패 0 → **완료**, 문서 completed/ 로 이동 | [AI-4]·[M-8] |
 | 2026-11-23 | [M-8] M8-C3 409 충돌 복구 UX (M8-C3-D01~D05) : 수정 폼 입력 보존·최신 비교·고른 변경만 다시 적용, 삭제·승인·매핑 검토 대화상자, ERD 배치 충돌 복구, 일괄 편집 기준값 범위(M8-D04 — 서버 `unchanged` 행), 중복 제출 방지. 새 마이그레이션 없음. C4 남음 (completed/modeling-concurrency-m8.md 15장) | [M-8] |

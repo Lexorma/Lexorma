@@ -6,9 +6,15 @@ import com.lexorma.core.execution.ExecutionContextVerifier;
 import com.lexorma.ai.tool.MetadataToolSession.Status;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallLimitBehavior;
+import org.springframework.ai.model.tool.ToolCallLimitExceededException;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.execution.ToolExecutionException;
@@ -74,7 +80,7 @@ public class MetadataToolset {
                 .resolutionFallbackEnabled(true)
                 .toolCallbackResolver(Rejected::new)
                 .build();
-        this.advisor = ToolCallingAdvisor.builder().toolCallingManager(manager).build();
+        this.advisor = ToolCallingAdvisor.builder().toolCallingManager(new LimitAware(manager)).build();
     }
 
     public List<ToolCallback> callbacks() {
@@ -146,11 +152,40 @@ public class MetadataToolset {
             }
             if (status != Status.OK) session.discardSince(evidence);
             long millis = (System.nanoTime() - started) / 1_000_000;
-            session.record(name, status, millis);
-            session.result(name, result);
+            session.executed(name, status, millis, result, evidence);
             log.info("AI Tool 실행 : request={} project={} type={} tool={} status={} {}ms", session.requestId(), session.context().projectId(),
                     session.context().type(), name, status, millis);
             return result;
+        }
+    }
+
+    /**
+     * Spring AI 호출 관리자를 그대로 쓰고, 호출 상한(THROW)에 걸리면 그 종류(같은 Tool / 전체)만 질의 세션에 남긴다 (AI 공통 실행 안정성 2차 — 부분 답변의 종료 사유).
+     * 상한·횟수 계산·예외 처리는 바꾸지 않는다 : 예외를 그대로 다시 던지고, Spring AI 가 예전처럼 상한 응답으로 반복을 끝낸다
+     */
+    private static final class LimitAware implements ToolCallingManager {
+        private final ToolCallingManager delegate;
+
+        LimitAware(ToolCallingManager delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+            return delegate.resolveToolDefinitions(chatOptions);
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+            try {
+                return delegate.executeToolCalls(prompt, chatResponse);
+            } catch (ToolCallLimitExceededException e) {
+                if (prompt.getOptions() instanceof ToolCallingChatOptions options && options.getToolContext() != null
+                        && options.getToolContext().get(MetadataToolSession.KEY) instanceof MetadataToolSession session) {
+                    session.toolLimitReached(e.getToolName() == null ? MetadataToolSession.ToolLimit.TOTAL : MetadataToolSession.ToolLimit.SAME_TOOL);
+                }
+                throw e;
+            }
         }
     }
 
@@ -177,7 +212,7 @@ public class MetadataToolset {
         public String call(String toolInput, ToolContext toolContext) {
             MetadataToolSession session = MetadataToolSession.from(toolContext);
             if (session.expired()) throw new CustomException(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED);
-            session.record(definition.name(), Status.REJECTED, 0);
+            session.executed(definition.name(), Status.REJECTED, 0, null, session.evidenceCheckpoint());
             log.info("AI Tool 거절 (허용 목록 밖) : request={} tool={}", session.requestId(), definition.name());
             return call(toolInput);
         }

@@ -674,6 +674,13 @@
 - 설계 결정 : 기존 제한(목록 20·속성 100·직접 서브타입 20·관계 50·결과 24,000자·질의당 8번·같은 Tool 4번·30초)·기본 토큰 예산·READ COMMITTED 유지, 마이그레이션·새 모듈·새 운영 의존성 없음, 물리 변환 결과 설명은 범위 밖.
 - 검증 결과 : H2 `./gradlew build` 1,584건 실패 0 · 건너뜀 123, PostgreSQL 18.6 새 빈 DB 2회 각 1,584건 실패 0 · 건너뜀 46, 단일 JAR(MCP 끔·켬, JSON-RPC, 끔·폐기 401), 실제 로컬 Ollama `gemma4:e4b` 질문 20개 1회씩(PASS 12 · PARTIAL 2 · FAIL 6 — FAIL 은 모델 해석·근거 유형 혼동과 출력 한도, 서버 근거 검증이 잘못된 근거를 인정하지 않음) + 보완 뒤 재실행, 브라우저(한국어·영어, 라이트·다크, 1440·1024·375). 미검증 : 실제 MCP 클라이언트 연결, 실제 읽기 경합 재현. 후속 결정 : pending-work.md [AI-MCP] D-35 후속.
 
+### [AI-4] AI 공통 실행 안정성 개선 (토큰 예산 · 부분 답변 · 출력 한도)
+
+- 상태: 완료 (2026-11-25) — 상세 기록 [completed/ai-execution-stability.md](completed/ai-execution-stability.md) (1차 분석 → 2차 서버 → 3차 최종 보완·화면·실제 Provider → 최종 검증 보완, 확정 정책 AES-D01~D19). D-35 후속 ①(예산 초과 시 부분 답변)·④(R4 출력 한도)를 해결했다.
+- 구현 내용 : Tool 단계가 입력·누적 예산, 같은 Tool·전체 호출 상한, 초안 출력 잘림으로 멈추면 질의 전체를 실패시키지 않고 **모델에게 전달이 확인된 결과**(AI 서버가 응답한 요청에 실린 Tool 응답) 앞부분 중 최종 구조화 요청(실제로 보낼 문자열)의 추정이 지금 예산 안·결과 원문 24,000자 이하인 가장 긴 범위로 **부분 답변**(초안 없음, 서버가 정한 사유·범위를 모델에 알림), 쓰지 않는 결과의 근거·설명 기록은 지움(D-35 되돌림 재사용). 응답 `completion {status: COMPLETE|PARTIAL, reason, executedTools}` (사유 6종 `INPUT_BUDGET_EXCEEDED`·`QUERY_BUDGET_EXCEEDED`·`TOTAL_TOOL_LIMIT_REACHED`·`SAME_TOOL_LIMIT_REACHED`·`DRAFT_OUTPUT_LIMIT_REACHED`·`CONTEXT_RESULT_LIMIT_REACHED`, 근거 상태와 독립, 서버가 정함, executedTools = 실제 Tool 실행 경계 진입 수). 서버 맥락(Tool 미지원 모델)에도 같은 범위 규칙. 구조화 단계에서 모델이 Tool 을 부르면 그 응답에서 바로 끝냄(거절 반복 없음). 생각 기능을 알려 준 Ollama 모델은 구조화 요청에만 `think=false` (R4 원인 = 구조화 단계 생각 토큰). 첫 요청부터 못 보내는 작은 컨텍스트 모델은 원인 숫자 안내. 권한 재검증을 부분 답변 전환 직전·실패 처리·응답 직전에 더함. AI 도우미에 부분 답변 안내(한국어·영어, 사유별 문구, 비차단).
+- 설계 결정 : 제한값(16,384/4,096/12,288/100,000, 8/4회, 24,000자, 30초/180초)·TokenEstimator 그대로, 가짜 응답·재시도·제한 우회 없음, 권한·Provider·시간·첫 요청 예산·구조화 실패는 기존 오류, 부분 답변을 만들지 못하면 최초 사유. 마이그레이션·새 의존성·새 모듈·새 설정 없음.
+- 검증 결과 : 가짜 Provider 결정적 통합 테스트 28건 (B09~B17·권한·동시 옵션·thinking 거부 포함), 실제 로컬 Ollama `gemma4:e4b` 31회(모두 200, R4 5/5 — 구조화 출력 1,457~4,039 → 1,553~1,878, 평균 38초 → 25초, B08 1차 422 → 부분 답변, 모델 평가 PASS 24·PARTIAL 5·FAIL 2 — 제품 결함 없음), 브라우저(Playwright) 가능한 12개 조합 중 8개 판정 55/55, 단일 JAR·MCP. 최종 H2 `build` 1,612건 실패 0 · 건너뜀 125, PostgreSQL 18.6 새 빈 DB 2회 각 1,612건 실패 0 · 건너뜀 46. 그 과정에서 M-8 PostgreSQL 테스트 감시 결함(트랜잭션 안 `pg_stat_activity` 백엔드 목록 고정)을 확인·수정(테스트 코드만 — [modeling-concurrency-m8.md 23장](completed/modeling-concurrency-m8.md)). 미검증 : 생각을 끌 수 없는 실제 모델, 실제 Tool 미지원 모델, 실제 외부 MCP 클라이언트, 대규모 부하. 남은 후속은 pending-work.md [AI-4].
+
 ### [AI-5] AI 데이터 사전 초안 생성 및 승인 — 완료된 범위
 
 - 상태: **부분 완료** — 여기에는 구현·검증된 범위만 둔다. 사람이 판정한 업무 정확성 평가는 pending-work.md [AI-5-EVAL]
@@ -783,3 +790,4 @@
 | 2026-11-24 | [M-8] M8-C4c-2 승인된 용어 삭제 400·잠금 충돌 구분·사전 삭제·원본 매핑 해제 검토·도메인 영향 안내·나머지 모델링 409 복구·충돌 시각 정밀도 — completed/modeling-concurrency-m8.md 21장, 브라우저 미검증 |
 | 2026-11-24 | [M-8] M8-FINAL 원본 매핑 등록·재지정 기준값·컬럼 순서 팝업 정렬 수정·실제 브라우저(두 사용자·ko/en·light/dark·1440/1024/375) 검증 — **M-8 동시 편집 안정성 완료**, completed/modeling-concurrency-m8.md 22장 |
 | 2026-11-23 | [M-8] M8-C3 409 충돌 복구 UX·ERD 배치 충돌·일괄 편집 기준값 범위(M8-D04) — completed/modeling-concurrency-m8.md 15장, M-8 동시 편집 C4 는 pending-work |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 완료 (부분 답변·종료 사유 6종·전달 결과 기반 근거·구조화 단계 Tool 요청 차단·Ollama 구조화 think=false·서버 맥락 부분 답변·부분 답변 화면, 실제 Ollama·브라우저·단일 JAR 검증), M-8 PostgreSQL 테스트 감시 결함 수정 (테스트 코드만), H2 1,612·PostgreSQL 2회 실패 0 |

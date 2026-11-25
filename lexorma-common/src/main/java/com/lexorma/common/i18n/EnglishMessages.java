@@ -261,6 +261,8 @@ final class EnglishMessages {
         add("AI 서버에 연결하지 못했습니다.", "Could not connect to the AI server.");
         add("AI 서버와 TLS 연결을 맺지 못했습니다 (인증서·호스트명 확인).", "Could not establish a TLS connection with the AI server (check the certificate and host name).");
         add("AI 서버의 응답을 처리하지 못했습니다.", "The response from the AI server could not be processed.");
+        add("AI 모델 컨텍스트 {0} 토큰에서 응답 몫 {1} 토큰을 뺀 요청 입력 상한 {2} 토큰이 첫 요청의 추정 입력 {3} 토큰보다 작아 질의를 시작하지 못했습니다. 관리자에게 이 AI 모델의 컨텍스트 길이와 Provider 모델 설정 확인을 요청하세요.",
+                "The request input limit of {2} tokens (AI model context {0} tokens minus {1} tokens reserved for the reply) is smaller than the estimated input of the first request ({3} tokens), so the question could not be started. Ask an administrator to check the context length of this AI model and the provider model setting.");
         add("Provider 유형을 선택해주세요.", "Select a provider type.");
         add("Provider 이름은 100자까지 입력할 수 있습니다.", "The provider name can be up to 100 characters.");
         add("Provider 이름을 입력해주세요.", "Enter the provider name.");

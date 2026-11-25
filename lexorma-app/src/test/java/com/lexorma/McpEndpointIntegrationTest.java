@@ -89,7 +89,8 @@ class McpEndpointIntegrationTest {
         Map<String, Object> list = body(post(token, rpc(2, "tools/list", Map.of())));
         @SuppressWarnings("unchecked") List<Map<String, Object>> tools = (List<Map<String, Object>>) ((Map<String, Object>) list.get("result")).get("tools");
         assertThat(tools).extracting(t -> t.get("name")).containsExactlyInAnyOrder("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations",
-                "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "getProjectInfo", "getLogicalModel");
+                "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "getProjectInfo", "getLogicalModel",
+                "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
 
         // tools/call : 이 프로젝트의 TABLE 만 (다른 프로젝트의 같은 이름은 보이지 않는다)
         String result = text(post(token, rpc(3, "tools/call", Map.of("name", "searchTables", "arguments", Map.of("keyword", "MCP_ONLY")))));

@@ -12,6 +12,8 @@ export interface ErrorBody {
   status?: number;
   code?: string;
   message?: string;
+  /** 409 원인 (M8-C4c-2) : 'LOCKED' = 다른 작업이 같은 데이터를 처리 중이라 잠금을 얻지 못했다. 없으면 구분 없음 */
+  reason?: string;
 }
 
 export class ApiError extends Error {
@@ -87,8 +89,17 @@ export interface RequestOptions {
 /** 다른 사용자가 그 사이 바꾼 409 (M8-C1~C3) */
 export const CONFLICT_CODES = new Set(['MODEL_CONFLICT', 'ERD_LAYOUT_CONFLICT']);
 
+/**
+ * 잠금 충돌 409 (M8-C4c-2 C4c-D10) : 서버가 NOWAIT 잠금을 얻지 못했다고 알려 준 경우만 (응답 reason 'LOCKED'). 데이터가 바뀐 것이 아니므로
+ * 비교·재적용 흐름으로 보내지 않는다 — 입력·처음 기준값을 그대로 두고 사용자가 직접 다시 시도한다 (자동 재시도 없음). 공통 알림이 잠금 안내를 보여 준다
+ */
+export function isLocked(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409 && (error.body as ErrorBody | undefined)?.reason === 'LOCKED';
+}
+
+/** 데이터 변경 충돌 409 : 잠금 충돌은 빠진다 (복구 화면은 이것만 다룬다 — 잠금 충돌은 공통 알림 후 사용자가 같은 요청을 다시 보낸다) */
 export function isConflict(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.status === 409 && CONFLICT_CODES.has(error.code ?? '');
+  return error instanceof ApiError && error.status === 409 && CONFLICT_CODES.has(error.code ?? '') && !isLocked(error);
 }
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

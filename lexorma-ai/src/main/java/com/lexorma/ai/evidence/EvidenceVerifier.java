@@ -23,7 +23,8 @@ import java.util.stream.Collectors;
  *   <li>종류별로 지금 상태를 한 번에 읽는다 ({@link EvidenceCatalog}, 종류마다 ID 조회 한 번)</li>
  *   <li>근거마다 : 없음 → {@link Status#NOT_FOUND} (이 질의에서 조회한 뒤 지워졌으면 {@link Status#STALE}) · 다른 프로젝트 → {@link Status#OUT_OF_SCOPE}
  *       (그 행의 내용은 내지 않는다) · 이 질의의 Tool 결과에 없던 것 → {@link Status#UNVERIFIABLE} · 조회 뒤 수정 → {@link Status#STALE} ·
- *       이름·소속 테이블·관계 종류가 다름 → {@link Status#MISMATCH} · 버전(수정 일시)이 없음 → {@link Status#UNVERIFIABLE} · 모두 맞음 → {@link Status#VERIFIED}</li>
+ *       이름·소속 테이블·관계 종류가 다름 → {@link Status#MISMATCH} · 버전(수정 일시)이 없음 → {@link Status#UNVERIFIABLE} · 모두 맞음 → {@link Status#VERIFIED}.
+ *       설명 사용 표시(usesDescription, 논리 속성 — D35-D25)가 있으면 이 질의에서 지금 버전의 설명을 실제로 돌려줬는지까지 본다 (아니면 UNVERIFIABLE, 설명이 없었으면 MISMATCH)</li>
  * </ol>
  * VERIFIED 는 그 근거의 존재·프로젝트 범위·Tool 결과와의 연결·이름·소속·버전을 확인했다는 뜻이다. 답변 문장 전체가 사실이라는 뜻은 아니다.
  */
@@ -51,7 +52,11 @@ public class EvidenceVerifier {
         /** 관계 종류(FK / LOGICAL)가 다르다 */
         KIND,
         /** 버전(수정 일시)이 없어 변경 여부를 확인할 수 없다 */
-        VERSION_UNKNOWN
+        VERSION_UNKNOWN,
+        /** 설명을 근거로 들었지만 이 질의에서 그 설명을 돌려주지 않았다 (설명을 뺀 조회·실패한 호출·다른 버전 — D35-D25) */
+        DESCRIPTION_NOT_RETRIEVED,
+        /** 설명을 근거로 들었지만 설명이 등록돼 있지 않았다 (조회 결과 설명 없음) */
+        DESCRIPTION_NOT_REGISTERED
     }
 
     /** 답변 전체 : 근거가 모두 확인됨 / 일부만 / 하나도 안 됨 / 근거 없음 */
@@ -92,7 +97,8 @@ public class EvidenceVerifier {
         for (StructuredAnswer.Evidence claim : distinct.values()) {
             EvidenceCatalog.Snapshot now = current.getOrDefault(claim.type(), Map.of()).get(claim.id());
             EvidenceCatalog.Snapshot seen = session.seen(claim.type(), claim.id());
-            results.add(judge(claim, now, seen, projectId, seen == null ? null : session.mode()));
+            results.add(judge(claim, now, seen, claim.type() == EvidenceType.LOGICAL_ATTRIBUTE ? session.described(claim.type(), claim.id()) : null, projectId,
+                    seen == null ? null : session.mode()));
         }
         int verified = (int) results.stream().filter(r -> r.status() == Status.VERIFIED).count();
         Overall overall = results.isEmpty() ? Overall.NO_EVIDENCE : verified == results.size() ? Overall.VERIFIED : verified == 0 ? Overall.UNVERIFIED : Overall.PARTIAL;
@@ -103,7 +109,8 @@ public class EvidenceVerifier {
         return new Verification(results, summary);
     }
 
-    private static Result judge(StructuredAnswer.Evidence claim, EvidenceCatalog.Snapshot now, EvidenceCatalog.Snapshot seen, Long projectId, MetadataToolSession.Mode source) {
+    private static Result judge(StructuredAnswer.Evidence claim, EvidenceCatalog.Snapshot now, EvidenceCatalog.Snapshot seen, MetadataToolSession.DescriptionView description,
+                                Long projectId, MetadataToolSession.Mode source) {
         if (now == null) return result(claim, seen != null ? Status.STALE : Status.NOT_FOUND, seen != null ? Reason.DELETED : null, source);
         if (!projectId.equals(now.projectId())) return result(claim, Status.OUT_OF_SCOPE, null, source);
         if (seen == null) return result(claim, Status.UNVERIFIABLE, Reason.NOT_RETRIEVED, source);
@@ -114,6 +121,12 @@ public class EvidenceVerifier {
         }
         if (claim.type() == EvidenceType.RELATION && claim.kind() != null && !claim.kind().equals(now.kind())) return result(claim, Status.MISMATCH, Reason.KIND, source);
         if (seen.version() == null || now.version() == null) return result(claim, Status.UNVERIFIABLE, Reason.VERSION_UNKNOWN, source);
+        if (Boolean.TRUE.equals(claim.usesDescription())) {
+            // 설명 사용 (D35-D25) : 이 질의에서 그 속성의 설명을 지금 버전 그대로 실제로 돌려줬어야 한다. 문장이 설명과 맞는지(의미)는 서버가 판정하지 않는다
+            MetadataToolSession.DescriptionView view = description;
+            if (view == null || !now.version().equals(view.version())) return result(claim, Status.UNVERIFIABLE, Reason.DESCRIPTION_NOT_RETRIEVED, source);
+            if (!view.registered()) return result(claim, Status.MISMATCH, Reason.DESCRIPTION_NOT_REGISTERED, source);
+        }
         return result(claim, Status.VERIFIED, null, source);
     }
 

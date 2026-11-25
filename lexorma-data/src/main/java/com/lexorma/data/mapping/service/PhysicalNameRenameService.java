@@ -565,7 +565,7 @@ public class PhysicalNameRenameService {
     }
 
     private static CustomException busy() {
-        return new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요."));
+        return CustomException.locked(ErrorCode.MODEL_CONFLICT, "다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요.");
     }
 
     private static CustomException invalid(String message, Object... args) {

@@ -14,9 +14,14 @@ import java.util.List;
 public record StructuredAnswer(String answer, List<Evidence> evidence) {
 
     /**
-     * @param tableId 컬럼이 속한 테이블 (COLUMN 만, 선택)
-     * @param kind    관계 종류 FK / LOGICAL (RELATION 만, 선택)
+     * @param tableId         컬럼이 속한 테이블 (COLUMN 만, 선택)
+     * @param kind            관계 종류 FK / LOGICAL (RELATION 만, 선택)
+     * @param usesDescription 답변이 이 논리 속성의 설명을 근거로 썼다 (LOGICAL_ATTRIBUTE 만, 선택 — D35-D25). true 면 서버가 이 질의에서 설명을 실제로 돌려줬는지 확인한다
      */
-    public record Evidence(EvidenceType type, Long id, String name, Long tableId, String kind) {
+    public record Evidence(EvidenceType type, Long id, String name, Long tableId, String kind, Boolean usesDescription) {
+        /** 예전 형식 (설명 사용 표시 없음) */
+        public Evidence(EvidenceType type, Long id, String name, Long tableId, String kind) {
+            this(type, id, name, tableId, kind, null);
+        }
     }
 }

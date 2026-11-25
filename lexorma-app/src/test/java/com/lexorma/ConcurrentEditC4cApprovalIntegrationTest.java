@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M8-C4c-1 C4c-D01 (docs/ongoing/modeling-concurrency-m8.md 20장) : 엔터티 승인은 직접 정의한 속성·식별자를 함께 승인하므로, 상세 조회의 구성 기준값(composition)이
+ * M8-C4c-1 C4c-D01 (docs/completed/modeling-concurrency-m8.md 20장) : 엔터티 승인은 직접 정의한 속성·식별자를 함께 승인하므로, 상세 조회의 구성 기준값(composition)이
  * 잠근 뒤의 구성과 같을 때만 승인한다. 승인 취소는 엔터티 기준값만, 이미 같은 상태면 아무것도 하지 않는다. 관계·주제 영역 분류는 승인 구성에 넣지 않는다
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

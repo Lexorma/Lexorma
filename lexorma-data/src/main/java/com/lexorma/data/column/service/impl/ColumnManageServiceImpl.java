@@ -232,7 +232,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
                 lockForKeyChange(projectId, ownerTables, deletes, Set.of());
             } else {
                 ownerTables.stream().sorted().forEach(id -> tableInfoRepository.findForUpdate(id, projectId));
-                if (!columnInfoRepository.findPkColumnIds(projectId, requested).isEmpty()) throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
+                if (!columnInfoRepository.findPkColumnIds(projectId, requested).isEmpty()) throw com.lexorma.data.physical.sync.ModelRowLocks.changedMeanwhile();
             }
         }
 
@@ -623,7 +623,11 @@ public class ColumnManageServiceImpl implements ColumnManageService {
 
         TableInfo tableInfo = columnInfo.getTableInfo();
 
-        List<ColumnInfoDto> collect = tableInfo.getColumns().stream().map(ColumnInfoDto::fromEntity).collect(Collectors.toList());
+        // 저장된 정렬 순서대로 (같으면 ID 순) — 컬럼 순서 팝업이 이 순서로 카드를 보이고 그대로 저장한다 (M8-FINAL : 예전에는 정렬 없는 컬렉션 순서(사실상 ID 순)라
+        // 팝업이 저장된 순서와 다르게 보였고, 그대로 저장하면 다른 사용자가 정한 순서가 ID 순으로 되돌아갔다. 409 비교의 '현재 서버 순서' 도 틀리게 보였다)
+        List<ColumnInfoDto> collect = tableInfo.getColumns().stream()
+                .sorted(java.util.Comparator.comparing((ColumnInfo c) -> c.getSortOrder() == null ? Integer.MAX_VALUE : c.getSortOrder()).thenComparing(ColumnInfo::getId))
+                .map(ColumnInfoDto::fromEntity).collect(Collectors.toList());
 
         for(ColumnInfoDto dto : collect){
             if(dto.getIsApproval().equals("Y")){
@@ -775,7 +779,7 @@ public class ColumnManageServiceImpl implements ColumnManageService {
         // 잠그기 전에는 PK 구성을 바꾸지 않던 저장이 잠근 뒤에는 바꾼다 (그 사이 다른 저장이 PK 를 바꿨다 — 지울 컬럼이 PK 가 됐거나, 보낸 PK 여부가 이제 지금 값과 다르다) :
         // 이 행 잠금을 쥔 채 프로젝트 배타를 뒤늦게 잡지 않고(잠금 승격 없음) 409 로 끝낸다 (D11 · R2). 전체 롤백 — 다시 읽고 다시 저장하면 구조 변경 경로로 간다
         if (!keyChange && changesPrimaryKey(existing, request.getRows(), deletedIds)) {
-            throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
+            throw com.lexorma.data.physical.sync.ModelRowLocks.changedMeanwhile();
         }
 
         // 남는 기존 컬럼명의 비교 값 (중복 확인용 — 앞뒤 공백 제거 + 대문자, M7-U01). 이 저장에서 지우는 컬럼의 이름은 새 컬럼이 쓸 수 있다

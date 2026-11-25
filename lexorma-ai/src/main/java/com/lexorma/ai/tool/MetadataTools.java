@@ -47,7 +47,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * AI-4 읽기 전용 메타데이터 Tool. Spring AI 의 {@link FunctionToolCallback} 으로 {@link #callbacks()} 에 적은 10개만 만들고, {@link MetadataToolset} 이 감싸 요청마다 등록한다
+ * AI-4 읽기 전용 메타데이터 Tool. Spring AI 의 {@link FunctionToolCallback} 으로 {@link #callbacks()} 에 적은 13개(D-35 D35-3b 논리 모델 3개 포함)만 만들고, {@link MetadataToolset} 이 감싸 요청마다 등록한다
  * (Bean·메서드 자동 노출 없음. 입력은 record 라 컴파일 옵션 -parameters 와 상관없이 인자 이름이 고정된다).
  * <ul>
  *   <li>조회는 화면 API 와 같은 기존 조회 서비스로 한다 (VIEWER 가 화면에서 보는 범위와 같다). 쓰기·승인·SQL 실행·원본 DB·파일·외부 HTTP 경로는 없다</li>
@@ -87,6 +87,7 @@ public class MetadataTools {
     private final EvidenceCatalog evidenceCatalog;
     private final SimilarColumnService similarColumnService;
     private final ModelChangeHistoryService modelChangeHistoryService;
+    private final LogicalMetadataService logicalMetadataService;
 
     // ------------------------------------------------------------------ 결과 형식
 
@@ -211,6 +212,43 @@ public class MetadataTools {
     public record NoInput() {
     }
 
+    // ------------------------------------------------------------------ 논리 모델 Tool 입력 (D-35 D35-3b, LogicalMetadataService 와 같은 칸)
+    // 설명은 짧게 : Tool 정의는 요청마다 모델 입력에 들어간다 (토큰 예산 — 문서 21장)
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LogicalOverviewRequest(
+            @ToolParam(description = "Omit model to list models", required = false) Long modelId,
+            @ToolParam(required = false) String modelName,
+            @ToolParam(description = "ALL (default), SUBJECT_AREAS or SUBTYPE_GROUPS", required = false) String section,
+            @ToolParam(description = "From 0, not with ALL", required = false) Integer page,
+            @ToolParam(required = false) Integer limit) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LogicalEntitySearchRequest(
+            @ToolParam(required = false) Long modelId,
+            @ToolParam(required = false) String modelName,
+            @ToolParam(description = "Entity name or description only", required = false) String keyword,
+            @ToolParam(description = "From getLogicalModelOverview", required = false) Long subjectAreaId,
+            @ToolParam(description = "Include child areas (default true)", required = false) Boolean includeChildren,
+            @ToolParam(description = "Only entities without an area", required = false) Boolean unclassifiedOnly,
+            @ToolParam(required = false) Integer page,
+            @ToolParam(description = "1-20, default 10", required = false) Integer limit) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LogicalEntityDetailRequest(
+            @ToolParam(required = false) Long entityId,
+            @ToolParam(description = "With entityName", required = false) Long modelId,
+            @ToolParam(description = "With entityName", required = false) String modelName,
+            @ToolParam(required = false) String entityName,
+            @ToolParam(description = "ALL (default), ATTRIBUTES, IDENTIFIERS, RELATIONS or INHERITANCE", required = false) String section,
+            @ToolParam(description = "Include attribute descriptions (default false)", required = false) Boolean includeAttributeDescriptions,
+            @ToolParam(description = "INHERITANCE: one subtype group", required = false) Long subtypeGroupId,
+            @ToolParam(description = "From 0, not with ALL", required = false) Integer page,
+            @ToolParam(description = "Default 20, not with ALL", required = false) Integer limit) {
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TableSearch(
             @ToolParam(description = "Part of a table name, table comment or description, e.g. 회원 or MEMBER. Empty lists the first tables", required = false) String keyword,
@@ -280,7 +318,15 @@ public class MetadataTools {
                         + "same standard domain. score and reasons come from these rules; do not invent other similarity scores.", SimilarColumnSearch.class, this::findSimilarColumns),
                 tool("getMetadataHistory", "Get the recorded change history (newest first) of one physical table (optionally with its columns and relations), "
                         + "column or relation of the current project. Entries are past changes: before/after are values at that time, not the current metadata. "
-                        + "Standard words, terms and domains have no change history.", HistoryRequest.class, this::getMetadataHistory));
+                        + "Standard words, terms and domains have no change history.", HistoryRequest.class, this::getMetadataHistory),
+                tool("getLogicalModelOverview", "Logical models of the current project. Without a model: model list. With a model: counts, the "
+                        + "subject area tree and subtype groups; no attributes (use searchLogicalEntities, then getLogicalEntityDetail).",
+                        LogicalOverviewRequest.class, this::getLogicalModelOverview),
+                tool("searchLogicalEntities", "Entities of one logical model by keyword, subjectAreaId (an area's entities) or unclassified, with an "
+                        + "inheritance summary. Up to 20 per page.", LogicalEntitySearchRequest.class, this::searchLogicalEntities),
+                tool("getLogicalEntityDetail", "One logical entity: inheritance, effective attributes (own and inherited, definedEntity*), "
+                        + "identifiers (kind) and relationships. section reads one list by page.",
+                        LogicalEntityDetailRequest.class, this::getLogicalEntityDetail));
     }
 
     private static <I, O> ToolCallback tool(String name, String description, Class<I> input, BiFunction<I, ToolContext, O> function) {
@@ -595,6 +641,111 @@ public class MetadataTools {
     // ------------------------------------------------------------------ 공통
 
     /** Tool 이 돌려준 대상의 지금(=조회 시점) 스냅숏을 이 질의의 근거 후보로 남긴다 (종류별 한 번의 ID 조회) */
+    // ------------------------------------------------------------------ 논리 모델 (D-35 D35-3b) : LogicalMetadataService 공통 조회 + 돌려주는 대상만 근거로 기록
+
+    Object getLogicalModelOverview(LogicalOverviewRequest input, ToolContext toolContext) {
+        Long projectId = scope(toolContext).getProjectId();
+        LogicalOverviewRequest in = input == null ? new LogicalOverviewRequest(null, null, null, null, null) : input;
+        boolean model = in.modelId() != null || (in.modelName() != null && !in.modelName().isBlank());
+        if (!model) {
+            if (in.section() != null && !in.section().isBlank()) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "modelId 나 modelName 이 필요합니다.");
+            LogicalMetadataDto.ModelList list = logicalMetadataService.models(projectId, in.page(), in.limit());
+            saw(toolContext, EvidenceType.LOGICAL_MODEL, list.models().stream().map(LogicalMetadataDto.ModelItem::modelId).toList());
+            return list;
+        }
+        LogicalMetadataDto.ModelOverview overview = logicalMetadataService.overview(projectId,
+                new LogicalMetadataDto.OverviewRequest(in.modelId(), in.modelName(), in.section(), in.page(), in.limit()));
+        saw(toolContext, EvidenceType.LOGICAL_MODEL, List.of(overview.modelId()));
+        if (overview.subjectAreas() != null) saw(toolContext, EvidenceType.SUBJECT_AREA, overview.subjectAreas().stream().map(LogicalMetadataDto.SubjectAreaItem::subjectAreaId).toList());
+        if (overview.subtypeGroups() != null) {
+            saw(toolContext, EvidenceType.SUBTYPE_GROUP, overview.subtypeGroups().stream().map(LogicalMetadataDto.SubtypeGroupItem::groupId).toList());
+            saw(toolContext, EvidenceType.LOGICAL_ENTITY, overview.subtypeGroups().stream().map(LogicalMetadataDto.SubtypeGroupItem::supertypeEntityId).toList());
+        }
+        return overview;
+    }
+
+    Object searchLogicalEntities(LogicalEntitySearchRequest input, ToolContext toolContext) {
+        LogicalEntitySearchRequest in = input == null ? new LogicalEntitySearchRequest(null, null, null, null, null, null, null, null) : input;
+        LogicalMetadataDto.EntityList list = logicalMetadataService.searchEntities(scope(toolContext).getProjectId(), new LogicalMetadataDto.EntitySearch(in.modelId(),
+                in.modelName(), in.keyword(), in.subjectAreaId(), in.includeChildren(), in.unclassifiedOnly(), in.page(), in.limit()));
+        saw(toolContext, EvidenceType.LOGICAL_MODEL, List.of(list.modelId()));
+        List<Long> entities = new ArrayList<>();
+        List<Long> areas = new ArrayList<>();
+        List<Long> groups = new ArrayList<>();
+        for (LogicalMetadataDto.EntityItem e : list.entities()) {
+            entities.add(e.entityId());
+            if (e.subjectArea() != null) areas.add(e.subjectArea().subjectAreaId());
+            LogicalMetadataDto.InheritanceSummary i = e.inheritance();
+            if (i.supertype() != null) entities.add(i.supertype().entityId());
+            if (i.parentGroupId() != null) groups.add(i.parentGroupId());
+            for (LogicalMetadataDto.GroupSummary g : i.subtypeGroups()) {
+                groups.add(g.groupId());
+                g.subtypes().forEach(m -> entities.add(m.entityId()));
+            }
+        }
+        saw(toolContext, EvidenceType.LOGICAL_ENTITY, entities);
+        saw(toolContext, EvidenceType.SUBJECT_AREA, areas);
+        saw(toolContext, EvidenceType.SUBTYPE_GROUP, groups);
+        return list;
+    }
+
+    Object getLogicalEntityDetail(LogicalEntityDetailRequest input, ToolContext toolContext) {
+        LogicalEntityDetailRequest in = input == null ? new LogicalEntityDetailRequest(null, null, null, null, null, null, null, null, null) : input;
+        LogicalMetadataDto.EntityDetail d = logicalMetadataService.entityDetail(scope(toolContext).getProjectId(), new LogicalMetadataDto.EntityRef(in.entityId(),
+                in.modelId(), in.modelName(), in.entityName(), in.section(), in.includeAttributeDescriptions(), in.subtypeGroupId(), in.page(), in.limit()));
+        saw(toolContext, EvidenceType.LOGICAL_MODEL, List.of(d.modelId()));
+        List<Long> entities = new ArrayList<>(List.of(d.entityId()));
+        List<Long> groups = new ArrayList<>();
+        if (d.subjectArea() != null) saw(toolContext, EvidenceType.SUBJECT_AREA, List.of(d.subjectArea().subjectAreaId()));
+        if (d.inheritance() != null) {
+            LogicalMetadataDto.InheritanceDetail i = d.inheritance();
+            entities.add(i.root().entityId());
+            i.ancestors().forEach(a -> entities.add(a.entityId()));
+            if (i.parentGroup() != null) groups.add(i.parentGroup().groupId());
+            for (LogicalMetadataDto.GroupDetail g : i.subtypeGroups()) {
+                groups.add(g.groupId());
+                g.subtypes().forEach(m -> entities.add(m.entityId()));
+            }
+        }
+        // 응답에 실린 다른 엔터티·속성 참조 (ID·이름을 돌려줬다) : 속성·식별자의 정의 엔터티, 식별자 구성 속성, 관계의 양 끝·상속 출처·속성 짝 (D35-FINAL — 실제 모델 검증에서 확인)
+        List<Long> referencedAttributes = new ArrayList<>();
+        if (d.attributes() != null) d.attributes().forEach(a -> entities.add(a.definedEntityId()));
+        if (d.identifiers() != null) d.identifiers().forEach(i -> {
+            entities.add(i.definedEntityId());
+            i.attributes().forEach(part -> referencedAttributes.add(part.attributeId()));
+        });
+        if (d.relationships() != null) d.relationships().forEach(r -> {
+            entities.add(r.sourceEntityId());
+            entities.add(r.targetEntityId());
+            if (r.inheritedFromEntityId() != null) entities.add(r.inheritedFromEntityId());
+            if (r.attributePairs() != null) r.attributePairs().forEach(pair -> {
+                referencedAttributes.add(pair.parentAttributeId());
+                referencedAttributes.add(pair.childAttributeId());
+            });
+        });
+        if (d.inheritance() != null && d.inheritance().parentGroup() != null) entities.add(d.inheritance().parentGroup().supertypeEntityId());
+        // 참조로만 실린 속성은 대상 근거로만 남긴다 (설명 기록은 아래 — 설명을 실은 속성 목록만)
+        saw(toolContext, EvidenceType.LOGICAL_ATTRIBUTE, referencedAttributes);
+        // 속성·식별자·관계는 이 응답에 실린 것만 (다음 페이지·조회하지 않은 항목은 근거가 아니다)
+        if (d.attributes() != null) {
+            List<Long> attributeIds = d.attributes().stream().map(LogicalMetadataDto.AttributeItem::attributeId).toList();
+            var snapshots = evidenceCatalog.load(EvidenceType.LOGICAL_ATTRIBUTE, attributeIds).values();
+            MetadataToolSession session = MetadataToolSession.from(toolContext);
+            session.saw(snapshots);
+            // 설명을 실제로 실은 응답만 '설명 조회' 로 기록한다 (D35-D25). 설명이 없는 속성은 '등록 안 됨' 을 확인한 것으로 남긴다
+            if ("INCLUDED".equals(d.attributeDescriptions())) {
+                java.util.Set<Long> registered = new java.util.HashSet<>();
+                d.attributes().stream().filter(LogicalMetadataDto.AttributeItem::hasDescription).forEach(a -> registered.add(a.attributeId()));
+                session.sawDescriptions(snapshots, registered);
+            }
+        }
+        if (d.identifiers() != null) saw(toolContext, EvidenceType.LOGICAL_IDENTIFIER, d.identifiers().stream().map(LogicalMetadataDto.IdentifierItem::identifierId).toList());
+        if (d.relationships() != null) saw(toolContext, EvidenceType.LOGICAL_RELATIONSHIP, d.relationships().stream().map(LogicalMetadataDto.RelationshipItem::relationshipId).toList());
+        saw(toolContext, EvidenceType.LOGICAL_ENTITY, entities);
+        saw(toolContext, EvidenceType.SUBTYPE_GROUP, groups);
+        return d;
+    }
+
     private void saw(ToolContext toolContext, EvidenceType type, List<Long> ids) {
         MetadataToolSession.from(toolContext).saw(evidenceCatalog.load(type, ids).values());
     }

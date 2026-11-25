@@ -6,6 +6,7 @@ import { Label, type LabelVariant } from '../../components/grid/cells';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { api, ApiError, enc } from '../../lib/api';
 import { baseQuery } from '../../lib/deletion';
+import { runWithReview, type Snapshot } from '../../components/conflict/conflictActions';
 import { formatDateTime } from '../../lib/format';
 import { t, tc } from '../../lib/i18n';
 import { useTableDetail } from '../table/tableDetail';
@@ -179,24 +180,122 @@ export function SourceMappingPage() {
   );
 }
 
+// ------------------------------------------------------------------ 매핑 해제 검토 (M8-C4c-2 C4c-2D)
+
+const mappingTarget = (schemaName: string | null, tableName: string | null) => (tableName ? `${schemaName ?? '?'}.${tableName}` : null);
+
+/** 스키마 해제 대상의 지금 상태 : 스키마 행과, 함께 해제되는 그 원본 스키마의 TABLE 매핑 (예외 제외) — 기존 목록 API 만 쓴다 (size 최대 500 쪽 단위) */
+async function loadSchemaRelease(sourceSchemaId: number): Promise<{ row: SchemaRow | null; tables: TableRow[] }> {
+  const overview = await api<Overview>('/api/sourceMapping', { silent: true });
+  const tables: TableRow[] = [];
+  for (let page = 0; ; page++) {
+    const result = await api<TablePage>(`/api/sourceMapping/tables?sourceSchemaId=${enc(sourceSchemaId)}&page=${page}&size=500`, { silent: true });
+    tables.push(...result.rows.filter((r) => r.mappingId != null && r.status !== 'EXCLUDED'));
+    if ((page + 1) * 500 >= result.total || result.rows.length === 0) break;
+  }
+  return { row: overview.schemas.find((s) => s.sourceSchemaId === sourceSchemaId) ?? null, tables };
+}
+
+/** 확인했던 / 지금 스키마 매핑 : 모델 스키마 · 함께 해제되는 TABLE 매핑 수 · TABLE 매핑마다 한 줄 (추가·삭제·변경이 줄 단위로 보인다) */
+function schemaReleaseSnapshot(state: { row: SchemaRow | null; tables: TableRow[] }): Snapshot {
+  return {
+    modifiedAt: state.row?.modifiedAt ?? null,
+    composition: state.row?.composition ?? undefined,
+    fields: [
+      { key: 'schema', label: t('모델 스키마'), value: state.row?.mappingId == null ? t('해제됨') : state.row.schemaName ?? '-' },
+      { key: 'count', label: t('함께 해제되는 TABLE 매핑 수'), value: t('{0}개', state.tables.length) },
+      ...state.tables.map((r) => ({ key: `table:${r.sourceTableId}`, label: `${r.sourceSchemaName ?? ''}.${r.sourceTableName}`, value: mappingTarget(r.schemaName, r.tableName) ?? '-', removable: true })),
+    ],
+  };
+}
+
+/** 비교 항목 문자열 (구성 기준값만 다르고 보이는 줄은 같을 때를 알아보려고) */
+const snapshotText = (s: Snapshot) => JSON.stringify((s.fields ?? []).map((f) => [f.key, f.value]));
+
+/**
+ * 등록·재지정 검토에서 다시 정할 수 없는 경우 (M8-FINAL) : 본 매핑이 해제되었다 — 오래된 변경을 신규 등록으로 바꾸지 않는다 / 해제 뒤 다시 만들어졌다 (다른 행)
+ * 본 적 없는 매핑이 새로 생긴 경우는 막지 않는다 (사용자가 최신 매핑을 보고 그 매핑을 바꿀지 고른다 — 다시 보낼 때 그 행의 기준값을 쓴다)
+ */
+function mappingBlock(seenId: number | null, latestId: number | null): string | undefined {
+  if (seenId != null && latestId == null) return t('확인한 매핑이 그 사이 해제되었습니다. 목록에서 다시 매핑해 주세요.');
+  if (seenId != null && latestId != null && seenId !== latestId) return t('매핑이 해제된 뒤 다시 만들어졌습니다. 목록에서 최신 매핑을 확인한 뒤 다시 정해 주세요.');
+  return undefined;
+}
+
+function tableReleaseSnapshot(row: TableRow | null): Snapshot {
+  return {
+    modifiedAt: row?.modifiedAt ?? null,
+    fields: [
+      { key: 'model', label: t('모델 TABLE'), value: row?.mappingId == null ? t('해제됨') : mappingTarget(row.schemaName, row.tableName) ?? '-' },
+      { key: 'status', label: t('상태'), value: row ? STATUS[row.status].label : '-' },
+    ],
+  };
+}
+
 function SchemaMappings({ data, canManage, onChanged }: { data: Overview; canManage: boolean; onChanged: () => void }) {
   const dialog = useDialog();
   const [choice, setChoice] = useState<Record<number, string>>({});
 
+  // 등록·재지정 (M8-FINAL FINAL-D03) : 화면이 본 이 행의 매핑(없으면 신규 등록)을 기준값으로 보낸다. 409 면 확인한 매핑 ↔ 최신 매핑과 내가 고른 대상을 보여 주고
+  // 사용자가 최신 상태로 다시 정할지 고른다. 해제되었거나 다시 만들어진 매핑은 이 요청으로 신규 등록하지 않는다 (목록에서 다시)
   const confirm = async (row: SchemaRow, schemaId: number) => {
+    const chosen = data.modelSchemas.find((s) => s.id === schemaId)?.schemaName ?? `#${schemaId}`;
+    const snapshot = (r: SchemaRow | null): Snapshot => ({
+      modifiedAt: r?.modifiedAt ?? null,
+      fields: [{ key: 'schema', label: t('모델 스키마'), value: r?.mappingId == null ? t('미매핑') : r.schemaName ?? '-' }],
+    });
+    let latestRow: SchemaRow | null = row;
+    let reviewed = false;
+    const send = (base: SchemaRow | null) => api('/api/sourceMapping/schemas', {
+      method: 'PUT', conflict: 'handled',
+      body: { sourceSchemaId: row.sourceSchemaId, schemaId, mappingId: base?.mappingId ?? null, modifiedAt: base?.mappingId != null ? base.modifiedAt : null },
+    });
     try {
-      await api('/api/sourceMapping/schemas', { method: 'PUT', body: { sourceSchemaId: row.sourceSchemaId, schemaId } });
-      onChanged();
-    } catch { /* 공통 알림 */ }
+      const ok = await runWithReview({
+        dialog, title: t('스키마 매핑 확정'), intro: t('확인한 뒤 이 원본 스키마의 매핑이 바뀌어 확정하지 않았습니다.'), seen: snapshot(row),
+        load: async () => {
+          latestRow = (await api<Overview>('/api/sourceMapping', { silent: true })).schemas.find((s) => s.sourceSchemaId === row.sourceSchemaId) ?? null;
+          reviewed = true;
+          return snapshot(latestRow);
+        },
+        act: async () => { await send(reviewed ? latestRow : row); },
+        block: () => mappingBlock(row.mappingId, latestRow?.mappingId ?? null),
+        note: () => t('내가 고른 대상 : {0}. 최신 매핑을 확인한 뒤 이 대상으로 다시 정할지 결정해 주세요.', chosen),
+        retryLabel: t('최신 매핑에서 다시 정하기'), onClose: onChanged,
+      });
+      if (ok) onChanged();
+    } catch { /* 잠금 충돌·업무 오류 : 공통 알림 — 고른 대상은 그대로 */ }
   };
-  const release = (row: SchemaRow) => {
-    dialog.confirm(t('{0} 스키마 매핑을 해제하시겠습니까? 이 원본 스키마의 TABLE 매핑도 함께 해제됩니다. 물리 모델은 바뀌지 않습니다.', row.sourceSchemaName), async () => {
-      // 화면이 본 매핑·TABLE 매핑 구성과 같을 때만 해제한다 (M8-C4c-1). 그 사이 바뀌었으면 409 를 공통 알림으로 보여 주고 최신 목록을 다시 읽는다 (자동 재시도 없음)
+  const release = async (row: SchemaRow) => {
+    // 함께 해제될 TABLE 매핑을 먼저 읽어 확인 창에 보여 준다 — 사용자가 확인한 이 상태(매핑 수정 일시·구성 기준값)로 해제한다 (M8-C4c-2)
+    let seen: { row: SchemaRow | null; tables: TableRow[] };
+    try {
+      seen = await loadSchemaRelease(row.sourceSchemaId);
+    } catch (error) {
+      dialog.alert(error instanceof ApiError ? error.message : t('최신 내용을 불러오지 못했습니다.'));
+      return;
+    }
+    const seenRow = seen.row;
+    if (!seenRow || seenRow.mappingId == null) { dialog.alert(t('이미 해제된 스키마 매핑입니다. 목록을 다시 확인해 주세요.')); onChanged(); return; }
+    const listed = seen.tables.slice(0, 10).map((r) => `· ${r.sourceTableName} → ${mappingTarget(r.schemaName, r.tableName) ?? '-'}`).join('\n');
+    const more = seen.tables.length > 10 ? `\n${t('외 {0}개', seen.tables.length - 10)}` : '';
+    dialog.confirm(`${t('{0} 스키마 매핑을 해제하시겠습니까? 이 원본 스키마의 TABLE 매핑도 함께 해제됩니다. 물리 모델은 바뀌지 않습니다.', row.sourceSchemaName)}\n\n${t('함께 해제되는 TABLE 매핑 {0}개', seen.tables.length)}${listed ? `\n${listed}` : ''}${more}`, async () => {
+      // 409 (그 사이 매핑이나 함께 해제될 TABLE 매핑이 바뀌었다) : 확인한 목록 ↔ 최신 목록을 TABLE 단위로 보여 주고 사용자가 다시 해제를 고른다 (자동 재시도 없음)
+      let latestRow: SchemaRow | null = seenRow;
       try {
-        await api(`/api/sourceMapping/schemas/${enc(row.sourceSchemaId)}${baseQuery(row.modifiedAt, row.composition)}`, { method: 'DELETE' });
-      } finally {
-        onChanged();
-      }
+        const ok = await runWithReview({
+          dialog, title: t('스키마 매핑 해제'), intro: t('확인한 뒤 이 스키마 매핑이나 함께 해제될 TABLE 매핑이 바뀌어 해제하지 않았습니다.'),
+          seen: schemaReleaseSnapshot(seen),
+          load: async () => { const now = await loadSchemaRelease(row.sourceSchemaId); latestRow = now.row; return schemaReleaseSnapshot(now); },
+          act: async (state) => { await api(`/api/sourceMapping/schemas/${enc(row.sourceSchemaId)}${baseQuery(state.modifiedAt, state.composition ?? null)}`, { method: 'DELETE', conflict: 'handled' }); },
+          block: () => (latestRow?.mappingId == null ? t('다른 사용자가 이미 이 스키마 매핑을 해제했습니다.') : undefined),
+          note: (latest) => (latest.composition !== schemaReleaseSnapshot(seen).composition && snapshotText(latest) === snapshotText(schemaReleaseSnapshot(seen))
+            ? t('목록에 보이지 않는 TABLE 매핑(원본에서 사라진 TABLE 의 매핑 등)이 바뀌었습니다. 최신 목록을 확인한 뒤 해제해 주세요.')
+            : t('함께 해제되는 TABLE 매핑을 다시 확인해 주세요. 최신 내용으로 해제하면 지금 보이는 TABLE 매핑이 모두 해제됩니다.')),
+          retryLabel: t('최신 내용으로 해제'), onClose: onChanged,
+        });
+        if (ok) onChanged();
+      } catch { /* 잠금 충돌 등 : 공통 알림 — 같은 버튼으로 다시 시도한다 */ }
     });
   };
 
@@ -280,20 +379,55 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
   });
   const reload = () => { void tables.refetch(); onChanged(); };
 
-  const confirm = async (row: TableRow, tableId: number) => {
+  // 등록·재지정 (M8-FINAL FINAL-D03) : 스키마 매핑과 같은 규칙 — 화면이 본 행의 매핑(없으면 신규 등록)을 기준값으로, 409 면 확인한 매핑 ↔ 최신 매핑 · 내가 고른 대상
+  const confirm = async (row: TableRow, tableId: number, chosenName?: string) => {
+    const chosen = chosenName ?? (row.candidate?.id === tableId ? row.candidate.name : row.tableId === tableId ? row.tableName : null) ?? `#${tableId}`;
+    let latestRow: TableRow | null = row;
+    let reviewed = false;
+    const send = (base: TableRow | null) => api('/api/sourceMapping/tables', {
+      method: 'PUT', conflict: 'handled',
+      body: { sourceTableId: row.sourceTableId, tableId, mappingId: base?.mappingId ?? null, modifiedAt: base?.mappingId != null ? base.modifiedAt : null },
+    });
     try {
-      await api('/api/sourceMapping/tables', { method: 'PUT', body: { sourceTableId: row.sourceTableId, tableId } });
-      reload();
-    } catch { /* 공통 알림 */ }
+      const ok = await runWithReview({
+        dialog, title: t('TABLE 매핑 확정'), intro: t('확인한 뒤 이 원본 TABLE 의 매핑이 바뀌어 확정하지 않았습니다.'), seen: tableReleaseSnapshot(row),
+        load: async () => {
+          const page = await api<TablePage>(`/api/sourceMapping/tables?sourceSchemaId=${enc(row.sourceSchemaId)}&keyword=${enc(row.sourceTableName)}&page=0&size=500`, { silent: true });
+          latestRow = page.rows.find((r) => r.sourceTableId === row.sourceTableId) ?? null;
+          reviewed = true;
+          return tableReleaseSnapshot(latestRow);
+        },
+        act: async () => { await send(reviewed ? latestRow : row); },
+        block: () => (latestRow?.status === 'EXCLUDED' ? t('이 원본 TABLE 은 지금 매핑 예외입니다. 예외 취소는 따로 해 주세요.') : mappingBlock(row.mappingId, latestRow?.mappingId ?? null)),
+        note: () => t('내가 고른 대상 : {0}. 최신 매핑을 확인한 뒤 이 대상으로 다시 정할지 결정해 주세요.', chosen),
+        retryLabel: t('최신 매핑에서 다시 정하기'), onClose: reload,
+      });
+      if (ok) reload();
+    } catch { /* 잠금 충돌·업무 오류 : 공통 알림 — 고른 대상은 그대로 */ }
   };
   const release = (row: TableRow) => {
     dialog.confirm(t('{0}.{1} 의 TABLE 매핑을 해제하시겠습니까? 물리 모델은 바뀌지 않습니다.', row.sourceSchemaName ?? '', row.sourceTableName), async () => {
-      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1) — 409 면 공통 알림 뒤 최신 목록
+      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1). 409 (다른 모델 TABLE 로 바뀌었다 등) : 확인한 매핑 ↔ 최신 매핑을 보여 주고 사용자가 다시 해제를 고른다 (M8-C4c-2).
+      // 매핑이 해제·재생성되어 ID 가 달라졌으면 이 요청으로는 해제하지 않는다 (목록에서 다시)
+      let latestRow: TableRow | null = row;
+      const loadLatest = async () => {
+        const page = await api<TablePage>(`/api/sourceMapping/tables?sourceSchemaId=${enc(row.sourceSchemaId)}&keyword=${enc(row.sourceTableName)}&page=0&size=500`, { silent: true });
+        latestRow = page.rows.find((r) => r.sourceTableId === row.sourceTableId) ?? null;
+        return tableReleaseSnapshot(latestRow);
+      };
       try {
-        await api(`/api/sourceMapping/tables/${enc(row.mappingId)}${baseQuery(row.modifiedAt)}`, { method: 'DELETE' });
-      } finally {
-        reload();
-      }
+        const ok = await runWithReview({
+          dialog, title: t('TABLE 매핑 해제'), intro: t('확인한 뒤 이 매핑이 바뀌어 해제하지 않았습니다.'),
+          seen: tableReleaseSnapshot(row), load: loadLatest,
+          act: async (state) => { await api(`/api/sourceMapping/tables/${enc(row.mappingId)}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          block: () => (latestRow?.mappingId !== row.mappingId
+            ? (latestRow?.mappingId == null ? t('다른 사용자가 이미 이 매핑을 해제했습니다.') : t('매핑이 해제된 뒤 다시 만들어졌습니다. 목록에서 최신 매핑을 확인한 뒤 해제해 주세요.'))
+            : latestRow.status === 'EXCLUDED' ? t('이 원본 TABLE 은 지금 매핑 예외입니다. 예외 취소는 따로 해 주세요.') : undefined),
+          note: () => t('최신 매핑을 확인한 뒤 해제할지 다시 결정해 주세요. 해제해도 물리 모델은 바뀌지 않습니다.'),
+          retryLabel: t('최신 매핑 해제'), onClose: reload,
+        });
+        if (ok) reload();
+      } catch { /* 잠금 충돌 등 : 공통 알림 */ }
     });
   };
   // 매핑 예외 (M-4g) : 미매핑 원본 TABLE 을 매핑하지 않을 대상으로 둔다 (원본 수집은 그대로). 취소하면 미매핑으로 돌아간다
@@ -319,7 +453,7 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
       title: t('모델 TABLE 선택 · {0}.{1}', row.sourceSchemaName ?? '', row.sourceTableName),
       className: 'dialog-wide',
       content: ({ close }: DialogControls) => <ModelTablePicker schemaId={schemaRow.schemaId!} schemaName={schemaRow.schemaName ?? ''} sourceTableId={row.sourceTableId}
-        onPick={(id) => { close(); void confirm(row, id); }} onCancel={close} />,
+        onPick={(id, name) => { close(); void confirm(row, id, name); }} onCancel={close} />,
     });
   };
 
@@ -406,7 +540,7 @@ function TableMappings({ data, canManage, onChanged }: { data: Overview; canMana
 }
 
 function ModelTablePicker({ schemaId, schemaName, sourceTableId, onPick, onCancel }: {
-  schemaId: number; schemaName: string; sourceTableId: number; onPick: (tableId: number) => void; onCancel: () => void;
+  schemaId: number; schemaName: string; sourceTableId: number; onPick: (tableId: number, tableName: string) => void; onCancel: () => void;
 }) {
   const [keyword, setKeyword] = useState('');
   const [query, setQuery] = useState('');
@@ -431,7 +565,7 @@ function ModelTablePicker({ schemaId, schemaName, sourceTableId, onPick, onCance
               const taken = m.mappedSourceTableId != null && m.mappedSourceTableId !== sourceTableId;
               return (
                 <li key={m.id}>
-                  <button type="button" className="source-nav-item" disabled={taken} onClick={() => onPick(m.id)}>
+                  <button type="button" className="source-nav-item" disabled={taken} onClick={() => onPick(m.id, m.tableName)}>
                     <span><span className="gh-mono">{m.tableName}</span>{m.tableKorName && <span className="gh-muted"> · {m.tableKorName}</span>}</span>
                     {taken && <Label variant="attention">{t('이미 다른 원본에 매핑됨')}</Label>}
                   </button>

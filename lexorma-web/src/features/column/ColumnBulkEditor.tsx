@@ -5,8 +5,7 @@ import { ChevronDownIcon, ChevronUpIcon } from '@primer/octicons-react';
 import type { Row } from '../../components/grid/Grid';
 import { api, ApiError, enc, isConflict } from '../../lib/api';
 import { CompareTable, loadFailure, type CompareRow } from '../../components/conflict/ConflictRecovery';
-import { formatDateTime } from '../../lib/format';
-import { blockNonNumericKeys } from '../../lib/format';
+import { blockNonNumericKeys, formatTimestampPrecise } from '../../lib/format';
 import { TermCreateForm, type SavedTerm } from '../dictionary/TermCreateForm';
 import { CommonColumnSet, type CommonColumnItem } from './CommonColumnSet';
 import { RefTableLookup } from './RefTableLookup';
@@ -680,8 +679,8 @@ function ColumnBulkEditor({ table, columnInfos, controls, onSaved }: { table: Ta
       if (!changedOnServer) return;
       if (!now) gone.push(r.columnName);
       if (mine && now) keep.add(r.key);
-      compare.push({ key: r.key, label: r.columnName, before: r.modifiedAt ? formatDateTime(r.modifiedAt) : null,
-        latest: now ? `${now.modifiedAt ? formatDateTime(now.modifiedAt) : ''}${now.isApproval === 'Y' ? ` · ${t('승인')}` : ''}` : t('삭제됨'),
+      compare.push({ key: r.key, label: r.columnName, before: r.modifiedAt ? formatTimestampPrecise(r.modifiedAt) : null,
+        latest: now ? `${now.modifiedAt ? formatTimestampPrecise(now.modifiedAt) : ''}${now.isApproval === 'Y' ? ` · ${t('승인')}` : ''}` : t('삭제됨'),
         mine: mine ?? undefined, changedOnServer: true, changedByMe: !!mine && !!now });
     });
     const added = latest.filter((c) => !current.some((r) => r.id === c.id)).length;

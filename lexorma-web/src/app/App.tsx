@@ -5,7 +5,7 @@ import { DialogProvider, useDialog } from '../components/dialog/DialogProvider';
 import { AppLayout } from '../components/layout/AppLayout';
 import { ToastProvider, useToast } from '../components/toast/ToastProvider';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
-import { ApiError, setApiErrorListener } from '../lib/api';
+import { ApiError, isLocked, setApiErrorListener } from '../lib/api';
 import { GuestOnly, RECOVERY_PATH, RequireAuth, RequireMenu, RequireRecovery } from '../routes/guards';
 import { LoginPage } from '../features/auth/LoginPage';
 import { RecoveryPage } from '../features/auth/RecoveryPage';
@@ -86,6 +86,11 @@ function ApiErrorBridge() {
           // 세션 만료·권한 회수는 저장하지 않은 배치 확인으로 막지 않는다 (D-19)
           navigateWithoutGuard(() => navigate('/login', { replace: true }));
         });
+        return;
+      }
+      // 잠금 충돌 (M8-C4c-2 C4c-D10) : 데이터가 바뀐 것이 아니라 다른 작업이 처리 중이다 — 비교 화면 없이 안내만, 사용자가 같은 요청을 직접 다시 보낸다
+      if (isLocked(error)) {
+        dialog.alert(`${t('다른 작업이 같은 데이터를 처리하고 있어 이번 요청을 처리하지 못했습니다.')}\n${error.message}\n\n${t('입력한 내용과 처음 확인한 기준은 그대로입니다. 잠시 뒤 같은 버튼으로 직접 다시 시도해 주세요. 그 사이 데이터가 바뀌었으면 변경 내용 확인 화면으로 안내합니다.')}`);
         return;
       }
       dialog.alert(error.message);

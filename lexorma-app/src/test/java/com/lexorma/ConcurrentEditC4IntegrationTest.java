@@ -49,7 +49,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C4a (docs/ongoing/modeling-concurrency-m8.md 16장) : 여러 테이블을 바꾸는 요청의 잠금 순서(ID 오름차순)와 삭제 ↔ 제약조건 등록 경합.
+ * M8-C4a (docs/completed/modeling-concurrency-m8.md 16장) : 여러 테이블을 바꾸는 요청의 잠금 순서(ID 오름차순)와 삭제 ↔ 제약조건 등록 경합.
  * 교착 재현은 A 가 첫 테이블만 잠근 채 B 를 시작하고, B 가 기다리기 시작하면 A 가 둘째 테이블을 잠그는 3단계 실행으로 만든다 (시간 대기 없음 — DB 세션 정보로 확인).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

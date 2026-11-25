@@ -9,6 +9,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { api, download } from '../../lib/api';
 import { runListWithReview } from '../../components/conflict/conflictActions';
+import { openDomainRevokeImpact } from './domainImpact';
 import { DictionaryDetail } from './DictionaryDetail';
 import { DictionaryUsage } from './DictionaryUsage';
 import { DictionaryForm, fieldsFromColumns, fieldsFromRow, type DictionaryTable, type FormConfig } from './DictionaryForm';
@@ -204,7 +205,7 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
   const approve = (isApproval: boolean) => {
     const checked = gridRef.current?.getCheckedOrAlert();
     if (!checked) return;
-    dialog.confirm(isApproval ? t('체크된 {0}를 승인하시겠습니까?', tab.name) : t('체크된 {0}를 승인취소하시겠습니까?', tab.name), async () => {
+    const proceed = async () => {
       // 승인(취소) 필요 대상이 하나라도 있어야 한다
       if (!checked.some((e) => e.isApprovalYn === (isApproval ? 'N' : 'Y'))) {
         dialog.alert(isApproval ? t('승인이 필요한 {0}가 선택되지 않았습니다.', tab.name) : t('승인취소가 필요한 {0}가 선택되지 않았습니다.', tab.name));
@@ -232,7 +233,14 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
       if (!ok) return;
       reload();
       done();
-    });
+    };
+    // 도메인 승인 취소 : 확인 창 대신 영향 범위(참조 용어·속성·컬럼 수)를 보여 주고 거기서 진행한다 (M8-C4c-2 C4c-2E). 지금 승인된 도메인만 조회한다
+    const revoking = checked.filter((e) => e.isApprovalYn === 'Y');
+    if (!isApproval && tab.id === 'standardDomains' && revoking.length) {
+      openDomainRevokeImpact(dialog, revoking.map((e) => ({ id: Number(e.id), name: String(e.commonStandardDomainName ?? e.id) })), () => void proceed());
+      return;
+    }
+    dialog.confirm(isApproval ? t('체크된 {0}를 승인하시겠습니까?', tab.name) : t('체크된 {0}를 승인취소하시겠습니까?', tab.name), () => void proceed());
   };
 
   const remove = () => {
@@ -243,15 +251,41 @@ function DictionaryGrid({ tab, gridRef, dialog, canEdit, extraActions, initialSe
       return;
     }
     dialog.confirm(t('체크된 데이터를 삭제하시겠습니까?'), async () => {
-      // 체크한 행(그리드가 불러온 그대로 — modifiedAt 기준값 포함)을 보낸다 (M8-C4c-1). 그 사이 바뀐 행이 있으면 서버가 409 로 전체를 거절하고(공통 알림),
-      // 어느 쪽이든 최신 목록을 다시 읽는다 (자동 재시도 없음)
-      let removed = false;
+      // 체크한 행(그리드가 불러온 그대로 — modifiedAt 기준값 포함)을 보낸다 (M8-C4c-1). 그 사이 바뀐 행이 있으면 서버가 409 로 전체를 거절한다.
+      // M8-C4c-2 : 승인처럼 바뀐 행만 비교해 보여 주고, 사용자가 확인해야 최신 기준값으로 다시 삭제한다 (자동 재시도 없음). 최신 상태에서 승인되었거나 없어진 항목이 있으면
+      // 그 항목만 빼고 지우지 않는다 — 선택을 바꿔 다시 하게 한다. 잠금 충돌(다른 작업 처리 중)은 공통 안내 뒤 같은 버튼으로 다시 시도한다
+      const done = () => toast.success(t('정상적으로 삭제처리 되었습니다.'));
+      const nameKey = tab.id === 'standardTerms' ? 'commonStandardTermName' : tab.id === 'standardWords' ? 'commonStandardWordName' : 'commonStandardDomainName';
+      const dataUrl = `/api/get${tab.id.charAt(0).toUpperCase()}${tab.id.slice(1)}/data`;
+      const label = (row: Record<string, unknown>) => String(row[nameKey] ?? row.id);
       try {
-        removed = (await api<{ result: boolean }>(`/api/deleteDataDictionary/${tab.id}`, { method: 'DELETE', body: checked })).result;
-      } finally {
+        const ok = await runListWithReview({
+          dialog, title: t('{0} 삭제', tab.name), intro: t('선택한 항목 중 다른 사용자가 바꾼 항목이 있어 아무것도 삭제하지 않았습니다.'),
+          items: checked.map((row) => ({ id: Number(row.id), label: label(row), seen: { modifiedAt: (row.modifiedAt as string | null | undefined) ?? null, approved: row.isApprovalYn === 'Y' } })),
+          load: async () => {
+            const found = await Promise.all(checked.map((row) => api<{ data: Record<string, unknown>[] }>(`${dataUrl}?page=0&size=1&searchColumn=id&searchQuery=${encodeURIComponent(String(row.id))}`, { silent: true })
+              .then((r) => r.data.find((x) => String(x.id) === String(row.id)) ?? null).catch(() => null)));
+            return new Map(found.filter((r): r is Record<string, unknown> => !!r).map((r) => [Number(r.id), { modifiedAt: (r.modifiedAt as string | null) ?? null, approved: r.isApprovalYn === 'Y' }]));
+          },
+          act: async (states) => {
+            const body = checked.map((row) => ({ ...row, modifiedAt: states.get(Number(row.id))?.modifiedAt ?? row.modifiedAt }));
+            await api<{ result: boolean }>(`/api/deleteDataDictionary/${tab.id}`, { method: 'DELETE', body, conflict: 'handled' });
+          },
+          block: (latest) => {
+            const approvedNow = checked.filter((row) => latest.get(Number(row.id))?.approved);
+            return approvedNow.length
+              ? t('그 사이 승인된 항목이 있어 삭제할 수 없습니다 : {0}. 승인된 항목을 선택에서 빼거나 승인을 취소한 뒤 다시 삭제해 주세요.', approvedNow.map(label).join(', '))
+              : undefined;
+          },
+          note: t('선택한 {0}건 중 바뀐 항목만 보여 줍니다. 내용을 확인한 뒤 선택한 항목 전체를 최신 기준으로 다시 삭제할지 결정해 주세요.', checked.length),
+          retryLabel: t('최신 내용으로 삭제'), onDone: done, onClose: reload,
+        });
+        if (!ok) return;
         reload();
+        done();
+      } catch {
+        // 잠금 충돌·참조 제한 등 : 공통 알림이 보여 준다. 선택(체크)을 지우지 않도록 목록을 다시 읽지 않는다 — 같은 버튼으로 다시 시도한다
       }
-      if (removed) toast.success(t('정상적으로 삭제처리 되었습니다.'));
     });
   };
 

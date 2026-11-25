@@ -67,16 +67,21 @@ final class ConcurrentEditC4cSupport {
             call.run();
             return "OK";
         } catch (CustomException e) {
-            return e.getErrorCode().name();
+            return name(e);
         } catch (RuntimeException e) {
             for (Throwable t = e; t != null; t = t.getCause()) {
-                if (t instanceof CustomException c) return c.getErrorCode().name();
+                if (t instanceof CustomException c) return name(c);
             }
             for (Throwable t = e; t != null; t = t.getCause()) {
                 if (t instanceof SQLException s && s.getSQLState() != null) return e.getClass().getSimpleName() + "/SQLSTATE:" + s.getSQLState();
             }
             return e.getClass().getSimpleName();
         }
+    }
+
+    /** 오류 코드 + 409 원인 (M8-C4c-2 : 잠금 충돌이면 "MODEL_CONFLICT:LOCKED", 데이터 변경이면 "MODEL_CONFLICT") */
+    static String name(CustomException e) {
+        return e.getErrorCode().name() + (e.getReason() == null ? "" : ":" + e.getReason());
     }
 
     static void report(String label, String[] result) {

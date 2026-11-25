@@ -295,6 +295,12 @@ public class LogicalSubjectAreaService {
         return memberRepository.findByEntity_Id(entityId).map(m -> m.getSubjectArea().getId()).orElse(null);
     }
 
+    /** 엔터티 → 소속 영역 ID (D-35 D35-2 : AI·MCP 엔터티 상세 — 조회 1번). 호출한 쪽이 프로젝트·모델을 확인한 엔터티만 넘긴다. 미분류 엔터티는 빠진다 */
+    @Transactional(readOnly = true)
+    public Map<Long, Long> selectAreaIds(java.util.Collection<Long> entityIds) {
+        return areasOf(entityIds);
+    }
+
     /** 엔터티 ID → 소속 영역 ID (없는 엔터티는 빠진다) */
     Map<Long, Long> areasOf(java.util.Collection<Long> entityIds) {
         Map<Long, Long> result = new HashMap<>();

@@ -14,6 +14,17 @@ export function formatDateTime(value: unknown): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * 충돌 검토용 수정 일시 (M8-C4c-2 12장) : 서버 기준값 문자열(LocalDateTime, 예 2026-11-24T15:30:42.123456)을 Date 로 바꾸지 않고 그대로 읽어
+ * `2026-11-24 15:30:42.123456` 처럼 초와 서버가 준 소수 자리까지만 보인다 (가짜 정밀도·반올림·시간대 변환 없음 — 서버 값에 시간대가 없다).
+ * 표시용 문자열일 뿐이고, 기준값으로는 서버 원문을 그대로 보낸다
+ */
+export function formatTimestampPrecise(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(\.\d+)?$/.exec(String(value));
+  return match ? `${match[1]} ${match[2]}${match[3] ?? ''}` : formatDateTimeSeconds(value);
+}
+
 /** yyyy-MM-dd HH:mm:ss */
 export function formatDateTimeSeconds(value: unknown): string {
   const date = toDate(value);

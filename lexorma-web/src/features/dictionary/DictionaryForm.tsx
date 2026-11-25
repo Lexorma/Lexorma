@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useDialog } from '../../components/dialog/DialogProvider';
 import { useToast } from '../../components/toast/ToastProvider';
 import { api, ApiError } from '../../lib/api';
-import { useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
+import { isGone, useConflictRecovery, useSubmitting } from '../../components/conflict/ConflictRecovery';
 import { blockNonNumericKeys } from '../../lib/format';
 import { t } from '../../lib/i18n';
 
@@ -56,6 +56,10 @@ export function DictionaryForm({
   })) as Record<string, string>;
   const [values, setValues] = useState<Record<string, string>>(() => toValues((key) => fields.find((f) => f.key === key)?.value));
   const [busy, run] = useSubmitting();
+  // 폼을 연 사이 다른 사용자가 승인했다 (서버 400 APPROVED_DATA_CANNOT_BE_UPDATE — M8-C4c-2 9.3) : 입력은 그대로 두고 저장을 막는다. 승인을 자동으로 취소하지 않는다
+  const [approvedMeanwhile, setApprovedMeanwhile] = useState(false);
+  // 폼을 연 사이 대상이 삭제되었다 (서버 400 NOT_FOUND_* — M8-FINAL) : 입력은 그대로 두고 저장을 막는다 (다시 만들지 않는다)
+  const [goneMeanwhile, setGoneMeanwhile] = useState(false);
   const editable = fields.filter((f) => !isReadOnly(f.key));
   // 409 복구 (M8-C3, 수정만) : 목록 API 의 ID 검색으로 이 행의 최신 값을 읽어 입력 칸끼리 비교한다 (읽기 전용 칸은 최신 값으로 바뀐다)
   const recovery = useConflictRecovery<Record<string, string>>({
@@ -106,7 +110,8 @@ export function DictionaryForm({
         response = await api<{ result: boolean }>(url, { method: type === 'C' ? 'POST' : 'PUT', body: data, conflict: 'handled' });
       } catch (error) {
         // 409 : 입력을 그대로 두고 복구 안내 (M8-C3). 그 밖의 오류는 공통 알림 — 폼은 닫지 않는다 (자동 재전송·덮어쓰기 없음)
-        recovery.catchConflict(error, values);
+        if (!recovery.catchConflict(error, values) && error instanceof ApiError && error.code === 'APPROVED_DATA_CANNOT_BE_UPDATE') setApprovedMeanwhile(true);
+        if (type === 'U' && isGone(error)) setGoneMeanwhile(true);
         return;
       }
       if (!response.result) return;
@@ -117,6 +122,17 @@ export function DictionaryForm({
 
   return (
     <form id={`${type === 'C' ? 'add' : 'edit'}-${tableId}`} onSubmit={onSubmit} noValidate>
+      {goneMeanwhile && (
+        <div className="conflict-notice" role="alert">
+          <strong>{t('대상이 삭제되었거나 더 이상 접근할 수 없습니다. 다시 저장할 수 없습니다.')}</strong>
+        </div>
+      )}
+      {approvedMeanwhile && (
+        <div className="conflict-notice" role="alert">
+          <strong>{t('다른 사용자가 이 항목을 승인했습니다.')}</strong>
+          <p>{t('승인된 항목은 수정할 수 없습니다. 입력한 내용은 그대로 두었습니다. 수정하려면 승인을 취소한 뒤 목록에서 다시 열어 주세요.')}</p>
+        </div>
+      )}
       {recovery.notice((latest, picks) => setValues((current) => Object.fromEntries(Object.keys(current).map((key) => [
         key, picks.has(key) ? current[key] : latest[key] ?? current[key],
       ]))))}
@@ -148,7 +164,7 @@ export function DictionaryForm({
           ),
         ];
       })}
-      <button type="submit" className="btn btn-primary" style={{ marginTop: 20 }} disabled={busy || recovery.blocked}>{busy ? t('처리 중…') : submitText}</button>
+      <button type="submit" className="btn btn-primary" style={{ marginTop: 20 }} disabled={busy || recovery.blocked || approvedMeanwhile || goneMeanwhile}>{busy ? t('처리 중…') : submitText}</button>
     </form>
   );
 }

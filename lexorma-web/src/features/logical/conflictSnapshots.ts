@@ -18,8 +18,11 @@ export function entitySnapshot(e: LogicalEntity): Snapshot {
     fields: [
       { key: 'name', label: t('엔터티명'), value: e.entityName },
       { key: 'description', label: t('설명'), value: e.entityDescription ?? '' },
-      { key: 'attributes', label: t('속성'), value: e.attributes.map((a) => a.attributeName).join(', ') },
-      { key: 'identifiers', label: t('식별자'), value: e.identifiers.map((i) => i.identifierName).join(', ') },
+      // 하위 구성 (M8-C4c-2 C4c-2H) : 속성·식별자를 한 줄씩 — 추가·삭제·변경(이름 밖의 설명·유형·필수·용어·구성 속성 포함)이 줄 단위로 보인다
+      ...e.attributes.map((a) => ({ key: `attribute:${a.id}`, label: t('속성 : {0}', a.attributeName), removable: true,
+        value: [a.attributeName, a.dataType ?? a.domainDataType ?? '', a.isRequired ? t('필수') : t('선택'), a.termName ?? '', a.attributeDescription ?? ''].filter(Boolean).join(' · ') })),
+      ...e.identifiers.map((i) => ({ key: `identifier:${i.id}`, label: t('식별자 : {0}', i.identifierName), removable: true,
+        value: `${i.isPrimary ? t('주 식별자') : t('보조 식별자')} · ${(i.attributeNames ?? []).join(', ')}` })),
     ],
   };
 }

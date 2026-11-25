@@ -125,8 +125,17 @@ public class ModelRowLocks {
         return false;
     }
 
+    /** NOWAIT 잠금 실패 (409 MODEL_CONFLICT, 원인 LOCKED — M8-C4c-2 C4c-D10) : 실제로 잠금을 얻지 못한 곳에서만 */
     public static CustomException busy() {
-        return new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 시도해주세요."));
+        return CustomException.locked(ErrorCode.MODEL_CONFLICT, "다른 사용자가 같은 모델·테이블·컬럼을 바꾸는 중입니다. 잠시 뒤 다시 시도해주세요.");
+    }
+
+    /**
+     * 잠근 뒤 다시 본 상태가 잠그기 전에 판단한 것과 다르다 (그 사이 다른 저장이 커밋했다 — 잠금 실패가 아니라 데이터 변경) : 원인 표시 없는 409 MODEL_CONFLICT.
+     * 예 : 일반 저장으로 판단했는데 잠근 뒤 PK 구성이 바뀌어 있다(D11·R2), 동기화 대상이 다시 계산할 때마다 바뀐다(R2-D05)
+     */
+    public static CustomException changedMeanwhile() {
+        return new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("다른 사용자가 같은 테이블의 구성을 먼저 바꿨습니다. 최신 내용을 확인한 뒤 다시 저장해주세요."));
     }
 
     private static TreeSet<Long> sorted(Collection<Long> ids) {

@@ -121,7 +121,7 @@ public class StandardTermService {
     }
 
     /**
-     * 용어 삭제 (M8-C4c-1 C4c-D02) : 도메인 삭제와 같은 잠금 (프로젝트 행 배타 → 행 NOWAIT) → 다시 읽기 → 승인된 용어는 예전처럼 건너뛴다 → 기준값 409 →
+     * 용어 삭제 (M8-C4c-1 C4c-D02) : 도메인 삭제와 같은 잠금 (프로젝트 행 배타 → 행 NOWAIT) → 다시 읽기 → 승인된 용어 400 (C4c-2 C4c-D09) → 기준값 409 →
      * 논리 속성 참조(기존)·물리 컬럼 참조 검사. 물리 컬럼 참조는 예전에는 검사하지 않아 DB FK 위반 500 이었다 — 같은 참조 보호 오류(RELATION_EXISTS)로 알린다
      */
     @Transactional
@@ -130,7 +130,11 @@ public class StandardTermService {
         standardTerms.forEach(standardDomain -> {
             StandardTerm byIdAndProjectId = standardTermRepository.findByIdAndProjectId(standardDomain.getId(), accountDto.getProjectId());
             if (byIdAndProjectId != null) entityManager.refresh(byIdAndProjectId);
-            if(byIdAndProjectId != null && !byIdAndProjectId.getIsApproval()){
+            // 승인된 용어는 지울 수 없다 (M8-C4c-2 C4c-D09 — 예전에는 조용히 건너뛰었다) : 도메인·단어와 같은 400, 일괄 삭제는 전체 롤백. 검사 순서도 같다 (승인 → 기준값 → 참조)
+            if (byIdAndProjectId != null && Boolean.TRUE.equals(byIdAndProjectId.getIsApproval())) {
+                throw new CustomException(ErrorCode.APPROVED_DATA_CANNOT_BE_DELETED, "승인된 용어는 삭제할 수 없습니다: {0}", byIdAndProjectId.getCommonStandardTermName());
+            }
+            if(byIdAndProjectId != null){
                 verifyBase(byIdAndProjectId, standardDomain.getModifiedAt(),
                         "화면을 연 뒤 다른 사용자가 표준 용어 {0} 을(를) 변경해 삭제하지 않았습니다. 최신 정보를 확인한 후 다시 삭제해 주세요.");
                 // 논리 속성이 참조하는 용어는 지울 수 없다 (TB_LGCL_ATRB.STD_TRM_SN FK)

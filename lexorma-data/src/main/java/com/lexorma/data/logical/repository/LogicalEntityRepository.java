@@ -54,4 +54,8 @@ public interface LogicalEntityRepository extends JpaRepository<LogicalEntity, Lo
     /** 논리 → 물리 생성 : 고른 엔터티를 한 번에 (엔터티마다 따로 읽지 않는다 — M-7 보강 5차 측정) */
     @Query("select e from LogicalEntity e where e.id in :ids and e.projectId = :projectId")
     List<LogicalEntity> findAllByIds(@Param("ids") java.util.Collection<Long> ids, @Param("projectId") Long projectId);
+
+    /** 이름으로 엔터티 찾기 (D-35 D35-2 : AI·MCP 상세 조회) : 대소문자 무시, (ID, 이름) — 같은 모델의 엔터티명은 대소문자 무시로 저장 때 중복이 막힌다 */
+    @Query("select e.id, e.entityName from LogicalEntity e where e.model.id = :modelId and lower(e.entityName) = lower(:name) order by e.id")
+    List<Object[]> findByNameIgnoreCase(@Param("modelId") Long modelId, @Param("name") String name);
 }

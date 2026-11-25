@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M8-C4c-1 C4c-D02·D04·D05 (docs/ongoing/modeling-concurrency-m8.md 20장) : 표준 도메인·단어·용어 삭제는 프로젝트 행 배타 → 지울 행 NOWAIT → 다시 읽기 → 승인 거절 →
+ * M8-C4c-1 C4c-D02·D04·D05 (docs/completed/modeling-concurrency-m8.md 20장) : 표준 도메인·단어·용어 삭제는 프로젝트 행 배타 → 지울 행 NOWAIT → 다시 읽기 → 승인 거절 →
  * 화면이 본 수정 일시 비교(409) → 참조 검사. 하나라도 거절되면 전체 롤백. 승인된 단어는 직접 고칠 수 없다. 도메인 승인 취소는 참조를 그대로 두고 영향 범위만 알려 준다
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -198,7 +198,8 @@ class ConcurrentEditC4cDictionaryIntegrationTest {
                 () -> dictionary.updateStandardDomain(f.user, edit),
                 () -> dictionary.deleteDataDictionaryStandardDomains(List.of(seen), f.user));
         ConcurrentEditC4cSupport.report("도메인 수정 vs 삭제", r);
-        assertThat(r).containsExactly("OK", "MODEL_CONFLICT");
+        // A 가 도메인 행을 쥔 동안 B 는 NOWAIT 에서 거절 — 잠금 충돌 (C4c-2 부터 reason LOCKED 로 구분, H2·PostgreSQL 같음)
+        assertThat(r).containsExactly("OK", "MODEL_CONFLICT:LOCKED");
         assertThat(jdbc.queryForObject("select DMN_EXPLN from TB_STD_DMN where STD_DMN_SN = ?", String.class, domain)).isEqualTo("A 의 수정");
     }
 
@@ -247,7 +248,7 @@ class ConcurrentEditC4cDictionaryIntegrationTest {
                 () -> dictionary.deleteDataDictionaryStandardWords(List.of(seen), f.user));
         ConcurrentEditC4cSupport.report("단어 승인 vs 삭제", r);
         assertThat(r[0]).isEqualTo("OK");
-        assertThat(r[1]).isIn("MODEL_CONFLICT", "APPROVED_DATA_CANNOT_BE_DELETED");
+        assertThat(r[1]).isEqualTo("MODEL_CONFLICT:LOCKED"); // 승인이 단어 행을 쥔 동안 NOWAIT 거절 (C4c-2 — 잠금 충돌로 구분)
         assertThat(exists("TB_STD_WORD", "STD_WORD_SN", word)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select APRV_YN from TB_STD_WORD where STD_WORD_SN = ?", Boolean.class, word)).isTrue();
     }

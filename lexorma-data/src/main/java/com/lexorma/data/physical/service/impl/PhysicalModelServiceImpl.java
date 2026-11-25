@@ -834,7 +834,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
                 .toList();
         syncColumnIndexes(projectId, tableIds, ownColumns, Set.of());
 
-        // 참조 대상 잠금 (M8-C4b-R1, docs/ongoing/modeling-concurrency-m8.md 18장) : 새로 만들거나 대상이 바뀌는 관계의 대상 테이블 행·대상 PK 컬럼 행을 PostgreSQL FOR KEY SHARE 로
+        // 참조 대상 잠금 (M8-C4b-R1, docs/completed/modeling-concurrency-m8.md 18장) : 새로 만들거나 대상이 바뀌는 관계의 대상 테이블 행·대상 PK 컬럼 행을 PostgreSQL FOR KEY SHARE 로
         // <b>읽기 전에</b> 잡고 다시 계산한다. 관계 INSERT 의 FK 검사가 원래 같은 두 행에 같은 잠금을 걸었다 (M7-FK-D11 14.3) — 시점만 '읽은 뒤 INSERT 때' 에서 '읽기 전' 으로 당긴 것이다.
         // 그 행을 키 강도(FOR UPDATE)로 바꾸는 쓰기(PK 컬럼 삭제·테이블 이름 변경·스키마 이동·물리명 적용·원본 삭제 반영)는 모두 프로젝트 배타를 먼저 잡고 이 행을 NOWAIT 로 잡으므로,
         // 그쪽이 먼저면 여기서 커밋을 기다린 뒤 최신 이름·PK 로 다시 계산하고(예전 : 지워지는 PK 로 관계를 만들어 FK 위반 500, 바뀌기 전 이름으로 관계를 만들어 참조 테이블명과 어긋남),
@@ -860,7 +860,7 @@ public class PhysicalModelServiceImpl implements PhysicalModelService {
             Set<Long> schemas = targetTables.stream().map(TableInfo::getSchema).filter(Objects::nonNull).map(SchemaInfo::getId)
                     .filter(id -> !sharedSchemas.contains(id)).collect(Collectors.toCollection(java.util.TreeSet::new));
             if (tables.isEmpty() && columns.isEmpty() && schemas.isEmpty()) break;
-            if (round == 3) throw com.lexorma.data.physical.sync.ModelRowLocks.busy();
+            if (round == 3) throw com.lexorma.data.physical.sync.ModelRowLocks.changedMeanwhile(); // 잡을 때마다 대상이 바뀐다 = 데이터 변경 (잠금 실패 아님)
             // 종류 사이 순서 : 스키마 → 테이블 → 컬럼 (공통 정책), 같은 종류는 ID 순. 다시 계산해 새로 생긴 대상이 이미 잡은 같은 종류의 행보다 작은 ID 면 순서가 뒤집히므로
             // 그 행은 기다리지 않는다(NOWAIT — 바쁘면 409). 큰 ID 는 순서대로라 기다려도 된다 (M8-C4b-R2 R2-D05, 19.6)
             keyShare("TB_SCHM", "SCHM_SN", schemas, sharedSchemas);

@@ -511,7 +511,7 @@ M7-FK-D01~D08 은 그대로다. 이번에 확정한 정책 :
 
 ### 14.12 남은 제한 · 재현하지 않은 위험
 
-> **후속 (2026-11-24, M8-C4b-R1 — [ongoing/modeling-concurrency-m8.md 18장](../ongoing/modeling-concurrency-m8.md))** : 관계 동기화가 새로 만들거나 대상을 바꾸는 REF_COLUMN 관계의 대상 스키마·테이블·PK 컬럼 행을 PostgreSQL `FOR KEY SHARE` 로 **읽기 전에** 잡고 다시 계산한다 (이 장의 KEY SHARE 를 시점만 당긴 것 — 순환 없음 이유는 14.4 그대로). 그래서 아래 '지우는 중인 PK 를 참조하던 일반 저장은 FK 위반(500)' 은 이제 기다린 뒤 관계 없이 성공한다 (`d11PkDeleteVersusReferencingSave`·`d11SingleDeleteOfPk` 기대값 변경). 스키마 이름 변경도 스키마 행을 키 강도로 미리 NOWAIT 로 잡는다. H2 는 커밋 직전 프로젝트 잠금 뒤 재확인. PK 여부 변경(일반 경로)의 사후 무효 FK 는 같은 날 M8-C4b-R2 에서 해결 — 실제 PK 구성을 바꾸는 저장(PK 여부 변경·새 PK 컬럼 포함)도 이 장의 구조 변경 경로로 보내고 테이블 행을 키 강도로 잡는다 (14.4 표의 'PK 여부 변경 = 일반' 은 더 이상 유효하지 않다 — [modeling-concurrency-m8.md 19장](../ongoing/modeling-concurrency-m8.md)). 아래 원래 기록은 그대로 둔다.
+> **후속 (2026-11-24, M8-C4b-R1 — [completed/modeling-concurrency-m8.md 18장](modeling-concurrency-m8.md))** : 관계 동기화가 새로 만들거나 대상을 바꾸는 REF_COLUMN 관계의 대상 스키마·테이블·PK 컬럼 행을 PostgreSQL `FOR KEY SHARE` 로 **읽기 전에** 잡고 다시 계산한다 (이 장의 KEY SHARE 를 시점만 당긴 것 — 순환 없음 이유는 14.4 그대로). 그래서 아래 '지우는 중인 PK 를 참조하던 일반 저장은 FK 위반(500)' 은 이제 기다린 뒤 관계 없이 성공한다 (`d11PkDeleteVersusReferencingSave`·`d11SingleDeleteOfPk` 기대값 변경). 스키마 이름 변경도 스키마 행을 키 강도로 미리 NOWAIT 로 잡는다. H2 는 커밋 직전 프로젝트 잠금 뒤 재확인. PK 여부 변경(일반 경로)의 사후 무효 FK 는 같은 날 M8-C4b-R2 에서 해결 — 실제 PK 구성을 바꾸는 저장(PK 여부 변경·새 PK 컬럼 포함)도 이 장의 구조 변경 경로로 보내고 테이블 행을 키 강도로 잡는다 (14.4 표의 'PK 여부 변경 = 일반' 은 더 이상 유효하지 않다 — [modeling-concurrency-m8.md 19장](modeling-concurrency-m8.md)). 아래 원래 기록은 그대로 둔다.
 
 - **정책 보류 (D10)** : 자기 참조가 아닌 단일 FK 보정 — pending-work [M-8].
 - **바뀐 계약 (D09·D11)** : 테이블 이름 변경·스키마 이동, PK 컬럼을 지우는 일괄 저장·삭제는 같은 행을 다른 트랜잭션이 잡고 있으면 기다리지 않고 409. 그동안 같은 프로젝트의 다른 쓰기는 커밋 직전에 잠깐 기다린다.

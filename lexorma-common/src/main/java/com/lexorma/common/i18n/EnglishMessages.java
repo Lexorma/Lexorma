@@ -78,6 +78,15 @@ final class EnglishMessages {
         add("정밀도", "precision");
         add("소수 자릿수", "scale");
         add("승인된 도메인은 삭제할 수 없습니다: {0}", "Approved domains cannot be deleted: {0}");
+        add("승인된 용어는 삭제할 수 없습니다: {0}", "Approved terms cannot be deleted: {0}");
+        // M8-FINAL : 원본 매핑 등록·재지정 기준값
+        add("확인한 {0} 의 매핑이 그 사이 해제되었습니다. 목록을 다시 확인한 뒤 매핑해 주세요.", "The mapping of {0} you reviewed was released in the meantime. Check the list again before mapping.");
+        add("그 사이 다른 사용자가 {0} 을(를) 매핑했습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "Another user mapped {0} in the meantime. Review the latest mapping and decide again.");
+        add("확인한 {0} 의 매핑이 해제된 뒤 다시 만들어졌습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "The mapping of {0} you reviewed was released and created again. Review the latest mapping and decide again.");
+        add("확인한 뒤 다른 사용자가 {0} 의 매핑을 바꿨습니다. 최신 매핑을 확인한 뒤 다시 정해 주세요.", "Another user changed the mapping of {0} after you reviewed it. Review the latest mapping and decide again.");
+        // M8-C4c-2 : 잠금 충돌 / 잠근 뒤 바뀐 구성
+        add("다른 작업이 같은 표준 사전 항목을 처리하는 중입니다. 잠시 뒤 다시 시도해주세요.", "Another operation is processing the same standard dictionary item. Try again in a moment.");
+        add("다른 사용자가 같은 테이블의 구성을 먼저 바꿨습니다. 최신 내용을 확인한 뒤 다시 저장해주세요.", "Another user changed the composition of the same table first. Check the latest content and save again.");
         add("표준용어에서 사용 중인 도메인은 삭제할 수 없습니다: {0}", "Domains used by standard terms cannot be deleted: {0}");
 
         // ---------------------------------------------------------------- 컬럼
@@ -1379,5 +1388,23 @@ final class EnglishMessages {
         add("C형 말단 테이블에 복제한 루트 PK 컬럼입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.", "This is a root PK column copied into a type C leaf table. Renaming inherited columns is not supported yet, so only the recommendation and check are shown.");
         add("서브타입 테이블의 상속 PK 컬럼(B형)입니다. 상속 컬럼의 이름 변경은 아직 지원하지 않아 추천·진단만 보입니다.", "This is an inherited PK column of a subtype table (type B). Renaming inherited columns is not supported yet, so only the recommendation and check are shown.");
         add("상속 PK 컬럼명이 원본 속성(루트 주 식별자)의 표준 용어 영문약어와 다릅니다.", "The inherited PK column name differs from the standard term abbreviation of the origin attribute (root primary identifier).");
+
+        // ---------------------------------------------------------------- D-35 논리 모델 AI·MCP 공통 조회 (D35-2)
+        add("조회하는 동안 논리 모델의 상속 구조가 바뀌었습니다. 다시 조회해 주세요.", "The inheritance structure of the logical model changed while it was being read. Please read it again.");
+        add("modelId 나 modelName 이 필요합니다.", "modelId or modelName is required.");
+        add("modelId 와 modelName 이 서로 다른 논리 모델을 가리킵니다.", "modelId and modelName point to different logical models.");
+        add("같은 이름의 논리 모델이 여러 개입니다. modelId 로 지정하세요 : {0}", "Several logical models have this name. Specify modelId: {0}");
+        add("entityId 나 entityName 이 필요합니다.", "entityId or entityName is required.");
+        add("entityName 으로 찾을 때는 modelId 나 modelName 이 필요합니다.", "modelId or modelName is required to find an entity by entityName.");
+        add("엔터티가 지정한 논리 모델에 없습니다.", "The entity is not in the specified logical model.");
+        add("entityId 와 entityName 이 서로 다른 엔터티를 가리킵니다.", "entityId and entityName point to different entities.");
+        add("같은 이름의 엔터티가 여러 개입니다. entityId 로 지정하세요 : {0}", "Several entities have this name. Specify entityId: {0}");
+        add("page 는 0 이상이어야 합니다.", "page must be 0 or greater.");
+        add("section 이 ALL 이면 page·limit 을 줄 수 없습니다. SUBJECT_AREAS 나 SUBTYPE_GROUPS 와 함께 주세요.", "page and limit cannot be used with section ALL. Use them with SUBJECT_AREAS or SUBTYPE_GROUPS.");
+        add("section 이 ALL 이면 page·limit 을 줄 수 없습니다. ATTRIBUTES·IDENTIFIERS·RELATIONS·INHERITANCE 중 하나와 함께 주세요.", "page and limit cannot be used with section ALL. Use them with ATTRIBUTES, IDENTIFIERS, RELATIONS or INHERITANCE.");
+        add("includeAttributeDescriptions 는 section 이 ALL 이나 ATTRIBUTES 일 때만 쓸 수 있습니다.", "includeAttributeDescriptions can be used only with section ALL or ATTRIBUTES.");
+        add("subtypeGroupId 는 section 이 INHERITANCE 일 때만 쓸 수 있습니다.", "subtypeGroupId can be used only with section INHERITANCE.");
+        add("page 가 너무 큽니다.", "page is too large.");
+        add("{0} 는 {1} 중 하나입니다.", "{0} must be one of {1}.");
     }
 }

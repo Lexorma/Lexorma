@@ -14,6 +14,8 @@ import com.lexorma.ai.mcp.domain.entity.McpToken;
 import com.lexorma.ai.mcp.repository.McpCallHistoryRepository;
 import com.lexorma.ai.mcp.repository.McpProjectSettingRepository;
 import com.lexorma.ai.mcp.repository.McpTokenRepository;
+import com.lexorma.data.logical.service.LogicalHierarchy;
+import com.lexorma.data.logical.service.LogicalSubtypeService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -40,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>인증 : Bearer 토큰 → 해시로 찾아 폐기·만료·프로젝트 MCP 사용·프로젝트 활성·<b>발급 계정이 지금도 그 프로젝트의 관리자·ADMIN(멤버)</b> 인지 요청마다 DB 로 확인한다.
  *       실패는 이유를 나누지 않고 401 하나로 (메타데이터·토큰 존재 여부를 알려 주지 않는다)</li>
- *   <li>도구 : AI-4 의 읽기 전용 메타데이터 Tool 8개를 {@link MetadataToolset#run} 으로 (실행 컨텍스트 재검증 VIEWER · 읽기 전용 트랜잭션 · 결과 크기 상한) +
+ *   <li>도구 : AI-4 의 읽기 전용 메타데이터 Tool 11개(D-35 D35-3b 논리 모델 3개 포함 — 내부 AI 와 같은 구현 {@code LogicalMetadataService})를 {@link MetadataToolset#run} 으로 (실행 컨텍스트 재검증 VIEWER · 읽기 전용 트랜잭션 · 결과 크기 상한) +
  *       MCP 전용 읽기 2개(getProjectInfo, getLogicalModel). 프로젝트는 토큰의 것만 : 도구 입력에 프로젝트를 받지 않는다. 원본 DB·원본 VIEW 정의·쓰기·SQL 실행 도구는 없다</li>
  *   <li>상한 : 토큰마다 분당 {@link #RATE_PER_MINUTE} 요청, 결과 {@link #RESULT_MAX_CHARS} 글자. 감사 : 호출마다 도구·결과·일시 (입력·응답·토큰 원문 없음)</li>
  * </ul>
@@ -53,7 +55,8 @@ public class McpServerService {
 
     public static final List<String> SUPPORTED_VERSIONS = List.of("2025-06-18", "2025-03-26", "2024-11-05");
     static final List<String> SHARED_TOOLS = List.of("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations",
-            "searchStandardTerms", "searchStandardWords", "searchStandardDomains");
+            "searchStandardTerms", "searchStandardWords", "searchStandardDomains",
+            "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
     static final int RATE_PER_MINUTE = 120;
     static final int RESULT_MAX_CHARS = 24_000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -65,6 +68,7 @@ public class McpServerService {
     private final ProjectAuthority projectAuthority;
     private final ExecutionContextVerifier verifier;
     private final MetadataToolset toolset;
+    private final LogicalSubtypeService subtypeService;
     private final TransactionTemplate tx;
     private final TransactionTemplate readOnly;
     private final Map<Long, Deque<Long>> rate = new ConcurrentHashMap<>();
@@ -74,7 +78,7 @@ public class McpServerService {
 
     public McpServerService(McpTokenRepository tokenRepository, McpProjectSettingRepository settingRepository, McpCallHistoryRepository callRepository,
                             ProjectRepository projectRepository, ProjectAuthority projectAuthority, ExecutionContextVerifier verifier, MetadataToolset toolset,
-                            PlatformTransactionManager transactionManager) {
+                            LogicalSubtypeService subtypeService, PlatformTransactionManager transactionManager) {
         this.tokenRepository = tokenRepository;
         this.settingRepository = settingRepository;
         this.callRepository = callRepository;
@@ -82,6 +86,7 @@ public class McpServerService {
         this.projectAuthority = projectAuthority;
         this.verifier = verifier;
         this.toolset = toolset;
+        this.subtypeService = subtypeService;
         this.tx = new TransactionTemplate(transactionManager);
         this.readOnly = new TransactionTemplate(transactionManager);
         this.readOnly.setReadOnly(true);
@@ -187,7 +192,9 @@ public class McpServerService {
         tools.add(tool("getProjectInfo", "Basic information about the project of this token: name, DBMS and object counts.",
                 Map.of("type", "object", "properties", Map.of(), "additionalProperties", false)));
         tools.add(tool("getLogicalModel", "Logical models of the project. Without modelName: the list of models. With modelName: its entities "
-                        + "(attributes, identifiers) and relationships.",
+                        + "(attributes and identifiers each entity defines directly) and relationships. Subtypes also inherit attributes and the root's primary "
+                        + "identifier, which are not listed here: use getLogicalEntityDetail for effective attributes and identifiers, getLogicalModelOverview and "
+                        + "searchLogicalEntities for large models.",
                 Map.of("type", "object", "properties", Map.of("modelName", Map.of("type", "string", "description", "Logical model name (optional)")),
                         "additionalProperties", false)));
         return tools;
@@ -222,7 +229,8 @@ public class McpServerService {
                 text = readOnly.execute(status -> JSON.writeValueAsString(name.equals("getProjectInfo") ? projectInfo(caller.projectId())
                         : logicalModel(caller.projectId(), arguments.get("modelName") instanceof String model ? model : null)));
             }
-            if (text != null && text.length() > RESULT_MAX_CHARS) text = "{\"error\":{\"code\":\"RESULT_TOO_LARGE\",\"message\":\"The result was too large. Narrow the request.\"}}";
+            if (text != null && text.length() > RESULT_MAX_CHARS) text = name.equals("getLogicalModel") ? LOGICAL_MODEL_TOO_LARGE
+                    : "{\"error\":{\"code\":\"RESULT_TOO_LARGE\",\"message\":\"The result was too large. Narrow the request.\"}}";
             isError = text == null || text.startsWith("{\"error\"");
         } catch (CustomException e) {
             // 권한·범위 오류 (그 사이 권한이 회수되었다 등) : 이유를 알려 주지 않는다
@@ -234,6 +242,16 @@ public class McpServerService {
     }
 
     // ------------------------------------------------------------------ MCP 전용 읽기 도구
+
+    /** getLogicalModel 의 결과 상한 초과 (D35-D09) : 예전 형식 그대로 + 대신 쓸 Tool 안내. 서버가 그 Tool 을 대신 부르지 않는다 */
+    static final String LOGICAL_MODEL_TOO_LARGE = "{\"error\":{\"code\":\"RESULT_TOO_LARGE\",\"message\":\"The result was too large. Narrow the request: use "
+            + "getLogicalModelOverview (counts, subject areas, subtype groups), searchLogicalEntities (entities by page) and getLogicalEntityDetail (one entity, "
+            + "by section) instead of the whole model.\",\"alternatives\":[\"getLogicalModelOverview\",\"searchLogicalEntities\",\"getLogicalEntityDetail\"]}}";
+
+    /** getLogicalModel 상세의 범위 설명 (D35-D09 — 기존 칸은 그대로, 칸만 더한다) */
+    static final String LOGICAL_MODEL_NOTE = "attributes and identifiers list only what each entity defines directly. A subtype (see supertype and "
+            + "inheritanceLevel) also inherits the attributes of its supertypes and the root's primary identifier, so an empty identifier list does not mean it "
+            + "has no primary identifier. Use getLogicalEntityDetail for effective attributes and identifiers.";
 
     private Map<String, Object> projectInfo(Long projectId) {
         Project project = projectRepository.findById(projectId).orElseThrow();
@@ -263,6 +281,8 @@ public class McpServerService {
                 .setParameter("p", projectId).setParameter("n", modelName).getResultList();
         if (ids.isEmpty()) return Map.of("error", Map.of("code", "NOT_FOUND", "message", "No logical model with that name."));
         Long modelId = ids.getFirst();
+        // 상속 (D35-D09) : 기존 상속 계층(ID 투영)을 그대로 쓴다 — 상속 계산을 따로 만들지 않는다. 직접 슈퍼타입 이름과 단계만 더한다
+        LogicalHierarchy hierarchy = subtypeService.hierarchy(modelId);
         Map<Long, Map<String, Object>> entities = new LinkedHashMap<>();
         for (Object[] row : entityManager.createQuery("select e.id, e.entityName, e.entityDescription, e.isApproval from LogicalEntity e where e.model.id = :m order by e.entityName",
                 Object[].class).setParameter("m", modelId).getResultList()) {
@@ -273,6 +293,14 @@ public class McpServerService {
             entity.put("attributes", new ArrayList<Map<String, Object>>());
             entity.put("identifiers", new ArrayList<Map<String, Object>>());
             entities.put((Long) row[0], entity);
+        }
+        for (Map.Entry<Long, Map<String, Object>> e : entities.entrySet()) {
+            if (!hierarchy.participates(e.getKey())) continue;
+            Map<String, Object> entity = e.getValue();
+            Long parent = hierarchy.parent(e.getKey());
+            Map<String, Object> supertype = parent == null ? null : entities.get(parent);
+            if (supertype != null) entity.put("supertype", supertype.get("entityName"));
+            entity.put("inheritanceLevel", hierarchy.level(e.getKey()));
         }
         for (Object[] row : entityManager.createQuery("select a.entity.id, a.attributeName, a.dataType, a.isRequired, st.commonStandardTermName from LogicalAttribute a "
                 + "left join a.standardTerm st where a.entity.model.id = :m order by a.sortOrder, a.id", Object[].class).setParameter("m", modelId).getResultList()) {
@@ -307,7 +335,14 @@ public class McpServerService {
             relationship.put("cardinality", row[4] + ".." + (row[5] == null ? "N" : row[5]) + " : " + row[6] + ".." + (row[7] == null ? "N" : row[7]));
             relationships.add(relationship);
         }
-        return Map.of("modelName", modelName, "entities", entities.values(), "relationships", relationships);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("modelName", modelName);
+        result.put("entities", entities.values());
+        result.put("relationships", relationships);
+        result.put("attributeScope", "DIRECT");
+        result.put("hasInheritance", !hierarchy.isEmpty());
+        result.put("note", LOGICAL_MODEL_NOTE);
+        return result;
     }
 
     @SuppressWarnings("unchecked")

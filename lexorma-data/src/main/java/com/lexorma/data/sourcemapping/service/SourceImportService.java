@@ -184,7 +184,7 @@ public class SourceImportService {
             }
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
             if (!lockNotAvailable(e)) throw e; // 교착(40P01·H2 40001) 등 다른 오류는 409 로 바꾸지 않는다
-            throw new CustomException(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
+            throw CustomException.locked(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
         }
         Work work = work(projectId, request.connectionId(), request.reflectedOrder(), selections(request));
         SourceImportDto.Plan plan = work.plan(request.requestId());

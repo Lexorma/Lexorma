@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { DialogApi } from '../dialog/DialogProvider';
 import { isConflict } from '../../lib/api';
-import { formatDateTime } from '../../lib/format';
+import { formatTimestampPrecise } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { modifiedAtRow, openConflictReview, type CompareRow } from './ConflictRecovery';
 
@@ -15,7 +15,8 @@ import { modifiedAtRow, openConflictReview, type CompareRow } from './ConflictRe
 export interface Snapshot {
   modifiedAt: string | null;
   approved?: boolean | null;
-  fields?: { key: string; label: string; value: ReactNode }[];
+  /** removable : 하위 항목 한 줄 (속성·매핑 등) — 최신에 없으면 '삭제됨' 으로 보인다 */
+  fields?: { key: string; label: string; value: ReactNode; removable?: boolean }[];
   /** 삭제 확인 조회의 구성 기준값과 종류별 수 (하위 객체를 함께 지우는 삭제) */
   composition?: string;
   cascade?: { kind: string; count: number }[];
@@ -38,9 +39,15 @@ const text = (value: ReactNode) => (value === null || value === undefined ? '' :
 export function snapshotRows(seen: Snapshot, latest: Snapshot): CompareRow[] {
   const rows: CompareRow[] = [];
   const latestFields = new Map((latest.fields ?? []).map((f) => [f.key, f]));
+  const seenKeys = new Set((seen.fields ?? []).map((f) => f.key));
   (seen.fields ?? []).forEach((f) => {
     const now = latestFields.get(f.key);
-    rows.push({ key: f.key, label: f.label, before: f.value, latest: now?.value ?? null, changedOnServer: text(f.value) !== text(now?.value) });
+    // 최신에 없는 항목 = 그 사이 없어진 하위 항목 (M8-C4c-2 — 하위 구성 비교)
+    rows.push({ key: f.key, label: f.label, before: f.value, latest: now ? now.value : (f.removable ? t('삭제됨') : null), changedOnServer: text(f.value) !== text(now?.value) });
+  });
+  // 최신에만 있는 항목 = 그 사이 더해진 하위 항목 (예 : 확인한 뒤 추가된 속성·TABLE 매핑)
+  (latest.fields ?? []).filter((f) => !seenKeys.has(f.key)).forEach((f) => {
+    rows.push({ key: f.key, label: f.label, before: t('없음 (새로 추가됨)'), latest: f.value, changedOnServer: true });
   });
   if (seen.approved !== undefined || latest.approved !== undefined) {
     rows.push({ key: '__approval', label: t('승인 상태'), before: approvalText(seen.approved), latest: approvalText(latest.approved), changedOnServer: !!seen.approved !== !!latest.approved });
@@ -73,6 +80,10 @@ export interface SingleAction {
   retryLabel: string;
   /** 승인·승인 취소 : 목표 상태. 최신이 이미 그 상태면 다시 보내지 않고 알린다 */
   targetApproval?: boolean;
+  /** 최신 상태로는 다시 실행할 수 없는 사유 (예 : 매핑이 다시 만들어졌다, 승인되어 삭제할 수 없다). 없으면 다시 실행 가능 (M8-C4c-2) */
+  block?: (latest: Snapshot) => string | undefined;
+  /** 검토 안내를 바꾼다 (기본 : 하위 구성·승인 안내) */
+  note?: (latest: Snapshot) => string | undefined;
   onDone?: () => void;
   /** 검토 대화상자를 닫을 때 (성공·취소 모두 — 목록 다시 읽기) */
   onClose?: () => void;
@@ -98,11 +109,11 @@ export async function runWithReview(options: SingleAction): Promise<boolean> {
       const changedChildren = options.seen.composition !== undefined && latest.composition !== options.seen.composition;
       return {
         rows: snapshotRows(options.seen, latest),
-        // 승인도 하위 구성을 함께 다룬다 (M8-C4c-1 엔터티 승인 — 속성·식별자)
-        note: changedChildren
+        // 승인도 하위 구성을 함께 다룬다 (M8-C4c-1 엔터티 승인 — 속성·식별자). 화면이 안내를 따로 주면 그것을 쓴다 (M8-C4c-2)
+        note: options.note?.(latest) ?? (changedChildren
           ? (options.targetApproval !== undefined ? t('함께 승인되는 하위 항목(속성·식별자)이 변경되었습니다. 최신 구성을 다시 확인해 주세요.') : t('삭제 대상의 하위 항목이 변경되었습니다. 함께 삭제될 항목을 다시 확인해 주세요.'))
-          : options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요.') : undefined,
-        blocked: already ? (options.targetApproval ? t('다른 사용자가 이미 승인했습니다. 다시 승인할 필요가 없습니다.') : t('다른 사용자가 이미 승인을 취소했습니다.')) : undefined,
+          : options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요.') : undefined),
+        blocked: already ? (options.targetApproval ? t('다른 사용자가 이미 승인했습니다. 다시 승인할 필요가 없습니다.') : t('다른 사용자가 이미 승인을 취소했습니다.')) : options.block?.(latest),
         payload: latest,
       };
     },
@@ -128,6 +139,10 @@ export interface ListAction {
   act: (states: Map<number, Snapshot>) => Promise<void>;
   retryLabel: string;
   targetApproval?: boolean;
+  /** 최신 상태로는 다시 실행할 수 없는 사유 (예 : 승인되어 삭제할 수 없는 항목). 일부만 빼고 나머지를 보내지 않는다 — 사용자가 선택을 바꾼다 (M8-C4c-2) */
+  block?: (latest: Map<number, Snapshot>) => string | undefined;
+  /** 안내 (기본 : 승인 안내) */
+  note?: string;
   onDone?: () => void;
   onClose?: () => void;
 }
@@ -151,19 +166,22 @@ export async function runListWithReview(options: ListAction): Promise<boolean> {
       const rows: CompareRow[] = options.items.map((item) => {
         const now = latest.get(item.id);
         const describe = (s: Snapshot | undefined) => s ? [
+          // 항목별 비교 값 (예 : 엔터티의 주제 영역 — M8-C4c-2)
+          ...(s.fields ?? []).map((f) => `${f.label} : ${text(f.value) || '—'}`),
           s.approved == null ? null : approvalText(s.approved),
           s.cascade?.filter((c) => c.count > 0).map((c) => t('{0} {1}개', KIND_LABELS[c.kind]?.() ?? c.kind, c.count)).join(', ') || null,
-          s.modifiedAt ? formatDateTime(s.modifiedAt) : null,
+          s.modifiedAt ? formatTimestampPrecise(s.modifiedAt) : null,
         ].filter(Boolean).join(' · ') : t('삭제됨');
         const changed = !now || now.modifiedAt !== item.seen.modifiedAt || (item.seen.composition !== undefined && now.composition !== item.seen.composition)
-          || (item.seen.approved !== undefined && !!now.approved !== !!item.seen.approved);
+          || (item.seen.approved !== undefined && !!now.approved !== !!item.seen.approved)
+          || JSON.stringify((item.seen.fields ?? []).map((f) => text(f.value))) !== JSON.stringify((now.fields ?? []).map((f) => text(f.value)));
         return { key: String(item.id), label: item.label, before: describe(item.seen), latest: describe(now), changedOnServer: changed };
       });
       const gone = options.items.filter((i) => !latest.get(i.id));
       return {
         rows: rows.filter((r) => r.changedOnServer),
-        note: options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요. 이미 그 상태인 항목은 바뀌지 않습니다.') : undefined,
-        blocked: gone.length ? t('그 사이 삭제되었거나 접근할 수 없는 항목이 있습니다 : {0}. 목록을 다시 불러와 선택해 주세요.', gone.map((g) => g.label).join(', ')) : undefined,
+        note: options.note ?? (options.targetApproval !== undefined ? t('최신 승인 대상을 다시 확인해 주세요. 이미 그 상태인 항목은 바뀌지 않습니다.') : undefined),
+        blocked: gone.length ? t('그 사이 삭제되었거나 접근할 수 없는 항목이 있습니다 : {0}. 목록을 다시 불러와 선택해 주세요.', gone.map((g) => g.label).join(', ')) : options.block?.(latest),
         payload: latest,
       };
     },

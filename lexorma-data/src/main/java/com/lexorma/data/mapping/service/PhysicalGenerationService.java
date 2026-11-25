@@ -165,7 +165,7 @@ public class PhysicalGenerationService {
             entityManager.find(SchemaInfo.class, schema.getId(), LockModeType.PESSIMISTIC_WRITE, NO_WAIT);
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
             if (!lockNotAvailable(e)) throw e; // 교착 등 다른 오류는 409 로 바꾸지 않는다
-            throw new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("다른 사용자가 같은 논리 모델이나 스키마를 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요."));
+            throw CustomException.locked(ErrorCode.MODEL_CONFLICT, "다른 사용자가 같은 논리 모델이나 스키마를 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요.");
         }
         Set<Long> referenced = new java.util.TreeSet<>();
         PhysicalGenerationDto.Plan plan = plan(account, request, referenced);
@@ -180,7 +180,7 @@ public class PhysicalGenerationService {
             for (Long tableId : referenced) entityManager.find(TableInfo.class, tableId, LockModeType.PESSIMISTIC_WRITE, NO_WAIT);
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
             if (!lockNotAvailable(e)) throw e;
-            throw new CustomException(ErrorCode.MODEL_CONFLICT, "충돌한 객체 : {0}", Messages.get("다른 사용자가 계획이 참조하는 기존 테이블을 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요."));
+            throw CustomException.locked(ErrorCode.MODEL_CONFLICT, "다른 사용자가 계획이 참조하는 기존 테이블을 바꾸는 중입니다. 잠시 뒤 다시 미리보기해주세요.");
         }
 
         // 생성 직전 모델 버전 (P11) : 모델을 바꾸기 전, 같은 트랜잭션 — 생성이 실패하면 버전도 남지 않는다. creatable 이면 만들 테이블이 하나 이상이다

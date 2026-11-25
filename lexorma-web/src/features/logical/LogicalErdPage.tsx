@@ -30,7 +30,8 @@ import { relationLabel, RelationshipForm } from './relationshipForm';
 import { PairList, PairStatusLabel, PAIR_WARNINGS, RelationshipPairsEditor } from './relationshipPairs';
 import { mappingPath } from '../mapping/model';
 import { EntityMappingSection, MappingLegend, MappingOverlayContext, MappingToggle, useEntityOverlay, type EntityOverlay } from '../mapping/erdOverlay';
-import { attributeOrderBody, cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
+import { moveAttributeWithReview } from './attributeOrderConflict';
+import { cardinalityText, graphQueryKey, participation, useLogicalModels, type EntityHits, type GraphAttribute, type GraphEntity, type LogicalEntity, type LogicalGraph, type LogicalGraphPart, type LogicalIdentifier, type LogicalRelationship } from './model';
 import { ALL_AREAS, applyAreaFilter, areaMap, areaPath, useSubjectAreas, type AreaFilter } from './subjectArea';
 
 const toLayoutNode = (n: EntityNodeType): LayoutNode => ({ id: n.id, width: NODE_WIDTH, height: nodeHeight(entityRows(n.data.entity)) });
@@ -545,10 +546,8 @@ function ErdWorkspace({ modelId, focusEntity, initialArea, initialMapping, onDir
   };
 
   /** 순서 변경 : 엔터티 상세와 같은 API·같은 기준값 (M8-C4b L-02) — 요청 중 ↑/↓ 잠금, 409 는 공통 알림이고 보이던 순서를 그대로 둔다 */
-  const moveAttribute = (entity: GraphEntity, index: number, delta: number) => runMoveAttribute(async () => {
-    await api(`/api/logical/entity/${entity.id}/attribute/order`, { method: 'PUT', body: attributeOrderBody(entity.attributes, index, delta) });
-    await refresh();
-  }).catch(() => undefined);
+  const moveAttribute = (entity: GraphEntity, index: number, delta: number) => runMoveAttribute(() => moveAttributeWithReview(dialog,
+    entity.id, entity.attributes.map((a) => ({ id: a.id, sortOrder: a.sortOrder, label: a.name })), index, delta, refresh)).catch(() => undefined);
 
   // ------------------------------------------------------------------ 편집 (M-8 2차 : 관계·식별자)
   // 연결점을 잇는 것은 관계 등록의 시작일 뿐이다. 화면에 선을 추가하지 않고 관계 폼을 열며, 저장에 성공해 다시 조회한 뒤에야 선이 생긴다.

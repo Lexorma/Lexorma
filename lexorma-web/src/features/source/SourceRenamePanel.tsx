@@ -4,6 +4,7 @@ import { useDialog } from '../../components/dialog/DialogProvider';
 import { Label, type LabelVariant } from '../../components/grid/cells';
 import { api, enc } from '../../lib/api';
 import { baseQuery } from '../../lib/deletion';
+import { runWithReview, type Snapshot } from '../../components/conflict/conflictActions';
 import { formatDateTime } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { Pager } from './shared';
@@ -89,18 +90,43 @@ export function SourceRenamePanel({ canManage, onChanged }: { canManage: boolean
   const confirmColumn = (c: ColumnCandidate) => {
     dialog.confirm(t('원본 컬럼 {0} 을(를) 모델 컬럼 {1} 과(와) 같은 컬럼으로 확정하시겠습니까? 모델 컬럼의 이름·승인 상태는 바뀌지 않습니다.',
       `${c.sourceTableName}.${c.sourceColumnName}`, `${c.tableName}.${c.columnName}`), async () => {
-      await api('/api/sourceMapping/renames/columns', { method: 'PUT', body: { ...basis, tableMappingId: c.mappingId, sourceColumnName: c.sourceColumnName, columnId: c.columnId } });
+      // 후보는 원본에만 있는 컬럼 = 기존 컬럼 매핑 없음 (신규 등록, M8-FINAL) — 그 사이 다른 사용자가 확정했으면 409 : 공통 알림 뒤 후보를 다시 읽는다 (자동으로 다시 보내지 않는다)
+      try {
+        await api('/api/sourceMapping/renames/columns', { method: 'PUT', body: { ...basis, tableMappingId: c.mappingId, sourceColumnName: c.sourceColumnName, columnId: c.columnId, mappingId: null, modifiedAt: null } });
+      } catch {
+        reload();
+        return;
+      }
       reload();
     });
   };
   const release = (m: ColumnMapping) => {
     dialog.confirm(t('컬럼 매핑 {0} ↔ {1} 을(를) 해제하시겠습니까? 다시 이름으로 짝짓습니다.', m.sourceColumnName, m.columnName ?? '-'), async () => {
-      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1) — 409 면 공통 알림 뒤 최신 목록
+      // 화면이 본 매핑 행 그대로일 때만 해제 (M8-C4c-1). 409 (같은 원본 컬럼을 다른 모델 컬럼으로 다시 확정 등) : 확인한 매핑 ↔ 최신 매핑을 보여 주고
+      // 사용자가 다시 해제를 고른다 (M8-C4c-2 — 자동 재시도 없음). 매핑이 없어졌으면 다시 해제할 수 없다
+      const snapshot = (c: ColumnMapping | null): Snapshot => ({
+        modifiedAt: c?.modifiedAt ?? null,
+        fields: [
+          { key: 'source', label: t('원본 컬럼'), value: c ? `${c.sourceTableName}.${c.sourceColumnName}` : t('해제됨') },
+          { key: 'model', label: t('모델 컬럼'), value: c ? `${c.tableName ?? '?'}.${c.columnName ?? '?'}` : t('해제됨') },
+        ],
+      });
+      let latest: ColumnMapping | null = m;
       try {
-        await api(`/api/sourceMapping/renames/columns/${enc(m.id)}${baseQuery(m.modifiedAt)}`, { method: 'DELETE' });
-      } finally {
-        reload();
-      }
+        const ok = await runWithReview({
+          dialog, title: t('컬럼 매핑 해제'), intro: t('확인한 뒤 이 매핑이 바뀌어 해제하지 않았습니다.'),
+          seen: snapshot(m),
+          load: async () => {
+            latest = (await api<ColumnMapping[]>('/api/sourceMapping/renames/columns', { silent: true })).find((c) => c.id === m.id) ?? null;
+            return snapshot(latest);
+          },
+          act: async (state) => { await api(`/api/sourceMapping/renames/columns/${enc(m.id)}${baseQuery(state.modifiedAt)}`, { method: 'DELETE', conflict: 'handled' }); },
+          block: () => (latest == null ? t('다른 사용자가 이미 이 매핑을 해제했습니다.') : undefined),
+          note: () => t('최신 매핑을 확인한 뒤 해제할지 다시 결정해 주세요.'),
+          retryLabel: t('최신 매핑 해제'), onClose: reload,
+        });
+        if (ok) reload();
+      } catch { /* 잠금 충돌 등 : 공통 알림 */ }
     });
   };
 

@@ -2,7 +2,7 @@ import { api, enc } from './api';
 import { t } from './i18n';
 
 /**
- * 삭제·승인·매핑 기준값 (M8-C2, docs/ongoing/modeling-concurrency-m8.md 14장).
+ * 삭제·승인·매핑 기준값 (M8-C2, docs/completed/modeling-concurrency-m8.md 14장).
  * - 삭제·승인 요청은 화면이 읽은 수정 일시(modifiedAt)를 보낸다 — 그 사이 다른 사용자가 바꿨으면 서버가 409 MODEL_CONFLICT (공통 오류 알림).
  * - 하위 객체를 함께 지우는 삭제(엔터티·논리 모델·테이블)는 삭제 확인 조회가 준 구성 기준값(composition)도 보낸다.
  *   확인 대화상자에 함께 지워질 수를 보여 주고, 확인한 뒤 그 구성이 바뀌었으면 409 다.

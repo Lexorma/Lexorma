@@ -49,7 +49,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C2 삭제·승인·매핑 동시성 (docs/ongoing/modeling-concurrency-m8.md 14장). "재현 n" 은 수정 전 코드로 실제 결함을 재현했던 시나리오다
+ * M8-C2 삭제·승인·매핑 동시성 (docs/completed/modeling-concurrency-m8.md 14장). "재현 n" 은 수정 전 코드로 실제 결함을 재현했던 시나리오다
  * (H2 · PostgreSQL 모두 7건 실패, 재현 6 은 수정 전에도 안전 — 문서 기록) — 지금은 같은 실행 순서에서 409·대기·대상 없음으로 끝난다.
  * 불변식 : 화면이 본 뒤 바뀐 대상을 지우거나 바꾸거나 승인하는 요청은 성공하면 안 된다 (조용한 손실·본 적 없는 내용 승인 없음).
  * 동시 시나리오는 ConcurrentEditP1IntegrationTest 와 같은 방식 (A 의 트랜잭션 안에서 B 를 다른 연결로 실행, B 가 끝났거나 잠금을 기다리는 것을 DB 세션 정보로 확인 — 시간 대기 없음).

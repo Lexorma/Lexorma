@@ -59,7 +59,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * M8-C4b (docs/ongoing/modeling-concurrency-m8.md 17장) : FK 등록 대상 테이블 잠금(P-04), 논리 속성 순서(L-02), 컬럼 엑셀 테이블명 해석(P-03),
+ * M8-C4b (docs/completed/modeling-concurrency-m8.md 17장) : FK 등록 대상 테이블 잠금(P-04), 논리 속성 순서(L-02), 컬럼 엑셀 테이블명 해석(P-03),
  * 스키마 등록(P-06), 순서 번호(P-05·공통 컬럼). 두 트랜잭션은 C1~C4a 와 같은 방식으로 엇갈린다 — A 가 트랜잭션 안에서 할 일을 마친 뒤 커밋 전에 B 를
  * 다른 스레드(다른 DB 연결)에서 시작하고, B 가 끝났거나 DB 잠금을 기다리는 것을 DB 세션 정보로 확인한 뒤 A 를 커밋한다 (sleep 으로 순서를 정하지 않는다).
  * 결과는 [A, B] = OK · 오류 코드 · 예외 이름(500 이 될 것) · SQLSTATE. 응답만이 아니라 끝난 뒤의 DB 상태(관계·컬럼·스키마·순서)를 함께 본다.

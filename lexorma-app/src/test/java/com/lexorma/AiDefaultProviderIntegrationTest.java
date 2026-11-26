@@ -28,12 +28,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -52,10 +49,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 시스템 기본 AI Provider (H2 / PostgreSQL) : 최대 하나·미지정 허용·명시 지정만, 지정 조건(활성·기본 모델), 비활성화·삭제 정책, 기본 모델 즉시 반영,
+ * 시스템 기본 AI Provider : 최대 하나·미지정 허용·명시 지정만, 지정 조건(활성·기본 모델), 비활성화·삭제 정책, 기본 모델 즉시 반영,
  * 다른 Provider 로 바꿔 부르지 않음, 관리 과정에서 외부 연결 없음, 동시 요청 정합성, 업그레이드(기존 Provider 가 있어도 미지정), ADMIN 권한.
  * AI 서버는 AiProviderIntegrationTest 의 가짜 Ollama 를 쓴다. 테스트 컨텍스트는 가장 흔한 구성(NONE + test)을 그대로 쓴다.
  */
@@ -287,15 +283,12 @@ class AiDefaultProviderIntegrationTest {
         }
     }
 
-    @ParameterizedTest(name = "신규 설치 {0} : 기본 Provider 는 미지정, Provider 는 없다 (자동 등록 없음)")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstallStartsUnset(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : 기본 Provider 는 미지정, Provider 는 없다 (자동 등록 없음)")
+    void freshInstallStartsUnset() {
         String schema = "ai_default_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             flyway.migrate();
             JdbcTemplate db = new JdbcTemplate(dataSource);

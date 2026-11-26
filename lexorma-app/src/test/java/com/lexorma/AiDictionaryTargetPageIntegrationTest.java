@@ -106,7 +106,7 @@ class AiDictionaryTargetPageIntegrationTest {
             tableRepository.save(table(foreign, "TB_T0001", "다른 프로젝트", null));
             tableRepository.save(table(foreign, "TB_ZZ_FOREIGN", "다른 프로젝트", null));
         });
-        // 기대 순서 : DB 의 이름 정렬(콜레이션은 DB 마다 다르다 — H2 는 코드 순, PostgreSQL 은 언어 규칙) → 같은 이름은 ID 순. 쪽을 이은 결과가 이것과 같아야 한다
+        // 기대 순서 : DB 의 이름 정렬(PostgreSQL 콜레이션 — 언어 규칙) → 같은 이름은 ID 순. 쪽을 이은 결과가 이것과 같아야 한다
         expectedOrder = tx.execute(s -> entityManagerFactory.createEntityManager().createQuery(
                 "select t.id from TableInfo t where t.projectId = :p order by t.tableName, t.id", Long.class).setParameter("p", project.getId()).getResultList());
     }

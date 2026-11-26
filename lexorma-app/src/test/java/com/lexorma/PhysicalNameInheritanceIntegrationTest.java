@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   <li>C형 : 말단마다 복제 컬럼의 NAME 행 (말단별 독립 판정, 매핑 없으면 UNMAPPED)</li>
  *   <li>B·C 상속 컬럼은 추천 목록 INHERITED 범위에서 읽기 전용 — 직접 매핑 목록에 섞이지 않고, 미리보기·적용은 INHERITED_READ_ONLY 로 거절 (NAME-P07)</li>
  * </ul>
- * H2·PostgreSQL 모두에서 돈다.
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

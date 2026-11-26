@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-7 논리·물리 구조 정합성 (논리 관계 ↔ FK, 보조 식별자 ↔ UNIQUE, 물리 기준 역방향 — H2 / PostgreSQL 같은 판정).
+ * M-7 논리·물리 구조 정합성 (논리 관계 ↔ FK, 보조 식별자 ↔ UNIQUE, 물리 기준 역방향).
  * 모델은 논리 → 물리 생성으로 만들고(FK : 단일 = 참조 테이블명, 복합·자기 참조 = 관계), 어긋남은 JDBC 로 물리 쪽을 바꿔 만든다. 진단은 읽기 전용이라 데이터가 바뀌지 않는 것도 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

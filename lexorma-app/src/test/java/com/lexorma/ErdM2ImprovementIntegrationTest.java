@@ -42,7 +42,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-2 개선 2차 (docs/completed/physical-erd-m2-improvement.md 21장) : 테이블 찾기, 범위 밖 관계 수(INNER)와 테이블별 관계 목록,
  * 예전 응답(ALL) 호환, 이웃 탐색 결과 유지, 저장된 PK·UNIQUE·인덱스로 판단한 카디널리티, 프로젝트 격리.
- * 기본은 H2. PostgreSQL 은 SPRING_DATASOURCE_URL 로 빈 격리 DB 를 지정해 실행한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

@@ -32,7 +32,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
@@ -51,12 +50,11 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * 논리 → 물리 생성 통합 안정화 (M-7 보강 5차) : 논리 관계 → 속성 짝 → 미리보기 → 테이블·컬럼 → 물리 FK → DDL(4개 DBMS, PostgreSQL 실제 실행) → ERD 가 한 줄로 맞는지,
  * 일반 단일 FK 가 다시 동기화·재조회·재시도해도 하나뿐인지, 다른 스키마의 같은 이름 테이블, 3단 순환·자기 참조가 참조 동기화 뒤에도 남는지, 생성 전 버전·스냅샷·교환 형식 3,
- * planToken 이 바뀌어야 할 때와 아닐 때, 다른 작업과 동시에 반영할 때 (H2·PostgreSQL 모두에서 실행 — 잠금 경쟁은 PostgreSQL 실행이 기준).
+ * planToken 이 바뀌어야 할 때와 아닐 때, 다른 작업과 동시에 반영할 때.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -266,9 +264,7 @@ class PhysicalGenerationStabilizationIntegrationTest {
             }
         }
 
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(url != null, "PostgreSQL 검증 DB 미지정 — 실제 실행은 건너뜀");
-        JdbcTemplate pg = new JdbcTemplate(new DriverManagerDataSource(url, "lexorma", "lexorma"));
+        JdbcTemplate pg = new JdbcTemplate(TestDatabaseGuard.directDataSource());
         String target = "gen_ddl_" + UUID.randomUUID().toString().replace("-", "");
         pg.execute("create schema " + target);
         try {
@@ -481,7 +477,7 @@ class PhysicalGenerationStabilizationIntegrationTest {
         assertThat(other.versions() + f.versions()).isZero();
     }
 
-    // ------------------------------------------------------------------ 동시성 (PostgreSQL 실행이 기준, H2 에서도 같은 불변식을 본다)
+    // ------------------------------------------------------------------ 동시성
 
     @Test
     @DisplayName("동시 : 같은 모델의 서로 다른 엔터티 생성 둘 — 둘 다 성공하고(프로젝트 행에서 줄 선다) 각자 버전 1개, FK 는 각자 계획대로")

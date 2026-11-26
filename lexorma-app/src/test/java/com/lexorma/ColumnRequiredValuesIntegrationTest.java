@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M7-U05 물리 컬럼 필수값 (V5, docs/completed/column-name-uniqueness-m7.md 10장) : 부모 테이블 없음 = TABLE_IS_NOT_DEFINED (기존), 컬럼명 NULL·빈 문자열·공백류만 =
- * 400 INVALID_PHYSICAL_MODEL (중복 오류 SAVED_DATA_EXISTS 가 아니다), 비영문 이름은 그대로 허용. 서비스를 거치지 않은 저장도 DB NOT NULL·CK_COL_01 이 막는다. H2·PostgreSQL.
+ * 400 INVALID_PHYSICAL_MODEL (중복 오류 SAVED_DATA_EXISTS 가 아니다), 비영문 이름은 그대로 허용. 서비스를 거치지 않은 저장도 DB NOT NULL·CK_COL_01 이 막는다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

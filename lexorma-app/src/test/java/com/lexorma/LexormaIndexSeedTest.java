@@ -1,8 +1,8 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,35 +18,34 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * LEXORMA 예제 인덱스 (V1 의 9)·10)) : 개수가 아니라 인덱스별 정의를 비교한다 (docs/completed/index-management-m14.md 13).
  * 예전 V3~V6 은 2026-11-13 에, 예전 V2~V10 은 2026-11-15 Flyway 초기화 때, 그 뒤의 증분 V2~V7 은 2026-11-18 에 V0·V1 로 합쳤다 (예전 설치의 업그레이드 경로는 없다).
  * 정의 = 인덱스명 → "테이블|UNIQUE 여부|컬럼,컬럼(순서대로)". 정규화는 식별자 대문자뿐이다.
- * PostgreSQL 은 LEXORMA_TEST_POSTGRES_URL 이 있을 때만 (UUID 스키마를 만들고 지운다).
+ * 테스트 DB (TestDatabaseGuard.directDataSource — LEXORMA_TEST_POSTGRES_*) 에 UUID 스키마를 만들고 지운다.
  */
 class LexormaIndexSeedTest {
 
     private static final Pattern CREATE_INDEX = Pattern.compile("(?im)^create (unique )?index (\\w+) on (TB_\\w+) \\(([^)]*)\\);");
 
-    @ParameterizedTest(name = "신규 설치 {0} : 예제 인덱스 = 마이그레이션의 create index = 실제 스키마의 인덱스")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void seededIndexesMatchRealSchema(String vendor) {
-        var dataSource = dataSource(vendor);
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : 예제 인덱스 = 마이그레이션의 create index = 실제 스키마의 인덱스")
+    void seededIndexesMatchRealSchema() {
+        var dataSource = dataSource();
         String schema = "idx_seed_" + UUID.randomUUID().toString().replace("-", "");
         String s = "\"" + schema + "\".";
-        Flyway flyway = flyway(dataSource, schema, vendor, null);
+        Flyway flyway = flyway(dataSource, schema, null);
         try {
             assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4); // V0·V1·V2·V3 (V2 상속 A·C 저장 구조, V3 그 CHECK 재정의 — 2026-11-23) — V0·V1 은 (2026-11-22 네 번째 합침 — 예전 V2 주제 영역 · V3 서브타입 · V4 서브타입 식별자 컬럼 매핑 · V5 컬럼 데이터 무결성 포함)
             var jdbc = new JdbcTemplate(dataSource);
-            Map<String, String> declared = declaredIndexes(vendor);
+            Map<String, String> declared = declaredIndexes();
             Map<String, String> model = modelIndexes(jdbc, s);
 
             // 누락·추가·불일치 없이 같다 (159·225 는 지금의 기준값 : 정의 비교가 먼저다. VIEW 테이블 인덱스 7개·원본 매핑 10개·가져오기 실행 2개·외부 연결 보안 4개·AI Provider 1개·AI 설명 제안 4개·AI 설명 평가 3개·평가 판정 이력 1개·프로젝트 AI 설정 1개·출처 컬럼 매핑·이력 6개·출처 VIEW 정의 5개·MCP 5개·논리 관계 속성 5개·주제 영역 6개(V2)·서브타입 6개(V3)·서브타입 식별자 컬럼 매핑 3개(V4) 포함,
             // TABLE·VIEW 이름은 스키마 단위라 UX_TBL_01·UX_VIEW_01 = 스키마 + 이름이고 IX_TBL_01·IX_VIEW_01 은 없다)
             assertThat(model).isEqualTo(declared).hasSize(159);
-            assertThat(model).isEqualTo(realIndexes(jdbc, vendor, schema));
+            assertThat(model).isEqualTo(realIndexes(jdbc, schema));
             assertThat(count(jdbc, "select count(*) from " + s + "TB_TBL_IDX_COL")).isEqualTo(225);
             // 중복 없음, 모두 프로젝트 LEXORMA 의 기본 스키마 테이블, 구성 컬럼은 그 테이블의 컬럼
             assertThat(count(jdbc, "select count(distinct IDX_NM) from " + s + "TB_TBL_IDX")).isEqualTo(159);
@@ -60,7 +59,7 @@ class LexormaIndexSeedTest {
             assertThat(count(jdbc, "select count(*) from " + s + "TB_MDL_CHG_HSTRY where TRGT_TYPE_CD like '%INDEX%'")).isZero();
 
             // 재시작 : 다시 실행하지 않고 데이터도 그대로
-            Flyway restarted = flyway(dataSource, schema, vendor, null);
+            Flyway restarted = flyway(dataSource, schema, null);
             assertThat(restarted.migrate().migrationsExecuted).isZero();
             assertThat(restarted.validateWithResult().validationSuccessful).isTrue();
             assertThat(modelIndexes(jdbc, s)).isEqualTo(model);
@@ -70,10 +69,10 @@ class LexormaIndexSeedTest {
     }
 
     /** 마이그레이션 파일의 create [unique] index … on TB_… (V0. 예제 인덱스는 V1 이 같은 이름·컬럼으로 넣는다) */
-    static Map<String, String> declaredIndexes(String vendor) {
+    static Map<String, String> declaredIndexes() {
         Map<String, String> result = new TreeMap<>();
         try {
-            for (Resource file : new PathMatchingResourcePatternResolver().getResources("classpath:db/migration/" + vendor + "/V*.sql")) {
+            for (Resource file : new PathMatchingResourcePatternResolver().getResources("classpath:db/migration/postgresql/V*.sql")) {
                 Matcher m = CREATE_INDEX.matcher(file.getContentAsString(StandardCharsets.UTF_8));
                 while (m.find()) {
                     assertThat(result.put(m.group(2).toUpperCase(Locale.ROOT), definition(m.group(3), m.group(1) != null, m.group(4).replace(" ", ""))))
@@ -97,14 +96,8 @@ class LexormaIndexSeedTest {
                 + "where i.PRJ_SN = 0 order by i.IDX_SN, x.COL_ORD");
     }
 
-    /** 실제 스키마의 TB_ 테이블 인덱스 : PK 와 UNIQUE 제약이 만든 인덱스(H2 는 FK 가 만든 것도)는 뺀다 */
-    private static Map<String, String> realIndexes(JdbcTemplate jdbc, String vendor, String schema) {
-        if (vendor.equals("h2")) {
-            return definitions(jdbc, "select i.INDEX_NAME, i.TABLE_NAME, i.INDEX_TYPE_NAME = 'UNIQUE INDEX', c.COLUMN_NAME from INFORMATION_SCHEMA.INDEXES i "
-                    + "join INFORMATION_SCHEMA.INDEX_COLUMNS c on c.INDEX_SCHEMA = i.INDEX_SCHEMA and c.INDEX_NAME = i.INDEX_NAME "
-                    + "where i.TABLE_SCHEMA = ? and i.TABLE_NAME like 'TB\\_%' escape '\\' and i.INDEX_TYPE_NAME <> 'PRIMARY KEY' and i.IS_GENERATED = false "
-                    + "order by i.INDEX_NAME, c.ORDINAL_POSITION", schema);
-        }
+    /** 실제 스키마의 TB_ 테이블 인덱스 : PK 와 UNIQUE 제약이 만든 인덱스는 뺀다 */
+    private static Map<String, String> realIndexes(JdbcTemplate jdbc, String schema) {
         String from = "from pg_index i join pg_class ic on ic.oid = i.indexrelid join pg_class t on t.oid = i.indrelid join pg_namespace n on n.oid = t.relnamespace "
                 + "where n.nspname = ? and t.relname like 'tb\\_%' and not i.indisprimary and not exists (select 1 from pg_constraint c where c.conindid = i.indexrelid)";
         // 모델은 유형·조건·표현식을 비워 두었다 : 실제 인덱스도 모두 BTREE 컬럼 인덱스여야 한다
@@ -128,14 +121,12 @@ class LexormaIndexSeedTest {
         return jdbc.queryForObject(sql, Integer.class, args);
     }
 
-    private static DriverManagerDataSource dataSource(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
-        return new DriverManagerDataSource(vendor.equals("h2") ? "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1" : postgresUrl, "lexorma", "lexorma");
+    private static DriverManagerDataSource dataSource() {
+        return TestDatabaseGuard.directDataSource();
     }
 
-    private static Flyway flyway(DriverManagerDataSource dataSource, String schema, String vendor, String target) {
-        var configuration = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false);
+    private static Flyway flyway(DriverManagerDataSource dataSource, String schema, String target) {
+        var configuration = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false);
         return (target == null ? configuration : configuration.target(target)).load();
     }
 }

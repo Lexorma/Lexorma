@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.tuple;
 /**
  * M-7 2차 : 슈퍼타입·서브타입 B형(엔터티마다 테이블) 물리 생성 계획 — 상속 PK·상속 FK(단일·복합·3단계)·필요한 조상·기존 조상 테이블 검증·엔터티 문맥 관계·
  * 물리 미보장 제약 경고·계획 토큰 v7·일반 생성 회귀·격리 (docs/completed/subtype-physical-transformation.md 29장). 3차에 반영 차단을 풀었다 — 실제 생성은
- * {@link SubtypePhysicalGenerationIntegrationTest}. H2·PostgreSQL 모두에서 돈다.
+ * {@link SubtypePhysicalGenerationIntegrationTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * DEC-22 모델 Export·Import·복사 (docs/completed/model-exchange-dec22.md, H2 / PostgreSQL) : 예제 프로젝트(LEXORMA) 를 내보내 새 프로젝트로 가져오는 왕복,
+ * DEC-22 모델 Export·Import·복사 (docs/completed/model-exchange-dec22.md) : 예제 프로젝트(LEXORMA) 를 내보내 새 프로젝트로 가져오는 왕복,
  * 참조(FK·컬럼 쌍·인덱스·제약조건·논리 관계·식별자·매핑)를 새 ID 로 다시 잇는지, 승인 상태를 물려받지 않는지, 같은 이름은 덮어쓰지 않는지(CONFLICT),
  * 계획 뒤 대상이 바뀌면 409, 대상 프로젝트 관리자만, 반영 중 실패 → 전체 롤백, 안전하지 않은 SQL 식 제외, 형식 버전 검사.
  */

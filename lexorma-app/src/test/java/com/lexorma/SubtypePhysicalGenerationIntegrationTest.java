@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.tuple;
 /**
  * M-7 3차 : 슈퍼타입·서브타입 B형 실제 물리 생성과 상속 PK 매핑 (docs/completed/subtype-physical-transformation.md 30장, M7-D39~D43).
  * 생성(단일·복합·3단계·자기 속성 없는 서브타입)·기존 부모 재사용·일반 관계의 엔터티 문맥·수동 상속 PK 매핑 API·교차 무결성·생명주기·계획 토큰·분할 생성·
- * DDL·구조 진단·ERD 카디널리티·변경 이력·스냅샷 9·교환 6·프로젝트 삭제. 저장된 행을 직접 확인한다 (응답만 보지 않는다). H2·PostgreSQL 모두에서 돈다.
+ * DDL·구조 진단·ERD 카디널리티·변경 이력·스냅샷 9·교환 6·프로젝트 삭제. 저장된 행을 직접 확인한다 (응답만 보지 않는다).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

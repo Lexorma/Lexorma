@@ -23,7 +23,7 @@ import java.util.Map;
 @RestController
 public class SpaForwardController {
 
-    private static final String EXCLUDED = "(?!(?:api|assets|images|jsons|swagger-ui|v3|h2-console|actuator|ws|error|mcp)$)";
+    private static final String EXCLUDED = "(?!(?:api|assets|images|jsons|swagger-ui|v3|actuator|ws|error|mcp)$)";
 
     private static final ClassPathResource INDEX = new ClassPathResource("static/index.html");
 

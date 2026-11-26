@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-5 1차 : 표준 항목 사용 현황 (H2, 실제 JPA 매핑·쿼리).
+ * M-5 1차 : 표준 항목 사용 현황 (실제 JPA 매핑·쿼리).
  * 실제 참조(컬럼 → 용어, 용어 → 도메인, 용어 ↔ 단어 매핑)만 따라가고 이름이 같은 것은 세지 않는지, 중복 집계·검색·페이징·프로젝트 격리를 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

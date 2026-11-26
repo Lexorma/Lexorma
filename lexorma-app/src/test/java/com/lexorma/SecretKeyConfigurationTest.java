@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 비밀값 암호화 키 설정 (선택) : 실제 Spring 설정 로딩(명령행·프로필 설정 파일·configtree)으로 키링만 띄워 본다.
  * <ul>
  *   <li>키가 없어도 뜬다 (암호화를 쓰는 순간 SECRET_KEY_NOT_CONFIGURED). 키를 줬는데 틀리면 기동하지 않고, 오류에 키 값이 없다</li>
- *   <li>local · h2-local 프로필에만 개발 전용 고정 키가 있다 (프로필을 주지 않으면 기본 local). 다른 프로필(docker · h2-docker · dev)에는 없다</li>
+ *   <li>local 프로필에만 개발 전용 고정 키가 있다 (기본 프로필은 없다 — DB-1). 다른 프로필(docker · dev)과 프로필 없음에는 없다</li>
  *   <li>선택 Docker Secret 처럼 {@code spring.config.import=configtree:<폴더>/} 의 {@code lexorma.secret.keys} 파일에서 키를 읽는다.
  *       재시작·키 교체 뒤에도 옛 암호문을 복호화한다</li>
  *   <li>우선순위 : configtree·프로필 설정 파일은 config data 라 명령행 인자·시스템 속성·OS 환경변수가 같은 속성을 주면 그쪽이 이긴다</li>
@@ -48,7 +48,7 @@ class SecretKeyConfigurationTest {
         return Base64.getEncoder().encodeToString(bytes);
     }
 
-    /** 프로필은 실제 실행과 같이 --spring.profiles.active 로 준다 (Docker 이미지 CMD). null 이면 application.yml 의 기본 프로필 */
+    /** 프로필은 실제 실행과 같이 --spring.profiles.active 로 준다 (Docker 이미지 CMD). null 이면 프로필 없음 (기본 프로필은 없다) */
     private static ConfigurableApplicationContext start(String profile, String... args) {
         String[] all = args;
         if (profile != null) {
@@ -59,17 +59,17 @@ class SecretKeyConfigurationTest {
     }
 
     @Test
-    @DisplayName("키 없이 뜬다 (암호화를 쓸 때만 SECRET_KEY_NOT_CONFIGURED). 준 키가 틀리면 기동하지 않는다 (오류에 키 값 없음). local·h2-local 에만 개발 키가 있다")
+    @DisplayName("키 없이 뜬다 (암호화를 쓸 때만 SECRET_KEY_NOT_CONFIGURED). 준 키가 틀리면 기동하지 않는다 (오류에 키 값 없음). local 에만 개발 키가 있다")
     void optionalKeyAndProfiles() {
-        for (String profile : new String[]{"docker", "h2-docker", "dev"}) {
+        for (String profile : new String[]{"docker", "dev", null}) {
             try (ConfigurableApplicationContext context = start(profile)) {
                 assertThat(context.getBean(SecretKeyring.class).isConfigured()).as(String.valueOf(profile)).isFalse();
                 assertThatThrownBy(() -> context.getBean(SecretCipher.class).encrypt("pw", SCOPE)).isInstanceOfSatisfying(CustomException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.SECRET_KEY_NOT_CONFIGURED));
             }
         }
-        // 프로필을 주지 않으면 기본 프로필 local (application.yml spring.profiles.active)
-        for (String profile : new String[]{"local", "h2-local", null}) {
+        // 개발 키는 local 프로필에만 (애플리케이션 기본 프로필은 없다 — 위 null)
+        for (String profile : new String[]{"local"}) {
             try (ConfigurableApplicationContext context = start(profile)) {
                 SecretCipher cipher = context.getBean(SecretCipher.class);
                 assertThat(context.getBean(SecretKeyring.class).activeKeyId()).as(String.valueOf(profile)).isEqualTo("local");

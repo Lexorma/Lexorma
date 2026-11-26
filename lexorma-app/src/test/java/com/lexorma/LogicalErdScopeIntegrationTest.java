@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-6 후속 1차 : 논리 ERD 부분 조회 — 범위 조회(이름·설명 검색, 페이지), 이웃 탐색(출발·도착 모두, 1~3단계), 엔터티 찾기.
- * 서버가 고른 엔터티만 읽고, 관계는 양 끝이 모두 범위 안인 것만 준다 (범위 밖 관계는 엔터티별 수). 전체 조회(관리 화면)는 그대로. H2·PostgreSQL 모두에서 돈다.
+ * 서버가 고른 엔터티만 읽고, 관계는 양 끝이 모두 범위 안인 것만 준다 (범위 밖 관계는 엔터티별 수). 전체 조회(관리 화면)는 그대로.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

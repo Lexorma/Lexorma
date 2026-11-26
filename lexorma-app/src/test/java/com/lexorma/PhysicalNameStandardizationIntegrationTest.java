@@ -71,7 +71,7 @@ import static org.assertj.core.api.Assertions.tuple;
  *   <li>NAME-T02 : 컬럼 엑셀 업로드·붙여넣기의 표준 용어 조회 — 대소문자 무시, 같은 약어 여러 개는 고르지 않는다 (엑셀 = 업로드 전체 취소, 붙여넣기 = 사용자가 고른다), 다른 프로젝트 격리</li>
  *   <li>NAME-T03 : 추천 목록의 '일치' 판정 — 행 상태(자바 StandardNames)·상태 필터·요약·서버 페이징이 탭·줄바꿈·비 ASCII 글자에서도 같다</li>
  * </ul>
- * H2 / PostgreSQL.
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

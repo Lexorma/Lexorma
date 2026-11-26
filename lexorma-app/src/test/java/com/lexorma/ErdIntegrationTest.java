@@ -45,7 +45,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-2 물리 ERD (실제 JPA 매핑·쿼리) : 일괄 조회(컬럼 순서·복합 FK·자기 참조·순환·관계 없음), 검색·필터·이웃 탐색,
  * 프로젝트 격리·권한, 레이아웃 저장·복원·충돌, 기본 스키마 동시 생성.
- * 기본은 H2. PostgreSQL 은 SPRING_DATASOURCE_URL / SPRING_DATASOURCE_DRIVER_CLASS_NAME 환경 변수로 빈 격리 DB 를 지정해 실행한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

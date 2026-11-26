@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-7 상속 A·C 후속 정책 (docs/completed/inheritance-strategy-ac-m7.md 8장, 2026-11-23 확정 AC-P01~P03). H2·PostgreSQL 모두에서 돈다.
+ * M-7 상속 A·C 후속 정책 (docs/completed/inheritance-strategy-ac-m7.md 8장, 2026-11-23 확정 AC-P01~P03).
  * <ul>
  *   <li>AC-P01 : A형 계층의 여러 그룹이 같은 분류 속성(ID)을 쓰면 생성 차단 — 컬럼명 충돌·값 오류와 구분, 다른 프로젝트 속성은 다른 오류</li>
  *   <li>AC-P02 : A형·C형 루트 주 식별자 필수 (AC-PK01~10) — B형 정책은 그대로</li>

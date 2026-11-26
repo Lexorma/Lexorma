@@ -1,9 +1,6 @@
-# Docker 이미지 (Postgres) : DB_* 환경변수로 접속 정보 지정
+# Docker 이미지 (Dockerfile 의 기본 프로필). 관리 DB 접속 정보는 기본값 없이 환경변수로만 받는다 :
+#   SPRING_DATASOURCE_URL=jdbc:postgresql://<호스트>:5432/<DB>, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD (또는 Docker Secret 파일 spring.datasource.password)
 spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:lexorma-postgres}:${DB_PORT:5432}/${DB_NAME:lexorma}?charSet=UTF-8&reWriteBatchedInserts=true
-    username: ${DB_USERNAME:lexorma}
-    password: ${DB_PASSWORD:lexorma}
   jpa:
     properties:
       hibernate:

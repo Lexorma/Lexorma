@@ -18,7 +18,7 @@ out/
 ### 로컬 데이터 ###
 /data
 /lexorma/volume/**
-# H2 파일 DB (h2-local 은 기본으로 사용자 홈에 두지만 LEXORMA_DATA_DIR 로 저장소 안을 가리킬 수 있다)
+# 예전 H2 파일 DB (H2 지원은 DB-1 에서 없앴다 — 남아 있을 수 있는 파일을 실수로 올리지 않도록 패턴만 둔다, PG-D44)
 *.mv.db
 *.trace.db
 *.lock.db

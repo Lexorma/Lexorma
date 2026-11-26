@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * M7-NAME-1 동시성 (docs/completed/physical-name-recommendation-m7.md 12장, 작업 지시 11장) : 실제 독립 연결·트랜잭션 두 개.
  * 잠금 순서·NOWAIT 정책은 바꾸지 않았다 — 일괄 적용은 프로젝트 행 배타(기다림) → 모델·스키마·테이블·컬럼 NOWAIT(바쁘면 409), 엑셀 업로드는 테이블 행(기다림).
- * 교착(40P01)·부분 적용·중복 컬럼명·승인 우회가 없어야 한다. 모든 대기는 15초 제한 (넘으면 실패). H2 / PostgreSQL.
+ * 교착(40P01)·부분 적용·중복 컬럼명·승인 우회가 없어야 한다. 모든 대기는 15초 제한 (넘으면 실패).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

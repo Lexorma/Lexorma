@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * 스키마 단위 TABLE·VIEW 식별 (2026-11-13, D-25 변경) : 내부 ID(TBL_SN·VIEW_SN)는 그대로, 이름은 스키마 안에서 하나 (UX_TBL_01·UX_VIEW_01 + 같은 스키마의 TABLE·VIEW 교차 검사),
  * 이름 기반 참조(참조 테이블명·컬럼 엑셀의 테이블명)의 스키마 해석과 모호성, 이름 변경·이동·스키마명 변경 뒤에도 같은 테이블을 가리킴,
- * 스키마별 같은 이름 테이블의 인덱스·DDL·통합 Export, 스키마 단위 잠금의 동시성. H2 와 PostgreSQL(전체 테스트를 PostgreSQL 로 돌릴 때) 같은 기대값이다.
+ * 스키마별 같은 이름 테이블의 인덱스·DDL·통합 Export, 스키마 단위 잠금의 동시성.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -123,7 +123,7 @@ class SchemaScopedNamingIntegrationTest {
 
         // DB 의 UNIQUE (스키마 + 이름) : 서비스를 거치지 않아도 같은 스키마에 같은 이름은 들어가지 않는다
         // 직접 넣는 행의 ID 는 시퀀스가 절대 닿지 않는 음수로 (ProjectDeletionIntegrationTest 와 같은 방식). 예전의 '최댓값 + 1000' 은 시퀀스보다 앞선 양수라,
-        // 같은 H2 메모리 DB 를 쓰는 뒤 테스트의 JPA 저장이 그 값에 닿으면 TB_TBL PK 가 겹쳤다 (실행 순서에 따라 DashboardStatsIntegrationTest 실패, 2026-11-23).
+        // 같은 테스트 DB 를 쓰는 뒤 테스트의 JPA 저장이 그 값에 닿으면 TB_TBL PK 가 겹쳤다 (실행 순서에 따라 DashboardStatsIntegrationTest 실패, 2026-11-23).
         // 프로젝트 ID 로 정하므로 같은 검증 DB 를 다시 써도 겹치지 않는다
         long freeId = -(projectId * 1000);
         assertThatThrownBy(() -> jdbc.update("insert into TB_TBL(TBL_SN, PRJ_SN, SCHM_SN, TBL_NM, APRV_YN) values(?, ?, ?, 'MBR', true)", freeId, projectId, archive))
@@ -285,8 +285,6 @@ class SchemaScopedNamingIntegrationTest {
     @Test
     @DisplayName("PostgreSQL 실제 실행 : 두 스키마의 같은 이름 TABLE·VIEW, 스키마 간 FK·VIEW 참조를 통합 DDL 로 만들어 빈 임시 스키마에서 실행하면 각자 맞는 스키마에 생기고 참조도 맞다")
     void sameNamesRunOnPostgresql() {
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        org.junit.jupiter.api.Assumptions.assumeTrue(url != null, "PostgreSQL 검증 DB 미지정");
         AccountDto admin = loginAsAdmin("sch-pg");
         long projectId = admin.getProjectId();
         words(projectId);
@@ -316,7 +314,7 @@ class SchemaScopedNamingIntegrationTest {
         DdlExportDto export = exportService.export(admin, null, "POSTGRESQL", base, false);
         assertThat(export.errors()).isEmpty();
 
-        var dataSource = new org.springframework.jdbc.datasource.SingleConnectionDataSource(url, "lexorma", "lexorma", true);
+        var dataSource = TestDatabaseGuard.singleConnectionDataSource();
         JdbcTemplate pg = new JdbcTemplate(dataSource);
         String arc = archiveName.toLowerCase();
         pg.execute("create schema " + base);

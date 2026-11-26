@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
-import { AlertTriangle, Check, Eraser, Send, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Check, Eraser, Info, Send, Sparkles, X } from 'lucide-react';
 import { useAiStatus } from '../../hooks/useAiStatus';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError } from '../../lib/api';
@@ -38,10 +38,16 @@ interface Usage {
   estimatedInputTokens: number; contextTokens: number; maxOutputTokens: number; totalBudget: number;
 }
 interface Verification { status: Overall; total: number; verified: number; invalid: number }
+/**
+ * 실행 완료 상태 (AI 공통 실행 안정성) : 서버가 정한다. PARTIAL 은 오류가 아니다 — 실행 제한·결과 범위 축소가 있었지만 답을 만들었다.
+ * 근거 검증 상태(verification)와 따로다. 예전 서버 응답에는 없을 수 있다 (없으면 안내를 보이지 않는다)
+ */
+interface Completion { status: 'COMPLETE' | 'PARTIAL'; reason: string | null; executedTools: number }
 interface QueryResult {
   answer: string; model: string | null; tools: ToolCall[]; durationMillis: number;
   evidence: Evidence[]; verification: Verification; structuredRetries: number;
   mode: Mode; fallback: 'MODEL_CAPABILITIES' | 'TOOLS_REJECTED' | null; usage: Usage | null;
+  completion?: Completion | null;
 }
 interface Turn { id: number; question: string; result?: QueryResult; error?: string }
 
@@ -85,6 +91,17 @@ const EVIDENCE_REASON: Record<EvidenceReason, string> = {
   DESCRIPTION_NOT_RETRIEVED: t('AI 가 설명을 조회하지 않음'),
   DESCRIPTION_NOT_REGISTERED: t('등록된 설명 없음'),
 };
+/** 부분 답변 사유별 안내 (서버 enum 값을 그대로 보이지 않는다). 모르는 사유는 공통 안내 */
+const PARTIAL_REASON: Record<string, string> = {
+  INPUT_BUDGET_EXCEEDED: t('입력 토큰 한도에 도달하여 현재까지 확인한 정보를 제공합니다.'),
+  QUERY_BUDGET_EXCEEDED: t('질의 전체 토큰 한도에 도달하여 현재까지 확인한 정보를 제공합니다.'),
+  TOTAL_TOOL_LIMIT_REACHED: t('전체 조회 호출 한도에 도달하여 현재까지 확인한 정보를 제공합니다.'),
+  SAME_TOOL_LIMIT_REACHED: t('동일 조회 기능의 호출 한도에 도달하여 현재까지 확인한 정보를 제공합니다.'),
+  DRAFT_OUTPUT_LIMIT_REACHED: t('답변 초안의 출력 한도에 도달하여 확인된 조회 결과를 바탕으로 답변을 제공합니다.'),
+  CONTEXT_RESULT_LIMIT_REACHED: t('답변 생성에 사용할 수 있는 조회 결과 크기 한도에 도달하여 일부 정보만 제공합니다.'),
+};
+const PARTIAL_DEFAULT = t('실행 한도에 도달하여 확인된 범위의 정보만 제공합니다.');
+
 const STATUS_TEXT: Record<ToolStatus, string> = {
   OK: t('조회함'),
   NOT_FOUND: t('대상 없음'),
@@ -341,11 +358,24 @@ function usageText(usage: Usage | null | undefined): { text: string; title: stri
   return { text, title };
 }
 
+/** 부분 답변 안내 (비차단 인라인) : 서버가 PARTIAL 로 정했을 때만. 답변·근거 표시는 그대로 둔다 */
+function PartialNotice({ completion }: { completion: Completion | null | undefined }) {
+  if (completion?.status !== 'PARTIAL') return null;
+  const reason = (completion.reason && PARTIAL_REASON[completion.reason]) || PARTIAL_DEFAULT;
+  return (
+    <div className="ai-assistant-partial" role="note">
+      <Info size={13} aria-hidden="true" />
+      <div><strong>{t('부분 답변')}</strong> · {reason}</div>
+    </div>
+  );
+}
+
 function Answer({ result }: { result: QueryResult }) {
   const serverContext = result.mode === 'SERVER_CONTEXT';
   const usage = usageText(result.usage);
   return (
     <div className="ai-assistant-answer">
+      <PartialNotice completion={result.completion} />
       {serverContext && (
         <p className="ai-assistant-mode" role="note">
           {t('현재 모델은 Tool Calling 을 지원하지 않아 서버가 조회한 메타데이터를 바탕으로 답변했습니다. 서버는 질문의 낱말로 필요한 만큼만 조회하므로 찾는 범위가 좁을 수 있습니다.')}

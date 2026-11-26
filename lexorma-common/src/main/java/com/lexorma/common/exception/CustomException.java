@@ -11,7 +11,7 @@ public class CustomException extends RuntimeException {
     ErrorCode errorCode;
     private final String customMessage;
     /**
-     * 409 의 원인 (M8-C4c-2 C4c-D10) : {@link #LOCKED} = 다른 트랜잭션이 행을 쥐고 있어 NOWAIT 잠금을 얻지 못했다 (55P03 · H2 50200 으로 확인된 경로만).
+     * 409 의 원인 (M8-C4c-2 C4c-D10) : {@link #LOCKED} = 다른 트랜잭션이 행을 쥐고 있어 NOWAIT 잠금을 얻지 못했다 (SQLSTATE 55P03 으로 확인된 경로만).
      * null = 원인 구분 없음 (기준값 불일치 등 — 예전 그대로). 응답 JSON 의 선택 칸 reason 으로 나간다 (없으면 칸 자체가 없다)
      */
     private String reason;

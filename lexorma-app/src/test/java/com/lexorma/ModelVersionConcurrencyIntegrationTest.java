@@ -26,7 +26,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -167,8 +166,8 @@ class ModelVersionConcurrencyIntegrationTest {
                 return edit;
             });
             Object result = editor.get(30, TimeUnit.SECONDS);
-            // PostgreSQL : 잠금이 풀린 뒤 커밋된다. H2 : 잠금 대기 시간이 지나 실패할 수 있다
-            if (postgres()) assertThat(result).isEqualTo("committed");
+            // 잠금이 풀린 뒤 커밋된다
+            assertThat(result).isEqualTo("committed");
         } finally {
             pool.shutdownNow();
         }
@@ -192,12 +191,12 @@ class ModelVersionConcurrencyIntegrationTest {
 
     /** 작업이 잠금을 기다리기 시작했는지 (끝나 버렸으면 false) */
     private boolean awaitLockWait(Future<?> work) {
-        String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return false;
-            if (jdbc.queryForObject(sql, Integer.class) > 0) return true;
+            // 같은 연결에서 pg_stat_clear_snapshot() 뒤에 센다 (AES-D17 — A 의 트랜잭션 안에서는 pg_stat_activity 가 첫 조회 값으로 고정된다)
+            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql) > 0) return true;
             try {
                 Thread.sleep(2);
             } catch (InterruptedException e) {
@@ -208,13 +207,6 @@ class ModelVersionConcurrencyIntegrationTest {
         return false;
     }
 
-    private boolean postgres() {
-        try {
-            return jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private String snapshot(ModelVersionDto.Summary summary) {
         return versionRepository.findById(summary.id()).orElseThrow().getSnapshot();

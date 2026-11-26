@@ -55,7 +55,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-5 5차 : 표준 용어 중복 = 같은 프로젝트 + 영문약어 대소문자 무시 + 실제 도메인 ID. 등록·키를 바꾸는 수정은 거절(400 DUPLICATE_TERM_DATA),
  * 엑셀은 같은 키의 행을 건너뛴다(기존 계약), 예전 중복 데이터는 진단만 하고 바꾸지 않는다, 동시 실행은 프로젝트 행 배타 잠금으로 하나만.
- * 예전 중복 데이터는 지금 API 로 만들 수 없어 JDBC 로 넣는다. H2·PostgreSQL 모두에서 돈다.
+ * 예전 중복 데이터는 지금 API 로 만들 수 없어 JDBC 로 넣는다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

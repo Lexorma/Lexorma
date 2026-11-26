@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * M-9 1차 (H2 / PostgreSQL) : 물리 모델 변경 이력.
+ * M-9 1차 : 물리 모델 변경 이력.
  * 화면이 부르는 컨트롤러·서비스로 모델을 바꾸고, 실제로 달라진 객체만·같은 작업은 같은 그룹으로·같은 트랜잭션에 이력이 남는지 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

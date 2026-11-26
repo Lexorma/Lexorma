@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-8 안정화 (H2 / PostgreSQL) : 화면이 아니라 서버가 지키는 물리 모델 정합성.
+ * M-8 안정화 : 화면이 아니라 서버가 지키는 물리 모델 정합성.
  * ① 승인된 테이블은 역할과 관계없이 API 직접 호출로도 수정할 수 없다 ② FK 는 대상 테이블의 키 전체를, 프로젝트 대상 DB 에서 묶일 수 있는 타입으로만 참조한다.
  * 검증을 넣기 전에 저장된 FK 는 지우거나 바꾸지 않고, 조회되며, DDL 은 경고와 함께 건너뛴다.
  */

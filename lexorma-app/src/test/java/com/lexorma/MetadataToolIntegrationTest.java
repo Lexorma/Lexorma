@@ -66,7 +66,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI-4 메타데이터 Tool Calling (H2 / PostgreSQL).
+ * AI-4 메타데이터 Tool Calling.
  * <ul>
  *   <li>Tool 허용 목록·읽기 전용 : 등록되는 Tool 은 8개 조회 Tool 뿐, 인자에 프로젝트·계정이 없고 Tool 코드에 쓰기·SQL·원본 DB 경로가 없다. 조회 전후 DB 가 같다</li>
  *   <li>Tool 기능 : 프로젝트 0(LEXORMA 예제 = Lexorma 자체 스키마)의 스키마·테이블·컬럼·관계·표준 단어·용어·도메인 조회, 결과 없음, 잘못된 인자, 건수 제한</li>
@@ -507,7 +507,12 @@ class MetadataToolIntegrationTest {
         ExecutionContext context = ExecutionContext.user(principal(viewer, EXAMPLE_PROJECT));
         assertThatThrownBy(() -> queries.query(context, new AiMetadataQueryDto.QueryRequest("반복")))
                 .extracting("errorCode").isEqualTo(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED);
-        assertThat(ollama.chats).as("상한(같은 Tool 4번)을 넘는 호출은 실행하지 않고 모델도 더 부르지 않는다").hasSize(5);
+        // AI 공통 실행 안정성 : 상한 뒤 전달된 결과로 부분 답변을 시도한다(2차). 가짜 모델이 구조화 요청에도 Tool 을 불러 그 응답에서 구조화가 바로 끝나므로(3차 AES-D16 —
+        // 거절을 되돌려 다시 부르지 않는다) 최초 사유(AI_TOOL_CALL_LIMIT_EXCEEDED)가 그대로 나간다. Tool 단계 5번 + 구조화 요청 1번 (2차에서는 구조화 안 거절 반복으로 5번)
+        assertThat(ollama.chats).as("상한(같은 Tool 4번)을 넘는 호출은 실행하지 않는다").hasSize(6);
+        assertThat(ollama.chats.subList(0, 5)).allSatisfy(chat -> assertThat(JSON.readTree(chat).path("tools").size()).isEqualTo(13));
+        assertThat(ollama.chats.get(5)).contains("Why the answer is partial");
+        assertThat(JSON.readTree(ollama.chats.get(5)).path("tools").size()).as("구조화 요청에는 Tool 정의가 없다").isZero();
 
         ScriptedOllama noTools = ollama();
         ready(noTools, "gemma2:2b");

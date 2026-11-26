@@ -71,4 +71,12 @@ public interface AiProviderAdapter {
     default ToolCallingChatOptions chatOptions(String model, Integer contextTokens, Integer maxOutputTokens) {
         return ToolCallingChatOptions.builder().model(model).maxTokens(maxOutputTokens).build();
     }
+
+    /**
+     * 구조화 답변 요청의 모델 옵션 (AI 공통 실행 안정성 2차 AES-D09). disableThinking 이면 그 유형의 공식 옵션으로 생각(thinking)을 끈다 —
+     * 모델 정보가 생각 기능을 알려 준 경우에만 호출자가 true 로 넘긴다. 기본은 {@link #chatOptions} 와 같다 (생각을 끄는 옵션이 없는 유형)
+     */
+    default ToolCallingChatOptions structuringOptions(String model, Integer contextTokens, Integer maxOutputTokens, boolean disableThinking) {
+        return chatOptions(model, contextTokens, maxOutputTokens);
+    }
 }

@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-5 4차 : 판정 함수를 공통화해도 등록·수정의 허용·거절 정책은 그대로다 (D5 — 진단은 알리기만 하고 등록·수정을 막지 않는다).
  * 표준 단어의 등록 중복 기준(단어명 정확 일치)은 표준 도메인([DICT-2], 대소문자 무시)·표준 용어(M-5 5차, 약어 대소문자 무시 + 도메인 ID —
- * {@link StandardTermDuplicateIntegrationTest})와 다르다 — 여기서는 그 현행 기준을 고정한다. H2·PostgreSQL 모두에서 돈다.
+ * {@link StandardTermDuplicateIntegrationTest})와 다르다 — 여기서는 그 현행 기준을 고정한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

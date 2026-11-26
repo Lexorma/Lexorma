@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-3 스키마 관리·테이블/컬럼 화면의 스키마 연동 (H2, 실제 JPA 매핑·쿼리) :
+ * M-3 스키마 관리·테이블/컬럼 화면의 스키마 연동 (실제 JPA 매핑·쿼리) :
  * 목록(테이블 수·등록 정보), 등록·수정·삭제 정책, 기본 스키마 보호, 스키마별 테이블 조회, 컬럼의 소속 스키마, 권한, 프로젝트 격리
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

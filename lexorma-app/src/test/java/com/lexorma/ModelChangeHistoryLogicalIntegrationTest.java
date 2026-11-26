@@ -53,7 +53,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * M-9 2차 (H2 / PostgreSQL) : 논리 모델(모델·엔터티·속성·식별자·관계)과 논리 ↔ 물리 매핑의 변경 이력.
+ * M-9 2차 : 논리 모델(모델·엔터티·속성·식별자·관계)과 논리 ↔ 물리 매핑의 변경 이력.
  * 화면이 부르는 서비스로 바꾸고, 물리 모델과 같은 기준(실제로 달라진 것만·한 트랜잭션 한 그룹·같은 트랜잭션)으로 남는지 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

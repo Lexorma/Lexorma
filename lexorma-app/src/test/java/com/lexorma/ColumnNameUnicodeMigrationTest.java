@@ -3,8 +3,8 @@ package com.lexorma;
 import com.lexorma.data.column.service.ColumnNameKey;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -19,33 +19,25 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * 유니코드 정규화 (M7-U06 B3 · M7-U09, docs/completed/column-name-uniqueness-m7.md 14·15장) : COL_NM_CMPR_VL = 앞뒤 U+0020 제거 + 로캘 중립 확장 대문자, varchar(765).
  * 2026-11-22 네 번째 합침으로 예전 V5 는 V0·V1 에 있다 — 새 설치(V0·V1)의 최종 스키마, 로캘 무관 비교, 최대 길이·바이트 입력 저장과 같은 입력 거절을 본다
- * (예전 V4 → V5 업그레이드·사전 검사·복구 시나리오는 경로가 없어 뺐다). H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL — libc · ICU und · ICU tr-TR 기본 로캘 DB 로 따로 실행해 확인).
+ * (예전 V4 → V5 업그레이드·사전 검사·복구 시나리오는 경로가 없어 뺐다). 테스트 DB (LEXORMA_TEST_POSTGRES_* — libc · ICU und · ICU tr-TR 기본 로캘 DB 로 따로 실행해 확인).
  */
 class ColumnNameUnicodeMigrationTest {
 
-    private record Db(JdbcTemplate jdbc, String s, String schema, DriverManagerDataSource ds, String vendor) {
+    private record Db(JdbcTemplate jdbc, String s, String schema, DriverManagerDataSource ds) {
         Flyway flyway(String target) {
-            var config = Flyway.configure().dataSource(ds).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false);
+            var config = Flyway.configure().dataSource(ds).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false);
             return (target == null ? config : config.target(MigrationVersion.fromVersion(target))).load();
-        }
-
-        boolean h2() {
-            return vendor.equals("h2");
         }
     }
 
-    private Db install(String vendor, String target, int expected) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    private Db install(String target, int expected) {
         String schema = "coluni_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var ds = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Db db = new Db(new JdbcTemplate(ds), "\"" + schema + "\".", schema, ds, vendor);
+        var ds = TestDatabaseGuard.directDataSource();
+        Db db = new Db(new JdbcTemplate(ds), "\"" + schema + "\".", schema, ds);
         assertThat(db.flyway(target).migrate().migrationsExecuted).isEqualTo(expected);
         db.jdbc().update("insert into " + db.s() + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900001001, 'coluni', true, false, true, 'POSTGRESQL')");
         db.jdbc().update("insert into " + db.s() + "TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, BSC_YN) values (900001002, 900001001, 'DEFAULT', true)");
@@ -89,31 +81,26 @@ class ColumnNameUnicodeMigrationTest {
                 + " and CONSTRAINT_TYPE in ('FOREIGN KEY', 'PRIMARY KEY')", Integer.class, db.schema())).isEqualTo(3);
         assertThat(db.jdbc().queryForList("select IS_NULLABLE from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = ? and upper(TABLE_NAME) = 'TB_COL'"
                 + " and upper(COLUMN_NAME) in ('TBL_SN', 'COL_NM')", String.class, db.schema())).containsExactly("NO", "NO");
-        if (db.h2()) {
-            assertThat(db.jdbc().queryForObject("select GENERATION_EXPRESSION from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = ? and TABLE_NAME = 'TB_COL' and COLUMN_NAME = 'COL_NM_CMPR_VL'",
-                    String.class, db.schema())).contains("FN_UPPER_ROOT");
-        } else {
-            assertThat(db.jdbc().queryForObject("select pg_get_expr(d.adbin, d.adrelid) from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum"
+        assertThat(db.jdbc().queryForObject("select pg_get_expr(d.adbin, d.adrelid) from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum"
                     + " where d.adrelid = '" + db.s().replace(".", "") + ".tb_col'::regclass and a.attname = 'col_nm_cmpr_vl'", String.class)).contains("und-x-icu");
             assertThat(db.jdbc().queryForObject("select c.collname from pg_attribute a join pg_collation c on c.oid = a.attcollation where a.attrelid = '"
                     + db.s().replace(".", "") + ".tb_col'::regclass and a.attname = 'col_nm_cmpr_vl'", String.class)).isEqualTo("C");
-        }
         // 예제 : 도메인 값V765 · 용어 · 컬럼 길이 765
         assertThat(db.jdbc().queryForObject("select c.MAX_LEN || ':' || d.DMN_NM || ':' || d.DATA_LEN from " + db.s() + "TB_COL c join " + db.s() + "TB_STD_TRM t on t.STD_TRM_SN = c.STD_TRM_SN join "
                 + db.s() + "TB_STD_DMN d on d.STD_DMN_SN = t.STD_DMN_SN where c.PRJ_SN = 0 and c.TBL_NM = 'TB_COL' and c.COL_NM = 'COL_NM_CMPR_VL'", String.class)).isEqualTo("765:값V765:765");
     }
 
-    @ParameterizedTest(name = "신규 설치 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstall(String vendor) {
-        Db db = install(vendor, null, 4); // V0~V3
+    @Test
+    @DisplayName("신규 설치 PostgreSQL")
+    void freshInstall() {
+        Db db = install(null, 4); // V0~V3
         try {
             assertFinalSchema(db);
             column(db, 900001020, 900001010, "STRAßE");
             assertThat(key(db, 900001020)).isEqualTo("STRASSE");
-            assertThatThrownBy(() -> column(db, 900001021, 900001010, " strasse ")).hasMessageContaining(db.h2() ? "UX_COL_01" : "ux_col_01");
+            assertThatThrownBy(() -> column(db, 900001021, 900001010, " strasse ")).hasMessageContaining("ux_col_01");
             column(db, 900001022, 900001011, "strasse");
-            // JVM 기본 로캘과 무관 : 터키어 로캘에서도 i 는 I (H2 의 UPPER 였다면 İ)
+            // JVM 기본 로캘과 무관 : 터키어 로캘에서도 i 는 I
             Locale previous = Locale.getDefault();
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             try {
@@ -129,12 +116,12 @@ class ColumnNameUnicodeMigrationTest {
         }
     }
 
-    @ParameterizedTest(name = "최대 길이·바이트 경계 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void maximumLengthAndBytes(String vendor) {
-        Db db = install(vendor, null, 4); // V0~V3
+    @Test
+    @DisplayName("최대 길이·바이트 경계 PostgreSQL")
+    void maximumLengthAndBytes() {
+        Db db = install(null, 4); // V0~V3
         try {
-            // 압축하기 어려운 입력 : 대문자가 4바이트 이상이 되는 BMP 글자(ΐ ΰ ᾳ ﬓ և ŉ …)를 섞은 255자. H2 의 varchar(255) 는 UTF-16 단위라 BMP 만 쓴다
+            // 압축하기 어려운 입력 : 대문자가 4바이트 이상이 되는 BMP 글자(ΐ ΰ ᾳ ﬓ և ŉ …)를 섞은 255자
             List<Integer> wide = new ArrayList<>();
             for (int cp = 0x80; cp <= 0xFFFF; cp++) {
                 if (cp >= 0xD800 && cp <= 0xDFFF) continue;
@@ -150,7 +137,7 @@ class ColumnNameUnicodeMigrationTest {
                     new Object[]{"ᾳ 255 (2글자)", "ᾳ".repeat(255)}, new Object[]{"확장 글자 혼합 255", mixed.toString()},
                     new Object[]{"다국어 혼합 255", ("고객顧客客户ＡΣß" + "é").repeat(26).substring(0, 255)});
             List<Object[]> all = new ArrayList<>(inputs);
-            if (!db.h2()) all.add(new Object[]{"보조 평면 255 (4바이트)", "𐐨".repeat(255)}); // 𐐨 → 𐐀
+            all.add(new Object[]{"보조 평면 255 (4바이트)", "𐐨".repeat(255)}); // 𐐨 → 𐐀
             long id = 900001100;
             long table = 900001010;
             int maxBytes = 0;
@@ -163,7 +150,7 @@ class ColumnNameUnicodeMigrationTest {
                 assertThat(db.jdbc().queryForObject("select COL_NM from " + db.s() + "TB_COL where COL_SN = ?", String.class, id)).as(label + " 이름 그대로").isEqualTo(name);
                 int bytes = key.getBytes(StandardCharsets.UTF_8).length;
                 maxBytes = Math.max(maxBytes, bytes);
-                System.out.printf("[M7-U06 경계] %s %s : 이름 %d글자(UTF-16 %d) → 비교 값 %d코드 포인트 · UTF-16 %d · UTF-8 %d바이트%n", vendor, label,
+                System.out.printf("[M7-U06 경계] %s : 이름 %d글자(UTF-16 %d) → 비교 값 %d코드 포인트 · UTF-16 %d · UTF-8 %d바이트%n", label,
                         name.codePointCount(0, name.length()), name.length(), key.codePointCount(0, key.length()), key.length(), bytes);
                 long again = id + 500;
                 long sameTable = table;
@@ -178,10 +165,8 @@ class ColumnNameUnicodeMigrationTest {
             // 255자를 넘는 이름은 예전처럼 COL_NM 에서 거절 (허용 길이는 바뀌지 않았다)
             assertThatThrownBy(() -> column(db, 900001202, 900001010, "a".repeat(256))).isInstanceOf(DataAccessException.class);
             assertThat(maxBytes).as("비교 값 최대 바이트 (255글자 × 6바이트 = 1,530)").isLessThanOrEqualTo(1530);
-            if (!db.h2()) {
-                System.out.printf("[M7-U06 경계] block_size=%s, 혼합 입력 index 저장 크기=%s%n", db.jdbc().queryForObject("show block_size", String.class),
-                        db.jdbc().queryForObject("select pg_column_size(COL_NM_CMPR_VL) from " + db.s() + "TB_COL where COL_SN = 900001107", Integer.class));
-            }
+            System.out.printf("[M7-U06 경계] block_size=%s, 혼합 입력 index 저장 크기=%s%n", db.jdbc().queryForObject("show block_size", String.class),
+                    db.jdbc().queryForObject("select pg_column_size(COL_NM_CMPR_VL) from " + db.s() + "TB_COL where COL_SN = 900001107", Integer.class));
         } finally {
             db.flyway(null).clean();
         }

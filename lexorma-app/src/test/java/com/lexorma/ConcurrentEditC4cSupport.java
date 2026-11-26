@@ -89,13 +89,13 @@ final class ConcurrentEditC4cSupport {
     }
 
     private void awaitDoneOrLockWait(Future<?> work) {
-        String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long started = System.nanoTime();
         long deadline = started + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return;
-            if (jdbc.queryForObject(sql, Integer.class) > 0) return;
+            // 같은 연결에서 pg_stat_clear_snapshot() 뒤에 센다 (AES-D17 — A 의 트랜잭션 안에서는 pg_stat_activity 가 첫 조회 값으로 고정된다)
+            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql) > 0) return;
             try {
                 Thread.sleep(2);
             } catch (InterruptedException e) {
@@ -107,11 +107,4 @@ final class ConcurrentEditC4cSupport {
                 + ConcurrencyDiagnostics.describe("C4c B 대기", started, jdbc, dataSource, projectRepository));
     }
 
-    boolean postgres() {
-        try {
-            return jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
-        } catch (Exception e) {
-            return false;
-        }
-    }
 }

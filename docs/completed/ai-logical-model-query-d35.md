@@ -1,5 +1,6 @@
 # D-35 논리 모델 조회 확장 (AI-4 · AI-MCP) — D35-1 분석·설계, D35-2 공통 조회 구현
 
+- 관리 DB 참고 (2026-11-25, DB-1) : 이 문서의 측정·검증에 쓴 임시 H2 는 그 뒤 지원이 끝났다 — 관리 DB 는 PostgreSQL 전용이다 ([postgresql-only-migration.md](postgresql-only-migration.md)). 아래 H2 기록은 당시 기록으로 그대로 둔다.
 - 단계 : **D35-1 (분석·설계, 2026-11-24)** → 확정 정책 D35-D01~D15 (12장) → **D35-2 공통 조회 서비스·DTO (2026-11-24, 13~18장)** → 확정 정책 D35-D16~D22 → **D35-3a 조회 계약 보완 · D35-3b 내부 AI·MCP 연동 (2026-11-24, 19~26장)** → **D35-FINAL 보완·통합 검증 · 완료 (2026-11-24, 27~38장)**. 1~11장은 D35-1 당시의 분석 기록, 15장의 일부 칸(…Truncated·attributeCount 등)은 19장 계약으로 바뀌었다.
 - 근거 : 코드 읽기 (파일 경로 표기) + 측정 (격리 사본의 M-8 최종 빌드 JAR = HEAD `c1404f0` 와 같은 코드(문서 경로 주석만 다름), 임시 H2, 예제 프로젝트 0 + 격리 테스트 모델, 운영 데이터 없음). 측정 스크립트·결과는 세션 scratchpad `d35/` (`measure_all.py`, `measure_all.json`).
 - 관련 : [logical-subject-area.md](../completed/logical-subject-area.md), [logical-subtype.md](../completed/logical-subtype.md) (D-35 를 후속으로 둔 결정 — 0장·4장), [ai-tool-calling-ai4.md](../completed/ai-tool-calling-ai4.md), [embedded-mcp-dec31.md](../completed/embedded-mcp-dec31.md), [logical-physical-mapping-m7.md](../completed/logical-physical-mapping-m7.md), [modeling-concurrency-m8.md](../completed/modeling-concurrency-m8.md).

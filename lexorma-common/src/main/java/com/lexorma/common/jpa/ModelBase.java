@@ -14,7 +14,7 @@ import java.util.Objects;
  *       모델 쓰기는 모두 JPA 를 거쳐 MDFCN_DT 가 바뀐다 (AI-5 버전 판단과 같은 값 — 새 버전 컬럼을 두지 않는다)</li>
  *   <li>원자성 : 호출하는 쪽이 행을 잠그고({@code findForUpdate} — SELECT … FOR UPDATE) 다시 읽은 뒤 비교한다. 잠근 동안 다른 쓰기는 기다리므로 비교와 반영 사이에 끼어들 수 없다</li>
  *   <li>다르면 409 {@link ErrorCode#MODEL_CONFLICT} — 아무것도 바꾸지 않는다(사용자 입력은 화면에 남는다). 기준값을 보내지 않은 요청(예전 화면·API)은 검사하지 않는다 (하위 호환)</li>
- *   <li>비교는 1 마이크로초 미만 차이를 같게 본다 (DB 의 timestamp(6) 저장 — PostgreSQL 은 반올림, H2 는 버림 — 과 메모리 값·JSON 왕복 값의 자릿수 차이)</li>
+ *   <li>비교는 1 마이크로초 미만 차이를 같게 본다 (DB 의 timestamp(6) 저장 — PostgreSQL 은 반올림 — 과 메모리 값·JSON 왕복 값의 자릿수 차이)</li>
  * </ul>
  */
 public final class ModelBase {

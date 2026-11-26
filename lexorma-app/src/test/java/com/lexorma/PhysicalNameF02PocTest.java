@@ -37,7 +37,6 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,9 +50,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * M7-NAME-F02 기술 검증 (PoC — 테스트 전용, LEXORMA_PERF=true 일 때만, 운영 경로에 들어가지 않는다). docs/completed/physical-name-recommendation-m7.md 12.12.
  * 같은 11,000 속성 모델에서 비 ASCII 100 · 1,000 · 5,000 · 10,000 건으로 :
  * <ul>
- *   <li>P01 : 실제 목록과 같은 조인·상태 식으로 A 기존(바인딩 목록 not in + in) · A′ 같은 목록을 상수로 · B not in 제거 · C 목록 없음(비교 기준, 비 ASCII 행은 틀린 결과) 건수 조회 시간, H2 EXPLAIN ANALYZE</li>
+ *   <li>P01 : 실제 목록과 같은 조인·상태 식으로 A 기존(바인딩 목록 not in + in) · A′ 같은 목록을 상수로 · B not in 제거 · C 목록 없음(비교 기준, 비 ASCII 행은 틀린 결과) 건수 조회 시간</li>
  *   <li>P02 : Java 전체 후보(DB 정렬로 전체 조회 → 운영 columnRow 판정 → 필터·페이지) · Java 배치(DB 순서로 1,000건씩)</li>
- *   <li>P03 : VALUES 파생 표 · 배열 바인딩 1개 (H2 TABLE(X BIGINT = ?), PostgreSQL = ANY(?))</li>
+ *   <li>P03 : VALUES 파생 표 · 배열 바인딩 1개 (= ANY(?))</li>
  * </ul>
  * 모든 방식의 결과(행 ID·순서·건수·요약)를 운영 서비스(기존 방식) 결과와 비교한다. 결과는 build/reports/m7-name1-f02-poc.txt
  */
@@ -74,7 +73,6 @@ class PhysicalNameF02PocTest {
 
     private final List<String> out = new ArrayList<>();
     private static final Path REPORT = Path.of("build/reports/m7-name1-f02-poc.txt");
-    private boolean h2;
     /** P03 질의 시간 제한 (초, 0 = 없음) — 넘으면 Timeout */
     private int timeoutSeconds;
 
@@ -106,8 +104,7 @@ class PhysicalNameF02PocTest {
     void poc() throws Exception {
         Files.createDirectories(REPORT.getParent());
         Files.deleteIfExists(REPORT);
-        h2 = Boolean.TRUE.equals(jdbc.execute((Connection c) -> c.getMetaData().getDatabaseProductName().toUpperCase().contains("H2")));
-        emit("DB = " + (h2 ? "H2" : "PostgreSQL"));
+        emit("DB = PostgreSQL");
         GenerationFixture f = GenerationFixture.create(context, "f02poc-" + System.nanoTime(), com.lexorma.core.project.domain.enums.DbType.POSTGRESQL);
         List<Long> entities = new ArrayList<>();
         for (int i = 0; i < 220; i++) {
@@ -131,7 +128,7 @@ class PhysicalNameF02PocTest {
             Map<String, Object> row = mapped.get(mapped.size() - 1 - i);
             jdbc.update("update TB_COL set COL_NM = ? where COL_SN = ?", mixed[i % mixed.length] + "_" + (i % 50) /* 같은 표(연속 50 컬럼) 안에서는 겹치지 않고, 표 사이에서는 같은 이름 = 정렬 동률 */, row.get("COL_SN"));
         }
-        jdbc.execute(h2 ? "analyze" : "analyze");
+        jdbc.execute("analyze");
 
         int done = 0;
         for (int target : new int[]{100, 1_000, 5_000, 10_000}) {
@@ -146,7 +143,7 @@ class PhysicalNameF02PocTest {
                     jdbc.update("update TB_COL set COL_NM = ? where COL_SN = ?", (done % 4 == 1 ? "한" : "O_") + abbreviation + "_é" + done, row.get("COL_SN"));
                 }
             }
-            if (!h2) jdbc.execute("analyze");
+            jdbc.execute("analyze");
             scale(f, target);
         }
     }
@@ -164,14 +161,13 @@ class PhysicalNameF02PocTest {
         overrides.setAccessible(true);
         PhysicalNameRecommendationQueryRepository.Overrides o = (PhysicalNameRecommendationQueryRepository.Overrides) overrides.invoke(recommendation, projectId, model);
         emit("덮어쓰기 ID " + o.complex().size() + " · 상태별 " + o.byStatus().entrySet().stream().map(e -> e.getKey() + "=" + e.getValue().size()).collect(Collectors.joining(", ")));
-        boolean slow = h2 && complex >= 5_000;
 
         // ---------------- 기준 : 운영 서비스 (기존 방식) — 상태·정렬마다 전체 목록 한 번
         List<Sort> sorts = List.of(Sort.unsorted(), Sort.by(Sort.Direction.ASC, "currentPhysicalName"), Sort.by(Sort.Direction.DESC, "logicalName"));
         Map<String, List<Long>> reference = new LinkedHashMap<>();
         Map<String, Long> referenceTime = new LinkedHashMap<>();
         for (Status status : Status.values()) {
-            for (Sort sort : slow ? List.of(sorts.get(0), sorts.get(1)) : sorts) {
+            for (Sort sort : sorts) {
                 long start = System.nanoTime();
                 List<ColumnRow> rows = recommendation.selectColumnRows(user, new ColumnSearch(f.modelId, null, null, null, status, null, null), PageRequest.of(0, 20_000, sort)).getContent();
                 referenceTime.put(status + "/" + sortName(sort), (System.nanoTime() - start) / 1_000_000);
@@ -179,8 +175,8 @@ class PhysicalNameF02PocTest {
             }
         }
         emit("기존 방식 전체 목록(쪽 크기 20,000) ms : " + referenceTime);
-        String existingFirst = time(slow ? 0 : 1, slow ? 0 : 3, () -> recommendation.selectColumnRows(user, new ColumnSearch(f.modelId, null, null, null, Status.AVAILABLE, null, null), PageRequest.of(0, 100)));
-        String existingSummary = time(slow ? 0 : 1, slow ? 0 : 3, () -> recommendation.selectColumnSummary(user, f.modelId));
+        String existingFirst = time(1, 3, () -> recommendation.selectColumnRows(user, new ColumnSearch(f.modelId, null, null, null, Status.AVAILABLE, null, null), PageRequest.of(0, 100)));
+        String existingSummary = time(1, 3, () -> recommendation.selectColumnSummary(user, f.modelId));
         ColumnSummary summary = recommendation.selectColumnSummary(user, f.modelId);
         emit("기존 방식 AVAILABLE 첫 쪽 " + existingFirst + " · 요약 " + existingSummary + " · 요약 값 " + summary);
 
@@ -262,7 +258,7 @@ class PhysicalNameF02PocTest {
             String last = time(1, 5, () -> setPage(f, o, variant, Status.AVAILABLE, Sort.unsorted(), (reference.get("AVAILABLE/기본").size() - 1) / 100, 100));
             String count = time(1, 5, () -> setCount(f, o, variant, Status.AVAILABLE));
             String summaryTime = time(1, 5, () -> Arrays.stream(Status.values()).mapToLong(s -> setCount(f, o, variant, s)).sum());
-            emit("P03 " + variant + " : 결과 일치 (" + (slow ? 2 : 3) + " 정렬 × 4 상태 × 쪽 크기 10·100·1,000 × 첫·중간·마지막·빈 쪽, 건수, 모든 쪽 합) · AVAILABLE 첫 쪽 " + first + " · 중간 " + middle
+            emit("P03 " + variant + " : 결과 일치 (" + 3 + " 정렬 × 4 상태 × 쪽 크기 10·100·1,000 × 첫·중간·마지막·빈 쪽, 건수, 모든 쪽 합) · AVAILABLE 첫 쪽 " + first + " · 중간 " + middle
                     + " · 마지막 " + last + " · 건수 " + count + " · 요약(건수 4) " + summaryTime + " · 바인딩 " + binds(variant, o));
         }
         // ---------------- 최종 형태 추정 : 쪽 + 건수 (운영 상태 필터 1요청 = 쪽 + 건수)
@@ -278,7 +274,6 @@ class PhysicalNameF02PocTest {
 
     private void p01(GenerationFixture f, PhysicalNameRecommendationQueryRepository.Overrides o) throws Exception {
         Set<Long> chosen = o.byStatus().getOrDefault(Status.AVAILABLE, Set.of());
-        boolean slow = h2 && o.complex().size() >= 5_000;
         Map<String, String> where = new LinkedHashMap<>();
         where.put("A 기존 (바인딩 not in " + o.complex().size() + " + in " + chosen.size() + ")",
                 "((" + notIn(o.complex(), false) + " and " + status(Status.AVAILABLE) + ") or " + in(chosen, false) + ")");
@@ -294,25 +289,9 @@ class PhysicalNameF02PocTest {
             } else if (e.getKey().startsWith("B")) {
                 args.addAll(chosen);
             }
-            boolean veryslow = slow && (e.getKey().startsWith("A 기존") || e.getKey().startsWith("B"));
-            emit("P01 " + e.getKey() + " : 건수 " + count(sql, args) + " · " + time(veryslow ? 0 : 1, veryslow ? 0 : 5, () -> count(sql, args)) + " · SQL " + sql.length() + "자");
+            emit("P01 " + e.getKey() + " : 건수 " + count(sql, args) + " · " + time(1, 5, () -> count(sql, args)) + " · SQL " + sql.length() + "자");
         }
-        if (h2 && o.complex().size() == 1_000) {
-            // EXPLAIN ANALYZE (1,000 건에서만 — 큰 규모는 그 자체가 오래 걸린다)
-            String sql = "explain analyze select count(*) " + FROM + " where e1_0.prj_sn = ? and m1_0.lgcl_mdl_sn = ? and ((" + notIn(o.complex(), false) + " and "
-                    + status(Status.AVAILABLE) + ") or " + in(chosen, false) + ")";
-            List<Object> args = new ArrayList<>(List.of(f.user.getProjectId(), f.modelId));
-            args.addAll(o.complex());
-            args.addAll(chosen);
-            String plan = jdbc.queryForObject(sql, String.class, args.toArray());
-            String shown = plan.replaceAll("\\?\\d+(, )?", "").replaceAll("\\s+", " ").replaceAll("IN\\(\\)", "IN(…)");
-            emit("P01 H2 EXPLAIN ANALYZE (A, 1,000) : " + shown.substring(0, Math.min(1_500, shown.length())));
-            String constant = "explain select count(*) " + FROM + " where e1_0.prj_sn = ? and m1_0.lgcl_mdl_sn = ? and " + in(chosen, true);
-            String plan2 = jdbc.queryForObject(constant, String.class, f.user.getProjectId(), f.modelId);
-            String shown2 = plan2.replaceAll("\\d{6,}(, )?", "").replaceAll("\\s+", " ");
-            emit("P01 H2 EXPLAIN (상수 목록 단독) : " + shown2.substring(0, Math.min(600, shown2.length())));
-        }
-        // 목록 크기만 바꾼 단순 비교 : 11,000 행 표에 바인딩 IN n개 vs 상수 IN n개 vs 배열 1개 (H2·PostgreSQL)
+        // 목록 크기만 바꾼 단순 비교 : 11,000 행 표에 바인딩 IN n개 vs 상수 IN n개 vs 배열 1개
         List<Long> ids = jdbc.queryForList("select LGCL_ATRB_SN from TB_LGCL_ATRB a join TB_LGCL_ENTT e on e.LGCL_ENTT_SN = a.LGCL_ENTT_SN where e.LGCL_MDL_SN = ? order by 1", Long.class, f.modelId);
         List<Long> list = ids.subList(0, Math.min(o.complex().size(), ids.size()));
         String filter = "select count(*) from TB_LGCL_ATRB a join TB_LGCL_ENTT e on e.LGCL_ENTT_SN = a.LGCL_ENTT_SN where e.LGCL_MDL_SN = ? and (a.ATRB_NM = 'x' or ";
@@ -415,7 +394,7 @@ class PhysicalNameF02PocTest {
     }
 
     private String arrayIn(String column) {
-        return h2 ? column + " in (select x from table(x bigint = ?))" : column + " = any(?)";
+        return column + " = any(?)";
     }
 
     private interface Reader<T> {
@@ -431,7 +410,7 @@ class PhysicalNameF02PocTest {
                 ps.setLong(i++, f.modelId);
             }
             if (!ids.isEmpty()) {
-                if (variant.startsWith("ARRAY")) ps.setArray(i, c.createArrayOf(h2 ? "BIGINT" : "bigint", ids.toArray()));
+                if (variant.startsWith("ARRAY")) ps.setArray(i, c.createArrayOf("bigint", ids.toArray()));
                 else for (Long id : ids) ps.setLong(i++, id);
             }
             List<T> result = new ArrayList<>();
@@ -454,11 +433,11 @@ class PhysicalNameF02PocTest {
     // ------------------------------------------------------------------ SQL 조각 (운영 식과 같은 뜻 — StandardNameSql · ColumnNameKeySql · 저장소의 상태 식)
 
     private String upper(String x) {
-        return h2 ? "translate(" + x + ", 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')" : "upper((" + x + ") collate \"C\")";
+        return "upper((" + x + ") collate \"C\")";
     }
 
     private String plainOf(String x) {
-        return h2 ? "(" + x + " is null or regexp_like(" + x + ", '^[ -~]*\\z'))" : "(" + x + " is null or " + x + " ~ '^[ -~]*$')";
+        return "(" + x + " is null or " + x + " ~ '^[ -~]*$')";
     }
 
     private String plain() {
@@ -468,7 +447,7 @@ class PhysicalNameF02PocTest {
     private String status(Status s) {
         String unavailable = "(st1_0.std_trm_sn is null or st1_0.trm_eng_abbr_nm is null or character_length(trim(st1_0.trm_eng_abbr_nm)) = 0)";
         String matched = "(c1_0.col_sn is not null and " + upper("trim(coalesce(c1_0.col_nm, ''))") + " = " + upper("trim(st1_0.trm_eng_abbr_nm)") + ")";
-        String key = h2 ? "FN_UPPER_ROOT(trim(st1_0.trm_eng_abbr_nm))" : "(upper(trim(st1_0.trm_eng_abbr_nm) collate \"und-x-icu\") collate \"C\")";
+        String key = "(upper(trim(st1_0.trm_eng_abbr_nm) collate \"und-x-icu\") collate \"C\")";
         String conflict = "(ti1_0.tbl_sn is not null and exists (select 1 from TB_COL x_nm where x_nm.TBL_SN = ti1_0.tbl_sn and x_nm.COL_NM_CMPR_VL = " + key
                 + " and (c1_0.col_sn is null or x_nm.COL_SN <> c1_0.col_sn)))";
         return switch (s) {
@@ -523,7 +502,7 @@ class PhysicalNameF02PocTest {
     private long arrayCount(String sql, long modelId, List<Long> ids) {
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, modelId);
-            ps.setArray(2, c.createArrayOf(h2 ? "BIGINT" : "bigint", ids.toArray()));
+            ps.setArray(2, c.createArrayOf("bigint", ids.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);

@@ -76,7 +76,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI-1b (H2 / PostgreSQL, lexorma-source) : 프로젝트의 외부 DB 연결 설정, 내부 도구 실행 계약, 원본 메타데이터 카탈로그.
+ * AI-1b (lexorma-source) : 프로젝트의 외부 DB 연결 설정, 내부 도구 실행 계약, 원본 메타데이터 카탈로그.
  * 화면이 부르는 컨트롤러로 권한·격리를 보고, 카탈로그는 수집 대신 SourceCatalogWriter 로 적재한다 (원본 DB 에 접속하지 않는다 : 테스트 도구는 접속하지 않는다).
  * 비밀번호 암호화를 보기 위해 이 클래스의 컨텍스트에만 암호화 키를 준다 (키가 없을 때의 동작은 ExecutionContextIntegrationTest).
  */

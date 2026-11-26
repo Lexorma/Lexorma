@@ -793,11 +793,9 @@ class SourceMappingIntegrationTest {
         }
     }
 
-    /** waiter 가 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다 (PostgreSQL pg_stat_activity, H2 SESSIONS.BLOCKER_ID). 기다리지 않고 끝나면 실패한다 */
+    /** waiter 가 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다 (pg_stat_activity — 대기 수만 본다). 기다리지 않고 끝나면 실패한다 */
     private void awaitLockWait(Future<?> waiter) throws InterruptedException {
-        String sql = postgres()
-                ? "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select EXECUTING_STATEMENT from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             assertThat(waiter.isDone()).as("잠금을 기다리지 않고 끝났다 (경합이 일어나지 않았다)").isFalse();
@@ -807,9 +805,6 @@ class SourceMappingIntegrationTest {
         throw new AssertionError("잠금 대기가 생기지 않았다");
     }
 
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
-    }
 
     private static void await(CountDownLatch latch) {
         try {

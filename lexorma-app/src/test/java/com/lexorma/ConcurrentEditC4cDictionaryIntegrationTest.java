@@ -198,7 +198,7 @@ class ConcurrentEditC4cDictionaryIntegrationTest {
                 () -> dictionary.updateStandardDomain(f.user, edit),
                 () -> dictionary.deleteDataDictionaryStandardDomains(List.of(seen), f.user));
         ConcurrentEditC4cSupport.report("도메인 수정 vs 삭제", r);
-        // A 가 도메인 행을 쥔 동안 B 는 NOWAIT 에서 거절 — 잠금 충돌 (C4c-2 부터 reason LOCKED 로 구분, H2·PostgreSQL 같음)
+        // A 가 도메인 행을 쥔 동안 B 는 NOWAIT 에서 거절 — 잠금 충돌 (C4c-2 부터 reason LOCKED 로 구분)
         assertThat(r).containsExactly("OK", "MODEL_CONFLICT:LOCKED");
         assertThat(jdbc.queryForObject("select DMN_EXPLN from TB_STD_DMN where STD_DMN_SN = ?", String.class, domain)).isEqualTo("A 의 수정");
     }

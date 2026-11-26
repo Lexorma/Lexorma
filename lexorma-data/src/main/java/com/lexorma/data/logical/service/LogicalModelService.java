@@ -976,7 +976,7 @@ public class LogicalModelService {
             }
         }
         // 걸린 관계를 한 번 읽어 범위 안(양 끝 모두)·범위 밖(한 끝만)으로 나눈다. 범위 안 관계는 ID 로 읽는다
-        // (양 끝을 각각 IN 으로 거르는 쿼리는 H2 에서 엔터티 300개일 때 0.1~0.7초 걸렸다 — 측정, 기록 m6 17장)
+        // (양 끝을 각각 IN 으로 거르는 쿼리는 엔터티 300개일 때 0.1~0.7초 걸렸다 — 측정, 기록 m6 17장)
         Set<Long> scope = new HashSet<>(ids);
         Map<Long, Integer> outside = new java.util.TreeMap<>();
         Set<Long> within = new java.util.TreeSet<>();

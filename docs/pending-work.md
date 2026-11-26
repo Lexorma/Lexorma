@@ -5,20 +5,20 @@
 - **목적** : 앞으로 구현하거나 검증·결정해야 할 일을 한 문서에서 관리한다. 이미 끝난 범위는 [completed-work.md](completed-work.md) 에 있다.
 - **관리 원칙**
   - 다음 작업은 **사용자와 협의해 정한다.** 이 문서의 순서·우선순위는 후보 목록이며, AI 가 여기서 임의로 다음 작업을 골라 시작하지 않는다.
-  - 작업 ID 는 기존 로드맵의 것을 그대로 쓴다(`M-n`, `AI-n`, `SEC-1`, `D-nn`, `U-nn`). 한 작업의 남은 범위가 여럿이면 원래 ID 아래에 둔다. 로드맵에 없던 항목만 새 ID(`UI-`, `AUTH-`, `PRJ-`, `COL-`, `AI-MCP` — `AI-MCP` 는 AI 로드맵 단계 번호가 아니다)를 붙인다.
+  - 작업 ID 는 기존 로드맵의 것을 그대로 쓴다(`M-n`, `AI-n`, `SEC-1`, `D-nn`, `U-nn`). 한 작업의 남은 범위가 여럿이면 원래 ID 아래에 둔다. 로드맵에 없던 항목만 새 ID(`UI-`, `AUTH-`, `PRJ-`, `COL-`, `DB-`(2026-11-25 사용자 지정 — DB-1), `AI-MCP` — `AI-MCP` 는 AI 로드맵 단계 번호가 아니다)를 붙인다.
   - 우선순위는 기존 로드맵·기록에 있던 값을 유지한다. 기록에 우선순위가 없던 항목은 **(임시)** 로 표시했다 — 착수 전에 사용자와 확정한다.
   - 완료되면 completed-work.md 로 옮기고 여기서 지운다. 남은 범위가 있으면 그 부분만 남긴다. 같은 일이 다시 나오면 새 항목을 만들지 않고 기존 항목을 고친다.
   - 상세 근거는 각 항목의 "참고 사항"에 연결한 기능 기록에 있다.
-  - **문서 구조** : 작업 상태는 이 문서와 [completed-work.md](completed-work.md) 에서만 관리한다. 완료된 작업의 상세 기록은 `completed/`, 진행 중 작업의 상세 설계는 필요할 때만 `ongoing/`(지금은 없음), 상태와 무관한 기술 기준·결정 기록은 `reference/` 에 둔다. `completed/` 에 기록이 있어도 그 기능의 후속이 모두 끝난 것은 아니다 — 이 문서에서 확인한다. 상세 설계가 필요한 작업만 `ongoing/` 에 문서를 만들고, 끝나면 `completed/` 로 옮기며 링크를 함께 고친다. 상태 보고만을 위한 문서는 만들지 않는다.
+  - **문서 구조** : 작업 상태는 이 문서와 [completed-work.md](completed-work.md) 에서만 관리한다. 완료된 작업의 상세 기록은 `completed/`, 진행 중 작업의 상세 설계는 필요할 때만 `ongoing/`(지금 : 없음 — [DB-1] 은 2026-11-25 완료로 [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md)), 상태와 무관한 기술 기준·결정 기록은 `reference/` 에 둔다. `completed/` 에 기록이 있어도 그 기능의 후속이 모두 끝난 것은 아니다 — 이 문서에서 확인한다. 상세 설계가 필요한 작업만 `ongoing/` 에 문서를 만들고, 끝나면 `completed/` 로 옮기며 링크를 함께 고친다. 상태 보고만을 위한 문서는 만들지 않는다.
 - **상태 값** : 미착수 · **개발 대기**(정책 확정, 코드 미구현) · 진행 중 · 부분 완료 · 검증 필요(구현 또는 운영 준비 뒤 실증·외부 검토 필요) · 결정 필요 · 보류. **정책 확정과 구현 완료는 다르다** — 7.2 의 결정은 방향만 정한 것이고, 완료는 구현·테스트·문서 검증 뒤 completed-work.md 에만 적는다.
-- **최종 갱신일** : 2026-11-21
+- **최종 갱신일** : 2026-11-25 ([DB-1] PostgreSQL 단일화 완료로 completed-work.md 로 옮김 — 그 밖의 집계는 2026-11-21 기준)
 
 ## 2. 작업 현황 요약
 
 | 구분 | 항목 수 |
 |---|---|
 | P0 — 필수 수정 | 0 (현재 확인된 데이터 손실·보안·주요 장애 없음) |
-| P1 — 핵심 기능 보완 | 9 (2026-11-21 P3 항목 [M-DDL-PERF] 가 P1 절에 있던 것을 P3 절로 옮김, 2026-11-18 [DICT-2] 를 추가했다가 같은 날 완료로 completed-work.md 로 옮김, 2026-11-20 [M-6]·[M-2] 완료로 completed-work.md 로 옮김) |
+| P1 — 핵심 기능 보완 | 9 (2026-11-25 [DB-1] PostgreSQL 단일화를 추가했다가 같은 날 완료로 completed-work.md 로 옮김, 2026-11-21 P3 항목 [M-DDL-PERF] 가 P1 절에 있던 것을 P3 절로 옮김, 2026-11-18 [DICT-2] 를 추가했다가 같은 날 완료로 completed-work.md 로 옮김, 2026-11-20 [M-6]·[M-2] 완료로 completed-work.md 로 옮김) |
 | P2 — 일반 개선 | 22 (2026-11-21 M-7 6차에서 [M-EXCHANGE-PERF]·[M-MAPPING-PERF] 등록, 2026-11-21 M-7 4차에서 [M-GEN-PERF]·[M-REL-APPROVAL] 등록, 2026-11-16 DEC 결정의 후속 [COL-TERM-2]·[AI-5-MSG] 를 추가했다가 같은 날 구현 완료로 completed-work.md 로 옮김, 2026-11-17 기존 결함 [DICT-1] 추가 → 2026-11-18 수정 완료로 completed-work.md 로 옮김, 2026-11-20 M-2 개선 2차 측정에서 [M-DIAG-PERF] 추가 → 같은 날 완료로 completed-work.md 로 옮김) |
 | P3 — 장기 검토 | 14 (후속 [UI-HELP]·[AI-MCP] 포함, 8.3 / 2026-11-19 [COMMON-LIST]·[UI-1] 결정 필요 추가 / 2026-11-20 [M-DDL-PERF] 추가) |
 | 상태별 (2026-11-21 재집계) | P1 9 = 부분 완료 5 (M-4·M-5·M-7·M-15·AI-2 — 2026-11-20 M-6 완료) · 검증 대기 4 (AI-5-EVAL 실증·M-0·M-14·AI-3 구현 완료 후 확인 — 2026-11-20 M-2 완료) · 미착수 0 / P2 22 = 부분 완료 7 (AI-5-QUAL·M-8·M-11·AI-6·AUTH-1·PRJ-1·M-3) · 검증 대기 1 (AI-4) · 정책 검토 1 (M-REL-APPROVAL) · 미착수 13 (2026-11-21 M-GEN-PERF 추가, 같은 날 M-7 6차에서 M-EXCHANGE-PERF·M-MAPPING-PERF 추가) / P3 14 = 부분 완료 1 (UI-HELP) · 구현 완료·검증 대기 1 (AI-MCP) · 결정 필요 3 (UI-DASH·COMMON-LIST·UI-1) · 보류 2 (AI-3-STREAM·U-07) · 미착수 7 (2026-11-20 M-DDL-PERF 추가) |
@@ -154,7 +154,7 @@
 
 - 상태: 부분 완료 (동시 편집·무효 FK 진단 구현) · 우선순위: 항목별 · 관련 기능: ERD · 데이터 모델링
 - **정합성 정리 (2026-11-17)** : 아래 '동시 편집 — DEC-08 … 개발 대기' 는 이전 기록이다. **동시 편집(DEC-08·13)은 3차 구현 완료**(`ModelBase` 공통 계약 — 기준값 `MDFCN_DT`, 행 잠금 뒤 비교, 409 `MODEL_CONFLICT`, 기준값 없으면 400, 화면 입력 보존, 6차에 구성만 바꾼 저장의 기준값 결함 수정·두 계정 브라우저 E2E — 7.3), **무효 FK 진단(DEC-09)도 구현 완료**(모델 구조 진단·물리 ERD 노드 표시). **남은 것 (미착수)** : 관계 전체 수정 API·ERD 수정 버튼(지금은 삭제/규칙 수정 `PUT /api/physical/relation/{id}/rules` 만), 범위 밖 테이블과의 FK 등록, 컬럼 연결점으로 컬럼 쌍 미리 채우기, `REF_COLUMN` 관계 타입 검사, 타입 호환 표의 실제 DBMS 4종 실측, 테이블 승인 API 여러 행의 잠금 순서(P3). **결정 필요** : 관계·식별자 일관성 검증(관계 속성 매핑 또는 같은 표준 용어 정책). 영어 화면 충돌 재현은 논리 모델 화면만.
-- **동시 편집 안정성 — M-8 완료 (2026-11-24, M8-C1~C4c-2 · M8-FINAL)** : [completed/modeling-concurrency-m8.md](completed/modeling-concurrency-m8.md) — 22장 M8-FINAL (원본 매핑 등록·재지정 기준값, 컬럼 순서 팝업 정렬 수정, 실제 두 사용자 브라우저·ko/en·light/dark·1440/1024/375 검증, H2·PostgreSQL 전체 실패 0), 최종 계약 요약 22.10. 구현·검증 기록은 completed-work.md [M-8]. **남은 비차단 위험 (22.9·22.12, 착수는 사용자 지시 뒤)** : ① PostgreSQL 동시성 테스트 간헐 실패 `ConcurrentEditC2IntegrationTest.entityApprovalVsEdit`·`RelationSyncDeadlockIntegrationTest.s4TwoRenames` — 원인 미확정 (B 는 실제 DB 잠금을 기다렸고 감시가 감지하지 못함, pg_stat_activity 스냅샷 가설 기각, FINAL 의 전체 3회 + 반복 5회에서는 재발 없음 — 해결로 처리하지 않음, 재발 시 `ConcurrencyDiagnostics` 결과 보존) ② H2 커밋 직전 재확인의 잠금 시간 초과 가능성 (재현 시나리오 없음, 19.7) ③ 브라우저로 FINAL 에서 다시 하지 않은 충돌 화면 (인덱스·VIEW·스키마·테이블 수정, 컬럼 일괄 저장, 삭제 구성, ERD 배치, 식별자·관계·모델 수정, 컬럼 이름 매핑 해제 — C3 Chrome 검증·통합 테스트로만) ④ 도메인 영향 범위 일괄 조회 API (FINAL-D02 — 성능 문제가 확인되면) ⑤ 기존 순서 번호 겹침 데이터 정리 여부 (새 설치는 0, 운영 미조사 — 17.7) ⑥ 컬럼 단건 등록 API 가 요청의 테이블명 복사본을 그대로 저장 (M-8 무관 관찰, 22.5) ⑦ 375px 의 칸 많은 비교 표는 표 안 가로 스크롤 (항목 칸 고정, 카드형 배치 안 함).
+- **동시 편집 안정성 — M-8 완료 (2026-11-24, M8-C1~C4c-2 · M8-FINAL)** : [completed/modeling-concurrency-m8.md](completed/modeling-concurrency-m8.md) — 22장 M8-FINAL (원본 매핑 등록·재지정 기준값, 컬럼 순서 팝업 정렬 수정, 실제 두 사용자 브라우저·ko/en·light/dark·1440/1024/375 검증, H2·PostgreSQL 전체 실패 0), 최종 계약 요약 22.10. 구현·검증 기록은 completed-work.md [M-8]. **남은 비차단 위험 (22.9·22.12, 착수는 사용자 지시 뒤)** : ① PostgreSQL 동시성 테스트 간헐 실패 `ConcurrentEditC2IntegrationTest.entityApprovalVsEdit`·`RelationSyncDeadlockIntegrationTest.s4TwoRenames` — 원인 미확정 (2026-11-25 PostgreSQL 단일화 1차 : `s4TwoRenames` 는 감시 결함이 유력 원인으로 확인 — [completed/postgresql-only-migration.md 14장](completed/postgresql-only-migration.md#14-relationsyncdeadlockintegrationtests4tworenames-간헐-실패-조사); [DB-1] 3차에서 감시를 A·B 백엔드 PID·`pg_blocking_pids`·같은 문장 두 번 확인으로 보완, 독립 10회·묶음 3회 재발 없음 — 원인은 확정이 아니라 유력 그대로, [completed/modeling-concurrency-m8.md 24장](completed/modeling-concurrency-m8.md); DB-1 FINAL 전체 3회(18.6 ×2 · 15.20) 9라운드도 정상 — 판정 그대로, 24.6; `entityApprovalVsEdit` 는 23장 수정 뒤 재발 없음) (B 는 실제 DB 잠금을 기다렸고 감시가 감지하지 못함, pg_stat_activity 스냅샷 가설 기각, FINAL 의 전체 3회 + 반복 5회에서는 재발 없음 — 해결로 처리하지 않음, 재발 시 `ConcurrencyDiagnostics` 결과 보존) ② ~~H2 커밋 직전 재확인의 잠금 시간 초과 가능성~~ (대상 코드 `recheckOnH2` 가 [DB-1] 2차에서 H2 와 함께 삭제돼 소멸 — 해결이 아니라 대상 없음) ③ 브라우저로 FINAL 에서 다시 하지 않은 충돌 화면 (인덱스·VIEW·스키마·테이블 수정, 컬럼 일괄 저장, 삭제 구성, ERD 배치, 식별자·관계·모델 수정, 컬럼 이름 매핑 해제 — C3 Chrome 검증·통합 테스트로만) ④ 도메인 영향 범위 일괄 조회 API (FINAL-D02 — 성능 문제가 확인되면) ⑤ 기존 순서 번호 겹침 데이터 정리 여부 (새 설치는 0, 운영 미조사 — 17.7) ⑥ 컬럼 단건 등록 API 가 요청의 테이블명 복사본을 그대로 저장 (M-8 무관 관찰, 22.5) ⑦ 375px 의 칸 많은 비교 표는 표 안 가로 스크롤 (항목 칸 고정, 카드형 배치 안 함).
 - 남은 작업
   - **동시 편집 — DEC-08 확정 (2026-11-16, D-09), 개발 대기 (P2)** : 모델 편집에 낙관적 충돌 검사를 단계적으로 도입한다. 클라이언트가 조회 당시 기준값을 보내고 서버가 지금 값과 비교해 다르면 HTTP 409, 사용자의 입력값은 버리지 않고(화면 보존) 재조회·충돌 안내, 승인·변경 요청 정책 유지. `MDFCN_DT` 를 기준값으로 쓰면 정밀도·같은 시각 수정·원자적 갱신(조건부 UPDATE 또는 행 잠금 후 비교)을 검증한다 — 단순히 읽고 비교하는 것만으로 안전하다고 보지 않는다. 이미 있는 기능별 검사(업무 설명 `base`, 용어 `baseTermId`, ERD 배치, AI 제안 `VER_NO`, 가져오기 `planToken`)와 겹치지 않게 공통 계약을 먼저 설계한다. 미승인 VIEW(DEC-13, [M-15])도 같은 계약.
   - 무효 FK — **DEC-09 확정 (2026-11-16, D-04), 2026-11-16 구현** : 사후에 무효가 된 FK 는 모델 수정 자체를 막지 않는다. [모델 구조 진단]이 오류로 표시하고(참조 테이블 없음·모호·PK 없음·복합 PK, 대상이 키가 아닌 사용자 정의 관계 — DDL 이 FK 를 만들지 않는 조건과 같은 판정), DDL Export 는 기존대로 경고한다 — completed-work.md [M-DIAG]. 물리 ERD 노드 자체의 오류 표시는 하지 않았다(테이블 상세의 미확정 참조 표시는 기존). `refTableName` 은 호환용으로 유지(엑셀 L열 계약). `REF_COLUMN` 관계의 타입 검사(P2), 타입 호환 표의 실제 DBMS 4종 실측(P2), 테이블 승인 API 여러 행의 잠금 순서(P3).
@@ -233,6 +233,7 @@
 - 상태: 검증 필요 · 우선순위: P2 (임시) · 관련 기능: AI
 - 남은 작업 : Tool Calling 미지원 실제 모델로 서버 맥락 대체 흐름 검증(설치된 모델이 없어 못 함), 운영 지표(U-22).
 - 참고 사항 : [ai-tool-calling-ai4.md 8장](completed/ai-tool-calling-ai4.md). 버전 검증이 `MDFCN_DT` 기준이고 토큰 수가 추정인 것은 설계상 제약이다.
+- **AI 공통 실행 안정성 개선 — 완료 (2026-11-25, AES-D01~D19)** : completed-work.md [AI-4] AI 공통 실행 안정성 개선, 상세 [completed/ai-execution-stability.md](completed/ai-execution-stability.md). **남은 후속 (해결하지 않음)** : 작은 컨텍스트 모델 실행 구조 (6,144 이하는 질의를 시작하지 못하거나 결과를 실을 수 없음 — 안내만 개선), TokenEstimator 정확도 (첫 요청 추정 1.8배·숫자 과소 — 계산 방식 유지), Tool 정의 증가에 따른 확장성 (20개 이상이면 결과 자리 부족, 동적 선택은 장기 후보), 설명 근거 의미 검증·엔터티/주제 영역 설명 근거(D-35 규칙상 UNVERIFIABLE), 상속 문맥 복합 버전, 실제 외부 MCP 클라이언트 검증. 미검증(비차단) : 생각을 끌 수 없는 실제 모델, 실제 Tool 미지원 모델의 서버 맥락, 대규모 동시 부하, 브라우저 12개 조합 중 4개.
 
 ### [AUTH-1] 권한 정책 후속 (권한별 UI 액션 점검의 남은 것)
 
@@ -361,7 +362,7 @@
 - 지켜야 할 기존 원칙 : 단일 서버(별도 MCP 서버 프로세스를 요구하지 않는다 — [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6), 원본 DB 도구는 AI 에 공개하지 않는다(AI 로드맵 원칙 12), 프로젝트 범위는 검증된 실행 컨텍스트에서만(`ExecutionContextVerifier`, 도구 인수로 받지 않음), 읽기 전용(쓰기·승인 도구 없음), 요청 로그 본문 보호(`LogBodyPolicy`), AI 없이도 핵심 기능 동작.
 - **DEC-31 확정 (2026-11-16)** : 외부 AI 도구가 Lexorma 메타데이터를 조회하는 **선택형 MCP 서버를 기존 Spring Boot 에 내장**한다(별도 MCP 서버 운영 요구 없음). 기본 비활성, 켤 때만 추가 설정, 읽기 전용 Tool 만(기존 AI-4 도구·조회 로직 재사용), 프로젝트 권한·격리 유지, 검증된 사용자 인증 컨텍스트 사용, 원본 DB 직접 접근·DDL/DML 실행 Tool 없음, 비밀번호·토큰·Secret 반환 금지, 요청·응답 본문에 민감정보 기록 금지, 외부 인증 서버·추가 인프라를 필수로 만들지 않음, 미승인 추정 관계(DEC-21) 비공개.
 - 구현 전 상세 설계 : 인증 방식, 프로젝트 선택 방식, 토큰 발급·폐기(저장 시 새 테이블 → 증분 마이그레이션), 감사 기록, 접근 제한. [source-tool-architecture.md](reference/source-tool-architecture.md) 원칙 1·6 과 4장(원본 수집용 MCP Connector, [U-07] — 반대 방향)과의 관계를 그 문서에 반영해 두었다.
-- [M-6] 완료(2026-11-20)로 옮겨 온 후속 D-35 는 **완료 (2026-11-24)** — completed-work.md [AI-MCP]·[AI-4] D-35, 상세 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md). **남은 D-35 후속 (사용자 결정 대기, 문서 37장)** : ① 토큰 예산 초과 시 부분 답변 정책 (지금은 질의 전체 `AI_TOKEN_BUDGET_EXCEEDED` — 설명 포함 속성 20개 한 페이지면 다음 요청이 입력 상한) ② 설명 근거의 의미 검증 한계 (`usesDescription` 표시와 실제 조회만 대조) ③ 상속 문맥 변경의 근거 버전 (행 단위 수정 일시만) ④ 관계가 많은 물리 질문의 답이 출력 한도 4,096 을 넘는 경우 (최종 3회 중 2회, 기준선 2회 중 0회 — 원인 미확정) ⑤ 실제 MCP 클라이언트 연결 검증.
+- [M-6] 완료(2026-11-20)로 옮겨 온 후속 D-35 는 **완료 (2026-11-24)** — completed-work.md [AI-MCP]·[AI-4] D-35, 상세 [completed/ai-logical-model-query-d35.md](completed/ai-logical-model-query-d35.md). **남은 D-35 후속 (문서 37장 — ①·④ 는 [AI-4] AI 공통 실행 안정성 개선으로 해결 2026-11-25, ②는 현재 구현 유지·한계 명시, ③은 보류, ⑤는 릴리스 검증 항목으로 확정 2026-11-24)** : ① 토큰 예산 초과 시 부분 답변 정책 (지금은 질의 전체 `AI_TOKEN_BUDGET_EXCEEDED` — 설명 포함 속성 20개 한 페이지면 다음 요청이 입력 상한) ② 설명 근거의 의미 검증 한계 (`usesDescription` 표시와 실제 조회만 대조) ③ 상속 문맥 변경의 근거 버전 (행 단위 수정 일시만) ④ 관계가 많은 물리 질문의 답이 출력 한도 4,096 을 넘는 경우 (→ 원인 분석 완료 : 구조화 단계의 생각 토큰, D-35 이전에도 발생 — [AI-4] AI 공통 실행 안정성 개선) ⑤ 실제 MCP 클라이언트 연결 검증.
 - 완료 조건 : 정한 인증·전송으로 외부 MCP 클라이언트가 허용된 읽기 전용 도구만 프로젝트 범위 안에서 부르고, 기존 AI-4 의 권한·재검증·감사 규칙을 그대로 지킨다.
 
 ### [M-DDL-PERF] DDL Export 반복 조회 측정
@@ -553,6 +554,12 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 
 - 의존성 확인 : 2~4 는 모두 완료된 M-6(논리 모델·주제 영역·상속 저장 구조)을 쓴다. 2 는 [M-7] 의 기존 생성·매핑(DEC-10, 보강 1~5차) 위에 얹고, 3 은 AI-4 읽기 도구·내장 MCP(DEC-31)를 재사용, 4 는 M-5 표준화 규칙(`StandardNames`·진단)을 AI-6 에서 부르는 것이 완료 조건이다([M-5]). 1 은 다른 셋과 독립 — 물리 ERD 컴포넌트를 논리 ERD 와 나눠 쓰므로 공용 부분을 바꿀 때 논리 ERD 회귀를 함께 본다. 각 작업의 범위·우선순위는 착수할 때 다시 정한다 (이번에 설계·구현하지 않음).
 
+### 8.6 AI 공통 실행 안정성 개선 완료 뒤 순서 (2026-11-25 사용자 지시)
+
+1. ~~[AI-4] AI 공통 실행 안정성 개선~~ — 완료 (2026-11-25, completed-work.md)
+2. ~~[DB-1] PostgreSQL 단일화 (H2 지원 종료)~~ — **완료 (2026-11-25, 1~3차·FINAL 로컬 구현·통합 검증, completed-work.md [DB-1], [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md))**. 남은 것은 구현이 아니라 후속 확인 : ① 사용자 통합 커밋 (PG-D42 — 에이전트는 스테이징·커밋·푸시하지 않음, 다른 세션의 인덱스 `AD` 7개 제외) ② 푸시 뒤 첫 원격 GitHub Actions `Test (dev)` 두 Job 결과·시간·테스트 힙 여유 확인 (문서 71·75장 — 실패하면 로컬 동등 실행 61장과 비교)
+3. [AI-6] 메타데이터 품질 진단 — 대기 : 2 의 원격 CI 확인 뒤 사용자와 착수 (PG-D15). 8.5 의 4번과 같은 작업이며 범위는 바꾸지 않는다.
+
 ## 9. 작업 이력
 
 | 날짜 | 내용 |
@@ -656,4 +663,12 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-2 공통 조회 서비스·AI/MCP 공통 DTO 구현 (Tool 등록 없음) — 상속 계산 공통화·AuthUtil 분리, 응답 크기·조회 수 실측, H2·PostgreSQL 전체 실패 0, 대형 엔터티 상세 상한 초과는 결정 대기 (completed/ai-logical-model-query-d35.md 12~18장) | [AI-MCP] |
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-3a·3b — 상세 section·속성 설명 선택·next 분할(3단계 말단 상세 49,936 → 20,835자), 내부 AI·MCP 논리 Tool 3개 등록, getLogicalModel 호환 보완, 논리 근거 7종, H2·PostgreSQL×2 실패 0 (completed/ai-logical-model-query-d35.md 19~26장) | [AI-MCP] |
 | 2026-11-24 | [AI-MCP]·[AI-4] D-35 D35-FINAL — 설명 근거 검증(usesDescription)·참조 근거 기록 결함 수정·검색 입력 설명 보완, 토큰 예산 실측(질문당 프롬프트 +약 1,440), 가짜 Provider 흐름 7, 실제 Ollama gemma4:e4b 20문항, MCP·화면, H2·PostgreSQL×2 1,584/실패 0. **D-35 완료** (completed-work.md), 후속 결정 ①~⑤ 남김 | [AI-MCP] |
+| 2026-11-24 | [AI-4] AI 공통 실행 안정성 개선 1차 분석·설계 (운영 코드 변경 없음) — 실행 흐름·예산 검증 위치, 요청별 추정/실측(로컬 Ollama 캡처 82건), 부분 답변 대안 D 추천, R4 원인 = 구조화 단계 생각 토큰 (D-35 회귀 아님), 결정 12개 (completed/ai-execution-stability.md) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 2차 서버 구현 — 부분 답변(AES-D01~D06), 전달 확인·결과 단위 최종 답변 범위·근거 범위, completion 응답 칸, Ollama 구조화 단계 think=false, 작은 컨텍스트 안내, 결정적 통합 테스트 16건 추가·기존 4건 계약 변경 (completed/ai-execution-stability.md 15장, 3차 대기) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 3차 (AES-D13~D16) — 결과 문자 수 사유 분리, 서버 맥락 부분 답변, 구조화 단계 Tool 요청 차단, 부분 답변 화면, 실제 Ollama 31회·R4·B08 반복, 브라우저·단일 JAR. H2 전체 실패 0, PostgreSQL 2회 각 1건(M-8 감시 결함 — 원인 확인) 때문에 완료 처리 보류 (completed/ai-execution-stability.md 16장) | [AI-4] |
+| 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 최종 검증 보완 (AES-D17~D19) — M-8 PostgreSQL 테스트 감시 결함(트랜잭션 안 `pg_stat_activity` 백엔드 목록 고정) 수정·결정적 재현, executedTools 계약 확정, H2 1,612 실패 0 · PostgreSQL 2회 각 1,612 실패 0 → **완료**, 문서 completed/ 로 이동 | [AI-4]·[M-8] |
 | 2026-11-23 | [M-8] M8-C3 409 충돌 복구 UX (M8-C3-D01~D05) : 수정 폼 입력 보존·최신 비교·고른 변경만 다시 적용, 삭제·승인·매핑 검토 대화상자, ERD 배치 충돌 복구, 일괄 편집 기준값 범위(M8-D04 — 서버 `unchanged` 행), 중복 제출 방지. 새 마이그레이션 없음. C4 남음 (completed/modeling-concurrency-m8.md 15장) | [M-8] |
+| 2026-11-25 | [DB-1] PostgreSQL 단일화 1차 — H2 제거 영향 분석·상세 설계 (운영 코드 변경 없음) : 의존성·H2 코드 전수 분류, 기동·설정 필수화 설계, Flyway 유지(신규 마이그레이션 없음), 테스트 분류·PostgreSQL 테스트/CI 설계, Standalone 제거 범위, `s4TwoRenames` 조사, 결정 PG-Q01~Q18 (completed/postgresql-only-migration.md) | [DB-1] |
+| 2026-11-25 | [DB-1] 2차 — PostgreSQL 전용 운영·설정·배포 구현 (H2 의존성·프로필·마이그레이션·배포 파일 삭제, 관리 DB 설정 확인·URL 비밀번호 거절, SQL·동시성 H2 분기 제거, Compose·외부 PostgreSQL, 테스트 전용 키·안전 검증). 전체 1,618 실패 0, 기동·Docker·동시성 3회 검증. 3차·FINAL 대기 (completed/postgresql-only-migration.md 33~45장) | [DB-1] |
+| 2026-11-25 | [DB-1] 3차 — 테스트·CI PostgreSQL 단일화 및 운영 설정 보완 (PG-D37~D44) : local·dev 고정 계정 삭제, 외부 Compose 표준 키·비밀번호 서버 정책, URL 인증정보 구성 요소 검사(오탐 제거), 테스트 H2 분기·고정 계정 전부 삭제, `s4TwoRenames` 감시 PID·차단 관계 기반, `reWriteBatchedInserts` 실제 적용 검증, CI PostgreSQL 서비스·원본 수집·Docker 빌드 Job. 로컬 CI 동등 1,647 실패 0, 원격 CI 미실행 (completed/postgresql-only-migration.md 46~58장) | [DB-1] |
+| 2026-11-25 | [DB-1] FINAL — 최종 통합 검증 및 완료 (PG-D45~D51) : PostgreSQL 18.6 새 빈 DB 전체 2회 · 15.20 1회 (각 1,647 · 실행 1,620 · 실패 0 · 원본 수집 19), 기동 F01~F15, 단일 JAR·기본/외부 Compose·Docker Secrets(재시작·재수집), 업무 흐름·영속성·세션, 실제 Ollama 8건, MCP Tool 13개 실제 호출, 브라우저 업무·권한·409·ko/en·light/dark·1440/375, H2 경로 0, 테스트 힙 기록 정정. 운영·테스트 코드 변경 없음(문서 경로 주석 3곳). [DB-1] 을 completed-work.md 로 옮김, 통합 커밋·원격 CI 는 사용자 (completed/postgresql-only-migration.md 59~77장) |

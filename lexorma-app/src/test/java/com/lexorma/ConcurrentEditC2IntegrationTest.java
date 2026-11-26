@@ -215,7 +215,7 @@ class ConcurrentEditC2IntegrationTest {
         String late = interleave(admin,
                 () -> tableDesign.deleteTable(List.of(now), admin),
                 () -> physical.saveConstraint(admin, new PhysicalModelDto.Constraint(null, empty.getId(), null, "CHECK", "2 = 2", List.of(), null)));
-        // H2·PostgreSQL 모두 기다린 잠금 조회가 지워진 행을 돌려주지 않아 대상 없음 400 (M8-C4a 확인 — C2 때 H2 의 500 은 구성 계산이 자식을 엔티티로 읽던 결함 때문이었다, 16.3)
+        // 기다린 잠금 조회가 지워진 행을 돌려주지 않아 대상 없음 400 (M8-C4a 확인 — C2 때 예전 H2 의 500 은 구성 계산이 자식을 엔티티로 읽던 결함 때문이었다, 16.3)
         assertThat(late).isEqualTo("TABLE_IS_NOT_DEFINED");
         assertThat(inTx(() -> tableRepository.findById(empty.getId()))).isEmpty();
         assertThat(inTx(() -> jdbc.queryForObject("select count(*) from TB_TBL_CNSTRT where TBL_SN = ?", Integer.class, empty.getId()))).isZero();
@@ -574,13 +574,13 @@ class ConcurrentEditC2IntegrationTest {
     }
 
     private void awaitDoneOrLockWait(Future<?> work) {
-        String sql = postgres() ? "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
-                : "select count(*) from INFORMATION_SCHEMA.SESSIONS where BLOCKER_ID is not null";
+        String sql = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'";
         long started = System.nanoTime();
         long deadline = started + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < deadline) {
             if (work.isDone()) return;
-            if (jdbc.queryForObject(sql, Integer.class) > 0) return;
+            // 같은 연결에서 pg_stat_clear_snapshot() 뒤에 센다 (AES-D17 — A 의 트랜잭션 안에서는 pg_stat_activity 가 첫 조회 값으로 고정된다)
+            if (ConcurrencyDiagnostics.lockWaitCount(jdbc, sql) > 0) return;
             try {
                 Thread.sleep(2);
             } catch (InterruptedException e) {
@@ -593,13 +593,6 @@ class ConcurrentEditC2IntegrationTest {
                 + ConcurrencyDiagnostics.describe("B 대기", started, jdbc, dataSource, projectRepository));
     }
 
-    private boolean postgres() {
-        try {
-            return jdbc.queryForObject("select version()", String.class).contains("PostgreSQL");
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private <T> T inTx(Supplier<T> supplier) {
         return tx.execute(s -> supplier.get());

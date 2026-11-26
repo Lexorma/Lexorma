@@ -2,40 +2,34 @@ package com.lexorma;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * 컬럼 필수값 (M7-U05 · M7-U09, docs/completed/column-name-uniqueness-m7.md 10·15장) : TBL_SN·COL_NM NOT NULL + CK_COL_01 (빈 이름 = 빈 문자열 또는 ASCII 공백류만).
  * 2026-11-22 네 번째 합침으로 예전 V5 는 V0·V1 에 있다 — 새 설치(V0·V1)의 제약과 예제를 본다 (예전 V4 → V5 업그레이드·사전 검사는 경로가 없어 뺐다).
- * 정규화·중복은 ColumnNameUniqueMigrationTest · ColumnNameUnicodeMigrationTest. H2 / PostgreSQL (LEXORMA_TEST_POSTGRES_URL).
+ * 정규화·중복은 ColumnNameUniqueMigrationTest · ColumnNameUnicodeMigrationTest. 테스트 DB 는 TestDatabaseGuard.directDataSource (LEXORMA_TEST_POSTGRES_*).
  */
 class ColumnRequiredValuesMigrationTest {
 
-    private record Db(JdbcTemplate jdbc, String s, String schema, DriverManagerDataSource ds, String vendor) {
+    private record Db(JdbcTemplate jdbc, String s, String schema, DriverManagerDataSource ds) {
         Flyway flyway(String target) {
-            var config = Flyway.configure().dataSource(ds).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false);
+            var config = Flyway.configure().dataSource(ds).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false);
             return (target == null ? config : config.target(MigrationVersion.fromVersion(target))).load();
         }
     }
 
-    private Db install(String vendor, String target, int expected) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    private Db install(String target, int expected) {
         String schema = "colreq_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var ds = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Db db = new Db(new JdbcTemplate(ds), "\"" + schema + "\".", schema, ds, vendor);
+        var ds = TestDatabaseGuard.directDataSource();
+        Db db = new Db(new JdbcTemplate(ds), "\"" + schema + "\".", schema, ds);
         assertThat(db.flyway(target).migrate().migrationsExecuted).isEqualTo(expected);
         db.jdbc().update("insert into " + db.s() + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900000901, 'colreq', true, false, true, 'POSTGRESQL')");
         db.jdbc().update("insert into " + db.s() + "TB_SCHM(SCHM_SN, PRJ_SN, SCHM_NM, BSC_YN) values (900000902, 900000901, 'DEFAULT', true)");
@@ -58,10 +52,10 @@ class ColumnRequiredValuesMigrationTest {
                 + " and upper(CONSTRAINT_NAME) = 'CK_COL_01' and CONSTRAINT_TYPE = 'CHECK'", Integer.class, db.schema());
     }
 
-    @ParameterizedTest(name = "새 설치 필수값 {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstallEnforces(String vendor) {
-        Db db = install(vendor, null, 4); // V0~V3
+    @Test
+    @DisplayName("새 설치 필수값 PostgreSQL")
+    void freshInstallEnforces() {
+        Db db = install(null, 4); // V0~V3
         try {
             column(db, 900000920, 900000910L, "CUST_NO");
             column(db, 900000921, 900000910L, "고객번호");
@@ -80,7 +74,7 @@ class ColumnRequiredValuesMigrationTest {
             }
             column(db, 900000931, 900000910L, "A B");
             column(db, 900000932, 900000910L, "\u3000");
-            assertThatThrownBy(() -> column(db, 900000933, 900000910L, " cust_no ")).hasMessageContaining(vendor.equals("h2") ? "UX_COL_01" : "ux_col_01");
+            assertThatThrownBy(() -> column(db, 900000933, 900000910L, " cust_no ")).hasMessageContaining("ux_col_01");
             // 예제 : TB_COL.TBL_SN·COL_NM NULL 불가·필수, 논리 속성 필수, 예제 CHECK
             assertThat(db.jdbc().queryForList("select COL_NM || ':' || case when NULL_ALWNC_YN then 'Y' else 'N' end || ':' || case when ESNTL_YN then 'Y' else 'N' end from " + db.s() + "TB_COL where PRJ_SN = 0 and TBL_NM = 'TB_COL' and COL_NM in ('TBL_SN', 'COL_NM') order by COL_NM", String.class))
                     .containsExactly("COL_NM:N:Y", "TBL_SN:N:Y");

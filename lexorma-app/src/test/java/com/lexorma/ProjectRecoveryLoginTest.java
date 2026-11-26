@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 프로젝트 복구 로그인 통합 테스트 : 실제 서버(랜덤 포트) + Security Filter Chain + Spring Session JDBC.
  * <p>
- * 활성 프로젝트가 하나도 없는 상태는 DB 전체에 영향을 주므로 ProjectAccessRevokeTest 처럼 전용 DB(H2 인메모리 / PostgreSQL 별도 스키마)를 쓴다.
+ * 활성 프로젝트가 하나도 없는 상태는 DB 전체에 영향을 주므로 ProjectAccessRevokeTest 처럼 전용 스키마(테스트 DB 안)를 쓴다.
  * 프로젝트 활성 상태 준비는 JDBC 로 직접 하고, 검증 대상(로그인·복구 API·비활성화)은 HTTP 로 호출한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -42,13 +42,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ProjectRecoveryLoginTest {
 
-    private static final String CONFIGURED_URL = System.getProperty("spring.datasource.url", System.getenv("SPRING_DATASOURCE_URL"));
-    private static final boolean POSTGRESQL = CONFIGURED_URL != null && CONFIGURED_URL.startsWith("jdbc:postgresql:");
+    /** 테스트 DB (LEXORMA_TEST_POSTGRES_URL — TestDatabaseGuard 가 확인) 안에 이 클래스 전용 스키마를 만든다 */
+    private static final String CONFIGURED_URL = TestDatabaseGuard.url();
     private static final String SCHEMA = "recovery_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    private static final Map<String, String> DB_PROPERTIES = POSTGRESQL
-            ? Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                     "spring.flyway.default-schema", SCHEMA)
-            : Map.of("spring.datasource.url", "jdbc:h2:mem:lexorma-recovery;DB_CLOSE_DELAY=-1");
+    private static final Map<String, String> DB_PROPERTIES = CONFIGURED_URL == null ? Map.of()
+            : Map.of("spring.datasource.url", CONFIGURED_URL + (CONFIGURED_URL.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
+                     "spring.flyway.default-schema", SCHEMA);
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -95,7 +94,7 @@ class ProjectRecoveryLoginTest {
     @AfterAll
     void cleanup() throws Exception {
         if (PREVIOUS_AUTH_UTIL_REPOSITORY != null) AUTH_UTIL_REPOSITORY.set(null, PREVIOUS_AUTH_UTIL_REPOSITORY);
-        if (POSTGRESQL) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
+        if (CONFIGURED_URL != null) jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
     }
 
     @Test

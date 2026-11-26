@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.tuple;
 /**
  * M-6 후속 5차 : 슈퍼타입·서브타입 — 그룹 구조(단일 상속·3단계·복수 그룹·최소 2개·순환), 가상 속성·식별자 상속, 이름 충돌, 분류 속성, 관계 상속·상속 주 식별자 속성 짝,
  * 승인 보호, 삭제·참조 무결성, 논리 ERD 범위·이웃, 물리 생성 제한·기존 매핑 보호, 변경 이력·모델 버전 형식 8·교환 형식 5, 실제 독립 트랜잭션 동시성, 권한·격리.
- * H2·PostgreSQL 모두에서 돈다.
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

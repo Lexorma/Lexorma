@@ -9,7 +9,6 @@ import com.lexorma.data.table.domain.entity.TableInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,7 +17,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * M-14 2차 : 생성한 고급 인덱스 DDL 을 격리된 PostgreSQL 스키마에서 실제로 실행한다 (LEXORMA_TEST_POSTGRES_URL 이 있을 때만, UUID 스키마를 만들고 지운다).
@@ -29,9 +27,7 @@ class AdvancedIndexPostgresDdlTest {
     @Test
     @DisplayName("PostgreSQL 에서 생성 DDL 이 실행된다 : 표현식·부분·정렬·NULLS·INCLUDE·복합, BTREE·HASH·GIN·GIST·SPGIST·BRIN")
     void generatedDdlRunsOnPostgresql() {
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(url != null, "PostgreSQL 검증 DB 미지정");
-        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(url, "lexorma", "lexorma"));
+        JdbcTemplate jdbc = new JdbcTemplate(TestDatabaseGuard.directDataSource());
         String schema = "idx_ddl_" + UUID.randomUUID().toString().replace("-", "");
         jdbc.execute("create schema " + schema);
         try {

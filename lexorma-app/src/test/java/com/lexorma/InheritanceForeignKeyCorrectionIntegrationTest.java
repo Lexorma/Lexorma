@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M7-INH-03 기존 서브타입 누락 상속 FK 보정 (docs/completed/inheritance-reference-key-m7.md 5장, D-INH-06~10). H2 / PostgreSQL 같은 기대값.
+ * M7-INH-03 기존 서브타입 누락 상속 FK 보정 (docs/completed/inheritance-reference-key-m7.md 5장, D-INH-06~10).
  * <pre>
  * 당사자 (PK 당사자 번호) ─ 조직 ─ 외국 조직       (단일 상속 PK — 생성기는 참조 테이블명 REF_COLUMN 으로 상속 FK 를 만든다)
  *                       └ 사람   └ 기업

@@ -1,7 +1,6 @@
 package com.lexorma;
 
 import com.lexorma.common.exception.CustomException;
-import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.core.project.repository.ProjectRepository;
 import com.lexorma.core.security.domain.dto.AccountDto;
@@ -55,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-7 물리명 추천 일괄 적용 2차 (P-01~P-15) : 미리보기·적용 API 의 서비스 계약 (H2 / PostgreSQL — 같은 테스트를 두 DB 에서 돌린다).
+ * M-7 물리명 추천 일괄 적용 2차 (P-01~P-15) : 미리보기·적용 API 의 서비스 계약.
  * 요청 검사(0·500·501·중복·빈 값·없는 ID·다른 프로젝트), 선택 집합 기준 추천끼리 충돌, 지금 이름 충돌(같은/다른 스키마·VIEW·맞바꾸기), 승인(테이블·컬럼·소속 테이블)·용어(없음·불일치),
  * CHECK·VIEW 참조, DDL 제약조건명(잘림·충돌), 원본 매핑 경고, 적용(이름·사본·승인된 참조 컬럼·버전·이력·매핑 보존·DDL), 오래된 계획·기준값·위조 토큰,
  * 권한(VIEWER), 동시성(기존 updateTable·용어 재연결·같은 적용 두 번 — 서로 다른 연결의 실제 겹침).
@@ -291,46 +290,44 @@ class PhysicalNameRenameIntegrationTest {
             assertThat(((Number) h.get(key("TRGT_SN"))).longValue()).isEqualTo(x.ordCustNo()); // 참조 테이블명 사본 동기화도 같은 그룹
         });
 
-        // DDL 회귀 : 바뀐 이름으로 PK_·UK_·FK_ 를 만들고, 참조 컬럼의 FK 는 바뀐 테이블을 가리킨다 (PostgreSQL 이면 임시 스키마에 실제로 실행해 본다)
+        // DDL 회귀 : 바뀐 이름으로 PK_·UK_·FK_ 를 만들고, 참조 컬럼의 FK 는 바뀐 테이블을 가리킨다 (임시 스키마에 실제로 실행해 본다)
         String ddl = ddlExport.export(x.user(), null, "POSTGRESQL", null, false).ddl();
         assertThat(ddl).contains("CREATE TABLE CUST (", "CUST_NO", "CUST_NM", "CONSTRAINT PK_CUST PRIMARY KEY", "UK_CUST_CUST_NM", "CREATE TABLE ORD (", "REFERENCES CUST")
                 .doesNotContain("O_CUST ", "O_CUST(", "O_CUST_NO");
-        if (postgres()) {
-            String schema = "rn_ddl_" + System.nanoTime();
-            jdbc.execute((java.sql.Connection c) -> {
-                try (java.sql.Statement st = c.createStatement()) {
-                    st.execute("create schema " + schema + "; set search_path to " + schema);
-                    try {
-                        st.execute(ddl);
-                        java.util.function.ToIntFunction<String> count = sql -> {
-                            try (java.sql.ResultSet rs = st.executeQuery(sql)) {
-                                rs.next();
-                                return rs.getInt(1);
-                            } catch (java.sql.SQLException e) {
-                                throw new IllegalStateException(e);
-                            }
-                        };
-                        int tables = count.applyAsInt("select count(*) from information_schema.tables where table_schema = '" + schema + "' and table_name in ('cust', 'ord', 'o_prdt')");
-                        int columns = count.applyAsInt("select count(*) from information_schema.columns where table_schema = '" + schema
-                                + "' and ((table_name = 'cust' and column_name in ('cust_no', 'cust_nm')) or (table_name = 'ord' and column_name = 'ord_no'))");
-                        int keys = count.applyAsInt("select count(*) from information_schema.table_constraints where table_schema = '" + schema
-                                + "' and constraint_name in ('pk_cust', 'uk_cust_cust_nm', 'pk_ord')");
-                        int foreignKeys = count.applyAsInt("select count(*) from information_schema.referential_constraints r join information_schema.table_constraints t"
-                                + " on t.constraint_schema = r.constraint_schema and t.constraint_name = r.unique_constraint_name where r.constraint_schema = '" + schema
-                                + "' and t.table_name = 'cust'");
-                        assertThat(tables).isEqualTo(3);
-                        assertThat(columns).isEqualTo(3);
-                        assertThat(keys).isEqualTo(3);
-                        assertThat(foreignKeys).as("ORD → CUST FK").isOne();
-                        // 실행 확인용 로그 (테스트 결과 XML 의 system-out 에 남는다 — 이 분기가 실제로 돌았는지 확인)
-                        System.out.println("PG-DDL-EXECUTED schema=" + schema + " tables=" + tables + " columns=" + columns + " pkUnique=" + keys + " fk=" + foreignKeys);
-                    } finally {
-                        st.execute("set search_path to public; drop schema " + schema + " cascade");
-                    }
+        String schema = "rn_ddl_" + System.nanoTime();
+        jdbc.execute((java.sql.Connection c) -> {
+            try (java.sql.Statement st = c.createStatement()) {
+                st.execute("create schema " + schema + "; set search_path to " + schema);
+                try {
+                    st.execute(ddl);
+                    java.util.function.ToIntFunction<String> count = sql -> {
+                        try (java.sql.ResultSet rs = st.executeQuery(sql)) {
+                            rs.next();
+                            return rs.getInt(1);
+                        } catch (java.sql.SQLException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    };
+                    int tables = count.applyAsInt("select count(*) from information_schema.tables where table_schema = '" + schema + "' and table_name in ('cust', 'ord', 'o_prdt')");
+                    int columns = count.applyAsInt("select count(*) from information_schema.columns where table_schema = '" + schema
+                            + "' and ((table_name = 'cust' and column_name in ('cust_no', 'cust_nm')) or (table_name = 'ord' and column_name = 'ord_no'))");
+                    int keys = count.applyAsInt("select count(*) from information_schema.table_constraints where table_schema = '" + schema
+                            + "' and constraint_name in ('pk_cust', 'uk_cust_cust_nm', 'pk_ord')");
+                    int foreignKeys = count.applyAsInt("select count(*) from information_schema.referential_constraints r join information_schema.table_constraints t"
+                            + " on t.constraint_schema = r.constraint_schema and t.constraint_name = r.unique_constraint_name where r.constraint_schema = '" + schema
+                            + "' and t.table_name = 'cust'");
+                    assertThat(tables).isEqualTo(3);
+                    assertThat(columns).isEqualTo(3);
+                    assertThat(keys).isEqualTo(3);
+                    assertThat(foreignKeys).as("ORD → CUST FK").isOne();
+                    // 실행 확인용 로그 (테스트 결과 XML 의 system-out 에 남는다 — 이 분기가 실제로 돌았는지 확인)
+                    System.out.println("PG-DDL-EXECUTED schema=" + schema + " tables=" + tables + " columns=" + columns + " pkUnique=" + keys + " fk=" + foreignKeys);
+                } finally {
+                    st.execute("set search_path to public; drop schema " + schema + " cascade");
                 }
-                return null;
-            });
-        }
+            }
+            return null;
+        });
 
         // 다시 미리보기 : 바꿀 것 없음
         Plan again = preview(x, table(x.cust(), "CUST"), column(x.custNo(), "CUST_NO"));
@@ -340,13 +337,9 @@ class PhysicalNameRenameIntegrationTest {
         });
     }
 
-    /** H2 는 대문자, PostgreSQL 은 소문자 열 이름 */
+    /** queryForList 의 열 이름은 PostgreSQL 이 돌려준 소문자 */
     private String key(String column) {
-        return postgres() ? column.toLowerCase() : column;
-    }
-
-    private boolean postgres() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")));
+        return column.toLowerCase();
     }
 
     @Test

@@ -1,33 +1,28 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * M-7 보강 3차 논리 관계 속성 짝 스키마 신규 설치 : 예제(프로젝트 0)의 논리 관계마다 물리 FK 그대로 부모 주 식별자 속성 ↔ 자식 속성 짝이 있고
  * (기본 키가 아닌 (일련번호, 출처 접속 일련번호) UNIQUE 를 가리키는 출처 카탈로그의 복합 FK 9건만 비어 있다 — 2026-11-18 세 번째 합침),
- * 관계별 부모·자식 속성·순서 UNIQUE 와 FK 가 DB 제약으로 동작하는지(다른 관계는 같은 속성을 다시 쓸 수 있다), 짝에서 쓰는 속성은 DB 도 지우지 못하는지. H2 와 PostgreSQL 모두.
+ * 관계별 부모·자식 속성·순서 UNIQUE 와 FK 가 DB 제약으로 동작하는지(다른 관계는 같은 속성을 다시 쓸 수 있다), 짝에서 쓰는 속성은 DB 도 지우지 못하는지.
  * (예전 V6 → V7 업그레이드 검증은 세 번째 합침으로 V0·V1 만 남아 없어졌다)
  */
 class LogicalRelationshipAttributeMigrationTest {
 
-    @ParameterizedTest(name = "신규 설치 {0} : 논리 관계 속성 짝")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void freshInstall(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("신규 설치 PostgreSQL : 논리 관계 속성 짝")
+    void freshInstall() {
         String schema = "lgcl_rel_atrb_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
-        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        var dataSource = TestDatabaseGuard.directDataSource();
+        Flyway flyway = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         String s = "\"" + schema + "\".";
         try {
             flyway.migrate();

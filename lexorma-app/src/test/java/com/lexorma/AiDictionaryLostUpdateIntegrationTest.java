@@ -62,7 +62,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * AI-5 업무 설명(TASK_EXPLN) 유실 방지 : 테이블·컬럼은 바뀐 컬럼만 UPDATE 한다(@DynamicUpdate). 그래서 행을 잠그지 않고 읽은 다른 모델 쓰기가 AI 제안 승인보다 늦게
  * 커밋해도 업무 설명을 읽은 때의 값(또는 null)으로 되돌리지 않는다. 같은 업무 설명을 두 쪽이 고치는 충돌은 따로 막는다 (BIZ_DESCRIPTION_CONFLICT, 컬럼 일괄 편집은 행 잠금 후 비교).
- * 두 트랜잭션을 실제로 엇갈려 실행한다 (H2 · PostgreSQL).
+ * 두 트랜잭션을 실제로 엇갈려 실행한다 (PostgreSQL).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {"lexorma.ai.test-timeout-seconds=1", "lexorma.external.http.response-timeout-seconds=3"})
 @ActiveProfiles("test")

@@ -1,38 +1,31 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * V3 서브타입 (M-6 후속 5차) : 이미 V2 까지 쓰던 설치를 올려도 기존 논리 모델·엔터티·속성·식별자·관계·주제 영역·배치·매핑·승인 상태는 그대로이고(수정 일시 포함)
  * 서브타입 그룹은 하나도 생기지 않는다. 새 테이블의 DB 제약 : 단일 상속(서브타입 엔터티 UNIQUE), 없는 모델·엔터티·그룹·속성 금지(FK), 배타성·완전성 필수(기본값 없음),
- * 같은 슈퍼타입 아래 같은 그룹명(대소문자 같음) 금지 — 자기 상속·순환·깊이·최소 구성원·같은 모델·대소문자 무시 이름은 서비스 검사(모델 행 잠금)가 맡는다. H2·PostgreSQL 모두.
+ * 같은 슈퍼타입 아래 같은 그룹명(대소문자 같음) 금지 — 자기 상속·순환·깊이·최소 구성원·같은 모델·대소문자 무시 이름은 서비스 검사(모델 행 잠금)가 맡는다.
  */
 class LogicalSubtypeMigrationTest {
 
-    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V3 합침) {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeKeepsExistingModels(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("새 설치 (V0·V1, 예전 V3 합침) PostgreSQL")
+    void upgradeKeepsExistingModels() {
         String schema = "subtype_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
+        var dataSource = TestDatabaseGuard.directDataSource();
         String s = "\"" + schema + "\".";
-        Flyway v2 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor)
+        Flyway v2 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql")
                 .cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V3(서브타입)은 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다

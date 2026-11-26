@@ -54,10 +54,9 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * M-11 통합 DDL Export (H2 모델 + PostgreSQL 실제 실행) : 실행 순서(SCHEMA → TABLE → INDEX → FK → VIEW), 순환·자기 참조·복합·고유 인덱스 참조 FK,
+ * M-11 통합 DDL Export (모델 + 빈 임시 스키마에서 실제 실행) : 실행 순서(SCHEMA → TABLE → INDEX → FK → VIEW), 순환·자기 참조·복합·고유 인덱스 참조 FK,
  * 키·인덱스 중복 없음, 고급 인덱스·VIEW 원문 보존, VIEW 참조 순서, 스키마 단위 범위 밖 참조 경고, 승인 기준 모드·변경 요청 미반영, DBMS 선택, 오류(컬럼 없음·VIEW 순환),
  * 프로젝트 격리·권한. PostgreSQL 실행은 LEXORMA_TEST_POSTGRES_URL 이 있을 때만 (임시 스키마를 만들고 지운다).
  */
@@ -295,8 +294,6 @@ class DdlExportIntegrationTest {
     @Test
     @DisplayName("PostgreSQL 실제 실행 : 통합 DDL 을 빈 임시 스키마에서 한 번에 실행하면 테이블·제약·인덱스·FK·VIEW 가 생성 결과와 같게 만들어진다")
     void generatedDdlRunsOnPostgresql() {
-        String url = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(url != null, "PostgreSQL 검증 DB 미지정");
         AccountDto admin = loginAsAdmin("m11-pg");
         String base = "m11_" + suffix().toLowerCase(Locale.ROOT);
         Model model = buildModel(admin, "SX" + suffix());
@@ -304,7 +301,7 @@ class DdlExportIntegrationTest {
         DdlExportDto result = exportService.export(admin, null, "POSTGRESQL", base, false);
         assertThat(result.errors()).isEmpty();
 
-        SingleConnectionDataSource dataSource = new SingleConnectionDataSource(url, "lexorma", "lexorma", true);
+        SingleConnectionDataSource dataSource = TestDatabaseGuard.singleConnectionDataSource();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("create schema " + base);
         try {

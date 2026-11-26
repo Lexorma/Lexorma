@@ -1,9 +1,5 @@
-# 개발 서버
+# 개발 서버 (Dockerfile.dev, 포트 18080). DB 연결 정보는 프로필이 주지 않는다 (DB-1 PG-D37) — 컨테이너에 SPRING_DATASOURCE_URL · _USERNAME (· _PASSWORD) 를 준다
 spring:
-  datasource:
-    url: jdbc:postgresql://lexorma-postgres:5432/lexorma?charSet=UTF-8&reWriteBatchedInserts=true
-    username: lexorma
-    password: lexorma
   jpa:
     properties:
       hibernate:

@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * DEC-08·13 보완 : 낙관적 충돌 비교의 1µs 허용 오차(PostgreSQL timestamp(6) 반올림)가 실제 변경을 놓치지 않는지. 같은 행을 바로 이어서 여러 번 저장해도 DB 에 남은
- * 수정 일시(MDFCN_DT)는 저장마다 1µs 이상 달라지고, 바로 앞 저장의 값을 기준값으로 들고 온 요청은 409 MODEL_CONFLICT 다. H2 와 PostgreSQL(전체 실행 시) 모두.
+ * 수정 일시(MDFCN_DT)는 저장마다 1µs 이상 달라지고, 바로 앞 저장의 값을 기준값으로 들고 온 요청은 409 MODEL_CONFLICT 다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

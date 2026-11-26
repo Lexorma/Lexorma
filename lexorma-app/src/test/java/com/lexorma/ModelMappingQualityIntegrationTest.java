@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-7 2차 : 논리·물리 정합성 비교 (H2 / PostgreSQL, 실제 조회 쿼리).
+ * M-7 2차 : 논리·물리 정합성 비교 (실제 조회 쿼리).
  * 진단 유형별 판정(일치·불일치·비교 불가·미매핑), 요약 = 목록, 조건·정렬·페이징, 프로젝트 격리, 권한, 조회 후 데이터 불변, 매핑 1건 조회(lookup).
  * 판정 규칙의 DBMS 별 경우는 ModelMappingQualityServiceTest.
  */

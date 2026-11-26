@@ -1,38 +1,31 @@
 package com.lexorma;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * V2 주제 영역 (M-6 후속 4차) : 이미 V1 까지 쓰던 설치를 올려도 기존 논리 모델·엔터티·배치는 그대로이고(수정 일시 포함) 주제 영역·소속·영역 배치는 하나도 생기지 않는다 (미분류).
  * 새 테이블의 DB 제약 : 자기 자신을 상위로 금지(CHECK), 엔터티 단일 소속(UNIQUE), 없는 모델·영역·엔터티 금지(FK), 상위가 있는 형제의 같은 이름(대소문자 같음) 금지 —
- * 대소문자 무시·최상위끼리의 중복·깊이·순환·같은 모델은 서비스 검사(모델 행 잠금)가 맡는다. H2·PostgreSQL 모두.
+ * 대소문자 무시·최상위끼리의 중복·깊이·순환·같은 모델은 서비스 검사(모델 행 잠금)가 맡는다.
  */
 class LogicalSubjectAreaMigrationTest {
 
-    @ParameterizedTest(name = "새 설치 (V0·V1, 예전 V2 합침) {0}")
-    @ValueSource(strings = {"h2", "postgresql"})
-    void upgradeKeepsExistingModelsUnclassified(String vendor) {
-        String postgresUrl = System.getenv("LEXORMA_TEST_POSTGRES_URL");
-        assumeTrue(vendor.equals("h2") || postgresUrl != null, "PostgreSQL 검증 DB 미지정");
+    @Test
+    @DisplayName("새 설치 (V0·V1, 예전 V2 합침) PostgreSQL")
+    void upgradeKeepsExistingModelsUnclassified() {
         String schema = "sbj_area_" + UUID.randomUUID().toString().replace("-", "");
-        String url = vendor.equals("h2") ? "jdbc:h2:mem:" + schema + ";DB_CLOSE_DELAY=-1" : postgresUrl;
-        var dataSource = new DriverManagerDataSource(url, "lexorma", "lexorma");
+        var dataSource = TestDatabaseGuard.directDataSource();
         String s = "\"" + schema + "\".";
-        Flyway v1 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/" + vendor).cleanDisabled(false).load();
+        Flyway v1 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V2(주제 영역)는 V0·V1 에 있다 — 새 설치의 제약·예제를 본다 (예전 V1 → V2 업그레이드 검증은 더 이상 경로가 없다)
             assertThat(v1.migrate().migrationsExecuted).isEqualTo(4); // V0~V3

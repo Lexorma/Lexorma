@@ -52,6 +52,13 @@ public final class AiCall {
         return adapter.chatOptions(model, contextTokens, maxOutputTokens);
     }
 
+    /**
+     * 구조화 답변 요청의 모델 옵션 (AES-D09) : 모델 정보가 생각(thinking) 기능을 알려 준 경우에만 생각을 끈다. 모르면(null) 끄지 않는다 — 모델 이름으로 짐작하지 않는다
+     */
+    public ToolCallingChatOptions structuringOptions(Integer contextTokens, Integer maxOutputTokens) {
+        return adapter.structuringOptions(model, contextTokens, maxOutputTokens, Boolean.TRUE.equals(modelInfo().thinking()));
+    }
+
     /** 응답의 토큰 사용량 (AI 서버가 알려 준 값만, 없으면 null) */
     public AiProviderDto.TokenUsage usage(ChatResponse response) {
         return adapter.usage(response);

@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M-5 2차 : 표준화 품질 진단 (H2 / PostgreSQL, 실제 JPA 매핑·쿼리).
+ * M-5 2차 : 표준화 품질 진단 (실제 JPA 매핑·쿼리).
  * 요약과 목록이 같은 기준인지, 조건·페이징·정렬, 프로젝트 격리, 권한, 조회가 아무것도 바꾸지 않는지 확인한다.
  * 판정 규칙의 세부 사례는 StandardizationQualityServiceTest 에 있다.
  */

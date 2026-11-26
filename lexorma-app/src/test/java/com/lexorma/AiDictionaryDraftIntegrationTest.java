@@ -76,7 +76,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AI-5 데이터 사전 초안 생성·승인 (H2 / PostgreSQL). 가짜 Ollama(127.0.0.1)가 /api/show 와 구조화 응답(JSON)을 돌려준다.
+ * AI-5 데이터 사전 초안 생성·승인. 가짜 Ollama(127.0.0.1)가 /api/show 와 구조화 응답(JSON)을 돌려준다.
  * <ul>
  *   <li>생성 : 테이블·컬럼, 서버가 정한 세 그룹 맥락(Tool 정의 미전송), 근거·추천·연관 객체 검증, 확실성 낮춤, 불확실성·확인 질문 저장, 중복 생성 방지·재생성, 형식 재요청</li>
  *   <li>검토 : 승인·수정 후 승인·반려·보류·검토함, 승인 권한(USER·VIEWER 거부), 승인 전 업무 설명 불변, 원본 COMMENT·DDL 설명 불변, 승인된 객체에도 업무 설명만 반영</li>

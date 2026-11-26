@@ -90,7 +90,7 @@ Approval and cancellation of approval require approval rights: the `ADMIN` or `M
 |---|---|
 | Language / Build | Java 21, Gradle 9.8 (wrapper included, multi-module) |
 | Backend | Spring Boot 4.1, Spring Security (form login, session authentication), Spring Session JDBC, Spring Data JPA, QueryDSL 7 (OpenFeign) |
-| Database | PostgreSQL 18 (default), H2 (local development and tests), Flyway migrations |
+| Database | PostgreSQL only (15 or later, 18 recommended) for Lexorma's own data and for tests, Flyway migrations |
 | Frontend | React 19 + TypeScript (CSR), Vite 6, React Router 7, TanStack Query 5, TanStack Table 8, React Flow, Primer Octicons / Lucide icons — bundled into the Spring Boot JAR |
 | Additional libraries | Apache POI 5 (SAX/SXSSF streaming for Excel), springdoc-openapi |
 
@@ -103,7 +103,7 @@ A single Spring Boot server serves both the REST API (`/api/**`) and the React b
 ```text
 Browser ── React SPA (static files in the JAR)
    │
-   └── /api/** ── Spring Boot (Security · Session JDBC · JPA) ── PostgreSQL / H2
+   └── /api/** ── Spring Boot (Security · Session JDBC · JPA) ── PostgreSQL
 ```
 
 Gradle modules (dependency direction `common ← core ← (system, operation, data, source) ← app`, plus `data ← ai ← app`; modules on the same level do not depend on each other and `data` never depends on `ai`):
@@ -132,32 +132,38 @@ The Java base package is `com.lexorma`.
 |---|---|
 | Java (JDK) | 21 or later |
 | Node.js | 20.19 or later — needed to build the frontend, not at runtime |
-| PostgreSQL | 18 recommended (verified: 18.6, the official `postgres:18.6` image); the build must include ICU (the official image does — the column-name compare key uses the `und-x-icu` collation, independent of the database default locale). Not required with the H2 profile |
+| PostgreSQL | **Required.** 15 or later, 18 recommended. Verified with the official images `postgres:18.6` and `postgres:15.20` (full test suite, fresh install, restart); 16 and 17 are within the supported range but have not been verified. The server must be built with ICU (the official image is — the column-name compare key uses the `und-x-icu` collation, independent of the database default locale). Lexorma does not start without it and never falls back to another database |
 | Docker | Optional (Docker Compose v2.23.1 or later for the bundled Compose file) |
 | Ports | Application `9940`, local PostgreSQL `15439` |
 
 Gradle does not need to be installed: the project includes the Gradle wrapper (`./gradlew`).
 
-### Quick start without PostgreSQL
+### Quick start (Docker Compose)
 
 ```bash
 git clone https://github.com/Lexorma/Lexorma.git lexorma
 cd lexorma
-./gradlew bootRun --args='--spring.profiles.active=h2-local'
+docker build -f Dockerfile -t lexorma/lexorma:latest .
+cd lexorma/docker-compose-exam
+cp .env.example .env      # set at least POSTGRES_PASSWORD
+docker compose -p lexorma up -d
 ```
 
-Open http://localhost:9940. On first start there are no accounts, so Lexorma asks you to create the system administrator account (username, password, display name) instead of showing the login form; that account becomes a member of every project. Data is kept in an H2 file database at `~/.lexorma/data/lexorma.mv.db` and survives restarts; set `LEXORMA_DATA_DIR` to store it elsewhere (optional).
+Open http://localhost:9940. On first start there are no accounts, so Lexorma asks you to create the system administrator account (username, password, display name) instead of showing the login form; that account becomes a member of every project. See [8. Docker](#8-docker) for the other ways to run it (existing PostgreSQL server, single JAR).
 
-The same profile runs the single JAR without PostgreSQL: `java -jar lexorma.jar --spring.profiles.active=h2-local`. The database file stays outside the JAR, so rebuilding or replacing the JAR keeps your data. Stop Lexorma normally (Ctrl+C) before copying the file for a backup; see [docs/reference/h2-file-storage.md](docs/reference/h2-file-storage.md) for backup, restore and troubleshooting.
-
-### With PostgreSQL
+### Local development
 
 ```bash
-cd docker
-docker-compose -p lexorma up -d     # PostgreSQL 18 on localhost:15439
+cd lexorma
+docker compose -p lexorma up -d     # development PostgreSQL 18 on localhost:15439 (account and password in lexorma/docker-compose.yml)
 cd ..
-./gradlew bootRun                   # local profile
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma \
+SPRING_DATASOURCE_USERNAME=<user from lexorma/docker-compose.yml> \
+SPRING_DATASOURCE_PASSWORD=<password from lexorma/docker-compose.yml> \
+./gradlew bootRun                   # local profile (the default of bootRun only)
 ```
+
+No profile — `local` included — provides a database address, user or password: without the `SPRING_DATASOURCE_*` settings the application does not start. Put them in your shell, your IDE run configuration or a file of your own outside Git. Note that `./gradlew bootRun` (DevTools) reports `BUILD SUCCESSFUL` even when the application stops because a setting is missing — read the log; `java -jar` and the Docker image exit with a non-zero code instead.
 
 ### Signing in
 
@@ -173,27 +179,43 @@ A user can be signed in from one place at a time; a later login ends the earlier
 
 ## 6. Configuration
 
+### Management database (PostgreSQL)
+
+Lexorma keeps its own data (users, projects, dictionary, models, ERD layouts, mappings, history, sessions, settings) in PostgreSQL. The connection is a required setting with no default value — Spring Boot's standard properties:
+
+| Property | Environment variable | Description |
+|---|---|---|
+| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://<host>:<port>/<database>` — SSL and other PostgreSQL JDBC options go in the query string (for example `?sslmode=verify-full&sslrootcert=/certs/root.crt`) |
+| `spring.datasource.username` | `SPRING_DATASOURCE_USERNAME` | Database user (required) |
+| `spring.datasource.password` | `SPRING_DATASOURCE_PASSWORD` | Password, or a Docker secret file named `spring.datasource.password` under `/run/secrets` (read through `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`). Not checked by Lexorma itself: the PostgreSQL server decides which authentication it needs |
+
+- Startup stops before any connection when the URL is missing or empty, is not a `jdbc:postgresql:` URL, contains credentials, is malformed, or the user name is missing. The URL is written to the startup log, so the password must be given separately. The URL is checked by its parts, the way the PostgreSQL JDBC driver reads it:
+  - **Refused**: user information before the host (`user:password@host`, `user@host`); a query parameter whose name contains `password` in any letter case or URL encoding (`password`, `sslpassword`, `PASSWORD`, `pass%77ord`, empty or repeated); a `password=`/`password:` expression inside a parameter value or the database name (for example `options=-c password=…`).
+  - **Malformed**: an invalid host list (`host[:port]`, comma-separated, IPv6 in `[…]`), an invalid `%` encoding, or a parameter name that is not a plain name after decoding once (double encoding).
+  - **Accepted**: host or database names and option values that merely contain the word (`password-management-db`, `/password_service`, `ApplicationName=password-service`), SSL options and multi-host URLs.
+  - This is a check for credential *expressions*: Lexorma cannot tell whether an arbitrary value is a secret, so never put one in the URL.
+- Connection failures (unreachable server, connection refused — for example a password the server needs but did not receive —, authentication failure, missing database, malformed URL) stop the startup with a short explanation. The messages never contain the password or the URL.
+- Create the database and an account that may create tables in it first; Flyway creates the schema on the first start.
+- The account needs no superuser rights. PostgreSQL must be 15 or later and built with ICU.
+
 ### Profiles
 
-| Profile | Database | Purpose |
-|---|---|---|
-| `local` (default) | PostgreSQL at `localhost:15439` | Local development |
-| `h2-local` | H2 file database in `~/.lexorma/data` (`LEXORMA_DATA_DIR`) | Local run and single JAR without PostgreSQL (development conveniences such as the H2 console are on) |
-| `dev` | PostgreSQL at `lexorma-postgres:5432` | Development server (port `18080`) |
-| `docker` | PostgreSQL from `DB_*` environment variables | Docker deployment |
-| `h2-docker` | H2 file database in `/data` | Standalone Docker deployment |
+Profiles only change application behaviour; **none of them provides database connection settings** — every way of running Lexorma needs the `SPRING_DATASOURCE_*` settings above.
 
-### Environment variables (`docker` profile)
+| Profile | Purpose |
+|---|---|
+| `local` | Local development: the default of `./gradlew bootRun` only (`SPRING_PROFILES_ACTIVE` overrides it), Swagger UI on, DevTools restart off, a public development-only encryption key |
+| `dev` | Development server (`Dockerfile.dev`, port `18080`). Its deployment must provide `SPRING_DATASOURCE_URL` and `SPRING_DATASOURCE_USERNAME` (plus `SPRING_DATASOURCE_PASSWORD` when the server asks for one); set `LEXORMA_SECRET_KEYS` to store source passwords (no fixed key in this profile) |
+| `docker` | Docker image (`Dockerfile`) |
 
-| Variable | Default | Description |
-|---|---|---|
-| `DB_HOST` | `lexorma-postgres` | PostgreSQL host |
-| `DB_PORT` | `5432` | PostgreSQL port |
-| `DB_NAME` | `lexorma` | Database name |
-| `DB_USERNAME` | `lexorma` | Database user |
-| `DB_PASSWORD` | `lexorma` | Database password |
+| How it runs | Profile |
+|---|---|
+| `./gradlew bootRun` | `local` unless `SPRING_PROFILES_ACTIVE` is set |
+| `java -jar lexorma.jar` | none unless given (`--spring.profiles.active=…` or `SPRING_PROFILES_ACTIVE`) |
+| Docker images | the `CMD` of the Dockerfile (`docker`, `dev`) or the deployment's settings |
+| Tests | `test` (test-only settings, below) |
 
-The default database name and account are kept from the previous project name so that existing installations keep working. **Set `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` explicitly for a new installation** (the Docker examples below use `lexorma`). Any Spring property can also be overridden the usual way, for example `SPRING_DATASOURCE_URL` or `LOGGING_LEVEL_COM_LEXORMA=DEBUG`.
+Any Spring property can be overridden the usual way, for example `LOGGING_LEVEL_COM_LEXORMA=DEBUG`.
 
 ### Secret encryption key (optional)
 
@@ -206,8 +228,8 @@ Credentials that Lexorma stores for external systems (external database connecti
 
 - Without a key the application starts and works normally; only features that store or use such credentials fail with a clear error (`SECRET_KEY_NOT_CONFIGURED`).
 - A malformed key (not Base64, not 32 bytes, duplicate or unknown key id) stops the application at startup.
-- **Local development**: the `local` and `h2-local` profiles (the default profile is `local`) include a fixed development-only key, so no setup is needed. It is public in this repository: never use it for real data or production passwords. The `dev`, `docker` and `h2-docker` profiles have no key.
-- **Your own key**: set `LEXORMA_SECRET_KEYS` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) as environment variables; they take precedence over the development key. For Docker Compose set them in `docker/lexorma/.env` (see [Docker Compose](#postgresql--application-docker-compose)).
+- **Local development**: the `local` profile includes a fixed development-only key, so no setup is needed. It is public in this repository: never use it for real data or production passwords. The `dev` and `docker` profiles have no key.
+- **Your own key**: set `LEXORMA_SECRET_KEYS` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) as environment variables; they take precedence over the development key. For Docker Compose set them in `lexorma/docker-compose-exam/.env` (see [Docker Compose](#postgresql--application-docker-compose)).
 - Precedence: command-line arguments > Java system properties > OS environment variables > the profile files inside the JAR (including the development key). A key mounted as a Docker secret and read through `spring.config.import=configtree:` is a config file too, so an environment variable with the same name wins over it. Set the key in one place only.
 - To rotate, add the new key, make it the active one and keep the old key until the stored credentials have been re-encrypted: `k2:<new key>,k1:<old key>` with `LEXORMA_SECRET_ACTIVE_KEY_ID=k2`. A running container keeps the old value; recreate it after changing the key.
 - If a key is lost, the credentials encrypted with it cannot be recovered and must be registered again. Keep the key in a safe place, separate from database backups.
@@ -241,14 +263,11 @@ In Docker, `127.0.0.1` is the Lexorma container itself: register the address of 
 
 ### Database migrations
 
-Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/migration/{postgresql,h2}`).
+Schema and seed data are managed by Flyway (`lexorma-app/src/main/resources/db/migration/postgresql`).
 
-- Pending migrations are applied at startup; Hibernate only validates the schema.
-- Flyway compares the checksums of applied migration files at startup, so a database created from an older version of a file will not start against a changed one.
-- `V0__init.sql` (schema) and `V1__seed_data.sql` (seed data) are the baseline. On 2026-11-15, before any public use, the earlier incremental migrations (V2–V10) were folded into these two files. A database created from those earlier files cannot be upgraded (Flyway stops with a checksum or missing-version error); create it again. The increments added later that day (V2–V5: AI quality evaluation tables, the welcome notice's AI section, example business descriptions, example code-term definitions) were folded in the same way, so again only V0 and V1 exist and a database created from V2 or later must be created again. On 2026-11-18 the increments added after that (V2–V7: AI evaluation judgment history, project AI provider setting, source column mappings, source VIEW definitions, embedded MCP, logical relationship attribute pairs) were folded in a third time; a database created from V2–V7 must be created again. On 2026-11-22 the increments after that (V2–V5: logical subject areas, supertypes/subtypes, inherited primary-key column mappings, column data integrity) were folded in a fourth time; a database created from V2–V5 must be created again. Later changes are added as new incremental migrations starting at `V2__…`.
-- Applied migration files are not edited. Every schema change is a new versioned file, added for both PostgreSQL and H2 with the same content.
-- Existing databases are upgraded in place by applying the pending migrations; existing data is kept, and an update does not require recreating the database.
-- Back up production databases before upgrading.
+- Pending migrations are applied at startup; Hibernate only validates the schema. A failed migration stops the startup; Lexorma never runs Flyway `repair`, `clean` or `baseline` by itself.
+- Flyway compares the checksums of applied migration files at startup. Applied migration files are not edited: every schema change is a new versioned file (`V4__…` next).
+- Existing databases are upgraded in place by applying the pending migrations; existing data is kept. Back up the database (`pg_dump`) before upgrading.
 - In the `local` profile, Spring Boot DevTools automatic restart is turned off (`spring.devtools.restart.enabled: false` in `application-local.yml`). Otherwise a Gradle build or test run while the application is running from the IDE copies new migration files into `build/resources` and the restart applies them to the local database without notice. New migrations are applied to the local database only when you start the application yourself.
 - Before starting the application against a local database that has data you want to keep, check new migration files on a copy first (for example `pg_dump` into a scratch database and start the application against it with `SPRING_DATASOURCE_URL`). To turn automatic restart back on for a session, add `--spring.devtools.restart.enabled=true` to the run configuration.
 
@@ -275,6 +294,7 @@ The icon and share image live in `lexorma-web/public/images` and are served unde
 The executable JAR is written to `lexorma-app/build/libs/lexorma.jar`:
 
 ```bash
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/lexorma SPRING_DATASOURCE_USERNAME=<user> SPRING_DATASOURCE_PASSWORD=<password> \
 java -jar lexorma-app/build/libs/lexorma.jar --spring.profiles.active=local
 ```
 
@@ -287,21 +307,31 @@ npm run dev        # http://localhost:5173 — /api is proxied to http://localho
 npm run typecheck
 ```
 
-Development tools (local profiles only):
+Development tools (`local` profile only):
 
 | Tool | URL | Profiles |
 |---|---|---|
-| Swagger UI | http://localhost:9940/swagger-ui | `local`, `h2-local` |
-| H2 console | http://localhost:9940/h2-console | `h2-local` |
+| Swagger UI | http://localhost:9940/swagger-ui | `local` |
 
-Tests run against in-memory H2 by default. To run them against PostgreSQL, point them at an empty database:
+Tests that need a database run against PostgreSQL only, configured with test-only variables (the normal `SPRING_DATASOURCE_*` settings and profiles are not used; a test context refuses to start when they point elsewhere). Use an empty database whose name contains `test` and preferably a test-only account — the tests create the schema, example data and many test rows:
 
 ```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15439/<empty database> \
-SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver \
-LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://localhost:15439/<empty database> \
+LEXORMA_TEST_POSTGRES_URL=jdbc:postgresql://127.0.0.1:15439/lexorma_test \
+LEXORMA_TEST_POSTGRES_USER=<test user> \
+LEXORMA_TEST_POSTGRES_PASSWORD=<its password> \
+LEXORMA_TEST_SOURCE_POSTGRES_URL=jdbc:postgresql://127.0.0.1:15439/postgres \
+LEXORMA_TEST_SOURCE_POSTGRES_USER=<user that may create databases> \
+LEXORMA_TEST_SOURCE_POSTGRES_PASSWORD=<its password> \
 ./gradlew test -PfrontendPrebuilt=true --rerun
 ```
+
+- Without `LEXORMA_TEST_POSTGRES_URL`/`_USER` every test that needs the database fails with a message naming the variables — tests that start Spring and tests that connect directly (migration tests) alike; nothing is skipped silently. Unit tests without a database still pass (for example `./gradlew :lexorma-data:test`).
+- The test database is checked before Flyway or any connection: a `jdbc:postgresql:` URL, a database name containing `test`, and the effective Spring URL/user must be the test ones (the normal `SPRING_DATASOURCE_*` must not override them). The name rule is only an extra safeguard — use a database and account that exist only for tests.
+- `LEXORMA_TEST_SOURCE_POSTGRES_URL` enables the source-database collection tests (19); without it only they are skipped. With it, `LEXORMA_TEST_SOURCE_POSTGRES_USER` is required (there is no default account) and must be allowed to create databases; the URL must point to a different database than the management test database (for example the `postgres` database of the same server) and its host to a single address (use `127.0.0.1`, not `localhost`).
+- Create a new empty test database for each full run (`dropdb`/`createdb`): the tests' fixed ids collide with rows of an earlier run.
+- Performance measurements run only with `LEXORMA_PERF=true`.
+
+**CI** (`.github/workflows/dev-test.yml`, on pushes to `dev`): `./gradlew build` with a `postgres:18.6` service container — the management test database `lexorma_test` and, on the same server, the source collection tests through the `postgres` database, with throw-away CI-only credentials. On failure the test reports and the PostgreSQL log are uploaded. A second job only builds the production image from `Dockerfile` and checks that its JAR contains the React build and the PostgreSQL driver and no H2 library; it pushes nothing.
 
 ---
 
@@ -311,67 +341,44 @@ Images are built from the repository root with a multi-stage Dockerfile: a Node 
 
 | Image | Dockerfile | Profile |
 |---|---|---|
-| `lexorma/lexorma:latest` | `Dockerfile` | `docker` (PostgreSQL) |
-| `lexorma/lexorma:h2-latest` | `Dockerfile-h2` | `h2-docker` (H2 file database) |
+| `lexorma/lexorma:latest` | `Dockerfile` | `docker` |
 
 ```bash
 docker build -t lexorma/lexorma:latest .
-docker build -f Dockerfile-h2 -t lexorma/lexorma:h2-latest .
 ```
+
+Lexorma always needs a PostgreSQL server (15 or later, 18 recommended, built with ICU; verified with 15.20 and 18.6). Three ways to run it:
+
+| | Lexorma | PostgreSQL |
+|---|---|---|
+| A. Docker Compose | container | container from the same Compose file |
+| B. Existing PostgreSQL | container (`docker-compose.external-db.yml` or `docker run`) | your server |
+| C. Single JAR | `java -jar lexorma.jar` | your server |
 
 ### PostgreSQL + application (Docker Compose)
 
-`docker/lexorma/docker-compose.yml` is the Compose file for running Lexorma. All environment-specific values — database name, account and password, data directories, ports, image and the optional encryption key — are read from `docker/lexorma/.env`, which you create from `.env.example`:
+`lexorma/docker-compose-exam/docker-compose.yml` is the Compose file for running Lexorma with its own PostgreSQL container. All environment-specific values — database name, account and password, data directory, ports, image and the optional encryption key — are read from `lexorma/docker-compose-exam/.env`, which you create from `.env.example`:
 
 ```bash
-cd docker/lexorma
-cp .env.example .env     # edit .env: at least POSTGRES_PASSWORD for a new installation
+cd lexorma/docker-compose-exam
+cp .env.example .env     # set POSTGRES_PASSWORD (required, no default)
 docker compose -p lexorma up -d
 ```
 
-- `.env` is ignored by Git. Without it `docker compose` stops with `Set … in .env (see .env.example)`.
-- The defaults in `.env.example` keep the database name, account and data directory (`../volume/lexorma`) of earlier versions of this Compose file, so an existing installation keeps its data.
+- `.env` is ignored by Git. A missing or empty required value stops `docker compose` with `Set … in .env (see .env.example)`.
+- The database name, account and password are entered once; the application container receives them as `SPRING_DATASOURCE_*`.
+- The PostgreSQL container keeps its data in `POSTGRES_DATA_DIR`. Do not point a new PostgreSQL major version at a data directory created by another one.
 - **Encryption key (optional)**: needed only to store source database passwords. Leave `LEXORMA_SECRET_KEYS` empty to run without a key. To use one, set `LEXORMA_SECRET_KEYS=prod:<output of openssl rand -base64 32>` (and optionally `LEXORMA_SECRET_ACTIVE_KEY_ID`) in `.env`, then recreate the application container: `docker compose -p lexorma up -d --force-recreate lexorma-app`. The key is passed as a Docker secret (`secrets.<name>.environment`, Docker Compose v2.23.1 or later), mounted at `/run/secrets/lexorma.secret.keys` and read with `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`; it is not an environment variable of the application container.
 - Do not add `LEXORMA_SECRET_KEYS` to the container's `environment`: it would take precedence over the secret.
 - `docker compose config` shows only the variable name of the secret source, not the key. The key is still in `.env` and in the environment of the shell running Compose; protect that host.
 
-### New installation with `docker run`
+### Existing PostgreSQL server (application only)
+
+With Docker Compose, set the standard Spring Boot keys in `.env` — `SPRING_DATASOURCE_URL` and `SPRING_DATASOURCE_USERNAME` (required) and `SPRING_DATASOURCE_PASSWORD` — and use the application-only file:
 
 ```bash
-docker network create lexorma-network
-
-docker run -d \
-  --name lexorma-postgres \
-  --network lexorma-network \
-  -e POSTGRES_DB=lexorma \
-  -e POSTGRES_USER=lexorma \
-  -e POSTGRES_PASSWORD=<password> \
-  -v ./volume/lexorma:/var/lib/postgresql \
-  postgres:18.6
-
-docker run -d \
-  --name lexorma-app \
-  --network lexorma-network \
-  -e DB_HOST=lexorma-postgres \
-  -e DB_NAME=lexorma \
-  -e DB_USERNAME=lexorma \
-  -e DB_PASSWORD=<password> \
-  -p 9940:9940 \
-  lexorma/lexorma:latest
-```
-
-> PostgreSQL 18 uses `/var/lib/postgresql` as the volume mount path.
-
-To store source database passwords, add an encryption key (optional): either `-e LEXORMA_SECRET_KEYS=prod:<key>` (visible in `docker inspect`), or mount a file you create yourself with `-v ./secrets/lexorma.secret.keys:/run/secrets/lexorma.secret.keys:ro -e SPRING_CONFIG_IMPORT=configtree:/run/secrets/` (one line `prod:<key>`, not in Git). `docker run` does not use Compose secrets.
-
-### Standalone with H2
-
-With Docker Compose (same `.env` as above; the `POSTGRES_*` values are not used, the database file goes to `LEXORMA_DATA_DIR`):
-
-```bash
-cd docker/lexorma
-cp .env.example .env     # if you have not created it yet
-docker compose -f docker-compose.h2.yml -p lexorma-h2 up -d
+cd lexorma/docker-compose-exam
+docker compose -f docker-compose.external-db.yml -p lexorma up -d
 ```
 
 Or with `docker run`:
@@ -379,12 +386,35 @@ Or with `docker run`:
 ```bash
 docker run -d \
   --name lexorma-app \
-  -v ./volume/h2:/data \
+  -e SPRING_DATASOURCE_URL='jdbc:postgresql://db.example.internal:5432/lexorma?sslmode=require' \
+  -e SPRING_DATASOURCE_USERNAME=lexorma \
+  -e SPRING_DATASOURCE_PASSWORD=<password> \
   -p 9940:9940 \
-  lexorma/lexorma:h2-latest
+  lexorma/lexorma:latest
 ```
 
-Stop containers gracefully (`docker stop`) so the H2 file database is flushed.
+- The password follows the server's authentication method: set it for password authentication; remove the line (no password) or leave it empty when the server does not ask for one (for example client-certificate authentication, mounted with an extra volume and given with `sslcert`/`sslkey` options). A password the server needs but does not get stops the startup ("connection refused" / "authentication failed").
+- From a container, `localhost` is the container itself: use the server's host name (on Docker Desktop `host.docker.internal`).
+- To keep the password out of `docker inspect`, mount it as a file instead of `SPRING_DATASOURCE_PASSWORD`: `-v ./secrets/db-password:/run/secrets/spring.datasource.password:ro -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`.
+- Certificates for `sslrootcert` and similar options are mounted with an extra `-v`.
+
+### Single JAR
+
+```bash
+./gradlew :lexorma-app:bootJar
+SPRING_DATASOURCE_URL=jdbc:postgresql://db.example.internal:5432/lexorma \
+SPRING_DATASOURCE_USERNAME=lexorma \
+SPRING_DATASOURCE_PASSWORD=<password> \
+java -jar lexorma-app/build/libs/lexorma.jar
+```
+
+### Encryption key with `docker run`
+
+To store source database passwords, add an encryption key (optional): either `-e LEXORMA_SECRET_KEYS=prod:<key>` (visible in `docker inspect`), or mount a file you create yourself with `-v ./secrets/lexorma.secret.keys:/run/secrets/lexorma.secret.keys:ro -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/` (one line `prod:<key>`, not in Git). `docker run` does not use Compose secrets.
+
+### Backup
+
+Back up the PostgreSQL database with `pg_dump` (for example `docker exec lexorma-postgres pg_dump -U lexorma -Fc lexorma > lexorma.dump`) and restore it with `pg_restore` into an empty database. Keep the encryption key separately.
 
 ---
 

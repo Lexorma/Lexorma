@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * M-7 후속 (2026-11-18) : 논리 → 물리 생성의 컬럼명 = 표준 용어에 저장된 영문 약어 (앞뒤 공백 제거·대문자, {@code StandardNames.expectedColumnName}) — 단어 약어를 다시 잇지 않는다.
  * 생성 계획·생성 결과·물리명 추천(매핑 정합성)·품질 진단이 같은 값을 쓴다. 약어가 바뀌면 planToken 이 달라져 오래된 계획은 409, 이미 만든 물리 모델은 바꾸지 않는다.
- * H2·PostgreSQL 모두에서 돈다.
+ *
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")

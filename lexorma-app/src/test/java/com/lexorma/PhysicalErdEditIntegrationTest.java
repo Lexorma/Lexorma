@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * M-8 3차 : 물리 ERD 편집이 쓰는 호출 순서 (H2 / PostgreSQL). 화면은 새 API 없이 테이블·컬럼 관리와 물리 모델(/api/physical) API 를 쓴다.
+ * M-8 3차 : 물리 ERD 편집이 쓰는 호출 순서. 화면은 새 API 없이 테이블·컬럼 관리와 물리 모델(/api/physical) API 를 쓴다.
  * ERD 조회(Graph)·테이블 물리 모델(TableModel)·DDL 이 같은 변경을 돌려주는지, 모델 변경과 배치 저장이 서로 독립이고
  * 조회 범위 밖 테이블의 배치가 보존되는지, 거절된 변경 뒤에 상태가 그대로인지, 권한·승인·프로젝트 격리가 ERD 경로에서도 같은지 확인한다.
  */

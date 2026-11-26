@@ -173,45 +173,38 @@ class PhysicalNameNonAsciiScaleTest {
         int overrideIds = complex;
         int maxIn = Math.max(complex, Math.max(byStatusComplex(byStatus, mapped, complex, Status.ALREADY_MATCHED), byStatusComplex(byStatus, mapped, complex, Status.AVAILABLE)));
         int maxBinds = complex + Math.max(byStatusComplex(byStatus, mapped, complex, Status.ALREADY_MATCHED), byStatusComplex(byStatus, mapped, complex, Status.AVAILABLE)) + 4;
-        // 예전 방식(저장소 SQL + 덮어쓰기 목록)과 같은 쪽·건수 (예전 방식이 감당할 수 있는 규모에서 — H2 5,000 이상은 한 번에 수십 초라 생략)
-        if (complex < 5_000 || !h2()) {
-            for (Status status : Status.values()) {
-                ColumnSearch s = new ColumnSearch(f.modelId, null, null, null, status, null, null);
-                com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.Overrides o = call("overrides", f.user.getProjectId(), s);
-                for (Sort order : List.of(Sort.unsorted(), Sort.by(Sort.Direction.DESC, "currentPhysicalName"))) {
-                    long total = byStatus.getOrDefault(status, Set.of()).size();
-                    for (int pg : new int[]{0, (int) (total / 100 / 2), (int) Math.max(0, (total - 1) / 100)}) {
-                        PageRequest request = PageRequest.of(pg, 100, order);
-                        Page<com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSource> want = repository.findColumnSources(f.user.getProjectId(), s, request, o);
-                        Page<ColumnRow> got = recommendation.selectColumnRows(f.user, s, request);
-                        assertThat(got.getContent().stream().map(ColumnRow::logicalAttributeId).toList()).as("예전 방식과 같은 쪽 " + status + " " + order + " " + pg)
-                                .containsExactlyElementsOf(want.getContent().stream().map(com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSource::attributeId).toList());
-                        assertThat(got.getTotalElements()).isEqualTo(want.getTotalElements());
-                    }
+        // 예전 방식(저장소 SQL + 덮어쓰기 목록)과 같은 쪽·건수
+        for (Status status : Status.values()) {
+            ColumnSearch s = new ColumnSearch(f.modelId, null, null, null, status, null, null);
+            com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.Overrides o = call("overrides", f.user.getProjectId(), s);
+            for (Sort order : List.of(Sort.unsorted(), Sort.by(Sort.Direction.DESC, "currentPhysicalName"))) {
+                long total = byStatus.getOrDefault(status, Set.of()).size();
+                for (int pg : new int[]{0, (int) (total / 100 / 2), (int) Math.max(0, (total - 1) / 100)}) {
+                    PageRequest request = PageRequest.of(pg, 100, order);
+                    Page<com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSource> want = repository.findColumnSources(f.user.getProjectId(), s, request, o);
+                    Page<ColumnRow> got = recommendation.selectColumnRows(f.user, s, request);
+                    assertThat(got.getContent().stream().map(ColumnRow::logicalAttributeId).toList()).as("예전 방식과 같은 쪽 " + status + " " + order + " " + pg)
+                            .containsExactlyElementsOf(want.getContent().stream().map(com.lexorma.data.mapping.domain.dto.PhysicalNameRecommendationDto.ColumnSource::attributeId).toList());
+                    assertThat(got.getTotalElements()).isEqualTo(want.getTotalElements());
                 }
             }
         }
 
         // 두 판정 방식을 따로 (F02 기준값 근거) : SQL 덮어쓰기 = 덮어쓰기 목록 + 쪽·건수 SQL, 자바 판정 = 전체 원본 + 자바 판정 + 쪽 자르기 (행 만들기는 두 방식 공통이라 뺐다)
-        boolean small = complex < 5_000 || !h2();
         ColumnSearch availableSearch = new ColumnSearch(f.modelId, null, null, null, Status.AVAILABLE, null, null);
-        String sqlFilter = small ? measure(stats, sample, () -> repository.findColumnSources(f.user.getProjectId(), availableSearch, PageRequest.of(0, 100), call("overrides", f.user.getProjectId(), availableSearch))) : "생략 (기존 방식 열 참고)";
+        String sqlFilter = measure(stats, sample, () -> repository.findColumnSources(f.user.getProjectId(), availableSearch, PageRequest.of(0, 100), call("overrides", f.user.getProjectId(), availableSearch)));
         String judgedFilter = measure(stats, sample, () -> call("judgedPage", f.user.getProjectId(), availableSearch, PageRequest.of(0, 100)));
-        String sqlSummary = small ? measure(stats, sample, () -> {
+        String sqlSummary = measure(stats, sample, () -> {
             com.lexorma.data.mapping.repository.PhysicalNameRecommendationQueryRepository.Overrides o = call("overrides", f.user.getProjectId(), model);
             long n = 0;
             for (Status st : Status.values()) n += repository.countColumns(f.user.getProjectId(), f.modelId, st, o);
             return n;
-        }) : "생략";
+        });
         String judgedSummary = measure(stats, sample, () -> call("judgeStatuses", repository.findAllColumnSources(f.user.getProjectId(), model, Sort.unsorted())));
         Object plan = call("statusPlan", f.user.getProjectId(), model);
         String path = plan.toString().contains("javaJudged=true") ? "JAVA" : "SQL";
         return String.join(" | ", String.valueOf(complex), String.valueOf(attributes), first, last, available, matched, unavailable, conflict, sum, search, sort, preview,
                 overrideIds + " (" + maxIn + ")", String.valueOf(maxBinds), (base / 1_048_576) + " → " + (peak[0] / 1_048_576), path, sqlFilter, judgedFilter, sqlSummary, judgedSummary);
-    }
-
-    private boolean h2() {
-        return Boolean.TRUE.equals(jdbc.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName().toUpperCase().contains("H2")));
     }
 
     /** 서비스의 패키지 전용 메서드 (판정 방식별 측정) */

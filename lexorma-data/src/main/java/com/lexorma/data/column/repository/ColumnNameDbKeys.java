@@ -3,7 +3,6 @@ package com.lexorma.data.column.repository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -27,10 +26,6 @@ public class ColumnNameDbKeys {
     @PersistenceContext
     private EntityManager entityManager;
 
-    private String key(String arg) {
-        return ColumnNameKeySql.key(entityManager.getEntityManagerFactory().unwrap(SessionFactoryImplementor.class).getJdbcServices().getDialect(), arg);
-    }
-
     private static String values(int size) {
         StringBuilder sql = new StringBuilder("(values ");
         for (int i = 0; i < size; i++) sql.append(i == 0 ? "" : ", ").append("(cast(?").append(i + 1).append(" as varchar(1000)))");
@@ -42,7 +37,7 @@ public class ColumnNameDbKeys {
         List<String> list = names.stream().filter(java.util.Objects::nonNull).distinct().toList();
         Map<String, String> result = new LinkedHashMap<>();
         if (list.isEmpty()) return result;
-        Query query = entityManager.createNativeQuery("select v.NM, " + key("v.NM") + " from " + values(list.size()));
+        Query query = entityManager.createNativeQuery("select v.NM, " + ColumnNameKeySql.key("v.NM") + " from " + values(list.size()));
         for (int i = 0; i < list.size(); i++) query.setParameter(i + 1, list.get(i));
         for (Object row : query.getResultList()) {
             Object[] r = (Object[]) row;
@@ -59,7 +54,7 @@ public class ColumnNameDbKeys {
         StringBuilder in = new StringBuilder();
         for (int i = 0; i < tables.size(); i++) in.append(i == 0 ? "" : ", ").append('?').append(list.size() + i + 1);
         Query query = entityManager.createNativeQuery("select v.NM, x.TBL_SN, x.COL_SN, x.COL_NM, a.ATRB_NM from " + values(list.size())
-                + " join TB_COL x on x.COL_NM_CMPR_VL = " + key("v.NM") + " and x.TBL_SN in (" + in + ")"
+                + " join TB_COL x on x.COL_NM_CMPR_VL = " + ColumnNameKeySql.key("v.NM") + " and x.TBL_SN in (" + in + ")"
                 + " left join TB_ATRB_COL_MPNG m on m.COL_SN = x.COL_SN left join TB_LGCL_ATRB a on a.LGCL_ATRB_SN = m.LGCL_ATRB_SN");
         for (int i = 0; i < list.size(); i++) query.setParameter(i + 1, list.get(i));
         for (int i = 0; i < tables.size(); i++) query.setParameter(list.size() + i + 1, tables.get(i));

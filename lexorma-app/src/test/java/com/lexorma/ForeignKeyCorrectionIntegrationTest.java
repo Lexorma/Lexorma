@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * M7-FK-01 기존 물리 테이블 누락 FK 보정 (docs/completed/physical-fk-correction-m7.md). H2 / PostgreSQL 같은 기대값.
+ * M7-FK-01 기존 물리 테이블 누락 FK 보정 (docs/completed/physical-fk-correction-m7.md).
  * 모델은 논리 → 물리 생성으로 만들고(단일 FK = 참조 테이블명, 복합·자기 참조 = 사용자 관계), FK 누락은 JDBC 로 기존 FK 를 지워 만든다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

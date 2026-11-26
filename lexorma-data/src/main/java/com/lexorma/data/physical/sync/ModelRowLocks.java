@@ -28,8 +28,7 @@ import java.util.function.Supplier;
  *       — FK 검사의 {@code FOR KEY SHARE} 와 함께 잡힌다 (다른 트랜잭션이 그 행을 부모로 하는 관계를 만드는 중이어도 막지 않는다).</li>
  *   <li>{@link #tablesForKeyChange}·{@link #columnsForKeyChange} : <b>키를 바꿀 행</b>(이름 = UNIQUE UX_TBL_01·UX_COL_01 의 열, 스키마 이동, 삭제)만
  *       네이티브 {@code FOR UPDATE NOWAIT}. 키를 바꾸는 UPDATE·DELETE 는 PostgreSQL 에서 FOR UPDATE 강도라 다른 트랜잭션의 KEY SHARE(그 행을 부모로 하는 관계 INSERT —
- *       엑셀 업로드의 청크 동기화 등)를 <b>기다린다</b>. 프로젝트 행을 쥔 채 그 대기에 들어가면 교착(S6b)이므로, 같은 강도를 미리 NOWAIT 로 잡아 바쁘면 409 로 끝낸다.
- *       H2 는 KEY SHARE 를 구분하지 않아 같은 문장이 일반 배타 잠금이다.</li>
+ *       엑셀 업로드의 청크 동기화 등)를 <b>기다린다</b>. 프로젝트 행을 쥔 채 그 대기에 들어가면 교착(S6b)이므로, 같은 강도를 미리 NOWAIT 로 잡아 바쁘면 409 로 끝낸다.</li>
  * </ul>
  * 모든 목록은 ID 오름차순으로 한 번에 잠근다 (같은 종류 안의 순서 = 공통 정책). 종류 사이 순서는 부르는 쪽이 프로젝트 → 논리 모델 → 스키마 → 테이블 → 컬럼으로 지킨다.
  */
@@ -117,10 +116,10 @@ public class ModelRowLocks {
         }
     }
 
-    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03, H2 오류 코드 50200 (40P01 교착은 아니다) */
+    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03 (40P01 교착은 아니다) */
     public static boolean lockNotAvailable(Throwable e) {
         for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState()) || sql.getErrorCode() == 50200;
+            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState());
         }
         return false;
     }

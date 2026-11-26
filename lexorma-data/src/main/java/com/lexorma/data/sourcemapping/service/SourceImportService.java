@@ -183,7 +183,7 @@ public class SourceImportService {
                         .setLockMode(LockModeType.PESSIMISTIC_WRITE).setHint(LOCK_TIMEOUT, 0).getResultList();
             }
         } catch (jakarta.persistence.PessimisticLockException | jakarta.persistence.LockTimeoutException e) {
-            if (!lockNotAvailable(e)) throw e; // 교착(40P01·H2 40001) 등 다른 오류는 409 로 바꾸지 않는다
+            if (!lockNotAvailable(e)) throw e; // 교착(40P01) 등 다른 오류는 409 로 바꾸지 않는다
             throw CustomException.locked(ErrorCode.SOURCE_COMPARE_STALE, "다른 사용자가 같은 모델을 바꾸는 중입니다. 잠시 뒤 비교 결과를 새로 고쳐 다시 확정해주세요.");
         }
         Work work = work(projectId, request.connectionId(), request.reflectedOrder(), selections(request));
@@ -214,10 +214,10 @@ public class SourceImportService {
     private static final String LOCK_TIMEOUT = "jakarta.persistence.lock.timeout";
     private static final Map<String, Object> NO_WAIT = Map.of(LOCK_TIMEOUT, 0);
 
-    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03 (lock_not_available), H2 오류 코드 50200 (잠금 대기 시간 초과) */
+    /** NOWAIT 로 잠금을 바로 얻지 못했다 : PostgreSQL SQLSTATE 55P03 (lock_not_available) */
     static boolean lockNotAvailable(Throwable e) {
         for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState()) || sql.getErrorCode() == 50200;
+            if (cause instanceof java.sql.SQLException sql) return "55P03".equals(sql.getSQLState());
         }
         return false;
     }

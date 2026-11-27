@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-7 보강 3차 논리 관계 속성 짝 스키마 신규 설치 : 예제(프로젝트 0)의 논리 관계마다 물리 FK 그대로 부모 주 식별자 속성 ↔ 자식 속성 짝이 있고
- * (기본 키가 아닌 (일련번호, 출처 접속 일련번호) UNIQUE 를 가리키는 출처 카탈로그의 복합 FK 9건만 비어 있다 — 2026-11-18 세 번째 합침),
+ * (기본 키가 아닌 (일련번호, 출처 접속 일련번호) UNIQUE 를 가리키는 출처 카탈로그의 복합 FK 9건과, (일련번호, 프로젝트 일련번호) UNIQUE 를 가리키는 저장 품질 검사의 복합 FK 4건(V4, AI-6 2차)만 비어 있다 — 2026-11-18 세 번째 합침),
  * 관계별 부모·자식 속성·순서 UNIQUE 와 FK 가 DB 제약으로 동작하는지(다른 관계는 같은 속성을 다시 쓸 수 있다), 짝에서 쓰는 속성은 DB 도 지우지 못하는지.
  * (예전 V6 → V7 업그레이드 검증은 세 번째 합침으로 V0·V1 만 남아 없어졌다)
  */
@@ -31,11 +31,13 @@ class LogicalRelationshipAttributeMigrationTest {
             assertThat(jdbc.queryForList("select c.COL_NM from " + s + "TB_COL c join " + s + "TB_TBL t on t.TBL_SN = c.TBL_SN where t.PRJ_SN = 0 and t.TBL_NM = 'TB_LGCL_REL_ATRB' and c.STD_TRM_SN is null", String.class))
                     .as("예제 컬럼은 모두 표준 용어에 연결").isEmpty();
 
-            // 예제 짝 : 물리 FK 하나에 논리 관계 하나, 짝이 없는 관계는 복합 FK(… , 출처 접속 일련번호) 뿐이다
+            // 예제 짝 : 물리 FK 하나에 논리 관계 하나, 짝이 없는 관계는 복합 FK(… , 출처 접속 일련번호 / … , 프로젝트 일련번호) 뿐이다
             String noPairs = " from " + s + "TB_LGCL_REL r where r.PRJ_SN = 0 and not exists (select 1 from " + s + "TB_LGCL_REL_ATRB x where x.LGCL_REL_SN = r.LGCL_REL_SN)";
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_REL where PRJ_SN = 0", Integer.class))
                     .isEqualTo(jdbc.queryForObject("select count(*) from " + s + "TB_TBL_REL where PRJ_SN = 0 and REL_TYPE_CD = 'FK'", Integer.class));
-            assertThat(jdbc.queryForList("select r.REL_EXPLN" + noPairs, String.class)).hasSize(9).allMatch(explain -> explain.contains(", 출처 접속 일련번호 로 "));
+            assertThat(jdbc.queryForList("select r.REL_EXPLN" + noPairs, String.class)).hasSize(13)
+                    .allMatch(explain -> explain.contains(", 출처 접속 일련번호 로 ") || explain.contains(", 프로젝트 일련번호 로 "))
+                    .filteredOn(explain -> explain.contains(", 프로젝트 일련번호 로 ")).hasSize(4);
             // 짝의 부모 속성은 관계 원본 엔터티의 주 식별자, 자식 속성은 관계 대상 엔터티의 속성이다
             assertThat(jdbc.queryForObject("select count(*) from " + s + "TB_LGCL_REL_ATRB x join " + s + "TB_LGCL_REL r on r.LGCL_REL_SN = x.LGCL_REL_SN"
                     + " join " + s + "TB_LGCL_ATRB ca on ca.LGCL_ATRB_SN = x.TRGT_ATRB_SN where r.PRJ_SN = 0 and (ca.LGCL_ENTT_SN <> r.TRGT_ENTT_SN or not exists (select 1 from "

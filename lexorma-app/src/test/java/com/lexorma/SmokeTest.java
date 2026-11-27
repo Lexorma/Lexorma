@@ -541,76 +541,30 @@ class SmokeTest {
 
     @Test
     @Order(20)
-    @DisplayName("M-5 표준화 품질 진단 API : 요약과 목록의 건수가 같고, 유형 조건·잘못된 유형·메뉴 권한")
+    @DisplayName("M-5 표준화 품질 진단 : 예제는 컬럼 진단 0건(대시보드 요약), 실시간 진단 API 는 지웠다(AI-6 3차 — 404), 메뉴 권한")
     void standardizationQuality() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
-
-        var summary = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
-        assertThat(summary.path("totalColumns").asLong()).as("V0 예제 물리 모델").isPositive();
-        // V0 예제는 용어의 도메인을 실제 컬럼 정의에 맞춰 두었다 (docs/reference/db-naming-standard.md) : 진단 결과가 없어야 한다
-        assertThat(summary.path("issueColumns").asLong()).as(get("/api/standardizationQuality/data?page=0&size=20", true).body()).isZero();
-        long byType = 0;
-        for (var type : Map.of("TERM_NOT_LINKED", "termNotLinked", "COLUMN_NAME_MISMATCH", "columnNameMismatch",
-                "DOMAIN_DEFINITION_MISMATCH", "domainDefinitionMismatch").entrySet()) {
-            var issues = mapper.readTree(get("/api/standardizationQuality/data?page=0&size=5&type=" + type.getKey(), true).body());
-            assertThat(issues.path("recordsTotal").asLong()).as(type.getKey()).isEqualTo(summary.path(type.getValue()).asLong());
-            for (var issue : issues.path("data")) {
-                assertThat(issue.path("type").asString()).isEqualTo(type.getKey());
-                assertThat(issue.path("tableId").asLong()).isPositive();
-                assertThat(issue.path("schemaName").asString()).isEqualTo("DEFAULT");
-            }
-            byType += issues.path("recordsTotal").asLong();
+        // V0 예제는 용어의 도메인을 실제 컬럼 정의에 맞춰 두었다 (docs/reference/db-naming-standard.md) : 컬럼 진단 결과가 없어야 한다 (대시보드의 실시간 요약)
+        var stats = mapper.readTree(get("/api/dashboard/stats", true).body());
+        assertThat(stats.path("standard").path("totalColumns").asLong()).as("V0 예제 물리 모델").isPositive();
+        assertThat(stats.path("quality").path("issueColumns").asLong()).isZero();
+        // 조회할 때마다 계산하던 요약·목록 API 는 저장 품질 검사(/api/qualityInspection)로 대체했다 (AI6-3-02·03)
+        for (String removed : List.of("/api/standardizationQuality/summary", "/api/standardizationQuality/data?page=0&size=5", "/api/standardizationQuality/model/summary",
+                "/api/standardizationQuality/model/data?page=0&size=5", "/api/standardizationQuality/terms/summary", "/api/standardizationQuality/terms/data?page=0&size=5",
+                "/api/standardizationQuality/identifiers/summary", "/api/standardizationQuality/identifiers/data?page=0&size=5")) {
+            assertThat(get(removed, true).statusCode()).as(removed).isEqualTo(404);
         }
-        assertThat(mapper.readTree(get("/api/standardizationQuality/data?page=0&size=5", true).body()).path("recordsTotal").asLong()).isEqualTo(byType);
-        assertThat(summary.path("issueColumns").asLong()).isBetween(byType == 0 ? 0L : 1L, Math.min(byType, summary.path("totalColumns").asLong()));
-
-        assertThat(get("/api/standardizationQuality/data?page=0&size=5&schemaId=999999999", true).body()).contains("\"recordsTotal\":0");
-        assertThat(get("/api/standardizationQuality/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
-        assertThat(get("/api/standardizationQuality/data", true).statusCode()).as("page·size 없음").isEqualTo(400);
         assertThat(get("/api/auth/me", true).body()).contains("\"standardization-quality\":true");
     }
 
     @Test
     @Order(20)
-    @DisplayName("M-5 잔여 진단 API (테이블명·용어 중복·컬럼명 개선 후보·DBMS 식별자) : 요약 = 목록, 조건 바인딩, 잘못된 값 400")
+    @DisplayName("M-5 잔여 보조 API (도메인 이름 중복 보고·컬럼명 개선 후보) : 응답 모양, 없는 컬럼은 오류")
     void standardizationQualityRules() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
 
-        // 모델 진단 : 컬럼 요약은 기존 요약과 같고, 요약 = 목록 건수. 예제 자체의 결과(0건)는 StandardizationQualityRulesIntegrationTest.example 이 새 DB 에서 본다
-        // (같은 DB 를 쓰는 다른 테스트가 프로젝트 0 에 테이블을 더할 수 있다)
-        var model = mapper.readTree(get("/api/standardizationQuality/model/summary", true).body());
-        var columns = mapper.readTree(get("/api/standardizationQuality/summary", true).body());
-        assertThat(model.path("columns")).isEqualTo(columns);
-        assertThat(model.path("totalTables").asLong()).isPositive();
-        assertThat(model.path("tablePrefix").asString()).isEqualTo("TB_");
-        assertThat(mapper.readTree(get("/api/standardizationQuality/model/data?page=0&size=5&type=TABLE_PREFIX_MISSING&severity=ERROR&targetType=TABLE", true).body())
-                .path("recordsTotal").asLong()).isEqualTo(model.path("tablePrefixMissing").asLong());
-        assertThat(get("/api/standardizationQuality/model/data?page=0&size=5&targetType=VIEW", true).statusCode()).isEqualTo(400);
-        assertThat(get("/api/standardizationQuality/model/data?page=0&size=5&severity=FATAL", true).statusCode()).isEqualTo(400);
-
-        // 용어 진단 : 참고 그룹 수 = 목록 건수
-        var terms = mapper.readTree(get("/api/standardizationQuality/terms/summary", true).body());
-        assertThat(terms.path("totalTerms").asLong()).isPositive();
-        var infos = mapper.readTree(get("/api/standardizationQuality/terms/data?page=0&size=20&severity=INFO", true).body());
-        assertThat(infos.path("recordsTotal").asLong()).isEqualTo(terms.path("infos").asLong());
-        for (var group : infos.path("data")) {
-            assertThat(group.path("id").asString()).startsWith("v1:");
-            assertThat(group.path("members").size()).isEqualTo(group.path("memberCount").asInt()).isPositive();
-        }
-        assertThat(get("/api/standardizationQuality/terms/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
-
-        // DBMS 식별자 진단 (M-7 보강 1차) : 요약의 심각도별 건수 = 목록 건수, 조건 바인딩, 잘못된 값 400. 기존 요약과 따로 집계한다
-        var identifiers = mapper.readTree(get("/api/standardizationQuality/identifiers/summary", true).body());
-        assertThat(identifiers.path("dbType").asString()).isEqualTo("POSTGRESQL");
-        assertThat(identifiers.path("rules").size()).isEqualTo(5);
-        assertThat(mapper.readTree(get("/api/standardizationQuality/identifiers/data?page=0&size=5&severity=ERROR", true).body()).path("recordsTotal").asLong())
-                .isEqualTo(identifiers.path("errors").asLong());
-        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&type=CONSTRAINT_NAME_COLLISION&kind=PRIMARY_KEY&schemaId=1&searchColumn=name&searchQuery=PK",
-                true).statusCode()).isEqualTo(200);
-        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&kind=VIEW", true).statusCode()).isEqualTo(400);
-        assertThat(get("/api/standardizationQuality/identifiers/data?page=0&size=5&type=UNKNOWN", true).statusCode()).isEqualTo(400);
-        assertThat(get("/api/standardizationQuality/identifiers/data", true).statusCode()).as("page·size 없음").isEqualTo(400);
-        assertThat(mapper.readTree(get("/api/standardizationQuality/model/summary", true).body()).path("columns")).as("기존 요약 그대로").isEqualTo(columns);
+        // 표준 도메인 이름 중복 보고 ([DICT-2], 저장 검사 규칙이 아니라 남긴 보조 조회)
+        assertThat(mapper.readTree(get("/api/standardizationQuality/domains/duplicates", true).body()).path("groups").isArray()).isTrue();
 
         // 컬럼명 개선 후보 : 후보는 최대 5건이고, 없으면 사유가 있다. 없는 컬럼은 오류
         long columnId = mapper.readTree(get("/api/selectColumn/data?page=0&size=1", true).body()).path("data").get(0).path("id").asLong();
@@ -709,9 +663,9 @@ class SmokeTest {
             // 사용 현황 (V0 예제 : 표준 용어 1, 표준 단어 12)
             Map.entry("usageColumnColumns", "/api/dictionaryUsage/term/1"),
             Map.entry("usageTermColumns", "/api/dictionaryUsage/word/12"),
-            Map.entry("qualityModelColumns", "/api/standardizationQuality/model"),
-            Map.entry("qualityTermColumns", "/api/standardizationQuality/terms"),
-            Map.entry("qualityIdentifierColumns", "/api/standardizationQuality/identifiers"),
+            // 품질 진단 (AI-6 3차, 저장 결과)
+            Map.entry("qualityFindingColumns", "/api/qualityInspection/findings"),
+            Map.entry("qualityRunColumns", "/api/qualityInspection/runs"),
             Map.entry("mappingEntityColumns", "/api/modelMapping/entity"),
             Map.entry("modelHistoryColumns", "/api/modelHistory"),
             Map.entry("modelVersionColumns", "/api/modelVersion"),
@@ -1048,7 +1002,7 @@ class SmokeTest {
 
     @Test
     @Order(20)
-    @DisplayName("공용 그리드 페이지 요청 (공통 페이징 안정성 개선) : PageableUtil 을 쓰는 목록 API 25개 모두 — 정상 정렬·크기 100 은 200, "
+    @DisplayName("공용 그리드 페이지 요청 (공통 페이징 안정성 개선) : PageableUtil 을 쓰는 목록 API 23개 모두 — 정상 정렬·크기 100 은 200, "
             + "모르는 필드·중첩 경로·잘못된 방향·크기 0·101·100000·음수 페이지·int 를 넘는 오프셋은 400 INVALID_PAGE_REQUEST (내부 정보 없음), 숫자 아닌 값은 400")
     void gridPageRequests() throws Exception {
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
@@ -1070,10 +1024,6 @@ class SmokeTest {
         endpoints.put("/api/dictionaryUsage/term/1/data", new String[]{"tableName", ""});
         endpoints.put("/api/dictionaryUsage/domain/1/data", new String[]{"tableName", ""});
         endpoints.put("/api/dictionaryUsage/word/12/data", new String[]{"termName", ""});
-        endpoints.put("/api/standardizationQuality/data", new String[]{"tableName", ""});
-        endpoints.put("/api/standardizationQuality/model/data", new String[]{"tableName", ""});
-        endpoints.put("/api/standardizationQuality/terms/data", new String[]{"severity", ""});
-        endpoints.put("/api/standardizationQuality/identifiers/data", new String[]{"tableName", ""});
         endpoints.put("/api/modelMapping/entity/data", new String[]{"entityName", ""});
         endpoints.put("/api/modelMapping/table/data", new String[]{"tableName", ""});
         endpoints.put("/api/modelMapping/quality/data", new String[]{"entityName", required});
@@ -1081,6 +1031,9 @@ class SmokeTest {
         endpoints.put("/api/modelMapping/recommendation/table/data", new String[]{"logicalName", required});
         endpoints.put("/api/logical/model/" + model + "/entity/data", new String[]{"entityName", ""});
         endpoints.put("/api/logical/model/" + model + "/relationship/data", new String[]{"relationshipName", ""});
+        // 저장 품질 검사 결과 목록·실행 이력 (AI-6 2차·3차, 그리드 규격)
+        endpoints.put("/api/qualityInspection/findings/data", new String[]{"targetName", ""});
+        endpoints.put("/api/qualityInspection/runs/data", new String[]{"requestedAt", ""});
 
         List<String> failed = new ArrayList<>();
         for (var endpoint : endpoints.entrySet()) {
@@ -1118,6 +1071,86 @@ class SmokeTest {
         assertThat(mapper.readTree(en.body()).path("message").asString()).contains("The list request (page or sort) is invalid.").contains("The page size must be between 1 and 100.");
         assertThat(mapper.readTree(get("/api/selectTable/data?page=0&size=10&sort=password,asc", true).body()).path("message").asString())
                 .contains("목록 조회 조건(페이지·정렬)이 올바르지 않습니다.").contains("허용하지 않는 정렬 항목입니다.");
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("저장 품질 검사 API (AI-6 2차) : 실행 요청 202 → 완료, 중복 요청 409, 요약·목록·상세·실행 이력·규칙 설정, 잘못된 값 400 — 예제 프로젝트는 표준화 위반이 없다")
+    void qualityInspectionApi() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        HttpResponse<String> requested = postJson("/api/qualityInspection/runs", "{}");
+        assertThat(requested.statusCode()).as(requested.body()).isEqualTo(202);
+        long runId = mapper.readTree(requested.body()).path("id").asLong();
+        HttpResponse<String> duplicate = postJson("/api/qualityInspection/runs", "{}");
+        if (duplicate.statusCode() != 202) {
+            assertThat(duplicate.statusCode()).isEqualTo(409);
+            assertThat(mapper.readTree(duplicate.body()).path("code").asString()).isEqualTo("INSPECTION_ALREADY_RUNNING");
+        } else {
+            runId = mapper.readTree(duplicate.body()).path("id").asLong(); // 첫 실행이 그새 끝났다
+        }
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(120).toNanos();
+        var run = mapper.readTree(get("/api/qualityInspection/runs/" + runId, true).body());
+        while (List.of("PENDING", "RUNNING").contains(run.path("status").asString())) {
+            assertThat(System.nanoTime()).as("검사 완료 대기").isLessThan(deadline);
+            Thread.sleep(50);
+            run = mapper.readTree(get("/api/qualityInspection/runs/" + runId, true).body());
+        }
+        assertThat(run.path("status").asString()).isEqualTo("COMPLETED");
+        assertThat(run.path("rules").size()).isEqualTo(20);
+        assertThat(run.path("appliedRuleCount").asInt()).isEqualTo(20);
+        assertThat(run.path("partialFailure").asBoolean()).isFalse();
+        assertThat(run.path("basisAt").isNull()).isFalse();
+
+        // 저장 결과 = 같은 시점의 대시보드 실시간 수치 (같은 판정·같은 누락 기준 — 실시간 진단 API 는 AI-6 3차에 지웠다). 전체 테스트에서는 다른 테스트가 예제 프로젝트에
+        // 더한 데이터가 있어 건수를 고정하지 않고 같은 시점의 대시보드와 비교한다 (새 DB 의 예제는 용어 참고 1건뿐 — 완전성 4규칙도 0건)
+        var summary = mapper.readTree(get("/api/qualityInspection/summary", true).body());
+        var quality = mapper.readTree(get("/api/dashboard/stats", true).body()).path("quality");
+        java.util.function.Function<String, Long> open = rule -> {
+            for (var r : summary.path("rules")) if (rule.equals(r.path("rule").asString())) return r.path("open").asLong() + r.path("openExcluded").asLong();
+            throw new AssertionError(rule);
+        };
+        assertThat(open.apply("TERM_NOT_LINKED")).isEqualTo(quality.path("termNotLinked").asLong());
+        assertThat(open.apply("COLUMN_NAME_MISMATCH")).isEqualTo(quality.path("columnNameMismatch").asLong());
+        assertThat(open.apply("DOMAIN_DEFINITION_MISMATCH")).isEqualTo(quality.path("domainDefinitionMismatch").asLong());
+        assertThat(open.apply("TABLE_COMMENT_MISSING")).isEqualTo(quality.path("tablesWithoutComment").asLong());
+        assertThat(open.apply("COLUMN_COMMENT_MISSING")).isEqualTo(quality.path("columnsWithoutComment").asLong());
+        assertThat(open.apply("TABLE_BIZ_DESCRIPTION_MISSING")).isEqualTo(quality.path("tablesWithoutBizDescription").asLong());
+        assertThat(open.apply("COLUMN_BIZ_DESCRIPTION_MISSING")).isEqualTo(quality.path("columnsWithoutBizDescription").asLong());
+        assertThat(summary.path("rules")).anySatisfy(rule -> {
+            assertThat(rule.path("rule").asString()).isEqualTo("TERM_SAME_WORDS");
+            assertThat(rule.path("open").asLong()).isPositive();
+        });
+        var findings = mapper.readTree(get("/api/qualityInspection/findings/data?page=0&size=100&sort=severity,asc", true).body());
+        assertThat(findings.path("recordsTotal").asLong()).isEqualTo(summary.path("open").asLong());
+        var info = mapper.readTree(get("/api/qualityInspection/findings/data?page=0&size=5&rule=TERM_SAME_WORDS", true).body()).path("data").get(0);
+        var detail = mapper.readTree(get("/api/qualityInspection/findings/" + info.path("id").asLong(), true).body());
+        assertThat(detail.path("fingerprint").asString()).startsWith("v4:");
+        assertThat(detail.path("evidence").path("targetIds").size()).isGreaterThanOrEqualTo(2);
+        assertThat(get("/api/qualityInspection/findings/" + info.path("id").asLong() + "/history", true).body()).isEqualTo("[]");
+        assertThat(mapper.readTree(get("/api/qualityInspection/runs/data?page=0&size=10&sort=requestedAt,desc", true).body()).path("recordsTotal").asLong()).isPositive();
+        var rules = mapper.readTree(get("/api/qualityInspection/rules", true).body());
+        assertThat(rules.path("rules").size()).isEqualTo(20);
+        assertThat(putJson("/api/qualityInspection/rules", "{\"rules\":[{\"rule\":\"TERM_SYNONYM\",\"active\":false}]}").statusCode()).as("expectedActive 없음").isEqualTo(400);
+        HttpResponse<String> conflict = putJson("/api/qualityInspection/rules", "{\"rules\":[{\"rule\":\"TERM_SYNONYM\",\"active\":false,\"expectedActive\":false}]}");
+        assertThat(conflict.statusCode()).isEqualTo(409);
+        assertThat(mapper.readTree(conflict.body()).path("code").asString()).isEqualTo("INSPECTION_RULE_SETTING_CONFLICT");
+        assertThat(rules.path("editable").asBoolean()).isTrue();
+
+        // 잘못된 값 : 400 (규칙 코드·필터·정렬·사유·설정), 없는 결과 404
+        assertThat(get("/api/qualityInspection/findings/data?page=0&size=5&rule=UNKNOWN", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/qualityInspection/findings/data?page=0&size=5&status=CLOSED", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/qualityInspection/runs/data?page=0&size=101", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/qualityInspection/runs/data?page=0&size=10&sort=status,asc", true).statusCode()).as("실행 이력 정렬은 requestedAt 하나").isEqualTo(400);
+        assertThat(get("/api/qualityInspection/findings/data?page=0&size=5&group=MODEL&lastChange=NEW", true).statusCode()).isEqualTo(200);
+        assertThat(get("/api/qualityInspection/findings/data?page=0&size=5&group=VIEW", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/qualityInspection/findings/data?page=0&size=5&lastChange=GONE", true).statusCode()).isEqualTo(400);
+        assertThat(get("/api/qualityInspection/findings/data", true).statusCode()).as("page·size 없음").isEqualTo(400);
+        HttpResponse<String> noReason = postJson("/api/qualityInspection/findings/" + info.path("id").asLong() + "/exclude", "{\"reason\":\" \",\"version\":0}");
+        assertThat(noReason.statusCode()).isEqualTo(400);
+        assertThat(mapper.readTree(noReason.body()).path("code").asString()).isEqualTo("INSPECTION_REASON_REQUIRED");
+        assertThat(postJson("/api/qualityInspection/findings/999999999/exclude", "{\"reason\":\"x\",\"version\":0}").statusCode()).isEqualTo(404);
+        assertThat(putJson("/api/qualityInspection/rules", "{\"rules\":[]}").statusCode()).isEqualTo(400);
+        assertThat(get("/api/auth/me", true).body()).contains("\"quality-inspection-run\":true").contains("\"quality-inspection-rule\":true");
     }
 
     @ParameterizedTest(name = "API {0}")

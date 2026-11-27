@@ -60,10 +60,6 @@ public interface StandardTermRepository extends JpaRepository<StandardTerm, Long
             + " and lower(t.commonStandardTermAbbreviation) in :abbreviationKeys")
     List<Object[]> findAbbreviationDomainsByKeys(@Param("projectId") Long projectId, @Param("abbreviationKeys") Collection<String> abbreviationKeys);
 
-    /** 표준 용어 진단 상세 : 등록·수정 일시 [ID, 등록, 수정] (한 페이지의 용어만) */
-    @Query("select t.id, t.created, t.updated from StandardTerm t where t.projectId = :projectId and t.id in :ids")
-    List<Object[]> findAuditByIds(@Param("projectId") Long projectId, @Param("ids") Collection<Long> ids);
-
 
     List<StandardTerm> findAllByProjectIdAndCommonStandardTermAbbreviationContainingIgnoreCase(Long projectId, String commonStandardTermAbbreviation);
 

@@ -102,6 +102,11 @@ public class MenuAuthorization {
             Map.entry("standardization-quality", "VIEWER"),
             // 모델 구조 진단 (DEC-09 무효 FK · DEC-12 중복 인덱스) : 조회만 있는 화면. GET /api/physical/diagnostics 와 같다
             Map.entry("model-diagnostics", "VIEWER"),
+            // 저장 품질 검사 (AI-6 2차) : 화면은 3차. 결과·실행·규칙 조회 API 는 standardization-quality 와 같은 VIEWER,
+            // 화면 메뉴가 아니라 [검사 실행]·[예외 처리·해제]·[규칙 설정 변경] 버튼 노출용 : 그 API 의 역할(USER). 규칙 설정은 서버가 프로젝트 관리자·ADMIN 인지도 확인한다
+            Map.entry("quality-inspection-run", "USER"),
+            Map.entry("quality-inspection-exception", "USER"),
+            Map.entry("quality-inspection-rule", "USER"),
             // 모델 변경 이력 (M-9) : 조회만 있는 화면. 이력 조회 API 의 권한과 같다
             Map.entry("model-history", "VIEWER"),
             // 모델 버전 (M-9 3차) : 화면(목록·과거 버전 조회·비교)은 VIEWER, [버전 생성] 버튼은 USER (버전 생성 API 의 권한과 같다)

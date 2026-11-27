@@ -22,6 +22,16 @@ public enum StandardizationRule {
     /** 테이블명(접두어 제외)을 '_' 로 나눈 약어 중 승인된 표준 단어 약어가 아닌 것이 있다 */
     TABLE_WORD_NOT_STANDARD(TargetType.TABLE, Severity.ERROR),
 
+    // ---- 완전성 (AI-6 3차, AI6-D04·AI6-3-12·13 : NULL·빈 문자열·ASCII 공백류만 있는 값 = 누락, 판정 = CompletenessRules)
+    /** 테이블 코멘트(TBL_KORN_NM) 누락 */
+    TABLE_COMMENT_MISSING(TargetType.TABLE, Severity.WARNING),
+    /** 컬럼 코멘트(컬럼 설명 COL_EXPLN — DDL 의 컬럼 COMMENT) 누락 */
+    COLUMN_COMMENT_MISSING(TargetType.COLUMN, Severity.WARNING),
+    /** 테이블 업무 설명(TASK_EXPLN) 누락 */
+    TABLE_BIZ_DESCRIPTION_MISSING(TargetType.TABLE, Severity.INFO),
+    /** 컬럼 업무 설명(TASK_EXPLN) 누락 */
+    COLUMN_BIZ_DESCRIPTION_MISSING(TargetType.COLUMN, Severity.INFO),
+
     // ---- 표준 용어 (그룹 단위)
     /** 영문약어 + 도메인이 같은 용어가 여럿 (등록 규칙의 중복 기준) */
     TERM_ABBR_DUPLICATE(TargetType.TERM, Severity.ERROR),

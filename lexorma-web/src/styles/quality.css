@@ -1,0 +1,34 @@
+/* 품질 진단 (AI-6 3차) : 저장된 검사 결과 화면. 색은 기존 토큰만 쓴다 (라이트·다크 모두 primer 토큰이 바꾼다) — 상태는 색과 함께 글자 Label 로도 보인다 */
+.quality-status { margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); }
+.quality-status-main { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.quality-status-lines { display: grid; gap: 6px; min-width: 0; flex: 1 1 420px; }
+.quality-status-line { margin: 0; overflow-wrap: anywhere; }
+.quality-status-actions { flex: 0 0 auto; }
+.quality-status .dash-stats.quality-stats { margin: 12px 0 0; }
+.quality-stat-note { margin: 6px 0 0; font-size: 12px; }
+.quality-notice { margin: 0; padding: 8px 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas); overflow-wrap: anywhere; }
+.quality-notice.is-attention { border-color: var(--gh-attention); background: var(--gh-attention-subtle); }
+.quality-notice.is-danger { border-color: var(--gh-danger); background: var(--gh-danger-subtle); }
+.quality-tab > .quality-notice { margin-top: 12px; }
+.quality-link { padding: 0; border: 0; background: none; color: var(--gh-accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.quality-link:hover { color: var(--gh-fg); }
+.quality-message { display: inline; overflow-wrap: anywhere; }
+.quality-rule-table, .quality-run-table { width: 100%; font-size: 13px; }
+.quality-rule-table td, .quality-run-table td { vertical-align: top; overflow-wrap: anywhere; }
+.quality-rule-description { color: var(--gh-fg-muted); }
+.quality-members, .quality-history { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.quality-history-reason { margin-top: 2px; white-space: pre-wrap; color: var(--gh-fg-muted); }
+.quality-exclusion { margin-top: 16px; padding: 12px; border: 1px solid var(--gh-border); border-radius: 6px; background: var(--gh-canvas-subtle); }
+.quality-exclusion .quality-notice { margin-bottom: 8px; }
+.quality-finding-head { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.quality-json { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.quality-finding .dict-detail dd, .quality-run .dict-detail dd { overflow-wrap: anywhere; }
+/* 대시보드 품질 진단 카드 : 심각도별 건수 (링크 + 숫자) */
+.dash-figures.dash-inspection { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 8px; padding: 0; list-style: none; }
+.dash-figures.dash-inspection li { display: grid; gap: 2px; }
+.dash-figures.dash-inspection strong { font-size: 20px; }
+@media (max-width: 600px) {
+    .quality-status { padding: 12px; }
+    .dash-figures.dash-inspection { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.quality-error { margin: 4px 0 0; color: var(--gh-danger); font-size: 13px; }

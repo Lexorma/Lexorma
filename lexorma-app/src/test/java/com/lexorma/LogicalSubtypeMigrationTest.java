@@ -29,7 +29,7 @@ class LogicalSubtypeMigrationTest {
                 .cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V3(서브타입)은 V0·V1 에 있다 — 새 설치에 사용자 데이터를 넣고 제약·예제를 본다
-            assertThat(v2.migrate().migrationsExecuted).isEqualTo(4); // V0~V3
+            assertThat(v2.migrate().migrationsExecuted).isEqualTo(5); // V0~V4 (V4 저장 품질 검사, AI-6 2차)
             assertThat(v2.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
             // 사용자 데이터 : 논리 모델·엔터티(승인·미승인)·속성·주 식별자·관계·주제 영역·소속·배치

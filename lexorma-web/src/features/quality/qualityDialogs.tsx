@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Approval, Label, Mono, Muted } from '../../components/grid/cells';
+import { Label, Mono, Muted } from '../../components/grid/cells';
 import { useAuth } from '../../hooks/useAuth';
 import { api, enc } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { TableLinks } from '../dictionary/DictionaryUsage';
 import {
-  ATTRIBUTE_LABELS, MODEL_RULES, SEVERITIES, SUGGESTION_ACTIONS, SUGGESTION_SOURCES, TERM_RULES,
-  type ColumnSuggestions, type Severity, type SuggestionCandidate, type TermGroup,
+  ATTRIBUTE_LABELS, SEVERITIES, SUGGESTION_ACTIONS, SUGGESTION_SOURCES, ruleLabel,
+  type ColumnSuggestions, type Severity, type SuggestionCandidate,
 } from './model';
 
 const READ_ONLY_NOTE = t('추천·진단은 조회할 때 계산한 참고 정보입니다. 컬럼명·표준 용어·도메인은 자동으로 바뀌지 않으며, 고치려면 관리 화면에서 직접 수정합니다.');
@@ -17,7 +17,7 @@ export function SeverityLabel({ severity }: { severity: Severity }) {
   return <Label variant={item?.variant} dot>{item?.label ?? severity}</Label>;
 }
 
-function DetailList({ items }: { items: [string, string | null | undefined, boolean?][] }) {
+export function DetailList({ items }: { items: [string, string | null | undefined, boolean?][] }) {
   return (
     <dl className="dict-detail">
       {items.map(([label, value, mono]) => [
@@ -29,7 +29,7 @@ function DetailList({ items }: { items: [string, string | null | undefined, bool
 }
 
 /** 표준 용어 관리 화면으로 (그 용어명으로 검색) */
-function useTermLink() {
+export function useTermLink() {
   const navigate = useNavigate();
   const { canView } = useAuth();
   if (!canView('standard-term')) return null;
@@ -58,7 +58,7 @@ export function ColumnSuggestionDetail({ columnId, close, onChanged }: { columnI
   if (query.isPending) return <p className="gh-muted">{t('불러오는 중…')}</p>;
   if (query.isError) return <p className="gh-muted" role="alert">{t('개선 후보를 불러오지 못했습니다.')}</p>;
   const data = query.data;
-  const issueLabels = data.issueTypes.map((type) => MODEL_RULES.find((e) => e.type === type)?.label ?? type).join(', ');
+  const issueLabels = data.issueTypes.map((type) => ruleLabel(type)).join(', ');
 
   return (
     <div className="quality-suggestion">
@@ -147,51 +147,5 @@ function CandidateItem({ candidate, rank, onTerm }: { candidate: SuggestionCandi
         <button type="button" className="btn btn-sm" onClick={() => onTerm(candidate.termName!)}>{t('표준 용어 관리에서 보기')}</button>
       )}
     </li>
-  );
-}
-
-// ---------------------------------------------------------------- 용어 그룹 상세
-
-export function TermGroupDetail({ group, close }: { group: TermGroup; close: () => void }) {
-  const termLink = useTermLink();
-  const rule = TERM_RULES.find((e) => e.type === group.type);
-  return (
-    <div>
-      <div className="dict-detail-status">
-        <span>{t('심각도')}</span>
-        <SeverityLabel severity={group.severity} />
-        <span>{rule?.label ?? group.type}</span>
-        <span className="gh-mono gh-muted">{group.type}</span>
-      </div>
-      <DetailList items={[
-        [t('묶은 값'), group.groupKey],
-        [t('판정 근거'), group.message],
-      ]} />
-      <h4 className="quality-subtitle">{t('관련 용어 ({0})', group.memberCount)}</h4>
-      <div className="table-wrap">
-        <table className="quality-members">
-          <thead>
-            <tr><th>{t('표준용어명')}</th><th>{t('영문약어')}</th><th>{t('도메인')}</th><th>{t('승인')}</th><th>{t('사용 컬럼')}</th><th>{t('근거')}</th><th>{t('이동')}</th></tr>
-          </thead>
-          <tbody>
-            {group.members.map((member) => (
-              <tr key={member.termId}>
-                <td>{member.termName}</td>
-                <td>{member.abbreviation ? <Mono>{member.abbreviation}</Mono> : <Muted>-</Muted>}</td>
-                <td>{member.domainName ?? <Muted>-</Muted>}</td>
-                <td><Approval value={member.isApproval ? 'Y' : 'N'} /></td>
-                <td>{member.columnCount ?? <Muted>-</Muted>}</td>
-                <td>{member.note ?? <Muted>-</Muted>}</td>
-                <td>{termLink && member.termName && <button type="button" className="btn btn-sm" onClick={() => termLink(member.termName!, close)}>{t('표준 용어 관리')}</button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="form-help">{t('같은 뜻이라고 확정하지 않습니다. 용어를 병합·삭제하거나 이름을 바꾸지 않으며, 필요하면 표준 용어 관리에서 직접 정리합니다.')}</p>
-      <div className="gh-dialog-actions">
-        <button type="button" className="btn" onClick={close}>{t('닫기')}</button>
-      </div>
-    </div>
   );
 }

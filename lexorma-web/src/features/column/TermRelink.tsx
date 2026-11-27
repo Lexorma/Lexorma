@@ -143,7 +143,7 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
                 {typeDiffers && <li>{t('새 표준 용어의 권장 타입({0})과 지금 컬럼 타입({1})이 다릅니다. 타입은 바뀌지 않습니다.', picked.dataType ?? '', columnType(column) || '-')}</li>}
                 {picked.isApprovalYn !== 'Y' && <li>{t('승인되지 않은 표준 용어입니다.')}</li>}
               </ul>
-              <p className="ai-dict-small">{t('차이는 표준화 품질 진단에 나타날 수 있습니다. 이 컬럼을 근거로 만든 AI 설명 제안은 재검토가 필요해질 수 있습니다.')}</p>
+              <p className="ai-dict-small">{t('차이는 품질 진단에 나타날 수 있습니다. 이 컬럼을 근거로 만든 AI 설명 제안은 재검토가 필요해질 수 있습니다.')}</p>
             </div>
           )}
         </section>
@@ -153,7 +153,7 @@ export function TermRelink({ column, onCancel, onChanged }: { column: TermRelink
       <div className="gh-dialog-actions">
         <button type="button" className="btn" onClick={onCancel} disabled={saving}>{t('취소')}</button>
         {current && <button type="button" className="btn btn-danger" onClick={() => void save(true)} disabled={saving}
-                            title={t('표준 용어 연결만 끊습니다. 컬럼은 그대로이고 표준화 품질 진단에 나타날 수 있습니다.')}>{t('연결 해제')}</button>}
+                            title={t('표준 용어 연결만 끊습니다. 컬럼은 그대로이고 품질 진단에 나타날 수 있습니다.')}>{t('연결 해제')}</button>}
         <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={!picked || same || saving}>
           {saving ? t('저장 중…') : current ? t('이 표준 용어로 변경') : t('이 표준 용어로 연결')}
         </button>

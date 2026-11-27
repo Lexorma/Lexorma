@@ -11,15 +11,13 @@ import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.controller.StandardizationQualityRestController;
 import com.lexorma.data.dictionary.domain.dto.ColumnSuggestionDto;
 import com.lexorma.data.dictionary.domain.dto.ColumnSuggestionDto.Candidate;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelIssue;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSearch;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSummary;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Summary;
 import com.lexorma.data.dictionary.domain.dto.TermQualityDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.lexorma.data.dictionary.domain.entity.StandardWord;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.dictionary.quality.StandardizationRule.TargetType;
@@ -43,9 +41,6 @@ import com.lexorma.data.dictionary.quality.TableNameRules;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -60,16 +55,17 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 /**
  * M-5 잔여 : 테이블명 규칙 · 표준 용어 중복·유사어 · 컬럼명 개선 후보 (실제 JPA 쿼리).
- * 프로젝트 격리, 권한, 조회 전후 데이터 불변, 기존 컬럼 진단 요약이 그대로인지(D2) 확인한다. AI Provider 를 등록하지 않은 상태로 실행한다.
+ * 프로젝트 격리, 권한, 조회 전후 데이터 불변, 기존 컬럼 진단 요약이 그대로인지(D2) 확인한다. AI-6 3차에 실시간 요약·목록 API 를 지워 판정 결과는
+ * 저장 검사가 쓰는 {@code inspect} 로 본다 (그 목록의 조건·페이징·정렬·사용 컬럼 수 검증은 화면과 함께 지웠다). AI Provider 를 등록하지 않은 상태로 실행한다.
  * 판정 규칙의 세부 사례는 lexorma-data 의 TableNameRulesTest·TermDuplicateRulesTest·ColumnNameSuggestionsTest 에 있다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 class StandardizationQualityRulesIntegrationTest {
 
-    private static final Pageable PAGE = PageRequest.of(0, 100);
-    private static final ModelSearch ALL = new ModelSearch(null, null, null, null, null, null, null);
-    private static final TermQualityDto.Search ALL_TERMS = new TermQualityDto.Search(null, null, null, null);
+    /** 완전성 규칙(AI-6 3차)을 뺀 모델 묶음 5규칙 */
+    private static final java.util.Set<StandardizationRule> MODEL_RULES = java.util.EnumSet.of(StandardizationRule.TERM_NOT_LINKED, StandardizationRule.COLUMN_NAME_MISMATCH,
+            StandardizationRule.DOMAIN_DEFINITION_MISMATCH, StandardizationRule.TABLE_PREFIX_MISSING, StandardizationRule.TABLE_WORD_NOT_STANDARD);
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -91,7 +87,7 @@ class StandardizationQualityRulesIntegrationTest {
     }
 
     @Test
-    @DisplayName("모델 진단 : 테이블명(접두어·승인 단어 약어) + 기존 컬럼 진단, 심각도·대상·조건, 기존 요약은 그대로")
+    @DisplayName("모델 진단 : 테이블명(접두어·승인 단어 약어) + 기존 컬럼 진단의 판정 결과, 심각도·대상·근거·fingerprint, 기존 요약은 그대로")
     void model() {
         AccountDto admin = loginAsAdmin("m5-rules-model", "tb");
         long projectId = admin.getProjectId();
@@ -106,60 +102,43 @@ class StandardizationQualityRulesIntegrationTest {
         TableInfo words = table(projectId, "TB_MBR_HIST_XYZ");
         column(projectId, ok, "MBR_CD", null);
 
-        ModelSummary summary = qualityService.selectModelSummary(admin);
-        assertThat(summary.tablePrefix()).isEqualTo("TB_");
-        assertThat(summary.totalTables()).isEqualTo(4);
-        assertThat(summary.tablePrefixMissing()).isEqualTo(1);
-        assertThat(summary.tableWordNotStandard()).isEqualTo(2);
-        assertThat(summary.issueTables()).isEqualTo(2);
-        // 컬럼 진단 요약은 기존 요약과 같은 값 (대시보드 기준 그대로)
-        assertThat(summary.columns()).isEqualTo(qualityService.selectSummary(admin)).isEqualTo(new Summary(1, 1, 1, 0, 0));
-        assertThat(summary.errors()).isEqualTo(3);
-        assertThat(summary.warnings()).isEqualTo(1);
-        assertThat(summary.infos()).isZero();
-
-        List<ModelIssue> issues = qualityService.selectModelIssues(admin, ALL, PAGE).getContent();
-        assertThat(issues).extracting(ModelIssue::type, ModelIssue::targetType, ModelIssue::severity, ModelIssue::tableName, ModelIssue::actualValue)
-                .containsExactly(
+        // 판정 결과 (저장 검사의 모델 묶음 — AI-6 3차에 실시간 요약·목록 API 대신). 완전성 규칙은 따로 (CompletenessInspectionIntegrationTest)
+        List<InspectionItem> issues = modelIssues(projectId);
+        assertThat(issues).extracting(i -> i.finding().rule(), i -> i.finding().rule().targetType(), i -> i.finding().rule().severity(), i -> i.details().get("tableName"),
+                        i -> i.finding().actualValue())
+                .containsExactlyInAnyOrder(
                         tuple(StandardizationRule.TERM_NOT_LINKED, TargetType.COLUMN, Severity.WARNING, "TB_MBR_CD", null),
                         tuple(StandardizationRule.TABLE_WORD_NOT_STANDARD, TargetType.TABLE, Severity.ERROR, "TB_MBR_HIST_XYZ", "HIST, XYZ"),
                         tuple(StandardizationRule.TABLE_PREFIX_MISSING, TargetType.TABLE, Severity.ERROR, "TBL_MBR", "TBL_MBR"),
                         tuple(StandardizationRule.TABLE_WORD_NOT_STANDARD, TargetType.TABLE, Severity.ERROR, "TBL_MBR", "TBL"));
-        ModelIssue wordIssue = issues.get(1);
-        assertThat(wordIssue.tableId()).isEqualTo(words.getId());
-        assertThat(wordIssue.columnId()).isNull();
-        assertThat(wordIssue.message()).contains("XYZ").contains("HIST");
-        assertThat(wordIssue.fingerprint()).startsWith("v1:");
-        assertThat(qualityService.selectModelIssues(admin, ALL, PAGE).getContent()).extracting(ModelIssue::fingerprint)
-                .as("같은 데이터면 같은 fingerprint").containsExactlyElementsOf(issues.stream().map(ModelIssue::fingerprint).toList());
-        assertThat(issues).extracting(ModelIssue::tableId).doesNotContain(lower.getId());
-
-        // 조건 : 규칙, 심각도, 대상 유형, 검색 (규칙 코드는 컬럼 3종도 받는다), 페이징·정렬
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(StandardizationRule.TABLE_PREFIX_MISSING, null, null, null, null, null, null), PAGE)
-                .getContent()).extracting(ModelIssue::tableId).containsExactly(noPrefix.getId());
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(null, Severity.WARNING, null, null, null, null, null), PAGE).getTotalElements()).isEqualTo(1);
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(null, null, TargetType.TABLE, null, null, null, null), PAGE).getTotalElements()).isEqualTo(3);
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(null, null, null, null, null, "tableName", "tbl"), PAGE).getTotalElements()).isEqualTo(2);
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(StandardizationRule.TERM_SYNONYM, null, null, null, null, null, null), PAGE).getTotalElements()).isZero();
-        assertThat(qualityService.selectModelIssues(admin, ALL, PageRequest.of(0, 10, Sort.by(Sort.Order.desc("tableName")))).getContent())
-                .extracting(ModelIssue::tableName).first().isEqualTo("TBL_MBR");
-        assertThat(qualityService.selectModelIssues(admin, ALL, PageRequest.of(1, 3)).getContent()).hasSize(1);
+        assertThat(issues.stream().filter(i -> i.finding().rule().targetType() == TargetType.TABLE).map(InspectionItem::tableId).distinct()).hasSize(2);
+        // 컬럼 진단 요약(대시보드 기준)은 그대로
+        assertThat(qualityService.selectSummary(admin)).isEqualTo(new Summary(1, 1, 1, 0, 0));
+        InspectionItem wordIssue = issues.stream().filter(i -> i.finding().rule() == StandardizationRule.TABLE_WORD_NOT_STANDARD && words.getId().equals(i.tableId()))
+                .findFirst().orElseThrow();
+        assertThat(wordIssue.objectType()).isEqualTo(InspectionItem.ObjectType.TABLE);
+        assertThat(wordIssue.objectId()).isEqualTo(words.getId());
+        assertThat(wordIssue.details().get("tokens").toString()).contains("XYZ").contains("HIST");
+        assertThat(wordIssue.finding().fingerprint()).startsWith("v4:");
+        assertThat(modelIssues(projectId)).extracting(i -> i.finding().fingerprint())
+                .as("같은 데이터면 같은 fingerprint").containsExactlyElementsOf(issues.stream().map(i -> i.finding().fingerprint()).toList());
+        assertThat(issues).extracting(InspectionItem::tableId).doesNotContain(lower.getId());
+        assertThat(issues).filteredOn(i -> i.finding().rule() == StandardizationRule.TABLE_PREFIX_MISSING).extracting(InspectionItem::tableId).containsExactly(noPrefix.getId());
 
         // 접두어가 없는 프로젝트 : 접두어 규칙을 보지 않는다
         projectRepository.findById(projectId).ifPresent(project -> {
             project.setTablePrefix(null);
             projectRepository.save(project);
         });
-        assertThat(qualityService.selectModelSummary(admin).tablePrefixMissing()).isZero();
+        assertThat(modelIssues(projectId)).noneMatch(i -> i.finding().rule() == StandardizationRule.TABLE_PREFIX_MISSING);
 
         // 프로젝트 격리 : 빈 프로젝트에는 아무것도 없다
         AccountDto other = loginAsAdmin("m5-rules-model-other", "TB_");
-        assertThat(qualityService.selectModelSummary(other).totalTables()).isZero();
-        assertThat(qualityService.selectModelIssues(other, ALL, PAGE).getTotalElements()).isZero();
+        assertThat(qualityService.inspect(other.getProjectId())).isEmpty();
     }
 
     @Test
-    @DisplayName("용어 진단 : 정확 중복(약어+도메인·용어명) · 같은 약어 다른 도메인 · 단어 구성 · 이음동의어 · 금칙어, 사용 컬럼 수, 격리, 조회 전용")
+    @DisplayName("용어 진단 : 정확 중복(약어+도메인·용어명) · 같은 약어 다른 도메인 · 단어 구성 · 이음동의어 · 금칙어의 판정 결과, 격리, 조회 전용")
     void terms() {
         AccountDto admin = loginAsAdmin("m5-rules-terms", null);
         long projectId = admin.getProjectId();
@@ -190,19 +169,10 @@ class StandardizationQualityRulesIntegrationTest {
         column(projectId, table, "MBR_NM", a);
         column(projectId, table, "MBR_NM2", a);
 
-        TermQualityDto.Summary summary = termQualityService.selectSummary(admin);
-        assertThat(summary.totalTerms()).isEqualTo(8);
-        assertThat(summary.groups()).containsEntry(StandardizationRule.TERM_ABBR_DUPLICATE, 1L).containsEntry(StandardizationRule.TERM_NAME_DUPLICATE, 1L)
-                .containsEntry(StandardizationRule.TERM_ABBR_SHARED, 1L).containsEntry(StandardizationRule.TERM_SAME_WORDS, 1L)
-                .containsEntry(StandardizationRule.TERM_SYNONYM, 2L).containsEntry(StandardizationRule.TERM_RESTRICTED_WORD, 1L)
-                .doesNotContainKey(StandardizationRule.TABLE_PREFIX_MISSING);
-        assertThat(summary.errors()).isEqualTo(2);
-        assertThat(summary.warnings()).isEqualTo(2);
-        assertThat(summary.infos()).isEqualTo(3);
-
-        List<TermQualityDto.Group> groups = termQualityService.selectGroups(admin, ALL_TERMS, PAGE).getContent();
-        assertThat(groups).extracting(TermQualityDto.Group::type, group -> group.members().stream().map(TermQualityDto.Member::termId).toList())
-                .containsExactly(
+        // 판정 결과 (저장 검사의 용어 묶음 — AI-6 3차에 실시간 요약·목록 API 대신)
+        List<InspectionItem> groups = termQualityService.inspect(projectId);
+        assertThat(groups).extracting(x -> x.finding().rule(), x -> x.finding().targetIds())
+                .containsExactlyInAnyOrder(
                         tuple(StandardizationRule.TERM_ABBR_DUPLICATE, List.of(a.getId(), b.getId())),
                         tuple(StandardizationRule.TERM_NAME_DUPLICATE, List.of(a.getId(), b.getId())),
                         tuple(StandardizationRule.TERM_ABBR_SHARED, List.of(a.getId(), b.getId(), c.getId())),
@@ -210,18 +180,11 @@ class StandardizationQualityRulesIntegrationTest {
                         tuple(StandardizationRule.TERM_SYNONYM, List.of(a.getId(), e.getId())),
                         tuple(StandardizationRule.TERM_SYNONYM, List.of(b.getId(), d.getId())),
                         tuple(StandardizationRule.TERM_RESTRICTED_WORD, List.of(h.getId())));
-        // 사용 컬럼 수는 페이지의 용어만 센다
-        assertThat(groups.get(0).members()).extracting(TermQualityDto.Member::columnCount).containsExactly(2L, 0L);
-        assertThat(groups.get(3).message()).isNotBlank();
-        assertThat(groups.get(6).members().get(0).note()).contains("멤버").contains("회원");
-
-        // 조건 : 규칙, 심각도, 용어명·약어 검색
-        assertThat(termQualityService.selectGroups(admin, new TermQualityDto.Search(StandardizationRule.TERM_SYNONYM, null, null, null), PAGE).getTotalElements()).isEqualTo(2);
-        assertThat(termQualityService.selectGroups(admin, new TermQualityDto.Search(null, Severity.ERROR, null, null), PAGE).getTotalElements()).isEqualTo(2);
-        assertThat(termQualityService.selectGroups(admin, new TermQualityDto.Search(null, null, "abbreviation", "reg"), PAGE).getTotalElements()).isEqualTo(1);
-        assertThat(termQualityService.selectGroups(admin, new TermQualityDto.Search(null, null, "termName", "멤버"), PAGE).getTotalElements()).isEqualTo(1);
-        assertThat(termQualityService.selectGroups(admin, ALL_TERMS, PageRequest.of(0, 10, Sort.by(Sort.Order.desc("memberCount")))).getContent().get(0).type())
-                .isEqualTo(StandardizationRule.TERM_ABBR_SHARED);
+        assertThat(groups.stream().filter(x -> x.finding().rule().severity() == Severity.ERROR).count()).isEqualTo(2);
+        assertThat(groups.stream().filter(x -> x.finding().rule().severity() == Severity.WARNING).count()).isEqualTo(2);
+        assertThat(groups.stream().filter(x -> x.finding().rule().severity() == Severity.INFO).count()).isEqualTo(3);
+        InspectionItem restricted = groups.stream().filter(x -> x.finding().rule() == StandardizationRule.TERM_RESTRICTED_WORD).findFirst().orElseThrow();
+        assertThat(restricted.details().get("members").toString()).contains("멤버").contains("회원");
 
         // 조회 전용 : 용어는 그대로 (병합·삭제·이름 변경 없음)
         assertThat(termRepository.findAllByProjectId(projectId)).hasSize(8);
@@ -230,8 +193,7 @@ class StandardizationQualityRulesIntegrationTest {
         // 격리
         AccountDto other = loginAsAdmin("m5-rules-terms-other", null);
         term(other.getProjectId(), "회원_이름", "MBR_NM", null, List.of());
-        assertThat(termQualityService.selectSummary(other).issueTerms()).isZero();
-        assertThat(termQualityService.selectGroups(other, ALL_TERMS, PAGE).getTotalElements()).isZero();
+        assertThat(termQualityService.inspect(other.getProjectId())).isEmpty();
     }
 
     @Test
@@ -295,22 +257,16 @@ class StandardizationQualityRulesIntegrationTest {
     }
 
     @Test
-    @DisplayName("권한 : VIEWER 부터 조회할 수 있고 승인 전 사용자는 거절된다 (모델·용어·후보)")
+    @DisplayName("권한 : 보조 조회(도메인 이름 중복·컬럼명 개선 후보)는 VIEWER 부터, 승인 전 사용자는 거절된다")
     void authorization() {
         Project project = projectRepository.save(Project.builder().projectName("m5-rules-role").isActive(true).account(admin()).build());
 
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, project.getId(), "900", "ROLE_VIEWER");
-        assertThat(controller.selectModelSummary(viewer).getBody()).isNotNull();
-        assertThat(controller.selectModelIssues(viewer, 0, 10, null, null, null, null, null, null, null, null).getStatusCode().value()).isEqualTo(200);
-        assertThat(controller.selectTermSummary(viewer).getBody()).isNotNull();
-        assertThat(controller.selectTermGroups(viewer, 0, 10, null, null, null, null, null).getStatusCode().value()).isEqualTo(200);
+        assertThat(controller.selectDomainDuplicates(viewer).getStatusCode().value()).isEqualTo(200);
         assertThatThrownBy(() -> controller.selectColumnSuggestions(viewer, -1L)).isInstanceOf(CustomException.class);
 
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, project.getId(), "901", "ROLE_NOT_APPROVE");
-        assertThatThrownBy(() -> controller.selectModelSummary(notApproved)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectModelIssues(notApproved, 0, 10, null, null, null, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectTermSummary(notApproved)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectTermGroups(notApproved, 0, 10, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.selectDomainDuplicates(notApproved)).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.selectColumnSuggestions(notApproved, -1L)).isInstanceOf(AccessDeniedException.class);
     }
 
@@ -363,6 +319,10 @@ class StandardizationQualityRulesIntegrationTest {
     }
 
     // ------------------------------------------------------------------ 보조
+
+    private List<InspectionItem> modelIssues(long projectId) {
+        return qualityService.inspect(projectId).stream().filter(i -> MODEL_RULES.contains(i.finding().rule())).toList();
+    }
 
     private Account admin() {
         return accountRepository.findAll().stream().filter(account -> "admin".equals(account.getUsername())).findFirst().orElseThrow();

@@ -9,7 +9,7 @@
   - 우선순위는 기존 로드맵·기록에 있던 값을 유지한다. 기록에 우선순위가 없던 항목은 **(임시)** 로 표시했다 — 착수 전에 사용자와 확정한다.
   - 완료되면 completed-work.md 로 옮기고 여기서 지운다. 남은 범위가 있으면 그 부분만 남긴다. 같은 일이 다시 나오면 새 항목을 만들지 않고 기존 항목을 고친다.
   - 상세 근거는 각 항목의 "참고 사항"에 연결한 기능 기록에 있다.
-  - **문서 구조** : 작업 상태는 이 문서와 [completed-work.md](completed-work.md) 에서만 관리한다. 완료된 작업의 상세 기록은 `completed/`, 진행 중 작업의 상세 설계는 필요할 때만 `ongoing/`(지금 : 없음 — [DB-1] 은 2026-11-25 완료로 [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md)), 상태와 무관한 기술 기준·결정 기록은 `reference/` 에 둔다. `completed/` 에 기록이 있어도 그 기능의 후속이 모두 끝난 것은 아니다 — 이 문서에서 확인한다. 상세 설계가 필요한 작업만 `ongoing/` 에 문서를 만들고, 끝나면 `completed/` 로 옮기며 링크를 함께 고친다. 상태 보고만을 위한 문서는 만들지 않는다.
+  - **문서 구조** : 작업 상태는 이 문서와 [completed-work.md](completed-work.md) 에서만 관리한다. 완료된 작업의 상세 기록은 `completed/`, 진행 중 작업의 상세 설계는 필요할 때만 `ongoing/`(지금 : 없음 — [AI-6] 은 2026-11-27 완료로 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md), [DB-1] 은 2026-11-25 완료로 [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md)), 상태와 무관한 기술 기준·결정 기록은 `reference/` 에 둔다. `completed/` 에 기록이 있어도 그 기능의 후속이 모두 끝난 것은 아니다 — 이 문서에서 확인한다. 상세 설계가 필요한 작업만 `ongoing/` 에 문서를 만들고, 끝나면 `completed/` 로 옮기며 링크를 함께 고친다. 상태 보고만을 위한 문서는 만들지 않는다.
 - **상태 값** : 미착수 · **개발 대기**(정책 확정, 코드 미구현) · 진행 중 · 부분 완료 · 검증 필요(구현 또는 운영 준비 뒤 실증·외부 검토 필요) · 결정 필요 · 보류. **정책 확정과 구현 완료는 다르다** — 7.2 의 결정은 방향만 정한 것이고, 완료는 구현·테스트·문서 검증 뒤 completed-work.md 에만 적는다.
 - **최종 갱신일** : 2026-11-25 ([DB-1] PostgreSQL 단일화 완료로 completed-work.md 로 옮김 — 그 밖의 집계는 2026-11-21 기준)
 
@@ -19,9 +19,9 @@
 |---|---|
 | P0 — 필수 수정 | 0 (현재 확인된 데이터 손실·보안·주요 장애 없음) |
 | P1 — 핵심 기능 보완 | 9 (2026-11-25 [DB-1] PostgreSQL 단일화를 추가했다가 같은 날 완료로 completed-work.md 로 옮김, 2026-11-21 P3 항목 [M-DDL-PERF] 가 P1 절에 있던 것을 P3 절로 옮김, 2026-11-18 [DICT-2] 를 추가했다가 같은 날 완료로 completed-work.md 로 옮김, 2026-11-20 [M-6]·[M-2] 완료로 completed-work.md 로 옮김) |
-| P2 — 일반 개선 | 22 (2026-11-21 M-7 6차에서 [M-EXCHANGE-PERF]·[M-MAPPING-PERF] 등록, 2026-11-21 M-7 4차에서 [M-GEN-PERF]·[M-REL-APPROVAL] 등록, 2026-11-16 DEC 결정의 후속 [COL-TERM-2]·[AI-5-MSG] 를 추가했다가 같은 날 구현 완료로 completed-work.md 로 옮김, 2026-11-17 기존 결함 [DICT-1] 추가 → 2026-11-18 수정 완료로 completed-work.md 로 옮김, 2026-11-20 M-2 개선 2차 측정에서 [M-DIAG-PERF] 추가 → 같은 날 완료로 completed-work.md 로 옮김) |
+| P2 — 일반 개선 | 23 (2026-11-27 AI-6 완료로 completed-work.md 로 옮기고 [PRJ-DEL] 등록, 2026-11-26 AI-6 2차 최종 보완에서 [M-DIAG-FKTYPE] 등록, 2026-11-21 M-7 6차에서 [M-EXCHANGE-PERF]·[M-MAPPING-PERF] 등록, 2026-11-21 M-7 4차에서 [M-GEN-PERF]·[M-REL-APPROVAL] 등록, 2026-11-16 DEC 결정의 후속 [COL-TERM-2]·[AI-5-MSG] 를 추가했다가 같은 날 구현 완료로 completed-work.md 로 옮김, 2026-11-17 기존 결함 [DICT-1] 추가 → 2026-11-18 수정 완료로 completed-work.md 로 옮김, 2026-11-20 M-2 개선 2차 측정에서 [M-DIAG-PERF] 추가 → 같은 날 완료로 completed-work.md 로 옮김) |
 | P3 — 장기 검토 | 14 (후속 [UI-HELP]·[AI-MCP] 포함, 8.3 / 2026-11-19 [COMMON-LIST]·[UI-1] 결정 필요 추가 / 2026-11-20 [M-DDL-PERF] 추가) |
-| 상태별 (2026-11-21 재집계) | P1 9 = 부분 완료 5 (M-4·M-5·M-7·M-15·AI-2 — 2026-11-20 M-6 완료) · 검증 대기 4 (AI-5-EVAL 실증·M-0·M-14·AI-3 구현 완료 후 확인 — 2026-11-20 M-2 완료) · 미착수 0 / P2 22 = 부분 완료 7 (AI-5-QUAL·M-8·M-11·AI-6·AUTH-1·PRJ-1·M-3) · 검증 대기 1 (AI-4) · 정책 검토 1 (M-REL-APPROVAL) · 미착수 13 (2026-11-21 M-GEN-PERF 추가, 같은 날 M-7 6차에서 M-EXCHANGE-PERF·M-MAPPING-PERF 추가) / P3 14 = 부분 완료 1 (UI-HELP) · 구현 완료·검증 대기 1 (AI-MCP) · 결정 필요 3 (UI-DASH·COMMON-LIST·UI-1) · 보류 2 (AI-3-STREAM·U-07) · 미착수 7 (2026-11-20 M-DDL-PERF 추가) |
+| 상태별 (2026-11-21 재집계) | P1 9 = 부분 완료 5 (M-4·M-5·M-7·M-15·AI-2 — 2026-11-20 M-6 완료) · 검증 대기 4 (AI-5-EVAL 실증·M-0·M-14·AI-3 구현 완료 후 확인 — 2026-11-20 M-2 완료) · 미착수 0 / P2 23 = 부분 완료 6 (AI-5-QUAL·M-8·M-11·AUTH-1·PRJ-1·M-3 — 2026-11-27 AI-6 완료) · 검증 대기 1 (AI-4) · 정책 검토 1 (M-REL-APPROVAL) · 미착수 15 (2026-11-21 M-GEN-PERF 추가, 같은 날 M-7 6차에서 M-EXCHANGE-PERF·M-MAPPING-PERF 추가, 2026-11-26 M-DIAG-FKTYPE 추가, 2026-11-27 PRJ-DEL 추가) / P3 14 = 부분 완료 1 (UI-HELP) · 구현 완료·검증 대기 1 (AI-MCP) · 결정 필요 3 (UI-DASH·COMMON-LIST·UI-1) · 보류 2 (AI-3-STREAM·U-07) · 미착수 7 (2026-11-20 M-DDL-PERF 추가) |
 | 그중 상태가 "검증 필요" | 4 (AI-5-EVAL, M-0, M-14, AI-4) — AI-5-EVAL 은 외부 환경(실제 레거시 원본·사람 판정자) 실증 대기 |
 | 결정 필요 사항 (7.1) | 0 (2026-11-16 DEC 29개 모두 결정 — 7.2) |
 | 결정 완료 (7.2) | 32 (DEC-01 · DEC-24 · DEC-25 + 2026-11-16 DEC-02~DEC-32 29개) — 구현·실증·외부 검토가 남은 결정은 해당 작업 항목에서 관리 |
@@ -78,7 +78,7 @@
   - 성능·안정성 : ④ 컬럼 전체 메모리 로딩 구조 개선 검토 — 대량 데이터(수십만 컬럼)는 진단 결과 저장(AI-6)이나 SQL 로 거를 수 있는 유형 분리 ⑤ 요청당 메모리 할당 분석 (컬럼 10만 모델 요약 약 600~740 MB, 테스트 환경 측정) ⑥ PostgreSQL 컬럼 10만 기존 `/summary` 의 시드 직후 첫 측정 5.6초 이상값 추적 (원인 미확인) ⑦ PostgreSQL SmokeTest 첫 로그인 연결 끊김 1회 — 재실행 2회에서 재현되지 않음, 재현 여부 확인.
   - 표준 도메인 이름 ([DICT-2]·후속 완료 2026-11-18 뒤 남은 정책 검토, 결정 전 구현하지 않음) : ⑦ 예전 중복 도메인 정리 방법(진단만 있음 — 병합·참조 이전 기능을 둘지) ⑧ 운영 DB 에 중복이 없음을 확인한 뒤 DB UNIQUE(생성 컬럼 + 유일 인덱스, 다음 증분 마이그레이션 — 2026-11-23 V2 사용 뒤 V3) 추가 여부 — 지금은 프로젝트 행 배타 잠금이라 앱 밖 직접 쓰기는 막지 못한다 ⑨ 도메인 등록 잠금의 대기 영향(생성·가져오기 중에는 기다린다) ⑩ 대소문자 비교가 등록·용어 조회 = DB `lower()`, 엑셀 = Java `toLowerCase(Locale.ROOT)` 라 특수 유니코드 대소문자(예 : İ)는 경로마다 다를 수 있다(한글·영문·Ä 는 H2·PostgreSQL 같은 결과로 확인).
   - 다른 작업으로 이관 : DBMS 식별자 문자·길이·예약어(D3·D4) → [M-7] (D3 은 M-7 보강 1차로 완료 2026-11-17, 예약어는 P13 으로 제외), 진단 결과 저장·상태 관리·규칙 on/off → [AI-6].
-- 완료 조건 (로드맵) : 명명 규칙이 목록화·구현되어 AI-6 에서 호출되고 기존 기능이 회귀 없이 동작한다. (규칙 목록·구현은 3차로 끝났고, AI-6 호출이 남았다.)
+- 완료 조건 (로드맵) : 명명 규칙이 목록화·구현되어 AI-6 에서 호출되고 기존 기능이 회귀 없이 동작한다. (규칙 목록·구현은 3차로 끝났고, AI-6 2차(2026-11-26, 커밋 전)가 16규칙을 저장 검사에서 그대로 호출한다 — 판정 결과 동일, 용어 그룹 fingerprint 만 v2.)
 - 참고 사항 : [standardization-quality-rules-m5.md 9장](completed/standardization-quality-rules-m5.md), [standardization-quality-m5.md 6장](completed/standardization-quality-m5.md).
 
 ### [M-7] 매핑 · 물리명 추천 후속
@@ -186,22 +186,19 @@
 - 엑셀 Export 후속 검토 : 500건 쪽 단위 읽기 중 다른 사용자의 추가·삭제로 생길 수 있는 누락·중복, 다중 스키마 모델의 재업로드 한계(테이블 업로드는 기본 스키마로 등록, `스키마명.테이블명` 컬럼 행은 그 스키마가 없으면 실패).
 - 참고 사항 : [integrated-ddl-export-m11.md 12·13장](completed/integrated-ddl-export-m11.md). 엑셀 Export 의 남은 한계(참고 열은 다시 올려도 반영되지 않음, 다중 스키마 왕복, 오프셋 읽기 중 동시 변경, 대규모 측정)는 13.4·13.5.
 
-### [AI-6] 규칙 기반 메타데이터 품질 검사
-
-- 상태: 부분 완료 (개별 검증 로직만) · 우선순위: P2 · 선행 작업: AI-1 (M-5 규칙 공유)
-- 남은 작업 : 기본 규칙 세트·심각도·프로젝트별 on/off(U-16), 진단 결과 저장, fingerprint 로 결과 식별·신규/유지/해결 상태 관리. M-5 3차(2026-11-17)의 표준화 규칙 목록 `StandardizationRule`(심각도 3단계, 규칙별 값 확정)·판정 결과 `Finding`·`FindingFingerprint`(계산만, 저장 없음)를 재사용한다. `lexorma-ai` 는 아직 이 진단을 호출하지 않는다 — [standardization-quality-rules-m5.md 2장](completed/standardization-quality-rules-m5.md). 상세 범위는 [ai-metadata-roadmap.md 6단계](reference/ai-metadata-roadmap.md#6단계-규칙-기반-메타데이터-품질-검사).
-
 ### [AI-7] AI 기반 품질 검사 · 개선 권고
 
 - 상태: 미착수 · 우선순위: P2 · 선행 작업: AI-4, AI-6 — [7단계](reference/ai-metadata-roadmap.md#7단계-ai-기반-품질-검사-및-개선-권고)
 
 ### [AI-8] 정기 배치 · 수동 검사 실행
 
-- 상태: 미착수 · 우선순위: P2 · 선행 작업: AI-6 — 스케줄러·중복 실행 방지(U-17), 야간 배치 기본값(U-18), 운영 지표(U-22) — [8단계](reference/ai-metadata-roadmap.md#8단계-정기-배치-및-수동-검사-실행)
+- 상태: 미착수 · 우선순위: P2 · 선행 작업: AI-6 (2026-11-27 완료) — 스케줄러·중복 실행 방지(U-17), 야간 배치 기본값(U-18), 운영 지표(U-22) — [8단계](reference/ai-metadata-roadmap.md#8단계-정기-배치-및-수동-검사-실행)
+- AI-6 에서 넘어온 검토 과제 (2026-11-27, AI6-CLOSE-07 — [ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 48.9·49.6·50장) : 자동·정기·증분 검사, 테이블 단위 검사, **대규모 최초 전체 검사 구조 개선** (결과 전체를 한 판정 스냅숏·한 저장 트랜잭션에서 다룬다 — 증분 검사만으로 해결된다고 보지 않는다), **30만 컬럼 이상 메모리 부담** (30만 컬럼에서 힙 2GB 의 약 75%, 50만 이상 미실측), **연속 검사 직후 조회 지연** (정리 전 결과 목록 0.84~0.95초, autovacuum 뒤 0.13~0.21초), 검사 빈도에 따른 저장 공간·WAL 영향, 실행 이력 누적 규모 분석, 검사 결과 최신성·사용자 취소 필요성.
 
 ### [AI-9] AI 품질 검사 보고서 · 이력
 
-- 상태: 미착수 · 우선순위: P2 · 선행 작업: AI-6, AI-7, AI-8 — 보고서 보관(U-06) — [9단계](reference/ai-metadata-roadmap.md#9단계-ai-품질-검사-보고서-및-이력-관리)
+- 상태: 미착수 · 우선순위: P2 · 선행 작업: AI-6 (2026-11-27 완료), AI-7, AI-8 — 보고서 보관(U-06) — [9단계](reference/ai-metadata-roadmap.md#9단계-ai-품질-검사-보고서-및-이력-관리)
+- AI-6 에서 넘어온 검토 과제 (2026-11-27, AI6-CLOSE-04·05 — [ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 49.3·50장) : 실행 이력 보존 정책(보존 기간·최대 실행 건수 — 지금 정하지 않았다), 최초·최종 실행 FK(`FK_INSP_RSLT_01/02`) 참조 관계 분석, **실행 이력 삭제 비용 개선** (구조 D 에서 실행 행 하나를 지울 때마다 최종 실행 FK 확인이 그 프로젝트 결과를 훑는다 — 결과 30.6만 기준 실행 1건당 약 0.17초, 1,000건 삭제 181초 중 173초. 실행 수 제한만으로 해결된다고 보지 않는다 — 결과 수에도 비례), 과거 집계·품질 추세 보존, 검사 결과 내보내기·보고서.
 
 ### [AI-10] AI 기반 SQL 작성 · 분석 조언 (실행 불가)
 
@@ -241,6 +238,13 @@
 - **DEC-19 확정 (2026-11-16)** : 데이터 사전 승인 최소 역할 DBA 유지, 엑셀 다운로드는 USER 이상 유지 — VIEWER 다운로드는 허용하지 않는다(M-11 Export 도 USER). 관리 프로젝트가 없는 사용자의 프로젝트 관리 화면은 안내와 허용된 등록 동작(DBA 이상이면 프로젝트 등록)을 제공한다 — **2026-11-16 구현** (화면, completed-work.md [AUTH-1]).
 - 남은 작업 : 컬럼 관리 화면의 VIEWER 조회, 역할 변경 안내 문구, 비밀번호 초기화 시 대상 세션 종료, `POST /api/insertDataDictionary/standardWords` 빈 본문 500 → 400, 승인 버튼 흐름·다른 브라우저·엑셀 실제 조작 브라우저 검증.
 - 참고 사항 : [ui-action-authorization-audit.md 9·10.5장](reference/ui-action-authorization-audit.md). ADMIN 에게 모든 프로젝트 관리 권한을 자동으로 주지 않는다.
+
+### [PRJ-DEL] 장시간 프로젝트 삭제 안정성
+
+- 상태: 미착수 · 우선순위: P2 · 선행 작업: 없음 (2026-11-27 AI-6 최종 승인에서 등록 — AI6-CLOSE-06)
+- 배경 : 프로젝트 삭제는 한 HTTP 요청·한 트랜잭션이다. AI-6 의 저장 구조 D 에서 실행 이력이 많은 프로젝트는 삭제가 오래 걸린다 (결과 30.6만·실행 1,000건 181초 — [ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 49.3·50장). 다른 대량 모델 데이터도 같은 경로를 탄다.
+- 검토 과제 : 장시간 삭제 요청, HTTP·리버스 프록시 타임아웃, 클라이언트 연결이 끊긴 뒤 서버 처리 상태(트랜잭션은 계속되는지), 삭제 완료 여부의 사용자 확인, 중복 삭제 요청 방지, 장시간 트랜잭션·잠금 영향. 구현 방식(비동기 삭제·진행 상태 등)은 별도 설계 때 사용자와 정한다 — 지금 정한 것은 없다.
+- 미확인 : 실제 HTTP·프록시 타임아웃 환경에서의 동작.
 
 ### [PRJ-1] 프로젝트 운영 후속
 
@@ -286,6 +290,13 @@
 - 발견 (M-7 4차 [31.9](completed/subtype-physical-transformation.md), 6차 재측정 [33장](completed/subtype-physical-transformation.md)) : 정합성 비교(요약·목록)는 요청마다 모델 전체를 메모리에서 진단하므로 상속 구조 판정도 매핑된 서브타입 수에 비례한다 — PostgreSQL 엔터티 10,000개(서브타입 약 9,000)에서 요약·목록 4차 0.74~0.81s, 6차 0.96~1.02s (엔티티 적재 약 68,000~70,000, 상속 행을 끈 기준값 82ms). 6차 수치가 큰 것은 서버 코드 변경 없이(4차 커밋 이후 운영 코드 동일) 측정 모델·동시 부하 차이로 보며 원인은 확인하지 않았다.
 - 검토 대상 : 모델 전체 정합성 진단 비용, 상속 구조 행 증가에 따른 응답 시간, 요약 집계와 상세 비교의 조회 범위 분리, DB 투영·집계 최적화, 엔티티 적재 줄이기.
 - 지킬 것 : 비교 상태(MATCH·MISMATCH·UNMAPPED·NOT_COMPARABLE)·`INHERITANCE` 판정(`SubtypePlanContext.inspect` = 생성의 `ancestor()` 판단)·요약 카드 수와 필터 결과 수의 일치·PK 순서/길이 WARNING 계약을 바꾸지 않는다. 판정 결과를 저장하는 방식은 별도 정책 결정 없이 도입하지 않는다.
+
+### [M-DIAG-FKTYPE] 물리 구조 진단 — FK 참조 컬럼 타입 불일치
+
+- 상태: 미착수 · 우선순위: P2 · 선행 작업: 없음 (2026-11-26 AI-6 2차 최종 보완에서 등록 — 사용자 확정 : FK 타입 불일치는 AI-6 표준화 품질 검사가 아니라 물리 모델 구조 진단의 책임, 같은 문제를 두 곳에서 판정하지 않는다)
+- 배경 : FK 등록·논리→물리 생성·FK 보정·상속 점검은 `TableDdlGenerator.isReferenceTypeCompatible` 로 호환되지 않는 FK 를 **거절**하고, DDL 생성은 `checkReferenceType` 으로 **경고**(타입 계열 다름 / 길이·정밀도만 다름)만 낸다. 지금 [모델 구조 진단](`ModelStructureDiagnosticService`, DEC-09/12)에는 타입 유형이 없어 FK 를 만든 뒤 컬럼 타입을 바꾼 경우가 DDL 경고로만 보인다 ([completed/ai-metadata-quality-diagnosis.md 43장·46.6](completed/ai-metadata-quality-diagnosis.md)).
+- 할 일 : `FK_TYPE_MISMATCH` 진단 유형 추가 검토 — 기존 FK 참조 관계 기준, 복합 FK 는 컬럼 짝마다, FK 생성 뒤 컬럼 타입 변경으로 생긴 불일치 탐지, 두 판정 함수의 책임·의미 차이 확인(거절 기준 vs 경고 기준)과 재사용(단순 타입 문자열 비교로 만들지 않는다), DBMS 별 타입 호환성, DDL 경고와 판정 기준 일관성, 진단 화면 표시, 통합 테스트. 호환 불가·길이 차이의 심각도는 이 작업의 설계 때 기존 판정 정책을 보고 정한다. 관련 기존 항목 : [M-8] 의 `REF_COLUMN` 관계 타입 검사·타입 호환 표의 DBMS 4종 실측.
+- AI-7 은 필요하면 이 진단 결과를 활용하는 방향으로 검토한다 (AI-6 에 규칙을 넣지 않는다).
 
 ## 6. P3 — 장기 검토
 
@@ -557,8 +568,9 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 ### 8.6 AI 공통 실행 안정성 개선 완료 뒤 순서 (2026-11-25 사용자 지시)
 
 1. ~~[AI-4] AI 공통 실행 안정성 개선~~ — 완료 (2026-11-25, completed-work.md)
-2. ~~[DB-1] PostgreSQL 단일화 (H2 지원 종료)~~ — **완료 (2026-11-25, 1~3차·FINAL 로컬 구현·통합 검증, completed-work.md [DB-1], [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md))**. 남은 것은 구현이 아니라 후속 확인 : ① 사용자 통합 커밋 (PG-D42 — 에이전트는 스테이징·커밋·푸시하지 않음, 다른 세션의 인덱스 `AD` 7개 제외) ② 푸시 뒤 첫 원격 GitHub Actions `Test (dev)` 두 Job 결과·시간·테스트 힙 여유 확인 (문서 71·75장 — 실패하면 로컬 동등 실행 61장과 비교)
-3. [AI-6] 메타데이터 품질 진단 — 대기 : 2 의 원격 CI 확인 뒤 사용자와 착수 (PG-D15). 8.5 의 4번과 같은 작업이며 범위는 바꾸지 않는다.
+2. ~~[DB-1] PostgreSQL 단일화 (H2 지원 종료)~~ — **완료 (2026-11-25)** : 1~3차·FINAL 로컬 구현·통합 검증 ([completed/postgresql-only-migration.md](completed/postgresql-only-migration.md)), 사용자 통합 커밋 `c8bd92b`, 원격 GitHub Actions 전체 Job 성공 — **사용자 확인에 따른 완료** (에이전트는 원격 실행 로그를 보지 못했다). 남은 확인 없음 (원격 CI 의 시간·테스트 힙 수치는 기록하지 않았다)
+3. ~~[AI-6] 메타데이터 품질 진단~~ — **완료 (2026-11-27, 로컬 구현·검증)** : 1~3차·FINAL·FINAL 최종 보완·최종 승인 ([completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 1~50장). 원격 CI 는 사용자 커밋·푸시 뒤 확인. 8.5 의 4번과 같은 작업.
+4. **다음 작업 : [AI-7] AI 기반 품질 검사·개선 권고** — 착수하지 않았다 (사용자와 시작 시점을 정한다). AI-8·AI-9 는 그 뒤, [PRJ-DEL] 은 별도.
 
 ## 9. 작업 이력
 
@@ -672,3 +684,7 @@ DEC-21 (추정 관계 기본 숨김) ─▶ AI-12 · M-13 화면 · AI-MCP 공�
 | 2026-11-25 | [DB-1] 2차 — PostgreSQL 전용 운영·설정·배포 구현 (H2 의존성·프로필·마이그레이션·배포 파일 삭제, 관리 DB 설정 확인·URL 비밀번호 거절, SQL·동시성 H2 분기 제거, Compose·외부 PostgreSQL, 테스트 전용 키·안전 검증). 전체 1,618 실패 0, 기동·Docker·동시성 3회 검증. 3차·FINAL 대기 (completed/postgresql-only-migration.md 33~45장) | [DB-1] |
 | 2026-11-25 | [DB-1] 3차 — 테스트·CI PostgreSQL 단일화 및 운영 설정 보완 (PG-D37~D44) : local·dev 고정 계정 삭제, 외부 Compose 표준 키·비밀번호 서버 정책, URL 인증정보 구성 요소 검사(오탐 제거), 테스트 H2 분기·고정 계정 전부 삭제, `s4TwoRenames` 감시 PID·차단 관계 기반, `reWriteBatchedInserts` 실제 적용 검증, CI PostgreSQL 서비스·원본 수집·Docker 빌드 Job. 로컬 CI 동등 1,647 실패 0, 원격 CI 미실행 (completed/postgresql-only-migration.md 46~58장) | [DB-1] |
 | 2026-11-25 | [DB-1] FINAL — 최종 통합 검증 및 완료 (PG-D45~D51) : PostgreSQL 18.6 새 빈 DB 전체 2회 · 15.20 1회 (각 1,647 · 실행 1,620 · 실패 0 · 원본 수집 19), 기동 F01~F15, 단일 JAR·기본/외부 Compose·Docker Secrets(재시작·재수집), 업무 흐름·영속성·세션, 실제 Ollama 8건, MCP Tool 13개 실제 호출, 브라우저 업무·권한·409·ko/en·light/dark·1440/375, H2 경로 0, 테스트 힙 기록 정정. 운영·테스트 코드 변경 없음(문서 경로 주석 3곳). [DB-1] 을 completed-work.md 로 옮김, 통합 커밋·원격 CI 는 사용자 (completed/postgresql-only-migration.md 59~77장) |
+| 2026-11-26 | [AI-6] 2차 최종 보완 — AI6-2-01~07 확정 반영, 부분 실패 보완(모든 묶음 실패 = FAILED, 저장 실패 코드 구분, 판정 서비스 예외의 rollback-only 처리, 묶음 중간 결과 제외, fingerprint 충돌 검사), v2 키 길이 접두, 실행 응답에 적용 규칙 수·부분 실패·실패 규칙, 명명 전수 검토(V4 그대로), 저장 공간 분석, FK 타입 불일치를 [M-DIAG-FKTYPE] 로 분리. 커밋 전 | [AI-6]·[M-DIAG-FKTYPE] |
+| 2026-11-26 | [AI-6] 2차 — 규칙 기반 품질 검사 실행·결과 저장 : V4 (검사 규칙 설정·실행·실행 규칙·실행 결과·결과·결과 이력, 예제 포함), 16규칙 재사용·용어 그룹 fingerprint v2, 비동기 실행기·REPEATABLE READ 스냅숏·단일 저장 트랜잭션·재시작 정리, 생명주기·예외·규칙 설정·조회 API `/api/qualityInspection/**`, L01~L18·C01~C19·스냅숏 테스트, 컬럼 10만 기초 성능. 커밋 전, 2차 결정 AI6-2-01~07 사용자 확인 대기 | [AI-6] |
+| 2026-11-25 | [DB-1] 사용자 통합 커밋 `c8bd92b` · 원격 GitHub Actions 전체 Job 성공 (사용자 확인) / [AI-6] 1차 — 규칙 기반 품질 진단 현황 분석·상세 설계 (M-5 규칙 16개·fingerprint v1·다른 진단 체계·모듈·실행·저장·상태·동시성·대량·증분·권한·UI·AI 연계·DB·API·테스트, 결정 요청 AI6-D01~D22). 코드·DB 변경 없음 (completed/ai-metadata-quality-diagnosis.md) | [DB-1]·[AI-6] |
+| 2026-11-27 | [AI-6] 최종 승인(AI6-CLOSE-01~10) — 저장 구조 D·삭제 비용 수용, AI-6 완료로 completed-work.md 로 옮김(설계 문서 completed/ 이동), 후속 [AI-8]·[AI-9] 검토 과제 추가, [PRJ-DEL] 등록, 다음 작업 AI-7 (미착수) |

@@ -9,10 +9,8 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.controller.StandardizationQualityRestController;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Attribute;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Issue;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.IssueType;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Search;
+import com.lexorma.data.dictionary.quality.InspectionItem;
+import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Summary;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
@@ -28,10 +26,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -43,15 +37,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * M-5 2차 : 표준화 품질 진단 (실제 JPA 매핑·쿼리).
- * 요약과 목록이 같은 기준인지, 조건·페이징·정렬, 프로젝트 격리, 권한, 조회가 아무것도 바꾸지 않는지 확인한다.
+ * 대시보드 요약과 판정 결과(저장 검사의 모델 묶음)가 같은 기준인지, 프로젝트 격리, 권한, 조회가 아무것도 바꾸지 않는지 확인한다.
+ * (AI-6 3차 : 실시간 목록 API 를 지워 그 목록의 조건·페이징·정렬 검증도 지웠다 — 저장 결과 목록은 QualityInspectionIntegrationTest.)
  * 판정 규칙의 세부 사례는 StandardizationQualityServiceTest 에 있다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 class StandardizationQualityIntegrationTest {
 
-    private static final Pageable PAGE = PageRequest.of(0, 100);
-    private static final Search ALL = new Search(null, null, null, null, null);
+    private static final java.util.Set<StandardizationRule> COLUMN_RULES = java.util.EnumSet.of(StandardizationRule.TERM_NOT_LINKED,
+            StandardizationRule.COLUMN_NAME_MISMATCH, StandardizationRule.DOMAIN_DEFINITION_MISMATCH);
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -70,7 +65,7 @@ class StandardizationQualityIntegrationTest {
     }
 
     @Test
-    @DisplayName("진단 요약·목록 : 유형별 건수와 문제가 있는 컬럼 수, 조건·페이징·정렬, 프로젝트 격리, 조회 전용")
+    @DisplayName("진단 요약·판정 : 유형별 건수와 문제가 있는 컬럼 수(대시보드 요약), 판정 결과의 대상·현재/기대 값·근거, 프로젝트 격리, 조회 전용")
     void quality() {
         AccountDto admin = loginAsAdmin("m5-quality");
         long projectId = admin.getProjectId();
@@ -91,45 +86,23 @@ class StandardizationQualityIntegrationTest {
         // 컬럼명도 길이도 다르다 (문제 2건, 컬럼 1개)
         ColumnInfo both = column(projectId, orderTable, "CODE_NAME", "VARCHAR", 20, codeName, false);
 
-        // ---- 요약 : 문제 3건, 문제가 있는 컬럼 2개
+        // ---- 요약 (대시보드) : 문제 3건, 문제가 있는 컬럼 2개
         assertThat(qualityService.selectSummary(admin)).isEqualTo(new Summary(4, 2, 1, 1, 1));
 
-        // ---- 목록 : 테이블명 → 컬럼 순서, 요약과 같은 건수
-        Page<Issue> all = qualityService.selectIssues(admin, ALL, PAGE);
-        assertThat(all.getTotalElements()).isEqualTo(3);
-        assertThat(all.getContent()).extracting(Issue::type, Issue::schemaName, Issue::tableName, Issue::columnName, Issue::actualValue, Issue::expectedValue, Issue::isApproval)
+        // ---- 판정 (저장 검사가 쓰는 결과, AI-6 3차에 실시간 목록 API 대신) : 테이블명 → 컬럼 순서, 요약과 같은 건수
+        List<InspectionItem> issues = columnIssues(projectId);
+        assertThat(issues).extracting(i -> i.finding().rule(), i -> i.details().get("schemaName"), i -> i.details().get("tableName"), i -> i.details().get("columnName"),
+                        i -> i.finding().actualValue(), i -> i.finding().expectedValue())
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(IssueType.TERM_NOT_LINKED, "DEFAULT", "TB_CODE", "CD_NM", null, null, true),
-                        org.assertj.core.groups.Tuple.tuple(IssueType.COLUMN_NAME_MISMATCH, "sales", "TB_ORDER", "CODE_NAME", "CODE_NAME", "CD_NM", false),
-                        org.assertj.core.groups.Tuple.tuple(IssueType.DOMAIN_DEFINITION_MISMATCH, "sales", "TB_ORDER", "CODE_NAME", "VARCHAR(20)", "VARCHAR(10)", false));
-        Issue domainIssue = all.getContent().get(2);
-        assertThat(domainIssue.attributes()).containsExactly(Attribute.LENGTH);
+                        org.assertj.core.groups.Tuple.tuple(StandardizationRule.TERM_NOT_LINKED, "DEFAULT", "TB_CODE", "CD_NM", null, null),
+                        org.assertj.core.groups.Tuple.tuple(StandardizationRule.COLUMN_NAME_MISMATCH, "sales", "TB_ORDER", "CODE_NAME", "CODE_NAME", "CD_NM"),
+                        org.assertj.core.groups.Tuple.tuple(StandardizationRule.DOMAIN_DEFINITION_MISMATCH, "sales", "TB_ORDER", "CODE_NAME", "VARCHAR(20)", "VARCHAR(10)"));
+        InspectionItem domainIssue = issues.get(2);
+        assertThat(domainIssue.finding().evidence()).containsEntry("attributes", "LENGTH");
         assertThat(domainIssue.tableId()).isEqualTo(orderTable.getId());
-        assertThat(domainIssue.schemaId()).isEqualTo(sales.id());
-        assertThat(domainIssue.columnId()).isEqualTo(both.getId());
-        assertThat(domainIssue.message()).isNotBlank();
-
-        // ---- 조건 : 유형, 스키마, 승인 상태, 테이블명·컬럼명 검색 (모르는 검색 컬럼은 무시)
-        for (IssueType type : IssueType.values()) {
-            assertThat(qualityService.selectIssues(admin, new Search(type, null, null, null, null), PAGE).getContent()).extracting(Issue::type).containsExactly(type);
-        }
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(null, sales.id(), null, null, null), PAGE))).containsExactly(both.getId(), both.getId());
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(null, null, true, null, null), PAGE))).containsExactly(notLinked.getId());
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(null, null, false, null, null), PAGE))).containsOnly(both.getId());
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(null, null, null, "tableName", "order"), PAGE))).hasSize(2);
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(null, null, null, "columnName", "cd_"), PAGE))).containsExactly(notLinked.getId());
-        assertThat(columnIds(qualityService.selectIssues(admin, new Search(IssueType.TERM_NOT_LINKED, sales.id(), null, null, null), PAGE))).isEmpty();
-        assertThat(qualityService.selectIssues(admin, new Search(null, null, null, "unknown", "x"), PAGE).getTotalElements()).isEqualTo(3);
-
-        // ---- 페이징·정렬 (허용하지 않은 정렬 필드는 무시), 범위를 벗어난 페이지
-        Page<Issue> second = qualityService.selectIssues(admin, ALL, PageRequest.of(1, 2));
-        assertThat(second.getTotalElements()).isEqualTo(3);
-        assertThat(second.getContent()).extracting(Issue::type).containsExactly(IssueType.DOMAIN_DEFINITION_MISMATCH);
-        assertThat(qualityService.selectIssues(admin, ALL, PageRequest.of(9, 10)).getContent()).isEmpty();
-        assertThat(qualityService.selectIssues(admin, ALL, PageRequest.of(0, 10, Sort.by(Sort.Order.desc("type"), Sort.Order.asc("dropTable")))).getContent())
-                .extracting(Issue::type).containsExactly(IssueType.DOMAIN_DEFINITION_MISMATCH, IssueType.COLUMN_NAME_MISMATCH, IssueType.TERM_NOT_LINKED);
-        assertThat(qualityService.selectIssues(admin, ALL, PageRequest.of(0, 10, Sort.by(Sort.Order.desc("tableName")))).getContent())
-                .extracting(Issue::tableName).containsExactly("TB_ORDER", "TB_ORDER", "TB_CODE");
+        assertThat(domainIssue.objectId()).isEqualTo(both.getId());
+        assertThat(issues.get(0).objectId()).isEqualTo(notLinked.getId());
+        assertThat(issues).allMatch(i -> i.finding().fingerprint().startsWith("v4:"));
 
         // ---- 조회 전용 : 컬럼명·용어 연결·타입이 그대로다
         tx.executeWithoutResult(s -> {
@@ -144,30 +117,28 @@ class StandardizationQualityIntegrationTest {
         AccountDto other = loginAsAdmin("m5-quality-other");
         term(other.getProjectId(), "코드_이름", "CD_NM", null);
         assertThat(qualityService.selectSummary(other)).isEqualTo(new Summary(0, 0, 0, 0, 0));
-        assertThat(qualityService.selectIssues(other, ALL, PAGE).getTotalElements()).isZero();
-        assertThat(qualityService.selectIssues(other, new Search(null, sales.id(), null, null, null), PAGE).getTotalElements()).as("다른 프로젝트의 스키마 ID").isZero();
+        assertThat(columnIssues(other.getProjectId())).isEmpty();
         assertThat(qualityService.selectSummary(admin).termNotLinked()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("권한 : VIEWER 부터 조회할 수 있고 승인 전 사용자는 거절된다")
+    @DisplayName("권한 : 보조 조회(도메인 이름 중복)는 VIEWER 부터, 승인 전 사용자는 거절된다")
     void authorization() {
         Project project = projectRepository.save(Project.builder().projectName("m5-quality-role").isActive(true)
                 .account(accountRepository.findAll().stream().filter(account -> "admin".equals(account.getUsername())).findFirst().orElseThrow()).build());
 
         AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, project.getId(), "900", "ROLE_VIEWER");
-        assertThat(controller.selectSummary(viewer).getBody()).isEqualTo(new Summary(0, 0, 0, 0, 0));
-        assertThat(controller.selectIssues(viewer, 0, 10, null, null, null, null, null, null).getStatusCode().value()).isEqualTo(200);
+        assertThat(controller.selectDomainDuplicates(viewer).getStatusCode().value()).isEqualTo(200);
 
         AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, project.getId(), "901", "ROLE_NOT_APPROVE");
-        assertThatThrownBy(() -> controller.selectSummary(notApproved)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectIssues(notApproved, 0, 10, null, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.selectDomainDuplicates(notApproved)).isInstanceOf(AccessDeniedException.class);
     }
 
     // ------------------------------------------------------------------ 보조
 
-    private static List<Long> columnIds(Page<Issue> page) {
-        return page.getContent().stream().map(Issue::columnId).toList();
+    /** 컬럼 3규칙의 판정 결과 (모델 판정 묶음, 완전성 규칙 제외) */
+    private List<InspectionItem> columnIssues(long projectId) {
+        return qualityService.inspect(projectId).stream().filter(i -> COLUMN_RULES.contains(i.finding().rule())).toList();
     }
 
     private AccountDto loginAsAdmin(String projectName) {

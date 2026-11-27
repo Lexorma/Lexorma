@@ -28,7 +28,7 @@ class LogicalSubjectAreaMigrationTest {
         Flyway v1 = Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration/postgresql").cleanDisabled(false).load();
         try {
             // 2026-11-22 네 번째 합침 : 예전 V2(주제 영역)는 V0·V1 에 있다 — 새 설치의 제약·예제를 본다 (예전 V1 → V2 업그레이드 검증은 더 이상 경로가 없다)
-            assertThat(v1.migrate().migrationsExecuted).isEqualTo(4); // V0~V3
+            assertThat(v1.migrate().migrationsExecuted).isEqualTo(5); // V0~V4 (V4 저장 품질 검사, AI-6 2차)
             assertThat(v1.validateWithResult().validationSuccessful).isTrue();
             var jdbc = new JdbcTemplate(dataSource);
             jdbc.update("insert into " + s + "TB_PRJ(PRJ_SN, PRJ_NM, ACTVTN_YN, AUTO_APRV_YN, DIC_ABBR_USE_YN, DB_TYPE_CD) values (900000301, 'upgrade', true, false, true, 'POSTGRESQL')");

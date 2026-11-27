@@ -176,12 +176,16 @@
   {
     "menuId": "standardization-quality",
     "path": "/standardizationQuality",
-    "title": "Standardization quality",
+    "title": "Quality check",
     "sections": [
       {
         "heading": "What it does",
         "items": [
-          "Checks columns without standard terms, column name mismatches and domain definition mismatches. It only reads and never changes the model."
+          "Checks the standard dictionary, physical model and DBMS identifiers with 20 rules and stores the results. You run checks with [Run quality check]; results reflect the data at the check basis time. Tables, columns and standard items are not changed.",
+          "Results tab: by default it lists open, non-excepted results of enabled rules. Narrow it by category (model, term, identifier), rule, severity, status, exception, rule state and last change, and open a result to see its evidence and history.",
+          "Exceptions: an exception does not resolve the problem; it keeps the result out of the default list and summary. A reason is required, and if another user changed it first, your reason is kept and the latest state is shown.",
+          "Run history tab: each run is shown as completed, partially failed, failed, empty or interrupted. A run's counts are the values when it confirmed its results, so they can differ from the current summary.",
+          "Rule settings tab: project managers and ADMIN turn each rule on or off. Results of disabled rules are not deleted, only left out of the default list and summary. Changing a setting does not run a check."
         ]
       }
     ],

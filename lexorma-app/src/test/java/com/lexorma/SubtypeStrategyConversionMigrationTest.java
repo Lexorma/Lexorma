@@ -73,7 +73,8 @@ class SubtypeStrategyConversionMigrationTest {
                 assertThat(example(v2, s)).isEqualTo(V2_EXAMPLE);
             }
 
-            var v3 = flyway(dataSource, schema, null).migrate();
+            // V2 → V3 업그레이드만 본다 (그 뒤 V4 저장 품질 검사는 이 시험과 무관 — AI-6 2차)
+            var v3 = flyway(dataSource, schema, "3").migrate();
             assertThat(v3.migrationsExecuted).isOne();
             assertThat(jdbc.queryForObject("select max(\"version\") from " + s + "\"flyway_schema_history\"", String.class)).isEqualTo("3");
             assertThat(records(jdbc, s)).as("V2 상태의 변환 기록은 그대로").isEqualTo(v2Records);
@@ -100,7 +101,7 @@ class SubtypeStrategyConversionMigrationTest {
         String s = "\"" + schema + "\".";
         Flyway flyway = flyway(dataSource, schema, null);
         try {
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5); // V0~V4 (V4 저장 품질 검사는 상속 변환 예제를 바꾸지 않는다 — AI-6 2차)
             var jdbc = new JdbcTemplate(dataSource);
             assertThat(example(jdbc, s)).isEqualTo(V3_EXAMPLE);
             constraints(jdbc, s);

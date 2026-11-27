@@ -118,15 +118,95 @@ class TermDuplicateRulesTest {
     }
 
     @Test
-    @DisplayName("fingerprint : 같은 입력이면 같은 값과 순서, 그룹 구성원이 바뀌면 다른 값")
+    @DisplayName("fingerprint 그룹 식별 (AI6-D11, 공통 인코딩 v4) : 같은 입력이면 같은 값과 순서, 그룹 구성원이 늘어도 같은 값, 그룹 키가 바뀌면 다른 값")
     void stable() {
         Input input = new Input();
         input.term(2, "회원명", "MBR_NM", 10L);
         input.term(1, "회원_명", "MBR_NM", 10L);
         List<String> first = input.run().stream().map(g -> g.finding().fingerprint()).toList();
+        assertThat(first).allMatch(fingerprint -> fingerprint.startsWith("v4:"));
         assertThat(input.run().stream().map(g -> g.finding().fingerprint()).toList()).isEqualTo(first);
+        String duplicate = abbreviationDuplicate(input);
         input.term(3, "회원 명", "MBR_NM", 10L);
-        assertThat(input.run().stream().map(g -> g.finding().fingerprint()).toList()).doesNotContainAnyElementsOf(first);
+        assertThat(abbreviationDuplicate(input)).as("구성원이 늘어도 같은 문제").isEqualTo(duplicate);
+
+        Input other = new Input();
+        other.term(2, "회원명", "MBR_NAME", 10L);
+        other.term(1, "회원_명", "MBR_NAME", 10L);
+        assertThat(abbreviationDuplicate(other)).as("약어(그룹 키)가 다르면 다른 문제").isNotEqualTo(duplicate);
+    }
+
+    @Test
+    @DisplayName("fingerprint : 용어명 = 다른 용어의 이음동의어(TERM 짝)와 금칙어(용어 1건)는 대상 ID 를 넣는 대상 식별 (공통 인코딩 v4)")
+    void pairAndSingleStayV1() {
+        Input input = new Input();
+        input.term(1, "회원_이름", "MBR_NM", 10L, 1, 2);
+        input.term(2, "회원명", "MBR_NAME", 10L);
+        input.synonym(1, "회원명");      // 용어 2 의 이름 = 용어 1 의 이음동의어 → TERM 짝
+        input.restricted(5, "회원");     // 고객의 금칙어 → 용어 1 금칙어
+        assertThat(input.run()).filteredOn(g -> g.finding().rule() == StandardizationRule.TERM_SYNONYM
+                        || g.finding().rule() == StandardizationRule.TERM_RESTRICTED_WORD)
+                .isNotEmpty().allMatch(g -> g.finding().fingerprint().startsWith("v4:"));
+    }
+
+    @Test
+    @DisplayName("fingerprint 그룹 식별 경계 (2차 최종 보완) : 구성원 제거·순서·전체 교체에도 같은 키면 같은 값, 그룹 해체 뒤 같은 키 재발도 같은 값, 다른 규칙은 다른 값")
+    void groupKeyBoundaries() {
+        Input base = new Input();
+        base.term(1, "회원_명", "MBR_NM", 10L);
+        base.term(2, "회원명", "MBR_NM", 10L);
+        base.term(3, "회원 명", "MBR_NM", 10L);
+        String duplicate = abbreviationDuplicate(base);
+
+        Input removed = new Input();                       // 구성원 하나 제거
+        removed.term(1, "회원_명", "MBR_NM", 10L);
+        removed.term(3, "회원 명", "MBR_NM", 10L);
+        assertThat(abbreviationDuplicate(removed)).isEqualTo(duplicate);
+
+        Input reordered = new Input();                     // 입력 순서가 달라도
+        reordered.term(3, "회원 명", "MBR_NM", 10L);
+        reordered.term(2, "회원명", "MBR_NM", 10L);
+        reordered.term(1, "회원_명", "MBR_NM", 10L);
+        assertThat(abbreviationDuplicate(reordered)).isEqualTo(duplicate);
+
+        Input replaced = new Input();                      // 구성원 전체 교체 (새 ID) — 같은 약어 + 도메인이면 같은 문제 (그룹 예외 정책의 의도)
+        replaced.term(21, "고객_명", "MBR_NM", 10L);
+        replaced.term(22, "고객명", "MBR_NM", 10L);
+        assertThat(abbreviationDuplicate(replaced)).isEqualTo(duplicate);
+
+        Input otherDomain = new Input();                   // 그룹 키 변경 : 도메인이 다르면 다른 그룹
+        otherDomain.term(1, "회원_명", "MBR_NM", 11L);
+        otherDomain.term(2, "회원명", "MBR_NM", 11L);
+        assertThat(abbreviationDuplicate(otherDomain)).isNotEqualTo(duplicate);
+
+        Input shared = new Input();                        // 같은 약어 · 다른 도메인 → TERM_ABBR_SHARED (다른 규칙, 같은 약어여도 다른 값)
+        shared.term(1, "회원_명", "MBR_NM", 10L);
+        shared.term(2, "회원명", "MBR_NM", 11L);
+        List<TermGroup> sharedGroups = shared.run();
+        assertThat(sharedGroups).filteredOn(g -> g.finding().rule() == StandardizationRule.TERM_ABBR_SHARED).singleElement()
+                .satisfies(g -> assertThat(g.finding().fingerprint()).startsWith("v4:").isNotEqualTo(duplicate));
+    }
+
+    @Test
+    @DisplayName("fingerprint 대상 식별 (TERM 짝) : 짝의 한쪽을 지우고 같은 이름으로 다시 만들면(새 ID) 다른 문제다")
+    void pairRecreatedIsNewProblem() {
+        Input before = new Input();
+        before.term(1, "회원_이름", "MBR_NM", 10L, 1, 2);
+        before.term(2, "회원명", "MBR_NAME", 10L);
+        before.synonym(1, "회원명");
+        Input after = new Input();
+        after.term(1, "회원_이름", "MBR_NM", 10L, 1, 2);
+        after.term(9, "회원명", "MBR_NAME", 10L);
+        after.synonym(1, "회원명");
+        String pair = before.run().stream().filter(g -> g.finding().rule() == StandardizationRule.TERM_SYNONYM).findFirst().orElseThrow().finding().fingerprint();
+        String recreated = after.run().stream().filter(g -> g.finding().rule() == StandardizationRule.TERM_SYNONYM).findFirst().orElseThrow().finding().fingerprint();
+        assertThat(pair).startsWith("v4:");
+        assertThat(recreated).startsWith("v4:").isNotEqualTo(pair);
+    }
+
+    private static String abbreviationDuplicate(Input input) {
+        return input.run().stream().filter(g -> g.finding().rule() == StandardizationRule.TERM_ABBR_DUPLICATE)
+                .map(g -> g.finding().fingerprint()).findFirst().orElseThrow();
     }
 
     // ------------------------------------------------------------------ 보조

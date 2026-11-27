@@ -87,7 +87,7 @@ export interface RequestOptions {
 }
 
 /** 다른 사용자가 그 사이 바꾼 409 (M8-C1~C3) */
-export const CONFLICT_CODES = new Set(['MODEL_CONFLICT', 'ERD_LAYOUT_CONFLICT']);
+export const CONFLICT_CODES = new Set(['MODEL_CONFLICT', 'ERD_LAYOUT_CONFLICT', 'INSPECTION_RESULT_CONFLICT', 'INSPECTION_RULE_SETTING_CONFLICT']);
 
 /**
  * 잠금 충돌 409 (M8-C4c-2 C4c-D10) : 서버가 NOWAIT 잠금을 얻지 못했다고 알려 준 경우만 (응답 reason 'LOCKED'). 데이터가 바뀐 것이 아니므로

@@ -52,7 +52,7 @@
 
 ### [DB-1] PostgreSQL 단일화 — H2 지원 종료 (2026-11-25, 1~3차 · FINAL)
 
-- 상태: **완료 — 로컬 구현 및 통합 검증 완료** (정책 PG-D01~D51). 사용자 통합 커밋 대기 (PG-D42 — 에이전트는 스테이징·커밋·푸시하지 않음), 푸시 뒤 첫 원격 GitHub Actions 확인 대기 (구현 미완료가 아니라 후속 확인 — pending-work.md 8.6). 후행 [AI-6] 은 그 뒤 (PG-D15). 상세 [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md) (1차 1~32 · 2차 33~45 · 3차 46~58 · FINAL 59~77장).
+- 상태: **완료** (정책 PG-D01~D51) — 로컬 구현·통합 검증 완료, 사용자 통합 커밋 `c8bd92b` (2026-11-25), 원격 GitHub Actions 전체 Job 성공 (**사용자 확인** — 에이전트는 원격 로그를 보지 못했다). 후행 [AI-6] 은 그 뒤 (PG-D15). 상세 [completed/postgresql-only-migration.md](completed/postgresql-only-migration.md) (1차 1~32 · 2차 33~45 · 3차 46~58 · FINAL 59~77장).
 - 전제 (PG-D31) : 실제 사용자 0명 — 하위 호환·레거시·H2 데이터 이전 도구/안내·이전 버전 업그레이드 검증 없음. 개발 데이터·다른 세션 변경은 보호.
 - 구현 내용
   - **H2 완전 제거** : H2 드라이버·콘솔 의존성, `h2-local`·`h2-docker` 프로필, `H2FileDatabaseCheck`, `db/migration/h2`, `Dockerfile-h2`·H2 Compose, 관리 DB SQL·M-8 동시성의 H2 분기(KEY SHARE 항상, `recheckOnH2` 삭제, NOWAIT 55P03 만), 테스트의 H2 분기·벤더 매개변수·`postgres()` 판별·H2 세션 감시·`H2FilePersistenceTest`. 문서 `h2-file-storage.md` 는 `reference/` → `completed/` (지원 종료 기록).
@@ -63,7 +63,7 @@
 - 검증 (FINAL, 같은 최종 코드)
   - PostgreSQL **18.6 새 빈 DB 전체 `./gradlew build` 2회 · 15.20 1회** : 각 1,647건 · 실행 1,620 · **실패 0** · 건너뜀 27(opt-in 성능 시험) · 원본 수집 19 — 누적 4,860건 실패 0. 18.6↔15.20 서버 오류 종류 동일. bootJar 3회 해시 동일.
   - 기동 F01~F15 (28개, 비밀번호 로그 0) · 단일 JAR (H2 0) · Docker 이미지 캐시 없는 빌드 · 기본 Compose · 외부 Compose · Docker Secrets (재시작 뒤 저장 비밀번호 복호화·재수집 포함) · 신규 설치·영속성·세션 유지 (18.6·15.20) · 업무 흐름(표준·논리·물리·ERD·매핑·승인·원본 수집·다중 DBMS DDL) · MCP 비활성/활성·Tool 13개 실제 호출 · 실제 Ollama 8건 (200 7 · 502 1 — 모델 한계, DB-1 결함 0) · 브라우저 (업무 흐름·권한·409 복구·ko/en·light/dark·1440/375) · 순수 단위 테스트 DB 없이 541건 · 테스트 DB 안전 검사 4종 · H2 경로 0 · 신규 운영 의존성 0.
-  - 미검증 : 원격 GitHub Actions · `actionlint` · PostgreSQL 16·17 · 인증서 인증 · 외부 MCP 클라이언트 · 리눅스 호스트 배포 · 개발 서버 실제 설정(저장소에 없음).
+  - 미검증 (FINAL 시점) : 원격 GitHub Actions(그 뒤 사용자 확인으로 성공) · `actionlint` · PostgreSQL 16·17 · 인증서 인증 · 외부 MCP 클라이언트 · 리눅스 호스트 배포 · 개발 서버 실제 설정(저장소에 없음).
   - 남은 위험 : CI 러너의 시간·테스트 힙 여유(GC 직전이 2GB 상한 근처, Full GC 0), URL 인증정보 검사는 표현 기반, `bootRun` 은 설정 누락을 Gradle 종료 코드로 넘기지 않음, 개발 서버는 `SPRING_DATASOURCE_*` 필요.
 
 ### [AI-5-REASON] AI 재검토 사유의 사용자 문구
@@ -697,6 +697,40 @@
 - 설계 결정 : 제한값(16,384/4,096/12,288/100,000, 8/4회, 24,000자, 30초/180초)·TokenEstimator 그대로, 가짜 응답·재시도·제한 우회 없음, 권한·Provider·시간·첫 요청 예산·구조화 실패는 기존 오류, 부분 답변을 만들지 못하면 최초 사유. 마이그레이션·새 의존성·새 모듈·새 설정 없음.
 - 검증 결과 : 가짜 Provider 결정적 통합 테스트 28건 (B09~B17·권한·동시 옵션·thinking 거부 포함), 실제 로컬 Ollama `gemma4:e4b` 31회(모두 200, R4 5/5 — 구조화 출력 1,457~4,039 → 1,553~1,878, 평균 38초 → 25초, B08 1차 422 → 부분 답변, 모델 평가 PASS 24·PARTIAL 5·FAIL 2 — 제품 결함 없음), 브라우저(Playwright) 가능한 12개 조합 중 8개 판정 55/55, 단일 JAR·MCP. 최종 H2 `build` 1,612건 실패 0 · 건너뜀 125, PostgreSQL 18.6 새 빈 DB 2회 각 1,612건 실패 0 · 건너뜀 46. 그 과정에서 M-8 PostgreSQL 테스트 감시 결함(트랜잭션 안 `pg_stat_activity` 백엔드 목록 고정)을 확인·수정(테스트 코드만 — [modeling-concurrency-m8.md 23장](completed/modeling-concurrency-m8.md)). 미검증 : 생각을 끌 수 없는 실제 모델, 실제 Tool 미지원 모델, 실제 외부 MCP 클라이언트, 대규모 부하. 남은 후속은 pending-work.md [AI-4].
 
+### [AI-6] 규칙 기반 메타데이터 품질 검사 — 완료 (2026-11-27, 로컬 구현·검증)
+
+- 상태: **완료 (로컬 구현·검증)** — 원격 CI 는 사용자 커밋·푸시 뒤 확인 예정. 상세 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) (1차 1~32 · 2차 33~45 · 2차 최종 보완 46 · 3차 47 · FINAL 48 · FINAL 최종 보완 49 · 최종 승인 50장). 다음 작업 AI-7 (미착수).
+- 최종 확정 (AI6-CLOSE-01~10, 2026-11-27) : 저장 구조 D 채택(`TB_INSP_RSLT` fillfactor 80, `IX_INSP_RSLT_05` 없음, 수정한 V4 유지·새 마이그레이션 없음, 기본 autovacuum, 강제 VACUUM 없음, fingerprint v4 공통 인코딩), 기존 FK·무결성 제약 유지, **대량 실행 이력 삭제 비용 수용 — 해결된 것이 아니다** (프로젝트 삭제 A/D : 실행 13건 8.8/10.0초, 100건 8.8/24.9초, 1,000건 9.0/181초 — 그중 최종 실행 FK 확인 173초; '다른 프로젝트 조회 영향 없음·무결성 문제 없음' 은 그 시험 조건의 사실), 실행 이력 수 상한·보존 기간은 정하지 않음.
+- 범위 : M-5 규칙 16 + 완전성 4 = 규칙 20개의 프로젝트 전체 수동 검사, 결과 저장·생명주기(신규·유지·재발·해결·대상 삭제)·예외·규칙 사용 여부·부분 실패, 저장 결과 화면(진단 결과·실행 이력·규칙 설정)·대시보드 카드, 실시간 진단 API·화면 제거, 실행기 메모리 최적화, fingerprint v4.
+- 최종 검증 (49장, 코드·마이그레이션 그 뒤 변경 없음) : PostgreSQL 18.6·15.20 각 1,707건 실행 1,677 실패 0 (opt-in 성능 시험 30 건너뜀), 단일 JAR 업무 57/57, FP01~16·FC-FP01~16, 예제 인덱스 166·컬럼 238, 신규 필수 설정·의존성 없음. **미검증** : Firefox·WebKit·실제 Safari, 컬럼 50만 이상, 커밋 응답만 잃는 장애의 실제 재현, 원격 GitHub Actions, 장시간 삭제 요청의 HTTP 타임아웃 영향.
+- 후속 (pending-work.md) : [AI-7] (다음), [AI-8] 대규모 최초 검사·30만 컬럼 이상 메모리·연속 검사 직후 조회 지연·저장 공간·WAL·이력 누적 규모, [AI-9] 이력 보존·FK 참조 관계·삭제 비용 개선·추세 보존, [PRJ-DEL] 장시간 프로젝트 삭제·HTTP 타임아웃, [M-DIAG-FKTYPE] FK 타입 불일치(AI-6 범위 밖).
+- 사용자 조치 : 수정 전 V4 를 적용한 개발 DB 는 Flyway checksum 불일치로 기동이 멈춘다 — 다시 만드는 것은 사용자 결정·작업 (다시 만들면 fingerprint 도 v4 로 새로 시작, 49.5).
+
+### [AI-6] 규칙 기반 품질 검사 — FINAL 최종 보완 : 저장 구조 D · fingerprint 공통 인코딩 (2026-11-26, 커밋 전)
+
+- 상태: **구현·검증 완료** — 실행 이력 누적 삭제 비용은 2026-11-27 사용자가 수용(AI6-CLOSE-02) (2026-11-27 완료 — 위 [AI-6] 완료 항목). 상세 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 49장.
+- 구현 내용 : V4 직접 수정(새 마이그레이션 없음) — `TB_INSP_RSLT` fillfactor 80, `IX_INSP_RSLT_05` 와 그 예제 인덱스 행 삭제 (PK·UNIQUE·FK·CHECK·COMMENT 그대로, 예제 인덱스 166·컬럼 238). Fingerprint 를 모든 규칙 공통 구조적 인코딩 `v4`(타입·길이 접두 UTF-8, 대상 식별 T / 그룹 식별 G)로 바꾸고 v1·v2·조건부 v3 분기 삭제 — 논리 키·식별 의미 그대로 (골든 파일은 fingerprint 열 71개만 바뀜, 서로 다른 식별자 42 → 42 1:1).
+- 검증 결과 : 카탈로그(PostgreSQL 18.6·15.20) fillfactor 80·IX_05 없음·제약 그대로·예제 = 실제 166. 실행 이력 누적 삭제(다른 프로젝트 결과 30.6만 존재) D 13·100·1,000건 10.0·24.9·181.2초 / A 8.8·8.8·9.0초 — 원인 `FK_INSP_RSLT_02` 확인(실행 1건당 약 0.17초), 다른 프로젝트 영향 없음·남은 행 0. 최종 성능(10만) 신규 7.4초·유지 6.5~7.7초, 할당 1.47~1.75GB, GC 직후 최대 394~588MB, 판정 직후 힙 265~275MB(48장과 같음), 10회 반복 839MB·HOT 77%·유지 저장 3.1~3.9초, 조회(VACUUM 뒤) 목록 130/208ms·필터 391ms — 연속 실행 직후(정리 전) 목록 0.84~0.95초. 전체 회귀 PostgreSQL 18.6·15.20 모두 1,707건 실행 1,677 실패 0 건너뜀 30. 단일 JAR(SHA-256 df272e83…) 업무 22단계 57/57·fingerprint 추가 11/11·일반 업무 동시 처리 오류 0·화면·도움말. 미검증 : Firefox·WebKit·실제 Safari, 50만 이상, 원격 CI.
+
+### [AI-6] 규칙 기반 품질 검사 — FINAL 성능 최적화 · 최종 통합 검증 (2026-11-26, 커밋 전)
+
+- 상태: **FINAL 범위 구현·검증 완료, 저장 구조(인덱스·fillfactor) 사용자 결정 대기** — 그 결정 전이라 AI-6 은 완료 처리하지 않았다 (2026-11-27 완료 — 위 [AI-6] 완료 항목). 상세 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 48장.
+- 구현 내용 : 실행기 메모리 개선 — 판정 결과를 받는 즉시 저장 형태(`StoredItem`, 근거 JSON 한 번만 — `EvidenceJson`)로 바꾸고 모델 묶음은 결과를 하나씩 넘김(목록으로 모으지 않음), fingerprint 충돌 비교는 같은 값이 다시 나올 때만, 저장 단계에서는 저장된 결과 목록을 놓음, 대상 ID 배열은 여러 대상인 결과만 읽음 (판정·저장 의미·트랜잭션·잠금 그대로). Fingerprint v1 의 구조적 충돌(키 안의 구분자, null = 빈 문자열)을 모호한 입력만 v3(길이 접두)로 보완 — 나머지 v1 값은 그대로(골든 파일 불변). 영어 화면 결함 수정(판정 기준 문구 번역, 식별자 '겹치는 이름'을 종류 코드로 저장, '유지'·'꺼진 규칙' 문맥 번역), 실패 안내 '마지막 확정 검사' 로, 도움말 이미지 교체. 저장 구조는 격리 DB 비교만(V4·마이그레이션 변경 없음).
+- 검증 결과 : 메모리(컬럼 10만·결과 30.6만, 같은 조건) 실행기 할당 2.56~2.83 → 1.55~1.83GB(−35%), GC 직후 점유 최대 594~802 → 399~584MB, 판정 직후 검사 몫 살아 있는 힙 약 338 → 170MB, 전체 시간 약 −8%, 반복 실행 누적 없음. JDBC 배치 250~5,000 비교(현재 5,000 유지). 저장 구조 A·B·C·D·A90 10회 반복 + 실제 autovacuum(실행 간격 70초) — 추천 D. 20만·30만 컬럼 단계 검증(30만에서 힙 약 75% — 50만·100만은 실행 안 함). 새 시험 : `FindingFingerprintTest` 6, `EvidenceJsonTest` 2, 통합 연결 끊김 SP01~SP03·ST01, 중복 반영 ST02, FP08·FP09. 전체 회귀 PostgreSQL 18.6·15.20 모두 1,704건 실행 1,675 실패 0 건너뜀 29 (최종 작업 트리). 단일 JAR 업무 22단계 57/57, 역할·격리 26/26, 10만 검사 중 일반 업무 오류 0·잠금 대기 0, Chrome(헤드리스) ko/en × light/dark·좁은 화면·역할별 화면·폴링. 미검증 : Firefox·WebKit·실제 Safari, 50만 이상, 원격 CI.
+
+### [AI-6] 규칙 기반 품질 검사 — 3차 화면 개편 · 완전성 규칙 · 대시보드 카드 (2026-11-26, 커밋 전)
+
+- 상태: **3차 범위 구현·검증 완료 (커밋 전, 47.7 결정 항목 사용자 확인 대기)** — AI-6 전체는 부분 완료 (FINAL 남음 — 2026-11-27 완료 — 위 [AI-6] 완료 항목). 상세 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 47장.
+- 구현 내용 : 기존 '품질 진단' 메뉴(`/standardizationQuality`)를 저장 결과 화면으로 교체(진단 결과 / 실행 이력 / 규칙 설정 탭, 정상·부분 실패·전체 실패·저장 실패·빈 검사·중단 구분, 진행 중일 때만 폴링, 409 때 입력 유지, 조회 시점 집계와 실행 확정 시점 건수 구분, 재검사 필요 표시). 실시간 진단 API 8개·화면 제거(판정 엔진·대시보드 요약·도메인 이름 중복 보고·컬럼명 개선 후보는 유지). 목록 `GET /api/qualityInspection/findings/data`·`/runs/data`, 규칙 설정 `expectedActive` + 409 `INSPECTION_RULE_SETTING_CONFLICT`. 완전성 규칙 4종(테이블·컬럼 코멘트 누락 주의, 업무 설명 누락 참고 — NULL·빈 값·ASCII 공백류만 = 누락) → 20규칙, 대시보드 공백 판정도 같은 규칙(`completeness_blank`). 대시보드 '품질 진단 요약' 카드 1개. 마이그레이션·저장 구조·인덱스 변경 없음, 점수 없음.
+- 검증 결과 : 단위 `CompletenessRulesTest` 10, 통합 `CompletenessInspectionIntegrationTest` 3 (CP15~25)·`QualityInspectionIntegrationTest` 20·SmokeTest 74, 전체 `build` 1,693건 실행 1,664 실패 0 건너뜀 29 (PostgreSQL 18.6, 이후 프런트엔드만 수정 — 타입 검사·JAR 재빌드로 확인). 성능 20규칙 : 컬럼 10만·결과 30.6만 전체 7.6~10.0초(판정 0.4~0.55초, 나머지 저장), 할당 2.6~2.7GB, 힙 최대 합 약 1.0~1.4GB, 조회 요약 155ms·첫/마지막 페이지 294/358ms. 단일 JAR + Chrome : 실패 상태 6종을 실제 DB 권한 회수·재기동으로 재현, 필터·상세·예외(409 포함)·이력·규칙 설정·대시보드·10만 페이징·역할별 화면, 한국어 light/dark·영어 light/dark, API 역할·격리 21/21, 새 프로젝트 업무 흐름·삭제 19/19. 브라우저 검증에서 예외 사유가 해제 입력란에 이어 붙던 결함을 찾아 고쳤다. 미검증 : 반응형, 영어 이력·설정·대시보드, Safari·Firefox, PostgreSQL 15, 원격 CI, 도움말 이미지(옛 화면).
+
+### [AI-6] 규칙 기반 품질 검사 — 2차 실행 · 결과 저장 + 최종 보완 (2026-11-26, 커밋 전)
+
+- 상태: **2차 범위 + 최종 보완 구현·검증 완료 (커밋 전, AI6-2-01~07 사용자 확정)** — AI-6 전체는 부분 완료 (3차 화면·대시보드·완전성 규칙, FINAL 남음 — 2026-11-27 완료 — 위 [AI-6] 완료 항목). 상세 [completed/ai-metadata-quality-diagnosis.md](completed/ai-metadata-quality-diagnosis.md) 33~46장.
+- 최종 보완 (46장) : 확정 정책 AI6-2-01~07 반영. 결함 보완 — 판정 서비스(`@Transactional` readOnly) 안의 실제 오류가 판정 트랜잭션을 rollback-only 로 만들어 부분 실패 대신 실행 전체가 실패하던 문제(실패한 묶음이 있을 때만 그 롤백을 받아들임), 모든 묶음 실패가 COMPLETED 이던 것(→ FAILED `ALL_RULES_FAILED`), 묶음 결과를 세이브포인트 해제 전에 더하던 것, 저장 실패 코드(→ `STORE_FAILED`), 같은 fingerprint 의 다른 결과를 조용히 버리던 것(→ 그 묶음 실패), v2 키 구분자 충돌(→ 키 길이 접두). 실행 응답에 `appliedRuleCount`·`partialFailure`·`failedRules`. 명명 전수 검토(컬럼 79 전부 일치, 충돌 없음 — V4 그대로). FK 타입 불일치는 물리 구조 진단 책임으로 분리([M-DIAG-FKTYPE], 미구현). 저장 공간 분석 : 유지 갱신 HOT 0건 → 컬럼 10만 기준 실행마다 결과 테이블 본체 약 53MB 증가, TOAST 0, 일반 VACUUM 뒤에는 공간 재사용(개선은 적용하지 않음, FINAL 후보). 검증 : 통합 20(PF01~PF07·경계·EXCLUDED 시점·대상 삭제 표 추가) · 단위 Lifecycle 7·TermDuplicateRules 10 · 전체 `build` 1,681건 실행 1,652 실패 0 건너뜀 29 (PostgreSQL 18.6) · 단일 JAR 112/112 (실제 DB 권한 오류로 만든 부분 실패 포함, 비슈퍼유저 소유자 계정). 미검증 : PostgreSQL 15, 원격 CI, 화면, 실제 업무 규모.
+- 구현 내용 : M-5 의 16규칙을 그대로 재사용하는 프로젝트 전체 수동 검사 — 비동기 실행기(서버 1 + 대기열 10, 가득 차면 FAILED), 프로젝트당 진행 중 실행 1개(UNIQUE), 시작 때 적용 규칙 확정, 한 REPEATABLE READ 스냅숏 판정(묶음별 세이브포인트 — 실패 묶음은 해결 판정 없음), 한 쓰기 트랜잭션 저장(실패 시 전체 롤백·이전 결과 유지·재실행 없음), 재기동 때 INTERRUPTED. 결과 생명주기 NEW·PERSISTING·REOPENED·RESOLVED(RULE_SATISFIED / TARGET_DELETED), 예외 여부는 상태와 분리(사유·버전·이력), 규칙 사용 여부 설정(끈 규칙만 저장, 관리자), 실행·규칙·변화 유형별 건수, 조회 서비스(AI-7 재사용용). 용어 그룹 fingerprint v2. V4 6테이블 + 예제. API `/api/qualityInspection/**` (조회 VIEWER, 실행·예외 USER, 설정 USER+관리자). 화면 없음.
+- 검증 결과 : 단위 5 · 통합 16 (L01~L18, C01~C19, 스냅숏 일관성, 권한·격리) · SmokeTest HTTP · 전체 `build` 1,671건 실행 1,643 실패 0 건너뜀 28 (PostgreSQL 18.6 새 DB, 원본 테스트 19건 실행) · 단일 JAR — 예제 프로젝트 재기동 유지·중단 정리 35/35, 새 프로젝트 업무 흐름(사전·모델 등록 → 검사 4회 신규·유지·해결·재발 → 예외 처리·해제 → 재기동 유지 → 프로젝트 삭제) 59/59. 기초 성능 (컬럼 10만, 결과 10.2만) : 판정 약 0.4초, 전체 2.7~3.4초(대부분 저장), 실행기 할당 0.9~1.0GB·GC 최대 14회 52ms. 미검증 : 원격 CI, 화면, 컬럼 100만, 실제 업무 데이터.
+
 ### [AI-5] AI 데이터 사전 초안 생성 및 승인 — 완료된 범위
 
 - 상태: **부분 완료** — 여기에는 구현·검증된 범위만 둔다. 사람이 판정한 업무 정확성 평가는 pending-work.md [AI-5-EVAL]
@@ -808,3 +842,9 @@
 | 2026-11-23 | [M-8] M8-C3 409 충돌 복구 UX·ERD 배치 충돌·일괄 편집 기준값 범위(M8-D04) — completed/modeling-concurrency-m8.md 15장, M-8 동시 편집 C4 는 pending-work |
 | 2026-11-25 | [AI-4] AI 공통 실행 안정성 개선 완료 (부분 답변·종료 사유 6종·전달 결과 기반 근거·구조화 단계 Tool 요청 차단·Ollama 구조화 think=false·서버 맥락 부분 답변·부분 답변 화면, 실제 Ollama·브라우저·단일 JAR 검증), M-8 PostgreSQL 테스트 감시 결함 수정 (테스트 코드만), H2 1,612·PostgreSQL 2회 실패 0 |
 | 2026-11-25 | [DB-1] PostgreSQL 단일화 완료 (1~3차 · FINAL) — H2 지원 완전 제거, PostgreSQL 필수(15+, 18 권장, 검증 15.20·18.6), Spring 표준 DB 설정·기동 검사, 테스트·CI PostgreSQL 단일화. FINAL 전체 3회 실패 0 · 배포·업무·AI·MCP·브라우저 검증. 통합 커밋·원격 CI 는 사용자 (completed/postgresql-only-migration.md) |
+| 2026-11-27 | [AI-6] 완료 — 최종 승인(AI6-CLOSE-01~10 : 저장 구조 D·삭제 비용 수용), 설계 문서 completed/ 이동 (로컬 구현·검증, 원격 CI 는 커밋 뒤) |
+| 2026-11-26 | [AI-6] FINAL 최종 보완 — V4 저장 구조 D·fingerprint v4·실행 이력 누적 삭제 측정 (커밋 전, 삭제 비용 결정 대기) 추가 |
+| 2026-11-26 | [AI-6] FINAL — 메모리 최적화·fingerprint v3 보완·저장 구조 비교·PostgreSQL 15/18 최종 회귀 (커밋 전, 저장 구조 결정 대기) 추가 |
+| 2026-11-26 | [AI-6] 3차 — 품질 진단 화면 개편·실시간 API 제거·완전성 규칙 4종·대시보드 카드 (커밋 전) 추가 |
+| 2026-11-26 | [AI-6] 2차 최종 보완 (AI6-2-01~07 확정, 부분 실패 결함 보완, 저장 공간 분석, FK 타입 불일치 분리) 추가 |
+| 2026-11-26 | [AI-6] 2차 — 규칙 기반 품질 검사 실행·결과 저장 (V4, 커밋 전, 2차 결정 사용자 확인 대기) 추가 |

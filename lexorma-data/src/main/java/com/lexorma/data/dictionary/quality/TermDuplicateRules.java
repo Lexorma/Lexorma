@@ -284,8 +284,18 @@ public final class TermDuplicateRules {
         List<Long> sorted = termIds.stream().sorted().toList();
         String actual = rule == StandardizationRule.TERM_ABBR_DUPLICATE || rule == StandardizationRule.TERM_ABBR_SHARED
                 || rule == StandardizationRule.TERM_NAME_DUPLICATE ? groupKey : null;
-        return new TermGroup(new Finding(rule, sorted, actual, expected, evidence, FindingFingerprint.of(projectId, rule, sorted, keys)),
+        return new TermGroup(new Finding(rule, sorted, actual, expected, evidence, fingerprint(projectId, rule, sorted, keys)),
                 groupKey, sorted, notes);
+    }
+
+    /**
+     * 그룹을 키로 정하는 규칙(약어·도메인 중복, 같은 약어, 용어명 중복, 같은 단어 구성, 단어 이음동의어 치환)은 그룹 식별(FindingFingerprint.group) — 구성원 ID 를 넣지 않는다 (AI6-D11).
+     * 용어명 = 다른 용어의 이음동의어(TERM_SYNONYM 의 TERM 종류)는 그룹이 아니라 <b>두 용어의 짝</b>이라 짝 자체가 식별자다 :
+     * 키(용어명)만 쓰면 서로 다른 짝이 같은 값이 되므로 대상 식별(FindingFingerprint.of, 대상 ID 포함)을 쓴다. 인코딩은 둘 다 같다 (v4).
+     */
+    static String fingerprint(long projectId, StandardizationRule rule, List<Long> sortedIds, List<String> keys) {
+        boolean pair = rule == StandardizationRule.TERM_SYNONYM && !keys.isEmpty() && "TERM".equals(keys.get(0));
+        return pair ? FindingFingerprint.of(projectId, rule, sortedIds, keys) : FindingFingerprint.group(projectId, rule, keys);
     }
 
     private static List<Long> ids(List<TermRow> terms) {

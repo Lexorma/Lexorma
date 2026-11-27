@@ -1,6 +1,5 @@
 package com.lexorma;
 
-import com.lexorma.common.exception.CustomException;
 import com.lexorma.common.exception.domain.ErrorCode;
 import com.lexorma.core.project.domain.entity.Project;
 import com.lexorma.core.project.repository.ProjectRepository;
@@ -11,9 +10,7 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.dictionary.domain.dto.StandardDomainDto;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Group;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Member;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Search;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.service.DataDictionaryService;
 import com.lexorma.data.dictionary.service.TermQualityService;
@@ -22,7 +19,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -107,13 +103,14 @@ class StandardRulePolicyIntegrationTest {
                 .commonStandardTermAbbreviation(abbreviation).commonStandardDomainName(domainName).synonyms("").build();
     }
 
-    private List<Group> groups(Context context, StandardizationRule rule) {
+    /** 용어 그룹 판정 결과 (저장 검사의 용어 묶음 — AI-6 3차에 실시간 목록 API 대신) */
+    private List<InspectionItem> groups(Context context, StandardizationRule rule) {
         login(context);
-        return termQuality.selectGroups(context.user, new Search(rule, null, null, null), PageRequest.of(0, 50)).getContent();
+        return termQuality.inspect(context.projectId).stream().filter(item -> item.finding().rule() == rule).toList();
     }
 
-    private static List<Long> ids(Group group) {
-        return group.members().stream().map(Member::termId).sorted().toList();
+    private static List<Long> ids(InspectionItem group) {
+        return group.finding().targetIds().stream().sorted().toList();
     }
 
     private String termDomainName(long termId) {

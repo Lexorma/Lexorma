@@ -2,6 +2,7 @@ package com.lexorma.home.repository.impl;
 
 import com.lexorma.core.security.domain.entity.Account;
 import com.lexorma.data.column.domain.entity.QColumnInfo;
+import com.lexorma.data.dictionary.quality.CompletenessSql;
 import com.lexorma.data.dictionary.domain.entity.QStandardDomain;
 import com.lexorma.data.dictionary.domain.entity.QStandardTerm;
 import com.lexorma.data.dictionary.domain.entity.QStandardWord;
@@ -172,8 +173,9 @@ public class DashboardRepositoryImpl implements DashboardRepositoryCustom {
         return new DashboardStatsDto.Approval(type, approved, pending);
     }
 
+    /** 설명 없음 = 저장 검사 완전성 규칙과 같은 기준 (null · 빈 문자열 · ASCII 공백류만 — CompletenessSql, AI-6 3차에 trim 기준에서 맞춤) */
     private static BooleanExpression blank(StringPath path) {
-        return path.isNull().or(path.trim().isEmpty());
+        return com.querydsl.core.types.dsl.Expressions.numberTemplate(Integer.class, CompletenessSql.BLANK_FUNCTION + "({0})", path).eq(1);
     }
 
     private static long nz(Long value) {

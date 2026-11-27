@@ -44,10 +44,8 @@
 | `/api/getProject/{id}/data` | 프로젝트 구성원 | Spring Data | `ProjectManageService.MEMBER_SORT_FIELDS` (`id` 만 — 정렬 가능한 열 없음) |
 | `/api/dictionaryUsage/{term,domain}/{id}/data` | 사전 사용 현황 | QueryDSL 맵 | `DictionaryUsageRepository.COLUMN_SORT_FIELDS` |
 | `/api/dictionaryUsage/word/{id}/data` | 단어 사용 용어 | QueryDSL 맵 | `DictionaryUsageRepository.TERM_SORT_FIELDS` |
-| `/api/standardizationQuality/data` | (화면 없음 — 사전 진단 API) | 메모리 비교자 | `StandardizationQualityService.SORT_FIELDS` |
-| `/api/standardizationQuality/model/data` | 모델 품질 진단 | 메모리 비교자 | `StandardizationQualityService.MODEL_SORT_FIELDS` |
-| `/api/standardizationQuality/terms/data` | 표준 용어 진단 | 메모리 비교자 | `TermQualityService.SORT_FIELDS` |
-| `/api/standardizationQuality/identifiers/data` | DBMS 식별자 진단 | 메모리 비교자 | `IdentifierQualityService.SORT_FIELDS` |
+| `/api/qualityInspection/findings/data` | 품질 진단 — 진단 결과 (AI-6 3차, 저장 결과) | SQL 맵 | `InspectionQueryRepository.SORT_FIELDS` |
+| `/api/qualityInspection/runs/data` | 품질 진단 — 실행 이력 | 요청 순서 하나 | `QualityInspectionRestController.RUN_SORT_FIELDS` (`requestedAt`) |
 | `/api/modelMapping/entity/data` | 매핑 관리 | QueryDSL 맵 | `ModelMappingQueryRepository.ENTITY_SORT_FIELDS` |
 | `/api/modelMapping/table/data` | 매핑 대화상자 후보 테이블 | QueryDSL 맵 | `ModelMappingQueryRepository.TABLE_SORT_FIELDS` |
 | `/api/modelMapping/quality/data` | 정합성 비교 | 메모리 비교자 | `ModelMappingQualityService.SORT_FIELDS` |

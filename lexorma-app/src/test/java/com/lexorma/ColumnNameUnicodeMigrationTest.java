@@ -93,7 +93,7 @@ class ColumnNameUnicodeMigrationTest {
     @Test
     @DisplayName("신규 설치 PostgreSQL")
     void freshInstall() {
-        Db db = install(null, 4); // V0~V3
+        Db db = install(null, 5); // V0~V4 (V4 저장 품질 검사, AI-6 2차)
         try {
             assertFinalSchema(db);
             column(db, 900001020, 900001010, "STRAßE");
@@ -119,7 +119,7 @@ class ColumnNameUnicodeMigrationTest {
     @Test
     @DisplayName("최대 길이·바이트 경계 PostgreSQL")
     void maximumLengthAndBytes() {
-        Db db = install(null, 4); // V0~V3
+        Db db = install(null, 5); // V0~V4 (V4 저장 품질 검사, AI-6 2차)
         try {
             // 압축하기 어려운 입력 : 대문자가 4바이트 이상이 되는 BMP 글자(ΐ ΰ ᾳ ﬓ և ŉ …)를 섞은 255자
             List<Integer> wide = new ArrayList<>();

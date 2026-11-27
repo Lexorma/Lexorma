@@ -12,9 +12,8 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.dictionary.domain.dto.StandardDomainDto;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Issue;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.IssueType;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Search;
+import com.lexorma.data.dictionary.quality.InspectionItem;
+import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
 import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import com.lexorma.data.dictionary.service.DataDictionaryService;
@@ -128,7 +127,7 @@ class PhysicalGenerationStoredAbbreviationIntegrationTest {
         assertThat(again.tables()).extracting(PhysicalGenerationDto.TablePlan::status).containsOnly("SKIP");
         assertThat(columnNames(tableId)).as("자동으로 바꾸지 않는다").containsExactly("CUST_ID", "DEL_DT");
         assertThat(mappings.findByEntity_Id(f.entityId)).isPresent();
-        assertThat(nameMismatches(f)).as("기존 불일치는 그대로 진단").extracting(Issue::columnName, Issue::expectedValue).containsExactly(org.assertj.core.groups.Tuple.tuple("DEL_DT", "DLX_DT"));
+        assertThat(nameMismatches(f)).as("기존 불일치는 그대로 진단").extracting(item -> item.details().get("columnName"), item -> item.finding().expectedValue()).containsExactly(org.assertj.core.groups.Tuple.tuple("DEL_DT", "DLX_DT"));
     }
 
     @Test
@@ -267,8 +266,10 @@ class PhysicalGenerationStoredAbbreviationIntegrationTest {
         return jdbc.queryForList("select COL_NM from TB_COL where TBL_SN = ? order by SORT_ORD", String.class, tableId);
     }
 
-    private List<Issue> nameMismatches(Fixture f) {
-        return quality.selectIssues(login(f), new Search(IssueType.COLUMN_NAME_MISMATCH, null, null, null, null), PageRequest.of(0, 100)).getContent();
+    /** 컬럼명 불일치 판정 결과 (저장 검사의 모델 묶음 — AI-6 3차에 실시간 목록 API 대신) */
+    private List<InspectionItem> nameMismatches(Fixture f) {
+        login(f);
+        return quality.inspect(f.projectId).stream().filter(item -> item.finding().rule() == StandardizationRule.COLUMN_NAME_MISMATCH).toList();
     }
 
     private static MockMultipartFile template() throws IOException {

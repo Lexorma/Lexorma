@@ -39,7 +39,7 @@ import { ModelHistoryPage } from '../features/history/ModelHistoryPage';
 import { ModelVersionPage } from '../features/version/ModelVersionPage';
 import { ModelExchangePage } from '../features/exchange/ModelExchangePage';
 import { McpAccessPage } from '../features/mcp/McpAccessPage';
-import { StandardizationQualityPage } from '../features/quality/StandardizationQualityPage';
+import { QualityInspectionPage } from '../features/quality/QualityInspectionPage';
 import { ModelDiagnosticsPage } from '../features/quality/ModelDiagnosticsPage';
 import { navigateWithoutGuard } from '../hooks/useUnsavedChanges';
 import { t } from '../lib/i18n';
@@ -165,7 +165,7 @@ const router = createBrowserRouter(createRoutesFromElements(
     <Route path="/sourceMapping" element={<RequireMenu menuId="source-mapping"><SourceMappingPage /></RequireMenu>} />
     <Route path="/sourceCompare" element={<RequireMenu menuId="source-compare"><SourceComparePage /></RequireMenu>} />
     <Route path="/sourceErd" element={<RequireMenu menuId="source-erd"><Suspense fallback={<p>{t('ERD 화면을 불러오는 중…')}</p>}><SourceErdPage /></Suspense></RequireMenu>} />
-    <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><StandardizationQualityPage /></RequireMenu>} />
+    <Route path="/standardizationQuality" element={<RequireMenu menuId="standardization-quality"><QualityInspectionPage /></RequireMenu>} />
     <Route path="/modelDiagnostics" element={<RequireMenu menuId="model-diagnostics"><ModelDiagnosticsPage /></RequireMenu>} />
 
     <Route path="/modelHistory" element={<RequireMenu menuId="model-history"><ModelHistoryPage /></RequireMenu>} />

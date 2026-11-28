@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, Eraser, Info, Send, Sparkles, X } from 'lucide-react';
 import { useAiStatus } from '../../hooks/useAiStatus';
 import { useAuth } from '../../hooks/useAuth';
 import { api, ApiError } from '../../lib/api';
-import { t } from '../../lib/i18n';
+import { t, tc } from '../../lib/i18n';
 import { NoticeMarkdown } from '../../features/notice/NoticeMarkdown';
 import '../../styles/notice.css';
 import '../../styles/ai-assistant.css';
@@ -18,12 +19,18 @@ import '../../styles/ai-assistant.css';
  *   푸터가 보이지 않는 동안(긴 화면을 스크롤하는 중)에는 본문 오른쪽 여백 안의 얇은 탭으로 둔다
  * - 시스템 기본 AI Provider 를 쓸 수 있을 때(READY)만 버튼이 보인다. Provider 가 없거나 미지정·비활성·기본 모델 없음이면 숨긴다
  *   (상태 조회는 AI 서버에 연결하지 않는다. 화면을 불러올 때·브라우저 창으로 돌아올 때 다시 본다)
+ * - 기능 범위 (AI-7 3차, AI7-D24·D26·D27) : 메타데이터(METADATA, 기본) / 품질 진단(QUALITY, 저장된 품질 진단 결과). 고른 범위는 이 창이 떠 있는 동안만
+ *   기억한다 (DB·브라우저 저장소에 두지 않는다 — 새로고침·프로젝트 전환이면 METADATA). 질문을 보낼 때의 범위를 그 질문에 고정하고 답변 옆에 표시하며,
+ *   응답을 기다리는 동안에는 범위를 바꿀 수 없다. 범위마다 서버가 정한 Tool 만 실린다 (화면은 범위 이름만 보낸다)
  */
+type Scope = 'METADATA' | 'QUALITY';
 type ToolStatus = 'OK' | 'NOT_FOUND' | 'INVALID_ARGUMENT' | 'REJECTED' | 'FAILED';
 interface ToolCall { name: string; status: ToolStatus; durationMillis: number }
 type EvidenceType = 'SCHEMA' | 'TABLE' | 'COLUMN' | 'RELATION' | 'TERM' | 'WORD' | 'DOMAIN' | 'HISTORY'
   // 논리 모델 (D-35 D35-3b)
-  | 'LOGICAL_MODEL' | 'SUBJECT_AREA' | 'LOGICAL_ENTITY' | 'LOGICAL_ATTRIBUTE' | 'LOGICAL_IDENTIFIER' | 'LOGICAL_RELATIONSHIP' | 'SUBTYPE_GROUP';
+  | 'LOGICAL_MODEL' | 'SUBJECT_AREA' | 'LOGICAL_ENTITY' | 'LOGICAL_ATTRIBUTE' | 'LOGICAL_IDENTIFIER' | 'LOGICAL_RELATIONSHIP' | 'SUBTYPE_GROUP'
+  // 저장된 품질 진단 결과·실행 (AI-7) : 현재 모델이 아니라 검사가 저장한 기록이다
+  | 'QUALITY_FINDING' | 'QUALITY_RUN';
 type EvidenceStatus = 'VERIFIED' | 'NOT_FOUND' | 'OUT_OF_SCOPE' | 'MISMATCH' | 'STALE' | 'UNVERIFIABLE';
 type EvidenceReason = 'NOT_RETRIEVED' | 'MODIFIED' | 'DELETED' | 'NAME' | 'PARENT' | 'KIND' | 'VERSION_UNKNOWN'
   | 'DESCRIPTION_NOT_RETRIEVED' | 'DESCRIPTION_NOT_REGISTERED';
@@ -49,7 +56,7 @@ interface QueryResult {
   mode: Mode; fallback: 'MODEL_CAPABILITIES' | 'TOOLS_REJECTED' | null; usage: Usage | null;
   completion?: Completion | null;
 }
-interface Turn { id: number; question: string; result?: QueryResult; error?: string }
+interface Turn { id: number; question: string; scope: Scope; result?: QueryResult; error?: string }
 
 const QUESTION_MAX = 1000;
 const TOOL_LABEL: Record<string, string> = {
@@ -66,12 +73,17 @@ const TOOL_LABEL: Record<string, string> = {
   getLogicalModelOverview: t('논리 모델 개요'),
   searchLogicalEntities: t('논리 엔터티 검색'),
   getLogicalEntityDetail: t('논리 엔터티 상세'),
+  getQualityInspectionOverview: t('품질 진단 요약 조회'),
+  searchQualityFindings: t('품질 진단 결과 검색'),
+  getQualityFindingDetail: t('품질 진단 결과 상세 조회'),
 };
 const EVIDENCE_TYPE: Record<EvidenceType, string> = {
   SCHEMA: t('스키마'), TABLE: t('테이블'), COLUMN: t('컬럼'), RELATION: t('관계'), TERM: t('용어'), WORD: t('단어'), DOMAIN: t('도메인'), HISTORY: t('변경 이력'),
   LOGICAL_MODEL: t('논리 모델'), SUBJECT_AREA: t('주제 영역'), LOGICAL_ENTITY: t('엔터티'), LOGICAL_ATTRIBUTE: t('속성'), LOGICAL_IDENTIFIER: t('식별자'),
   LOGICAL_RELATIONSHIP: t('논리 관계'), SUBTYPE_GROUP: t('서브타입 그룹'),
+  QUALITY_FINDING: t('저장된 품질 진단 결과'), QUALITY_RUN: tc('AI 근거', '품질 진단 실행'),
 };
+const QUALITY_EVIDENCE: ReadonlySet<EvidenceType> = new Set(['QUALITY_FINDING', 'QUALITY_RUN']);
 const EVIDENCE_STATUS: Record<EvidenceStatus, string> = {
   VERIFIED: t('확인됨'),
   NOT_FOUND: t('없음'),
@@ -101,6 +113,26 @@ const PARTIAL_REASON: Record<string, string> = {
   CONTEXT_RESULT_LIMIT_REACHED: t('답변 생성에 사용할 수 있는 조회 결과 크기 한도에 도달하여 일부 정보만 제공합니다.'),
 };
 const PARTIAL_DEFAULT = t('실행 한도에 도달하여 확인된 범위의 정보만 제공합니다.');
+
+/** 범위별 이름·안내·질문 예시. 예시는 입력란만 채운다 (보내거나 검사를 실행하지 않는다) */
+const SCOPES: { scope: Scope; label: string; note: string; other: string; placeholder: string; examples: string[] }[] = [
+  {
+    scope: 'METADATA', label: tc('AI 범위', '메타데이터'),
+    note: t('현재 프로젝트에 등록된 메타데이터(스키마·테이블·컬럼·관계·표준 단어·용어·도메인·논리 모델)에 대해 AI 에게 묻습니다. AI 는 읽기 전용 조회만 할 수 있습니다.'),
+    other: t('저장된 품질 진단 결과는 품질 진단 범위에서 물어보세요.'),
+    placeholder: t('예: 회원 정보를 저장하는 테이블과 주요 컬럼을 알려줘.'),
+    examples: [t('이 테이블의 참조 관계를 설명해 줘.'), t('고객 엔터티의 식별자는 무엇이야?'), t('주문 관련 표준 용어를 찾아줘.')],
+  },
+  {
+    scope: 'QUALITY', label: tc('AI 범위', '품질 진단'),
+    note: t('저장된 품질 진단 결과(진단 규칙·판정 근거·실행 이력·집계)에 대해 묻고 개선 방향 설명을 듣습니다. 검사를 새로 실행하지 않으며, 결과는 마지막 검사 기준이라 현재 모델과 다를 수 있습니다. 개선 방향은 참고용 제안이며 저장되거나 적용되지 않습니다.'),
+    other: t('논리 모델 등 그 밖의 메타데이터는 메타데이터 범위에서 물어보세요.'),
+    placeholder: t('예: 현재 저장된 주요 품질 문제를 알려줘.'),
+    examples: [t('현재 저장된 주요 품질 문제를 알려줘.'), t('최근 검사에서 새로 발견된 오류는 무엇이야?'), t('표준 용어 불일치 문제의 개선 방향을 설명해 줘.'),
+      t('최근 검사에서 일부 규칙이 실패했는지 알려줘.')],
+  },
+];
+const SCOPE_LABEL: Record<Scope, string> = { METADATA: tc('AI 범위', '메타데이터'), QUALITY: tc('AI 범위', '품질 진단') };
 
 const STATUS_TEXT: Record<ToolStatus, string> = {
   OK: t('조회함'),
@@ -133,6 +165,9 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
+  // 기능 범위 : 이 창(컴포넌트)이 떠 있는 동안만 기억한다 — 저장하지 않는다 (새로고침·프로젝트 전환이면 기본값)
+  const [scope, setScope] = useState<Scope>('METADATA');
+  const current = SCOPES.find((s) => s.scope === scope) ?? SCOPES[0];
   const nextId = useRef(1);
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -160,11 +195,13 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
     const text = question.trim();
     if (busy || !ready || !text) return;
     const id = nextId.current++;
-    setTurns((list) => [...list, { id, question: text }]);
+    // 보내는 순간의 범위를 이 질문에 고정한다 (응답이 늦게 와도 이 질문의 범위로 표시된다)
+    const asked = scope;
+    setTurns((list) => [...list, { id, question: text, scope: asked }]);
     setQuestion('');
     setBusy(true);
     try {
-      const result = await api<QueryResult>('/api/ai/metadata/query', { method: 'POST', body: { question: text }, silent: true });
+      const result = await api<QueryResult>('/api/ai/metadata/query', { method: 'POST', body: { question: text, scope: asked }, silent: true });
       setTurns((list) => list.map((turn) => (turn.id === id ? { ...turn, result } : turn)));
     } catch (e) {
       const message = e instanceof ApiError ? e.message : t('AI 질의에 실패했습니다.');
@@ -214,9 +251,19 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
 
           <div className="ai-assistant-body" aria-live="polite">
             <p className="ai-assistant-note">
-              {t('현재 프로젝트에 등록된 메타데이터(스키마·테이블·컬럼·관계·표준 단어·용어·도메인·논리 모델)에 대해 AI 에게 묻습니다. AI 는 읽기 전용 조회만 할 수 있습니다.')}{' '}
+              {current.note} {current.other}{' '}
               {t('질문과 AI 가 조회한 메타데이터는 관리자가 지정한 AI 서버로 전송됩니다. 질문과 답변은 저장하지 않습니다.')}
             </p>
+            {turns.length === 0 && ready && (
+              <div className="ai-assistant-examples">
+                <span className="ai-assistant-examples-label">{t('질문 예시')}</span>
+                {current.examples.map((example) => (
+                  <button key={example} type="button" className="ai-assistant-example" onClick={() => { setQuestion(example); input.current?.focus(); }}>
+                    {example}
+                  </button>
+                ))}
+              </div>
+            )}
             {status && !ready && (
               <div role="alert" className="ai-assistant-error">
                 {status === 'NOT_CONFIGURED'
@@ -228,7 +275,10 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
 
             {turns.map((turn) => (
               <div key={turn.id} className="ai-assistant-turn">
-                <div className="ai-assistant-question">{turn.question}</div>
+                <div className="ai-assistant-question">
+                  <span className={`ai-assistant-turn-scope is-${turn.scope.toLowerCase()}`}>{SCOPE_LABEL[turn.scope]}</span>
+                  {turn.question}
+                </div>
                 {turn.result && <Answer result={turn.result} />}
                 {turn.error && <div role="alert" className="ai-assistant-error">{turn.error}</div>}
               </div>
@@ -237,10 +287,20 @@ function AiAssistantWidget({ projectName }: { projectName: string | null }) {
             <div ref={bottom} />
           </div>
 
+          <div className="ai-assistant-scope" role="radiogroup" aria-label={t('기능 범위')}>
+            {SCOPES.map((s) => (
+              <label key={s.scope} className={scope === s.scope ? 'is-selected' : undefined}
+                title={busy ? t('응답을 받은 뒤 범위를 바꿀 수 있습니다.') : undefined}>
+                <input type="radio" name="aiAssistantScope" value={s.scope} checked={scope === s.scope} disabled={busy}
+                  onChange={() => setScope(s.scope)} />
+                {s.label}
+              </label>
+            ))}
+          </div>
           <form className="ai-assistant-input" onSubmit={ask}>
-            <textarea ref={input} rows={2} maxLength={QUESTION_MAX} value={question} aria-label={t('질문')}
+            <textarea ref={input} rows={2} maxLength={QUESTION_MAX} value={question} aria-label={t('질문 ({0})', current.label)}
               onChange={(e) => setQuestion(e.target.value)} onKeyDown={onKeyDown} disabled={!ready && !!status}
-              placeholder={t('예: 회원 정보를 저장하는 테이블과 주요 컬럼을 알려줘.')} />
+              placeholder={current.placeholder} />
             <button type="submit" className="btn btn-primary" disabled={busy || !ready || !question.trim()} aria-label={t('질의')} title={t('질의')}>
               <Send size={14} aria-hidden="true" />
             </button>
@@ -319,7 +379,9 @@ function useDock(): Dock {
 
 /** 근거 검증 결과 : 상태는 서버가 정한다. 확인되지 않은 근거는 이름·사유와 함께 따로 표시한다 */
 function EvidenceCheck({ result }: { result: QueryResult }) {
+  const { canView } = useAuth();
   const v = result.verification;
+  const quality = result.evidence.some((e) => QUALITY_EVIDENCE.has(e.type));
   const message = v.status === 'VERIFIED' ? t('근거 {0}개를 Lexorma 메타데이터와 대조해 확인했습니다.', v.total)
     : v.status === 'PARTIAL' ? t('일부 근거를 확인할 수 없습니다 ({0}/{1}개 확인). 확인되지 않은 항목은 아래와 같습니다.', v.verified, v.total)
       : v.status === 'UNVERIFIED' ? t('근거를 확인하지 못했습니다. 이 답변은 확인되지 않은 정보입니다.')
@@ -333,7 +395,12 @@ function EvidenceCheck({ result }: { result: QueryResult }) {
             <li key={index} className={`is-${e.status.toLowerCase()}`} title={e.reason ? EVIDENCE_REASON[e.reason] : EVIDENCE_STATUS[e.status]}>
               <span className="ai-assistant-evidence-mark" aria-hidden="true">{e.status === 'VERIFIED' ? '✓' : '!'}</span>
               <span className="ai-assistant-evidence-type">{EVIDENCE_TYPE[e.type] ?? e.type}</span>
-              <span className="ai-assistant-evidence-name">{e.name ?? '-'}</span>
+              {(() => {
+                const to = canView('standardization-quality') ? qualityLink(e) : null;
+                return to
+                  ? <Link className="ai-assistant-evidence-name" to={to} title={t('품질 진단 화면에서 보기 (지금 상태는 답변 당시와 다를 수 있습니다)')}>{e.name ?? '-'}</Link>
+                  : <span className="ai-assistant-evidence-name">{e.name ?? '-'}</span>;
+              })()}
               {e.status !== 'VERIFIED' && (
                 <span className="ai-assistant-evidence-status">{EVIDENCE_STATUS[e.status]}{e.reason && ` · ${EVIDENCE_REASON[e.reason]}`}</span>
               )}
@@ -342,8 +409,20 @@ function EvidenceCheck({ result }: { result: QueryResult }) {
         </ul>
       )}
       {v.total > 0 && <p className="ai-assistant-check-note">{t('확인됨은 근거의 존재·프로젝트 범위·조회 결과와의 일치·버전을 확인했다는 뜻이며, 답변 문장 전체의 정확성을 뜻하지 않습니다.')}</p>}
+      {quality && <p className="ai-assistant-check-note">{t('품질 진단 근거는 저장된 검사 결과·실행 기록과 대조한 것이며, 현재 모델이 그 결과와 같다는 뜻이 아닙니다.')}</p>}
     </div>
   );
+}
+
+/**
+ * 품질 근거 → 품질 진단 화면 (결과 상세 / 실행 상세 대화상자). 서버가 이 프로젝트에서 확인한 근거만 연결한다 :
+ * 확인됨·이름 불일치·조회 뒤 수정됨. 없음·범위 밖(다른 프로젝트 ID)·조회하지 않은 ID·삭제됨은 연결하지 않는다
+ */
+function qualityLink(e: Evidence): string | null {
+  if (!QUALITY_EVIDENCE.has(e.type)) return null;
+  const linkable = e.status === 'VERIFIED' || e.status === 'MISMATCH' || (e.status === 'STALE' && e.reason === 'MODIFIED');
+  if (!linkable || !Number.isSafeInteger(e.id) || e.id <= 0) return null;
+  return e.type === 'QUALITY_FINDING' ? `/standardizationQuality?finding=${e.id}` : `/standardizationQuality?tab=runs&run=${e.id}`;
 }
 
 /** 사용량 한 줄 : 실측이 있으면 그 값, 없으면 "미측정". 추정치는 제목(마우스 올림)에만 "추정" 으로 */

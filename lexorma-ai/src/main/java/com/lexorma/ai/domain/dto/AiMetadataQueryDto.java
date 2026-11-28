@@ -16,7 +16,16 @@ public final class AiMetadataQueryDto {
     private AiMetadataQueryDto() {
     }
 
-    public record QueryRequest(String question) {
+    /**
+     * 질의 요청. scope = 기능 범위 (AI-7 AI7-D24·D26) — 생략(null) = METADATA, 알 수 없는 값은 요청 본문을 읽을 때 거절된다 (400, 조용히 METADATA 로 바꾸지 않는다).
+     * Tool 이름·목록은 받지 않는다 (범위별 목록은 서버가 정한다)
+     */
+    public record QueryRequest(String question, com.lexorma.ai.tool.ToolScope scope) {
+
+        /** 범위 없이 (= METADATA) */
+        public QueryRequest(String question) {
+            this(question, null);
+        }
     }
 
     /** 질의를 쓸 수 있는지 (시스템 기본 Provider 의 상태만. Provider 주소·이름 등 관리 정보는 담지 않는다). 외부에 연결하지 않고 판단한다 */

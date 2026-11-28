@@ -1,12 +1,10 @@
 package com.lexorma.data.dictionary.domain.dto;
 
-import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.table.ddl.DbIdentifierRules.Kind;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * DBMS 식별자 진단 (M-7 보강 1차 — M-5 D3, 읽기 전용). 조회할 때 계산하고 저장하지 않는다.
@@ -24,15 +22,8 @@ public final class IdentifierQualityDto {
      */
     public record Issue(String id, StandardizationRule type, Severity severity, Kind kind, Long schemaId, String schemaName, Long tableId, String tableName,
                         Long columnId, String columnName, String name, String ddlName, Integer length, Integer maxLength,
-                        String basis, String message, String guide, List<String> related, String fingerprint) {
+                        String basis, String message, String guide, List<String> related, String fingerprint,
+                        List<java.util.Map<String, String>> relatedObjects) {
     }
 
-    /** rules : 식별자 규칙별 건수 (규칙 순서). lengthBasis : 프로젝트 DBMS 의 길이 기준 설명 */
-    public record Summary(DbType dbType, String dbLabel, String lengthBasis, long totalSchemas, long totalTables, long totalColumns,
-                          Map<StandardizationRule, Long> rules, long errors, long warnings, long infos) {
-    }
-
-    /** 목록 조건 (모두 선택). searchColumn : tableName / name */
-    public record Search(StandardizationRule type, Severity severity, Kind kind, Long schemaId, String searchColumn, String searchQuery) {
-    }
 }

@@ -105,7 +105,8 @@ class ProjectDeletionIntegrationTest {
             "TB_SRC_CLCT_EXCN", "TB_SRC_CLCT_TRGT", "TB_SRC_SCHM_VER", "TB_SRC_TBL_VER", "TB_SRC_CHG_HSTRY", "TB_VIEW", "TB_VIEW_CHG_DMND",
             "TB_PRJ_SRC_CNTN", "TB_SRC_SCHM_MPNG", "TB_SRC_TBL_MPNG", "TB_SRC_IMPRT_EXCN", "TB_AI_EXPLN_SGSTN", "TB_AI_EXPLN_SGSTN_HSTRY", "TB_AI_EXPLN_CRT_EXCN",
             "TB_AI_EXPLN_EVL_TRGT", "TB_AI_EXPLN_EVL", "TB_AI_EXPLN_EVL_HSTRY", "TB_PRJ_AI_STNG", "TB_SRC_COL_MPNG", "TB_SRC_MPNG_HSTRY", "TB_SRC_VIEW_DFN", "TB_SRC_VIEW_DFN_IDNTY_HSTRY", "TB_PRJ_MCP_STNG", "TB_MCP_TKN", "TB_MCP_CALL_HSTRY",
-            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP", "TB_SBTYP_GROUP_CNVR");
+            "TB_LGCL_SBJ_AREA", "TB_LGCL_SBJ_AREA_ENTT", "TB_LGCL_SBJ_AREA_LYT", "TB_LGCL_SBTYP_GROUP", "TB_LGCL_SBTYP", "TB_SBTYP_GROUP_CNVR",
+            "TB_INSP_RULE_STNG", "TB_INSP_EXCN", "TB_INSP_RSLT", "TB_INSP_RSLT_HSTRY");
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -465,6 +466,24 @@ class ProjectDeletionIntegrationTest {
         jdbc.update("insert into TB_AI_EXPLN_EVL_HSTRY(AI_EXPLN_EVL_HSTRY_SN, PRJ_SN, AI_EXPLN_EVL_SN, AI_EXPLN_EVL_TRGT_SN, AI_EXPLN_SGSTN_SN, CHG_TYPE_CD, RVWR_ID, CHG_AFTR_CN, CHG_DT)"
                         + " values (?, ?, ?, ?, ?, 'INSERT', 'admin', '{}', current_timestamp)",
                 900_000_000L + projectId, projectId, 900_000_000L + projectId, 900_000_000L + projectId, 900_000_000L + projectId);
+        // 저장 품질 검사 (AI-6 2차) : 규칙 설정 · 실행 · 실행 규칙 · 실행 건수 · 결과 · 결과 이력 (실행 규칙·건수는 PRJ_SN 이 없는 하위 테이블)
+        long inspection = 900_000_000L + projectId;
+        jdbc.update("insert into TB_INSP_RULE_STNG(INSP_RULE_STNG_SN, PRJ_SN, RULE_CD, ACTVTN_YN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 'TERM_SYNONYM', false, current_timestamp, current_timestamp, 'admin', 'admin')", inspection, projectId);
+        jdbc.update("insert into TB_INSP_EXCN(INSP_EXCN_SN, PRJ_SN, ACNT_SN, EXCN_STTS_CD, DMND_DT, BGNG_DT, CRTR_DT, END_DT, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, ?, 'COMPLETED', current_timestamp, current_timestamp, current_timestamp, current_timestamp, current_timestamp, current_timestamp, 'admin', 'admin')",
+                inspection, projectId, Long.valueOf(admin.getId()));
+        jdbc.update("insert into TB_INSP_EXCN_RULE(INSP_EXCN_RULE_SN, INSP_EXCN_SN, RULE_CD, EXCN_STTS_CD, RSLT_CNT, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 'TABLE_PREFIX_MISSING', 'COMPLETED', 1, current_timestamp, current_timestamp, 'admin', 'admin')", inspection, inspection);
+        jdbc.update("insert into TB_INSP_EXCN_RSLT(INSP_EXCN_RSLT_SN, INSP_EXCN_SN, RULE_CD, CHG_TYPE_CD, RSLT_CNT, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, 'TABLE_PREFIX_MISSING', 'NEW', 1, current_timestamp, current_timestamp, 'admin', 'admin')", inspection, inspection);
+        jdbc.update("insert into TB_INSP_RSLT(INSP_RSLT_SN, PRJ_SN, RULE_CD, RSLT_GRD_CD, TRGT_TYPE_CD, TRGT_SN, TBL_SN, TRGT_CN, HASH_VL, STTS_CD, EXCL_YN, LAST_CHG_TYPE_CD,"
+                        + " RSLT_EVDNC_CN, FRST_IDNTY_DT, LAST_IDNTY_DT, FRST_INSP_EXCN_SN, LAST_INSP_EXCN_SN, VER_NO, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                        + " values (?, ?, 'TABLE_PREFIX_MISSING', 'ERROR', 'TABLE', ?, ?, 'TB_ORD', ?, 'OPEN', true, 'NEW', '{}'::jsonb, current_timestamp, current_timestamp, ?, ?, 1,"
+                        + " current_timestamp, current_timestamp, 'admin', 'admin')",
+                inspection, projectId, order.getId(), order.getId(), "v1:deletion-" + projectId, inspection, inspection);
+        jdbc.update("insert into TB_INSP_RSLT_HSTRY(INSP_RSLT_HSTRY_SN, INSP_RSLT_SN, PRJ_SN, CHG_TYPE_CD, STTS_CD, EXCL_YN, CHG_RSN_CN, REG_DT, MDFCN_DT, RGTR_ID, MDFR_ID)"
+                + " values (?, ?, ?, 'EXCLUDE', 'OPEN', true, '삭제 테스트', current_timestamp, current_timestamp, 'admin', 'admin')", inspection, inspection, projectId);
         return new Filled(order);
     }
 

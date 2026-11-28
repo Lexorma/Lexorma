@@ -645,7 +645,57 @@ public enum ErrorCode {
     /**
      * 사용자명이 비어 있다.
      */
-    USER_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "USER_NAME_REQUIRED");
+    USER_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "USER_NAME_REQUIRED"),
+
+    /**
+     * 이 프로젝트에서 품질 검사가 이미 대기·진행 중이다 (프로젝트당 하나, AI-6 AI6-D18).
+     */
+    INSPECTION_ALREADY_RUNNING(HttpStatus.CONFLICT, "INSPECTION_ALREADY_RUNNING"),
+
+    /**
+     * 서버의 품질 검사 실행기가 가득 찼다 (다른 프로젝트의 검사가 끝난 뒤 다시 요청, AI-6 AI6-D23). 실행 행의 실패 사유 코드로도 쓴다.
+     */
+    INSPECTION_EXECUTOR_BUSY(HttpStatus.SERVICE_UNAVAILABLE, "INSPECTION_EXECUTOR_BUSY"),
+
+    /**
+     * 로그인 프로젝트에 그 검사 실행이 없다 (AI-6).
+     */
+    INSPECTION_RUN_NOT_FOUND(HttpStatus.NOT_FOUND, "INSPECTION_RUN_NOT_FOUND"),
+
+    /**
+     * 로그인 프로젝트에 그 검사 결과가 없다 (AI-6).
+     */
+    INSPECTION_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "INSPECTION_RESULT_NOT_FOUND"),
+
+    /**
+     * 검사 결과가 화면이 읽은 뒤 바뀌었다 (버전 번호가 다르거나 이미 그 예외 상태다, AI-6 AI6-D29).
+     */
+    INSPECTION_RESULT_CONFLICT(HttpStatus.CONFLICT, "INSPECTION_RESULT_CONFLICT"),
+
+    /**
+     * 검사 규칙의 사용 여부가 화면이 읽은 뒤 다른 사용자에 의해 바뀌었다 (AI-6 3차, DEC-08 과 같은 방식 — 자동으로 덮어쓰지 않는다).
+     */
+    INSPECTION_RULE_SETTING_CONFLICT(HttpStatus.CONFLICT, "INSPECTION_RULE_SETTING_CONFLICT"),
+
+    /**
+     * 해결된 검사 결과는 예외로 처리할 수 없다 (AI-6).
+     */
+    INSPECTION_RESULT_NOT_OPEN(HttpStatus.CONFLICT, "INSPECTION_RESULT_NOT_OPEN"),
+
+    /**
+     * 예외 처리·해제 사유가 없다 (AI-6 AI6-D15).
+     */
+    INSPECTION_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "INSPECTION_REASON_REQUIRED"),
+
+    /**
+     * 예외 처리·해제 사유가 1,000자를 넘는다 (AI-6).
+     */
+    INSPECTION_REASON_TOO_LONG(HttpStatus.BAD_REQUEST, "INSPECTION_REASON_TOO_LONG"),
+
+    /**
+     * 검사 규칙 설정 요청이 올바르지 않다 (규칙·사용 여부 누락, 같은 규칙 중복, AI-6).
+     */
+    INVALID_INSPECTION_RULE_SETTING(HttpStatus.BAD_REQUEST, "INVALID_INSPECTION_RULE_SETTING");
 
     private final HttpStatus httpStatus;
     private final String code;

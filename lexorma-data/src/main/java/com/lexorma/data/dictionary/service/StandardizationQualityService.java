@@ -11,34 +11,23 @@ import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Attribut
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ColumnRow;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Issue;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.IssueType;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelIssue;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSearch;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSummary;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.NameToken;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Search;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.Summary;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.TokenStatus;
+import com.lexorma.data.dictionary.quality.InspectionItem;
+import com.lexorma.data.dictionary.quality.CompletenessRules;
 import com.lexorma.data.dictionary.quality.Finding;
 import com.lexorma.data.dictionary.quality.FindingFingerprint;
 import com.lexorma.data.dictionary.quality.StandardNames;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
-import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
-import com.lexorma.data.dictionary.quality.StandardizationRule.TargetType;
 import com.lexorma.data.dictionary.quality.TableNameRules;
 import com.lexorma.data.dictionary.quality.TableNameRules.TableIssue;
 import com.lexorma.data.dictionary.repository.DictionaryUsageRepository;
 import com.lexorma.data.table.ddl.TableDdlGenerator;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -68,18 +57,6 @@ public class StandardizationQualityService {
     private static final Pattern TYPE_ARGS = Pattern.compile("\\(\\s*(\\d+)\\s*(?:,\\s*(\\d+)\\s*)?\\)");
     private static final List<String> NUMERIC_TYPES = List.of("NUMBER", "NUMERIC", "DECIMAL");
 
-    /** 그리드 정렬 필드 (목록에 없는 필드는 무시한다) */
-    private static final Map<String, Comparator<Issue>> SORTS = Map.of(
-            "type", Comparator.comparing(Issue::type),
-            "schemaName", Comparator.comparing(Issue::schemaName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "tableName", Comparator.comparing(Issue::tableName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "columnName", Comparator.comparing(Issue::columnName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "columnDesc", Comparator.comparing(Issue::columnDesc, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "isApproval", Comparator.comparing((Issue issue) -> Boolean.TRUE.equals(issue.isApproval())));
-
-    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
-    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
-
     private final DictionaryUsageRepository usageRepository;
     private final ProjectRepository projectRepository;
 
@@ -93,88 +70,14 @@ public class StandardizationQualityService {
                 count(issues, IssueType.DOMAIN_DEFINITION_MISMATCH));
     }
 
-    public Page<Issue> selectIssues(AccountDto accountDto, Search search, Pageable pageable) {
-        // shortcut: 프로젝트의 컬럼 전체를 한 번에 읽어 메모리에서 진단·필터·페이징한다 (타입 매핑이 자바 코드라 SQL 로 걸러낼 수 없다),
-        // 프로젝트 컬럼이 수십만 건이 되면 진단 결과 저장(AI-6) 또는 SQL 로 걸러낼 수 있는 유형부터 분리한다
-        String keyword = search.searchQuery() == null ? "" : search.searchQuery().trim().toLowerCase(Locale.ROOT);
-        List<Issue> issues = diagnose(dbType(accountDto.getProjectId()), usageRepository.findQualityColumns(accountDto.getProjectId())).stream()
-                .filter(issue -> search.type() == null || issue.type() == search.type())
-                .filter(issue -> search.schemaId() == null || search.schemaId().equals(issue.schemaId()))
-                .filter(issue -> search.isApproval() == null || search.isApproval() == Boolean.TRUE.equals(issue.isApproval()))
-                .filter(issue -> keyword.isEmpty()
-                        || !("tableName".equals(search.searchColumn()) || "columnName".equals(search.searchColumn()))
-                        || lower("tableName".equals(search.searchColumn()) ? issue.tableName() : issue.columnName()).contains(keyword))
-                .sorted(order(pageable.getSort()))
-                .toList();
-        int from = (int) Math.min(pageable.getOffset(), issues.size());
-        return new PageImpl<>(issues.subList(from, Math.min(from + pageable.getPageSize(), issues.size())), pageable, issues.size());
-    }
-
     private DbType dbType(Long projectId) {
         return projectRepository.findById(projectId).map(Project::getDbType).map(DbType::orDefault).orElse(DbType.DEFAULT);
     }
 
     // ------------------------------------------------------------------ 모델 품질 진단 (컬럼 + 테이블)
 
-    /** 모델 진단 정렬 필드 */
-    private static final Map<String, Comparator<ModelIssue>> MODEL_SORTS = Map.of(
-            "type", Comparator.comparing(ModelIssue::type),
-            "severity", Comparator.comparing(ModelIssue::severity),
-            "targetType", Comparator.comparing(ModelIssue::targetType),
-            "schemaName", Comparator.comparing(ModelIssue::schemaName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "tableName", Comparator.comparing(ModelIssue::tableName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "columnName", Comparator.comparing(ModelIssue::columnName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "columnDesc", Comparator.comparing(ModelIssue::columnDesc, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "isApproval", Comparator.comparing((ModelIssue issue) -> Boolean.TRUE.equals(issue.isApproval())));
-
-    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
-    public static final java.util.Set<String> MODEL_SORT_FIELDS = MODEL_SORTS.keySet();
-
-    /** 기본 순서 : 테이블명 → 테이블 진단 → 그 테이블의 컬럼 진단(컬럼 순서 → 유형) */
-    private static final Comparator<ModelIssue> MODEL_DEFAULT_ORDER = Comparator
-            .comparing(ModelIssue::tableName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
-            .thenComparing(issue -> issue.targetType() == TargetType.TABLE ? 0 : 1);
-
-    public ModelSummary selectModelSummary(AccountDto accountDto) {
-        ModelDiagnosis diagnosis = diagnoseModel(accountDto.getProjectId());
-        List<Issue> columnIssues = diagnosis.columnIssues();
-        Summary columns = new Summary(diagnosis.totalColumns(),
-                columnIssues.stream().map(Issue::columnId).distinct().count(),
-                count(columnIssues, IssueType.TERM_NOT_LINKED),
-                count(columnIssues, IssueType.COLUMN_NAME_MISMATCH),
-                count(columnIssues, IssueType.DOMAIN_DEFINITION_MISMATCH));
-        List<ModelIssue> issues = diagnosis.issues();
-        return new ModelSummary(columns, diagnosis.totalTables(),
-                diagnosis.tableIssues().stream().map(issue -> issue.table().tableId()).distinct().count(),
-                diagnosis.tableIssues().stream().filter(issue -> issue.finding().rule() == StandardizationRule.TABLE_PREFIX_MISSING).count(),
-                diagnosis.tableIssues().stream().filter(issue -> issue.finding().rule() == StandardizationRule.TABLE_WORD_NOT_STANDARD).count(),
-                diagnosis.tablePrefix(),
-                issues.stream().filter(issue -> issue.severity() == Severity.ERROR).count(),
-                issues.stream().filter(issue -> issue.severity() == Severity.WARNING).count(),
-                issues.stream().filter(issue -> issue.severity() == Severity.INFO).count());
-    }
-
-    public Page<ModelIssue> selectModelIssues(AccountDto accountDto, ModelSearch search, Pageable pageable) {
-        // 컬럼 진단과 같이 프로젝트 전체를 읽어 메모리에서 판정·필터·페이징한다 (위 selectIssues 의 shortcut 참고)
-        String keyword = search.searchQuery() == null ? "" : search.searchQuery().trim().toLowerCase(Locale.ROOT);
-        List<ModelIssue> issues = diagnoseModel(accountDto.getProjectId()).issues().stream()
-                .filter(issue -> search.type() == null || issue.type() == search.type())
-                .filter(issue -> search.severity() == null || issue.severity() == search.severity())
-                .filter(issue -> search.targetType() == null || issue.targetType() == search.targetType())
-                .filter(issue -> search.schemaId() == null || search.schemaId().equals(issue.schemaId()))
-                .filter(issue -> search.isApproval() == null || search.isApproval() == Boolean.TRUE.equals(issue.isApproval()))
-                .filter(issue -> keyword.isEmpty()
-                        || !("tableName".equals(search.searchColumn()) || "columnName".equals(search.searchColumn()))
-                        || lower("tableName".equals(search.searchColumn()) ? issue.tableName() : issue.columnName()).contains(keyword))
-                .sorted(modelOrder(pageable.getSort()))
-                .toList();
-        int from = (int) Math.min(pageable.getOffset(), issues.size());
-        return new PageImpl<>(issues.subList(from, Math.min(from + pageable.getPageSize(), issues.size())), pageable, issues.size());
-    }
-
     /** 한 번의 모델 진단 : SQL 4번 (프로젝트, 컬럼, 테이블, 단어 약어) — 테이블·컬럼 수와 무관하다 */
-    private record ModelDiagnosis(int totalColumns, int totalTables, String tablePrefix, List<Issue> columnIssues, List<TableIssue> tableIssues,
-                                  List<ModelIssue> issues) {
+    private record ModelDiagnosis(List<Issue> columnIssues, List<TableIssue> tableIssues) {
     }
 
     private ModelDiagnosis diagnoseModel(Long projectId) {
@@ -187,23 +90,58 @@ public class StandardizationQualityService {
         List<StandardizationQualityDto.TableRow> tables = usageRepository.findQualityTables(projectId);
         List<TableIssue> tableIssues = tables.isEmpty() ? List.of()
                 : TableNameRules.diagnose(projectId, prefix, tables, TableNameRules.wordStatuses(usageRepository.findWordAbbreviations(projectId)));
-
-        List<ModelIssue> issues = new ArrayList<>(tableIssues.size() + columnIssues.size());
-        tableIssues.forEach(issue -> issues.add(modelIssue(issue)));
-        columnIssues.forEach(issue -> issues.add(modelIssue(projectId, issue)));
-        issues.sort(MODEL_DEFAULT_ORDER); // 안정 정렬 : 같은 테이블 안에서는 조회 순서(컬럼 순서 → 유형)를 유지한다
-        return new ModelDiagnosis(columns.size(), tables.size(), prefix, columnIssues, tableIssues, issues);
+        return new ModelDiagnosis(columnIssues, tableIssues);
     }
 
-    private static Comparator<ModelIssue> modelOrder(Sort sort) {
-        Comparator<ModelIssue> order = (a, b) -> 0;
-        for (Sort.Order requested : sort) {
-            Comparator<ModelIssue> comparator = MODEL_SORTS.get(requested.getProperty());
-            if (comparator != null) {
-                order = order.thenComparing(requested.isAscending() ? comparator : comparator.reversed());
+    /**
+     * 저장 검사(AI-6) : 모델 진단(컬럼 3규칙 + 테이블명 2규칙)의 판정 결과를 그대로 넘긴다 — 화면 진단과 같은 계산({@link #diagnoseModel})이다.
+     * 호출한 트랜잭션(검사 스냅숏) 안에서 읽는다.
+     */
+    public List<InspectionItem> inspect(long projectId) {
+        List<InspectionItem> items = new ArrayList<>();
+        inspect(projectId, items::add);
+        return items;
+    }
+
+    /**
+     * 같은 판정, 결과를 하나씩 넘긴다 : 저장 검사는 받는 즉시 저장 형태로 바꿔 판정 결과 30만 건을 목록으로 들고 있지 않는다 (AI-6 FINAL 메모리 개선).
+     * 넘기는 순서는 목록판과 같다 (테이블 → 컬럼 → 완전성).
+     */
+    public void inspect(long projectId, java.util.function.Consumer<InspectionItem> items) {
+        ModelDiagnosis diagnosis = diagnoseModel(projectId);
+        for (TableIssue issue : diagnosis.tableIssues()) {
+            StandardizationQualityDto.TableRow table = issue.table();
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("schemaName", table.schemaName());
+            details.put("tableName", table.tableName());
+            if (!issue.tokens().isEmpty()) {
+                details.put("tokens", issue.tokens().stream().map(token -> token.token() + ":" + token.status()).toList());
             }
+            items.accept(new InspectionItem(issue.finding(), InspectionItem.ObjectType.TABLE, table.tableId(), table.tableId(),
+                    qualified(table.schemaName(), table.tableName(), null), details));
         }
-        return order;
+        for (Issue issue : diagnosis.columnIssues()) {
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("schemaName", issue.schemaName());
+            details.put("tableName", issue.tableName());
+            details.put("columnName", issue.columnName());
+            items.accept(new InspectionItem(finding(projectId, issue), InspectionItem.ObjectType.COLUMN, issue.columnId(), issue.tableId(),
+                    qualified(issue.schemaName(), issue.tableName(), issue.columnName()), details));
+        }
+        // 완전성 4규칙 (AI-6 3차) : 같은 모델 묶음·같은 스냅숏, 프로젝트 단위 조회 2번 (테이블·컬럼마다 조회하지 않는다)
+        diagnosis = null; // 모델 진단 목록은 여기까지 — 완전성 조회 동안 들고 있지 않는다
+        CompletenessRules.diagnose(projectId, usageRepository.findCompletenessTables(projectId), usageRepository.findCompletenessColumns(projectId), items);
+    }
+
+    /** 표시 이름 : 스키마.테이블(.컬럼) — 빈 부분은 뺀다 */
+    public static String qualified(String schema, String table, String column) {
+        StringBuilder name = new StringBuilder();
+        for (String part : new String[]{schema, table, column}) {
+            if (part == null || part.isBlank()) continue;
+            if (!name.isEmpty()) name.append('.');
+            name.append(part);
+        }
+        return name.isEmpty() ? "-" : name.toString();
     }
 
     /**
@@ -225,58 +163,8 @@ public class StandardizationQualityService {
                 FindingFingerprint.of(projectId, rule, List.of(issue.columnId()), keys));
     }
 
-    private static ModelIssue modelIssue(long projectId, Issue issue) {
-        StandardizationRule rule = issue.type().rule();
-        return new ModelIssue(issue.id(), rule, rule.severity(), rule.targetType(), issue.schemaId(), issue.schemaName(), issue.tableId(),
-                issue.tableName(), issue.tableKorName(), issue.columnId(), issue.columnName(), issue.columnDesc(), issue.termName(),
-                issue.actualValue(), issue.expectedValue(), issue.attributes(), List.of(), issue.message(), issue.isApproval(),
-                finding(projectId, issue).fingerprint());
-    }
-
-    private static ModelIssue modelIssue(TableIssue issue) {
-        Finding finding = issue.finding();
-        StandardizationRule rule = finding.rule();
-        StandardizationQualityDto.TableRow table = issue.table();
-        String message = rule == StandardizationRule.TABLE_PREFIX_MISSING
-                ? Messages.get("테이블명이 프로젝트 접두어({0})로 시작하지 않습니다.", finding.expectedValue())
-                : tokenMessage(issue.tokens());
-        return new ModelIssue(rule + ":" + table.tableId(), rule, rule.severity(), rule.targetType(), table.schemaId(), table.schemaName(),
-                table.tableId(), table.tableName(), table.tableKorName(), null, null, null, null,
-                finding.actualValue(), finding.expectedValue(), List.of(), issue.tokens(), message, table.isApproval(), finding.fingerprint());
-    }
-
-    private static String tokenMessage(List<NameToken> tokens) {
-        List<String> parts = new ArrayList<>();
-        List<String> notFound = tokens(tokens, TokenStatus.NOT_FOUND);
-        List<String> notApproved = tokens(tokens, TokenStatus.NOT_APPROVED);
-        if (!notFound.isEmpty()) parts.add(Messages.get("표준 단어로 등록되지 않은 약어 : {0}", String.join(", ", notFound)));
-        if (!notApproved.isEmpty()) parts.add(Messages.get("승인되지 않은 표준 단어 약어 : {0}", String.join(", ", notApproved)));
-        if (tokens.stream().anyMatch(token -> token.status() == TokenStatus.EMPTY)) parts.add(Messages.get("비어 있는 약어가 있습니다 ('_' 가 연달아 있거나 앞뒤에 있음)."));
-        return String.join(" / ", parts);
-    }
-
-    private static List<String> tokens(List<NameToken> tokens, TokenStatus status) {
-        return tokens.stream().filter(token -> token.status() == status).map(NameToken::token).distinct().toList();
-    }
-
     private static long count(List<Issue> issues, IssueType type) {
         return issues.stream().filter(issue -> issue.type() == type).count();
-    }
-
-    private static String lower(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT);
-    }
-
-    /** 요청한 정렬(허용 필드만). 같은 값은 조회 순서(테이블명 → 컬럼 순서 → 진단 유형)를 유지한다 (안정 정렬) */
-    private static Comparator<Issue> order(Sort sort) {
-        Comparator<Issue> order = (a, b) -> 0;
-        for (Sort.Order requested : sort) {
-            Comparator<Issue> comparator = SORTS.get(requested.getProperty());
-            if (comparator != null) {
-                order = order.thenComparing(requested.isAscending() ? comparator : comparator.reversed());
-            }
-        }
-        return order;
     }
 
     // ------------------------------------------------------------------ 판정

@@ -61,6 +61,7 @@ public final class MetadataToolSession {
 
     private final ExecutionContext context;
     private final String requestId;
+    private final ToolScope toolScope;
     private final long deadlineNanos;
     private final List<Call> calls = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, EvidenceCatalog.Snapshot> seen = new ConcurrentHashMap<>();
@@ -86,10 +87,22 @@ public final class MetadataToolSession {
     }
 
     public MetadataToolSession(ExecutionContext context, String requestId, long timeoutMillis) {
+        this(context, requestId, timeoutMillis, ToolScope.METADATA);
+    }
+
+    /** @param toolScope 이 질의의 기능 범위 (AI-7) — 질의 동안 바뀌지 않는다. 범위 밖 Tool 이름을 거절할 때 쓸 수 있는 Tool 목록을 정한다 */
+    public MetadataToolSession(ExecutionContext context, String requestId, long timeoutMillis, ToolScope toolScope) {
         if (context == null) throw new IllegalArgumentException("실행 컨텍스트가 없습니다.");
+        if (toolScope == null) throw new IllegalArgumentException("기능 범위가 없습니다.");
         this.context = context;
         this.requestId = requestId;
         this.deadlineNanos = System.nanoTime() + timeoutMillis * 1_000_000;
+        this.toolScope = toolScope;
+    }
+
+    /** 이 질의의 기능 범위 (AI-7) */
+    public ToolScope toolScope() {
+        return toolScope;
     }
 
     /** Spring AI 의 Tool 실행 컨텍스트에서 꺼낸다. 없으면(질의 서비스를 거치지 않은 직접 실행) 실행하지 않는다 */

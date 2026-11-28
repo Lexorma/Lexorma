@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { inspectionKey } from '../quality/inspectionDialogs';
+import { OUTCOMES, SEVERITIES, runOutcome, type Summary as InspectionSummary } from '../quality/model';
 import { BellIcon, BookIcon, ColumnsIcon, NumberIcon, TableIcon, TypographyIcon } from '@primer/octicons-react';
 import { useAuth, type MenuId } from '../../hooks/useAuth';
 import { api } from '../../lib/api';
@@ -146,6 +148,8 @@ function StatsView({ s }: { s: Stats }) {
         <ModelBox s={s} />
         <QualityBox s={s} canOpen={canView('standardization-quality')} />
       </div>
+
+      {canView('standardization-quality') && <QualityInspectionBox />}
       <p className="dash-foot">{t('조회 시각 {0} · 저장된 데이터를 조회할 때 센 값입니다.', formatDateTime(s.generatedAt))}</p>
     </>
   );
@@ -184,7 +188,7 @@ function StandardBox({ s, canOpen }: { s: Stats; canOpen: boolean }) {
   const unlinked = st.totalColumns - st.linkedColumns;
   return (
     <Box title={t('데이터 표준 적용률')}
-         action={canOpen && unlinked > 0 ? <Link to="/standardizationQuality?type=TERM_NOT_LINKED" className="dash-btn">{t('미적용 컬럼 보기')}</Link> : undefined}>
+         action={canOpen && unlinked > 0 ? <Link to="/standardizationQuality?rule=TERM_NOT_LINKED" className="dash-btn">{t('미적용 컬럼 보기')}</Link> : undefined}>
       {st.totalColumns === 0 ? <p className="dash-empty">{t('컬럼이 없어 적용률을 계산할 대상이 없습니다.')}</p> : (
         <div className="dash-standard">
           <Donut part={st.linkedColumns} whole={st.totalColumns} label={t('표준 연결률')} />
@@ -198,7 +202,7 @@ function StandardBox({ s, canOpen }: { s: Stats; canOpen: boolean }) {
           </dl>
         </div>
       )}
-      <p className="dash-note">{t('연결률은 표준 용어가 연결된 컬럼의 비율입니다(용어의 승인 여부와 무관). 규칙 준수율은 표준화 품질 진단에서 문제가 없는 컬럼(용어 연결·컬럼명 = 영문 약어·도메인 정의 일치)의 비율입니다.')}</p>
+      <p className="dash-note">{t('연결률은 표준 용어가 연결된 컬럼의 비율입니다(용어의 승인 여부와 무관). 규칙 준수율은 품질 진단에서 문제가 없는 컬럼(용어 연결·컬럼명 = 영문 약어·도메인 정의 일치)의 비율입니다.')}</p>
     </Box>
   );
 }
@@ -301,13 +305,13 @@ function QualityBox({ s, canOpen }: { s: Stats; canOpen: boolean }) {
   const columns = s.counts.columns;
   const tables = s.counts.tables;
   const rows: { key: string; label: string; value: number; base: number; to?: string }[] = [
-    { key: 'TERM_NOT_LINKED', label: t('표준 용어 미연결 컬럼'), value: q.termNotLinked, base: columns, to: '/standardizationQuality?type=TERM_NOT_LINKED' },
-    { key: 'COLUMN_NAME_MISMATCH', label: t('컬럼명 불일치 컬럼'), value: q.columnNameMismatch, base: columns, to: '/standardizationQuality?type=COLUMN_NAME_MISMATCH' },
-    { key: 'DOMAIN_DEFINITION_MISMATCH', label: t('도메인 정의 불일치 컬럼'), value: q.domainDefinitionMismatch, base: columns, to: '/standardizationQuality?type=DOMAIN_DEFINITION_MISMATCH' },
-    { key: 'tableComment', label: t('코멘트가 없는 테이블'), value: q.tablesWithoutComment, base: tables },
-    { key: 'columnComment', label: t('코멘트(컬럼 설명)가 없는 컬럼'), value: q.columnsWithoutComment, base: columns },
-    { key: 'tableBiz', label: t('업무 설명이 없는 테이블'), value: q.tablesWithoutBizDescription, base: tables },
-    { key: 'columnBiz', label: t('업무 설명이 없는 컬럼'), value: q.columnsWithoutBizDescription, base: columns },
+    { key: 'TERM_NOT_LINKED', label: t('표준 용어 미연결 컬럼'), value: q.termNotLinked, base: columns, to: '/standardizationQuality?rule=TERM_NOT_LINKED' },
+    { key: 'COLUMN_NAME_MISMATCH', label: t('컬럼명 불일치 컬럼'), value: q.columnNameMismatch, base: columns, to: '/standardizationQuality?rule=COLUMN_NAME_MISMATCH' },
+    { key: 'DOMAIN_DEFINITION_MISMATCH', label: t('도메인 정의 불일치 컬럼'), value: q.domainDefinitionMismatch, base: columns, to: '/standardizationQuality?rule=DOMAIN_DEFINITION_MISMATCH' },
+    { key: 'tableComment', label: t('코멘트가 없는 테이블'), value: q.tablesWithoutComment, base: tables, to: '/standardizationQuality?rule=TABLE_COMMENT_MISSING' },
+    { key: 'columnComment', label: t('코멘트(컬럼 설명)가 없는 컬럼'), value: q.columnsWithoutComment, base: columns, to: '/standardizationQuality?rule=COLUMN_COMMENT_MISSING' },
+    { key: 'tableBiz', label: t('업무 설명이 없는 테이블'), value: q.tablesWithoutBizDescription, base: tables, to: '/standardizationQuality?rule=TABLE_BIZ_DESCRIPTION_MISSING' },
+    { key: 'columnBiz', label: t('업무 설명이 없는 컬럼'), value: q.columnsWithoutBizDescription, base: columns, to: '/standardizationQuality?rule=COLUMN_BIZ_DESCRIPTION_MISSING' },
   ];
   return (
     <Box title={t('데이터 품질 요약')} action={canOpen ? <Link to="/standardizationQuality" className="dash-btn">{t('품질 진단')}</Link> : undefined}>
@@ -328,7 +332,57 @@ function QualityBox({ s, canOpen }: { s: Stats; canOpen: boolean }) {
           </ul>
         </>
       )}
-      <p className="dash-note">{t('한 컬럼에 여러 문제가 있을 수 있어 항목별 건수를 더하지 않습니다. 관계가 없는 테이블과 AI 추정 관계는 품질 문제로 세지 않습니다.')}</p>
+      <p className="dash-note">{t('한 컬럼에 여러 문제가 있을 수 있어 항목별 건수를 더하지 않습니다. 관계가 없는 테이블과 AI 추정 관계는 품질 문제로 세지 않습니다. 이 수치는 지금 데이터로 센 값이고, 항목을 누르면 마지막 품질 진단의 저장 결과로 이동합니다.')}</p>
+    </Box>
+  );
+}
+
+/**
+ * 품질 진단 요약 (AI-6 3차, 카드 1개) : 마지막 품질 진단의 저장 결과 (지금 쓰는 규칙의 미해결 — 오류·주의·참고, 예외), 검사 기준 시각, 최근 실행 상태.
+ * 대시보드를 열어도 검사를 실행하지 않고 다시 읽기를 반복하지 않는다 (품질 진단 화면과 같은 캐시 키라 그 화면의 검사 완료·예외 변경이 반영된다).
+ * 검사 이력이 없으면 0건을 보여 주지 않는다 (문제가 없다는 뜻이 아니다). 점수·등급은 매기지 않는다.
+ */
+function QualityInspectionBox() {
+  const { user } = useAuth();
+  const projectId = user?.projectId ?? 0;
+  const summary = useQuery({ queryKey: inspectionKey(projectId, 'summary'), queryFn: () => api<InspectionSummary>('/api/qualityInspection/summary', { silent: true }) });
+  const data = summary.data;
+  const last = data?.lastRun ?? null;
+  const latest = data?.latestRun ?? null;
+  const active = data?.activeRun ?? null;
+  const latestOutcome = latest ? runOutcome(latest) : null;
+  return (
+    <Box title={t('품질 진단 요약')} action={<Link to="/standardizationQuality" className="dash-btn">{t('품질 진단')}</Link>}>
+      {summary.isPending ? <p className="dash-empty">{t('불러오는 중…')}</p>
+        : summary.isError || !data ? <p className="dash-empty" role="alert">{t('품질 진단 요약을 불러오지 못했습니다.')}</p>
+          : !latest && !active ? <p className="dash-empty">{t('아직 품질 진단을 실행하지 않았습니다. 품질 진단 화면에서 검사를 실행하면 결과가 생깁니다.')}</p>
+            : (
+              <>
+                {active && <p className="dash-quality-head">{OUTCOMES[runOutcome(active)].label}{last ? ` · ${t('아래는 이전 검사 결과입니다.')}` : ''}</p>}
+                {last ? (
+                  <>
+                    <ul className="dash-figures dash-inspection">
+                      {(['ERROR', 'WARNING', 'INFO'] as const).map((severity) => (
+                        <li key={severity}>
+                          <Link to={`/standardizationQuality?severity=${severity}`}>{SEVERITIES.find((e) => e.severity === severity)?.label}</Link>
+                          <strong>{fmt(data.bySeverity[severity])}</strong>
+                        </li>
+                      ))}
+                      <li><Link to="/standardizationQuality?exclusion=EXCLUDED">{t('예외')}</Link><strong>{fmt(data.openExcluded)}</strong></li>
+                    </ul>
+                    <p className="dash-note">
+                      {t('검사 기준 시각 {0}', formatDateTime(last.basisAt))}
+                      {' · '}{OUTCOMES[runOutcome(last)].label}
+                      {last.partialFailure && ` · ${t('일부 규칙은 이전 검사 결과가 포함되어 있습니다.')}`}
+                      {runOutcome(last) === 'EMPTY' && ` · ${t('적용된 검사 규칙이 없었습니다.')}`}
+                    </p>
+                  </>
+                ) : !active && <p className="dash-empty">{t('검사 결과를 아직 만들지 못했습니다.')}</p>}
+                {latest && latest.id !== last?.id && latest.id !== active?.id && latestOutcome && (
+                  <p className="dash-note">{t('최근 실행 : {0}', OUTCOMES[latestOutcome].label)}{last ? ` · ${t('결과는 마지막 확정 검사 그대로입니다.')}` : ''}</p>
+                )}
+              </>
+            )}
     </Box>
   );
 }

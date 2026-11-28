@@ -109,7 +109,8 @@ class McpLogicalToolIntegrationTest {
         List<String> names = new ArrayList<>();
         tools.forEach(t -> names.add(t.path("name").asString()));
         assertThat(names).containsExactlyInAnyOrder("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations", "searchStandardTerms",
-                "searchStandardWords", "searchStandardDomains", "getProjectInfo", "getLogicalModel", "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
+                "searchStandardWords", "searchStandardDomains", "getProjectInfo", "getLogicalModel", "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail",
+                "getQualityInspectionOverview", "searchQualityFindings", "getQualityFindingDetail");
         int newTools = 0;
         for (JsonNode t : tools) {
             if (t.path("name").asString().contains("Logical")) {

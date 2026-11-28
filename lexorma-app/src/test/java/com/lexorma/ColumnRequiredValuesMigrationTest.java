@@ -55,7 +55,7 @@ class ColumnRequiredValuesMigrationTest {
     @Test
     @DisplayName("새 설치 필수값 PostgreSQL")
     void freshInstallEnforces() {
-        Db db = install(null, 4); // V0~V3
+        Db db = install(null, 5); // V0~V4 (V4 저장 품질 검사, AI-6 2차)
         try {
             column(db, 900000920, 900000910L, "CUST_NO");
             column(db, 900000921, 900000910L, "고객번호");

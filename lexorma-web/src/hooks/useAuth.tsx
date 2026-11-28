@@ -53,6 +53,10 @@ export type MenuId =
   | 'view-manage'
   | 'ddl-export'
   | 'standardization-quality'
+  /** 화면이 아니라 품질 진단의 [품질 진단 실행]·[예외 처리·해제]·[규칙 설정] 버튼 노출 여부 (규칙 설정은 서버가 프로젝트 관리자·ADMIN 인지도 본다) */
+  | 'quality-inspection-run'
+  | 'quality-inspection-exception'
+  | 'quality-inspection-rule'
   | 'model-diagnostics'
   | 'model-history'
   | 'model-version'

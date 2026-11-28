@@ -129,6 +129,7 @@
 | 논리·물리 매핑 | 매핑·테이블 변경·해제 | USER | `model-mapping-edit` | — |
 | 논리·물리 매핑 | 물리명 추천 일괄 적용 미리보기·적용 (`POST /api/modelMapping/recommendation/rename/preview`, `POST …/recommendation/rename`, M-7 2차 API · 3차 화면 2026-11-21) | USER | 화면 없음 (2차) | `model-mapping-edit` : 고르기 칸·선택 막대·[일괄 적용 미리보기] (3차, VIEWER 에는 없음 — Chromium 확인) |
 | 표준화 품질 진단 | 조회 | VIEWER | 일치 | — |
+| 품질 진단 (AI-6 2차 API · 3차 화면, 2026-11-26 — 메뉴 `standardization-quality`, 주소 `/standardizationQuality` 그대로) | 요약·결과 목록·상세·이력·실행 이력·실행 상태·규칙 설정 조회 (`GET /api/qualityInspection/**`, 목록은 `…/findings/data`·`…/runs/data`) / 실행 요청 (`POST …/runs`) / 예외 처리·해제 (`POST …/findings/{id}/exclude·unexclude`) / 규칙 설정 변경 (`PUT …/rules`, 규칙마다 `expectedActive` 필수 — 다르면 409) | 조회 VIEWER / 실행·예외 USER (실행은 서비스가 실행 컨텍스트로 DB 의 현재 역할을 다시 확인) / 규칙 설정 USER + **프로젝트 관리자·ADMIN** (DB 재확인) | 품질 진단 화면 (진단 결과·실행 이력·규칙 설정 탭), 대시보드 '품질 진단 요약' 카드 (VIEWER) | [품질 진단 실행] = `quality-inspection-run`, 결과 상세의 [예외 처리]·[예외 해제] = `quality-inspection-exception`, 규칙 설정 탭의 사용 체크 = `GET …/rules` 의 `editable` (`quality-inspection-rule` 은 USER 기준이라 관리자 여부는 `editable` 로 본다). 보조 조회 `GET /api/standardizationQuality/domains/duplicates`·`…/columns/{id}/suggestions` 는 VIEWER 그대로. 조회할 때마다 계산하던 실시간 진단 API(summary·data·model·terms·identifiers)는 3차에 지웠다 |
 
 **ERD 의 버튼 밖 동작** : 두 ERD 모두 `deleteKeyCode={null}`(Delete·Backspace 로 지워지지 않음), `elementsSelectable={false}`, 연결점은 편집 모드에서만(`nodesConnectable={editing}`), 우클릭 메뉴 없음. 편집 모드 버튼은 액션 권한이 없으면 나오지 않는다. 더블클릭(논리 ERD)은 상세를 열 뿐이고 상세는 조회 모드에서 읽기 전용이다.
 

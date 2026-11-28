@@ -9,13 +9,7 @@ import com.lexorma.core.security.repository.AccountRepository;
 import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
-import com.lexorma.data.dictionary.controller.StandardizationQualityRestController;
-import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Issue;
-import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Search;
-import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Summary;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelIssue;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSearch;
-import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto.ModelSummary;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.dictionary.quality.StandardizationRule.TargetType;
@@ -36,10 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -48,20 +39,18 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 /**
- * DBMS 식별자 진단 (M-7 보강 1차 — M-5 D3, 실제 JPA 쿼리) : 프로젝트 DBMS 기준 판정, 요약 = 목록, 조건, fingerprint, 프로젝트 격리, 권한,
- * 조회 전후 데이터 불변, 기존 컬럼 요약(대시보드)·모델 진단에 식별자 결과가 섞이지 않는지. 판정 규칙의 세부 사례는 lexorma-data 의 DbIdentifierRulesTest·DbIdentifierCheckTest.
+ * DBMS 식별자 진단 (M-7 보강 1차 — M-5 D3, 실제 JPA 쿼리) : 프로젝트 DBMS 기준 판정, 판정 결과의 대상·근거, fingerprint, 프로젝트 격리,
+ * 판정 전후 데이터 불변, 기존 컬럼 요약(대시보드)·모델 판정 묶음에 식별자 결과가 섞이지 않는지. AI-6 3차에 실시간 요약·목록 API 를 지워 판정 결과는 저장 검사가 쓰는
+ * {@code inspect} 로 본다 (그 목록의 조건·권한 검증은 화면과 함께 지웠다 — 저장 결과 목록·권한은 QualityInspectionIntegrationTest). 판정 규칙의 세부 사례는 lexorma-data 의 DbIdentifierRulesTest·DbIdentifierCheckTest.
  * AI Provider 를 등록하지 않은 상태로 실행한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 class IdentifierQualityIntegrationTest {
 
-    private static final Pageable PAGE = PageRequest.of(0, 100);
-    private static final Search ALL = new Search(null, null, null, null, null, null);
 
     @Autowired ProjectRepository projectRepository;
     @Autowired AccountRepository accountRepository;
@@ -72,7 +61,6 @@ class IdentifierQualityIntegrationTest {
     @Autowired SchemaService schemaService;
     @Autowired IdentifierQualityService identifierService;
     @Autowired StandardizationQualityService qualityService;
-    @Autowired StandardizationQualityRestController controller;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate tx;
 
@@ -82,7 +70,7 @@ class IdentifierQualityIntegrationTest {
     }
 
     @Test
-    @DisplayName("Oracle 프로젝트 : 스키마·테이블·컬럼 길이(30바이트), 권장 형식, PK 이름 잘림·충돌, UNIQUE 자동 이름 — 요약 = 목록, 조건, fingerprint")
+    @DisplayName("Oracle 프로젝트 : 스키마·테이블·컬럼 길이(30바이트), 권장 형식, PK 이름 잘림·충돌, UNIQUE 자동 이름 — 판정 결과의 대상·근거, fingerprint")
     void oracle() {
         AccountDto admin = loginAsAdmin("ident-oracle", DbType.ORACLE);
         long projectId = admin.getProjectId();
@@ -97,57 +85,50 @@ class IdentifierQualityIntegrationTest {
         column(projectId, inSales, "EMAIL_ADDRESS_FOR_NOTIFICATION", false, true);   // UK_ORDERS_EMAIL… 잘림
 
         Map<String, Object> before = jdbc.queryForMap("select count(*) c, max(MDFCN_DT) m from TB_COL where PRJ_SN = ?", projectId);
-        Summary summary = identifierService.selectSummary(admin);
-        assertThat(summary.dbType()).isEqualTo(DbType.ORACLE);
-        assertThat(summary.lengthBasis()).contains("30");
-        assertThat(summary.totalSchemas()).isEqualTo(1);
-        assertThat(summary.totalTables()).isEqualTo(4);
-        assertThat(summary.totalColumns()).isEqualTo(4);
-        assertThat(summary.rules()).containsEntry(StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED, 2L)
-                .containsEntry(StandardizationRule.IDENTIFIER_NOT_RECOMMENDED, 1L)
-                .containsEntry(StandardizationRule.CONSTRAINT_NAME_TRUNCATED, 3L)
-                .containsEntry(StandardizationRule.CONSTRAINT_NAME_COLLISION, 2L)
-                .containsEntry(StandardizationRule.IDENTIFIER_INVALID_CHARACTER, 0L)
-                .hasSize(5);
-        assertThat(summary.errors()).isEqualTo(4);
-        assertThat(summary.warnings()).isEqualTo(4);
-
-        List<Issue> issues = identifierService.selectIssues(admin, ALL, PAGE).getContent();
+        List<InspectionItem> issues = identifierService.inspect(projectId);
         assertThat(issues).hasSize(8);
-        assertThat(issues).extracting(Issue::type, Issue::kind, Issue::tableId, Issue::columnId).contains(
+        assertThat(count(issues, StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED)).isEqualTo(2);
+        assertThat(count(issues, StandardizationRule.IDENTIFIER_NOT_RECOMMENDED)).isEqualTo(1);
+        assertThat(count(issues, StandardizationRule.CONSTRAINT_NAME_TRUNCATED)).isEqualTo(3);
+        assertThat(count(issues, StandardizationRule.CONSTRAINT_NAME_COLLISION)).isEqualTo(2);
+        assertThat(count(issues, StandardizationRule.IDENTIFIER_INVALID_CHARACTER)).isZero();
+        assertThat(issues.stream().filter(i -> i.finding().rule().severity() == Severity.ERROR).count()).isEqualTo(4);
+        assertThat(issues.stream().filter(i -> i.finding().rule().severity() == Severity.WARNING).count()).isEqualTo(4);
+        assertThat(issues).allSatisfy(i -> assertThat(i.finding().evidence()).containsEntry("dbType", "ORACLE"));
+        assertThat(issues).extracting(i -> i.finding().rule(), IdentifierQualityIntegrationTest::kind, InspectionItem::tableId, IdentifierQualityIntegrationTest::columnId).contains(
                 tuple(StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED, Kind.SCHEMA, null, null),
                 tuple(StandardizationRule.IDENTIFIER_NOT_RECOMMENDED, Kind.TABLE, korean.getId(), null),
                 tuple(StandardizationRule.CONSTRAINT_NAME_COLLISION, Kind.PRIMARY_KEY, a.getId(), null),
                 tuple(StandardizationRule.CONSTRAINT_NAME_COLLISION, Kind.PRIMARY_KEY, b.getId(), null));
-        Issue collision = issues.stream().filter(i -> i.type() == StandardizationRule.CONSTRAINT_NAME_COLLISION && a.getId().equals(i.tableId())).findFirst().orElseThrow();
-        assertThat(collision.severity()).isEqualTo(Severity.ERROR);
-        assertThat(collision.ddlName()).hasSize(30);
-        assertThat(collision.related()).singleElement().satisfies(r -> assertThat(r).contains(b.getTableName()));
-        assertThat(collision.basis()).contains("Oracle");
-        assertThat(collision.fingerprint()).startsWith("v1:");
-        Issue length = issues.stream().filter(i -> i.type() == StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED && i.kind() == Kind.COLUMN).findFirst().orElseThrow();
-        assertThat(length.length()).isEqualTo(31);
-        assertThat(length.maxLength()).isEqualTo(30);
-        assertThat(length.tableName()).isEqualTo("고객");
-        assertThat(identifierService.selectIssues(admin, ALL, PAGE).getContent()).extracting(Issue::fingerprint)
-                .as("같은 데이터면 같은 fingerprint").containsExactlyElementsOf(issues.stream().map(Issue::fingerprint).toList());
-        assertThat(issues).extracting(Issue::id).doesNotHaveDuplicates();
+        InspectionItem collision = issues.stream().filter(i -> i.finding().rule() == StandardizationRule.CONSTRAINT_NAME_COLLISION && a.getId().equals(i.tableId()))
+                .findFirst().orElseThrow();
+        assertThat(collision.finding().evidence().get("ddlName")).hasSize(30);
+        // 겹치는 이름 : 표시 정보에 언어와 무관한 값(이름·종류 코드·테이블)으로 둔다 (FINAL)
+        assertThat(collision.finding().evidence()).doesNotContainKey("related");
+        assertThat(related(collision)).singleElement().satisfies(o -> {
+            assertThat(o).containsEntry("tableName", b.getTableName()).containsEntry("kind", "PRIMARY_KEY");
+        });
+        assertThat((String) collision.details().get("basis")).contains("Oracle");
+        assertThat(collision.finding().fingerprint()).startsWith("v4:");
+        InspectionItem length = issues.stream().filter(i -> i.finding().rule() == StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED && kind(i) == Kind.COLUMN)
+                .findFirst().orElseThrow();
+        assertThat(length.finding().evidence()).containsEntry("length", "31").containsEntry("maxLength", "30");
+        assertThat(length.details()).containsEntry("tableName", "고객");
+        assertThat((String) length.details().get("basis")).contains("30");
+        assertThat(identifierService.inspect(projectId)).extracting(i -> i.finding().fingerprint())
+                .as("같은 데이터면 같은 fingerprint").containsExactlyElementsOf(issues.stream().map(i -> i.finding().fingerprint()).toList());
+        assertThat(issues).extracting(i -> i.finding().fingerprint()).doesNotHaveDuplicates();
+        assertThat(issues).filteredOn(i -> kind(i) == Kind.UNIQUE).singleElement()
+                .satisfies(i -> assertThat(i.finding().rule()).isEqualTo(StandardizationRule.CONSTRAINT_NAME_TRUNCATED));
+        assertThat(issues).filteredOn(i -> sales.getSchemaName().equals(i.details().get("schemaName")))
+                .extracting(IdentifierQualityIntegrationTest::kind).containsExactlyInAnyOrder(Kind.SCHEMA, Kind.UNIQUE);
 
-        // 조건 : 유형·심각도·대상 종류·스키마·검색
-        assertThat(identifierService.selectIssues(admin, new Search(StandardizationRule.CONSTRAINT_NAME_TRUNCATED, null, null, null, null, null), PAGE).getTotalElements()).isEqualTo(3);
-        assertThat(identifierService.selectIssues(admin, new Search(null, Severity.ERROR, null, null, null, null), PAGE).getTotalElements()).isEqualTo(summary.errors());
-        assertThat(identifierService.selectIssues(admin, new Search(null, null, Kind.UNIQUE, null, null, null), PAGE).getContent())
-                .singleElement().satisfies(i -> assertThat(i.type()).isEqualTo(StandardizationRule.CONSTRAINT_NAME_TRUNCATED));
-        assertThat(identifierService.selectIssues(admin, new Search(null, null, null, sales.getId(), null, null), PAGE).getContent())
-                .extracting(Issue::kind).containsExactlyInAnyOrder(Kind.SCHEMA, Kind.UNIQUE);
-        assertThat(identifierService.selectIssues(admin, new Search(null, null, null, null, "tableName", "고객"), PAGE).getTotalElements()).isEqualTo(2);
-
-        // 조회는 아무것도 바꾸지 않는다
+        // 판정은 아무것도 바꾸지 않는다
         assertThat(jdbc.queryForMap("select count(*) c, max(MDFCN_DT) m from TB_COL where PRJ_SN = ?", projectId)).isEqualTo(before);
 
         // 같은 모델을 PostgreSQL 로 보면 길이·잘림·충돌이 없고 권장 형식만 남는다 (프로젝트 DBMS 반영)
         jdbc.update("update TB_PRJ set DB_TYPE_CD = 'POSTGRESQL' where PRJ_SN = ?", projectId);
-        assertThat(identifierService.selectIssues(admin, ALL, PAGE).getContent()).extracting(Issue::type).containsExactly(StandardizationRule.IDENTIFIER_NOT_RECOMMENDED);
+        assertThat(identifierService.inspect(projectId)).extracting(i -> i.finding().rule()).containsExactly(StandardizationRule.IDENTIFIER_NOT_RECOMMENDED);
     }
 
     @Test
@@ -161,54 +142,35 @@ class IdentifierQualityIntegrationTest {
         index(projectId, ord, "PK_CUST");
         index(projectId, ord, "IX_SAME");
         index(projectId, cust, "IX_SAME");
-        assertThat(identifierService.selectIssues(admin, ALL, PAGE).getContent()).singleElement().satisfies(i -> {
-            assertThat(i.type()).isEqualTo(StandardizationRule.CONSTRAINT_NAME_COLLISION);
-            assertThat(i.kind()).isEqualTo(Kind.PRIMARY_KEY);
+        assertThat(identifierService.inspect(projectId)).singleElement().satisfies(i -> {
+            assertThat(i.finding().rule()).isEqualTo(StandardizationRule.CONSTRAINT_NAME_COLLISION);
+            assertThat(kind(i)).isEqualTo(Kind.PRIMARY_KEY);
             assertThat(i.tableId()).isEqualTo(cust.getId());
-            assertThat(i.related()).singleElement().satisfies(r -> assertThat(r).startsWith("PK_CUST").contains("ORD"));
+            assertThat(related(i)).singleElement().satisfies(o -> {
+                assertThat(o.get("ddlName")).startsWith("PK_CUST");
+                assertThat(o.get("tableName")).contains("ORD");
+            });
         });
     }
 
     @Test
-    @DisplayName("기존 진단과 분리 : 컬럼 요약(대시보드)·모델 진단 요약·목록에 식별자 규칙이 없고 값이 그대로다. 프로젝트 격리")
+    @DisplayName("기존 진단과 분리 : 컬럼 요약(대시보드)·모델 판정 묶음에 식별자 규칙이 없고 값이 그대로다. 프로젝트 격리")
     void separatedFromExistingDiagnosis() {
         AccountDto admin = loginAsAdmin("ident-separate", DbType.ORACLE);
         long projectId = admin.getProjectId();
         TableInfo table = table(projectId, "T_" + "L".repeat(40), null);
         column(projectId, table, "C_" + "L".repeat(40), true, false);
 
-        assertThat(identifierService.selectSummary(admin).errors()).isPositive();
-        ModelSummary model = qualityService.selectModelSummary(admin);
-        List<ModelIssue> modelIssues = qualityService.selectModelIssues(admin, new ModelSearch(null, null, null, null, null, null, null), PAGE).getContent();
-        assertThat(modelIssues).extracting(ModelIssue::targetType).doesNotContain(TargetType.IDENTIFIER);
-        assertThat(modelIssues).extracting(ModelIssue::type).noneMatch(rule -> rule.targetType() == TargetType.IDENTIFIER);
-        assertThat(model.errors() + model.warnings() + model.infos()).isEqualTo(modelIssues.size());
-        assertThat(model.columns()).isEqualTo(qualityService.selectSummary(admin));
+        assertThat(identifierService.inspect(projectId)).anyMatch(i -> i.finding().rule().severity() == Severity.ERROR);
+        List<InspectionItem> modelIssues = qualityService.inspect(projectId);
+        assertThat(modelIssues).extracting(i -> i.finding().rule()).noneMatch(rule -> rule.targetType() == TargetType.IDENTIFIER);
         // 컬럼 1개 : 용어 미연결 1건만 (식별자 문제는 기존 요약의 문제 컬럼 수에 들어가지 않는다)
-        assertThat(model.columns().totalColumns()).isEqualTo(1);
-        assertThat(model.columns().issueColumns()).isEqualTo(1);
-        assertThat(model.columns().termNotLinked()).isEqualTo(1);
-        // 모델 진단 type 에 식별자 규칙을 주면 결과가 없다 (식별자 결과는 /identifiers 에서만)
-        assertThat(qualityService.selectModelIssues(admin, new ModelSearch(StandardizationRule.IDENTIFIER_LENGTH_EXCEEDED, null, null, null, null, null, null), PAGE)
-                .getTotalElements()).isZero();
+        assertThat(qualityService.selectSummary(admin).totalColumns()).isEqualTo(1);
+        assertThat(qualityService.selectSummary(admin).issueColumns()).isEqualTo(1);
+        assertThat(qualityService.selectSummary(admin).termNotLinked()).isEqualTo(1);
 
         AccountDto other = loginAsAdmin("ident-separate-other", DbType.ORACLE);
-        Summary empty = identifierService.selectSummary(other);
-        assertThat(empty.totalTables()).isZero();
-        assertThat(empty.errors() + empty.warnings()).isZero();
-        assertThat(identifierService.selectIssues(other, ALL, PAGE).getContent()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("권한 : VIEWER 부터 조회, 승인 전 사용자는 거절. 잘못된 조건 값은 컨트롤러 바인딩에서 거절(400 — SmokeTest)")
-    void authorization() {
-        Project project = projectRepository.save(Project.builder().projectName("ident-role").isActive(true).account(admin()).build());
-        AccountDto viewer = SecurityTestSupport.loginAs(projectRepository, project.getId(), "900", "ROLE_VIEWER");
-        assertThat(controller.selectIdentifierSummary(viewer).getBody()).isNotNull();
-        assertThat(controller.selectIdentifierIssues(viewer, 0, 10, null, null, null, null, null, null, null).getStatusCode().value()).isEqualTo(200);
-        AccountDto notApproved = SecurityTestSupport.loginAs(projectRepository, project.getId(), "901", "ROLE_NOT_APPROVE");
-        assertThatThrownBy(() -> controller.selectIdentifierSummary(notApproved)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.selectIdentifierIssues(notApproved, 0, 10, null, null, null, null, null, null, null)).isInstanceOf(AccessDeniedException.class);
+        assertThat(identifierService.inspect(other.getProjectId())).isEmpty();
     }
 
     /**
@@ -257,6 +219,18 @@ class IdentifierQualityIntegrationTest {
 
     // ------------------------------------------------------------------ 보조
 
+    private static long count(List<InspectionItem> issues, StandardizationRule rule) {
+        return issues.stream().filter(i -> i.finding().rule() == rule).count();
+    }
+
+    private static Kind kind(InspectionItem item) {
+        return Kind.valueOf(item.finding().evidence().get("kind"));
+    }
+
+    private static Long columnId(InspectionItem item) {
+        return item.objectType() == InspectionItem.ObjectType.COLUMN ? item.objectId() : null;
+    }
+
     private Account admin() {
         return accountRepository.findAll().stream().filter(account -> "admin".equals(account.getUsername())).findFirst().orElseThrow();
     }
@@ -281,5 +255,10 @@ class IdentifierQualityIntegrationTest {
     private void index(long projectId, TableInfo table, String name) {
         tx.executeWithoutResult(s -> indexRepository.save(TableIndex.builder().projectId(projectId).tableInfo(tableInfoRepository.getReferenceById(table.getId()))
                 .indexName(name).isUnique(false).isApproval(true).build()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, String>> related(InspectionItem item) {
+        return (List<Map<String, String>>) item.details().get("related");
     }
 }

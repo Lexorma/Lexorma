@@ -31,6 +31,7 @@ import com.lexorma.data.schema.domain.entity.SchemaInfo;
 import com.lexorma.data.schema.repository.SchemaInfoRepository;
 import com.lexorma.data.table.domain.entity.TableInfo;
 import com.lexorma.data.table.repository.TableInfoRepository;
+import com.lexorma.data.inspection.service.InspectionQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -84,6 +85,7 @@ public class EvidenceCatalog {
     private final LogicalIdentifierRepository logicalIdentifiers;
     private final LogicalRelationshipRepository logicalRelationships;
     private final LogicalSubtypeGroupRepository subtypeGroups;
+    private final InspectionQueryService inspections;
 
     /** ID 로 지금 상태를 읽는다 (없는 ID 는 결과에 없다). 호출하는 쪽의 트랜잭션 안에서 부른다 */
     public Map<Long, Snapshot> load(EvidenceType type, Collection<Long> ids) {
@@ -106,6 +108,11 @@ public class EvidenceCatalog {
             case LOGICAL_IDENTIFIER -> logicalIdentifiers.findAllById(distinct).forEach(i -> put(found, snapshot(i)));
             case LOGICAL_RELATIONSHIP -> logicalRelationships.findAllById(distinct).forEach(r -> put(found, snapshot(r)));
             case SUBTYPE_GROUP -> subtypeGroups.findAllById(distinct).forEach(g -> put(found, snapshot(g)));
+            // 품질 진단 (AI-7) : 엔티티가 없어 data 의 읽기 전용 조회로 읽는다. 이름 = 규칙 코드 또는 판정 당시 대상 이름 / RUN-<id>
+            case QUALITY_FINDING -> inspections.findingSnapshots(distinct).forEach(f -> put(found, new Snapshot(EvidenceType.QUALITY_FINDING, f.id(), f.projectId(),
+                    labels(f.rule(), f.targetName()), f.tableId(), f.rule(), f.modifiedAt())));
+            case QUALITY_RUN -> inspections.runSnapshots(distinct).forEach(r -> put(found, new Snapshot(EvidenceType.QUALITY_RUN, r.id(), r.projectId(),
+                    labels("RUN-" + r.id(), "RUN " + r.id(), String.valueOf(r.id())), null, r.status(), r.modifiedAt())));
         }
         return found;
     }

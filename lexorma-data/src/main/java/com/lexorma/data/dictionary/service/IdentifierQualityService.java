@@ -3,29 +3,21 @@ package com.lexorma.data.dictionary.service;
 import com.lexorma.core.project.domain.entity.Project;
 import com.lexorma.core.project.domain.enums.DbType;
 import com.lexorma.core.project.repository.ProjectRepository;
-import com.lexorma.core.security.domain.dto.AccountDto;
 import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Issue;
-import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Search;
-import com.lexorma.data.dictionary.domain.dto.IdentifierQualityDto.Summary;
+import com.lexorma.data.dictionary.quality.Finding;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.FindingFingerprint;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
-import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
-import com.lexorma.data.dictionary.quality.StandardizationRule.TargetType;
 import com.lexorma.data.table.ddl.DbIdentifierCheck;
 import com.lexorma.data.table.ddl.DbIdentifierRules;
 import com.lexorma.data.table.repository.DdlIdentifierQueryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,59 +32,49 @@ import java.util.Map;
 @Transactional(readOnly = true)
 public class IdentifierQualityService {
 
-    private static final Map<String, Comparator<Issue>> SORTS = Map.of(
-            "type", Comparator.comparing(Issue::type),
-            "severity", Comparator.comparing(Issue::severity),
-            "kind", Comparator.comparing(Issue::kind),
-            "schemaName", Comparator.comparing(Issue::schemaName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "tableName", Comparator.comparing(Issue::tableName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "name", Comparator.comparing(Issue::name, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "length", Comparator.comparing(Issue::length, Comparator.nullsLast(Comparator.naturalOrder())));
-
-    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
-    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
-
     private final DdlIdentifierQueryRepository identifierRepository;
     private final ProjectRepository projectRepository;
 
     private record Diagnosis(DbType db, DbIdentifierCheck.Model model, List<Issue> issues) {
     }
 
-    public Summary selectSummary(AccountDto accountDto) {
-        Diagnosis diagnosis = diagnose(accountDto.getProjectId());
-        Map<StandardizationRule, Long> rules = new EnumMap<>(StandardizationRule.class);
-        for (StandardizationRule rule : StandardizationRule.values()) {
-            if (rule.targetType() == TargetType.IDENTIFIER) {
-                rules.put(rule, diagnosis.issues().stream().filter(issue -> issue.type() == rule).count());
-            }
-        }
-        DbIdentifierCheck.Model model = diagnosis.model();
-        return new Summary(diagnosis.db(), diagnosis.db().getLabel(), DbIdentifierRules.lengthBasis(diagnosis.db()),
-                model.schemas().stream().filter(s -> !s.isDefault()).count(), model.tables().size(), model.columns().size(), rules,
-                severity(diagnosis.issues(), Severity.ERROR), severity(diagnosis.issues(), Severity.WARNING), severity(diagnosis.issues(), Severity.INFO));
-    }
-
-    public Page<Issue> selectIssues(AccountDto accountDto, Search search, Pageable pageable) {
-        // 표준화 품질 진단과 같이 프로젝트 전체를 읽어 메모리에서 판정·필터·페이징한다 (StandardizationQualityService.selectIssues 의 shortcut 참고)
-        String keyword = search.searchQuery() == null ? "" : search.searchQuery().trim().toLowerCase(Locale.ROOT);
-        boolean byTable = "tableName".equals(search.searchColumn());
-        boolean byName = "name".equals(search.searchColumn());
-        List<Issue> issues = diagnose(accountDto.getProjectId()).issues().stream()
-                .filter(issue -> search.type() == null || issue.type() == search.type())
-                .filter(issue -> search.severity() == null || issue.severity() == search.severity())
-                .filter(issue -> search.kind() == null || issue.kind() == search.kind())
-                .filter(issue -> search.schemaId() == null || search.schemaId().equals(issue.schemaId()))
-                .filter(issue -> keyword.isEmpty() || !(byTable || byName) || lower(byTable ? issue.tableName() : issue.name()).contains(keyword))
-                .sorted(order(pageable.getSort()))
-                .toList();
-        int from = (int) Math.min(pageable.getOffset(), issues.size());
-        return new PageImpl<>(issues.subList(from, Math.min(from + pageable.getPageSize(), issues.size())), pageable, issues.size());
-    }
-
     private Diagnosis diagnose(Long projectId) {
         DbType db = projectRepository.findById(projectId).map(Project::getDbType).map(DbType::orDefault).orElse(DbType.DEFAULT);
         DbIdentifierCheck.Model model = identifierRepository.model(projectId, null);
         return new Diagnosis(db, model, issues(projectId, db, model, DbIdentifierCheck.check(db, model)));
+    }
+
+    /**
+     * 저장 검사(AI-6) : 식별자 5규칙의 진단 행을 판정 결과({@link Finding})로 바꾼다 — fingerprint 는 화면 진단과 같다 ({@link #issues}).
+     * 대표 대상은 컬럼 → 테이블 → 스키마 순으로 정한 실제 객체다. 호출한 트랜잭션(검사 스냅숏) 안에서 읽는다.
+     */
+    public List<InspectionItem> inspect(long projectId) {
+        Diagnosis diagnosis = diagnose(projectId);
+        List<InspectionItem> items = new ArrayList<>(diagnosis.issues().size());
+        for (Issue issue : diagnosis.issues()) {
+            InspectionItem.ObjectType type = issue.columnId() != null ? InspectionItem.ObjectType.COLUMN
+                    : issue.tableId() != null ? InspectionItem.ObjectType.TABLE : InspectionItem.ObjectType.SCHEMA;
+            long target = issue.columnId() != null ? issue.columnId() : issue.tableId() != null ? issue.tableId() : issue.schemaId();
+            Map<String, String> evidence = new LinkedHashMap<>();
+            evidence.put("kind", issue.kind().name());
+            evidence.put("dbType", diagnosis.db().name());
+            if (issue.ddlName() != null) evidence.put("ddlName", issue.ddlName());
+            if (issue.length() != null) evidence.put("length", String.valueOf(issue.length()));
+            if (issue.maxLength() != null) evidence.put("maxLength", String.valueOf(issue.maxLength()));
+            // 겹치는 이름은 표시 정보(details.related)에 종류 코드로 둔다 — 근거에 판정 때 언어의 문구를 넣지 않는다 (FINAL)
+            Finding finding = new Finding(issue.type(), List.of(target), issue.name(), null, evidence, issue.fingerprint());
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("schemaName", issue.schemaName());
+            details.put("tableName", issue.tableName());
+            details.put("columnName", issue.columnName());
+            details.put("basis", issue.basis()); // 판정 기준 문구 (서버 기준 문구 그대로 — 화면이 번역 사전으로 표시 언어로 바꾼다)
+            if (!issue.relatedObjects().isEmpty()) details.put("related", issue.relatedObjects());
+            String owner = StandardizationQualityService.qualified(issue.schemaName(), issue.tableName(), issue.columnName());
+            String name = issue.kind() == DbIdentifierRules.Kind.SCHEMA || issue.kind() == DbIdentifierRules.Kind.TABLE || issue.kind() == DbIdentifierRules.Kind.COLUMN
+                    ? owner : owner + " · " + issue.name();
+            items.add(new InspectionItem(finding, type, target, issue.tableId(), name, details));
+        }
+        return items;
     }
 
     /** 판정 결과 → 진단 행 (이름은 model 에서 찾는다) */
@@ -120,22 +102,17 @@ public class IdentifierQualityService {
                     finding.schemaId(), schemaNames.get(finding.schemaId()), finding.tableId(), tableNames.get(finding.tableId()),
                     finding.columnId(), columnNames.get(finding.columnId()), issue.name(), issue.ddlName(), issue.length(), issue.maxLength(),
                     DbIdentifierRules.basis(db, issue.code()), DbIdentifierRules.reason(db, issue, related), DbIdentifierRules.guide(issue.code()), related,
-                    FindingFingerprint.of(projectId, rule, List.of(target), keys)));
+                    FindingFingerprint.of(projectId, rule, List.of(target), keys),
+                    // 저장 근거용 : 언어와 무관한 값 (종류 코드) — 화면이 표시 언어로 바꾼다 (FINAL : 판정 때의 한국어 표시 문구를 저장하지 않는다)
+                    finding.others().stream().map(other -> {
+                        Map<String, String> object = new LinkedHashMap<>();
+                        object.put("ddlName", other.ddlName());
+                        object.put("kind", other.kind().name());
+                        object.put("tableName", tableNames.getOrDefault(other.tableId(), "-"));
+                        return object;
+                    }).toList()));
         }
         return issues;
-    }
-
-    private static long severity(List<Issue> issues, Severity severity) {
-        return issues.stream().filter(issue -> issue.severity() == severity).count();
-    }
-
-    private static Comparator<Issue> order(Sort sort) {
-        Comparator<Issue> order = (a, b) -> 0;
-        for (Sort.Order requested : sort) {
-            Comparator<Issue> comparator = SORTS.get(requested.getProperty());
-            if (comparator != null) order = order.thenComparing(requested.isAscending() ? comparator : comparator.reversed());
-        }
-        return order;
     }
 
     private static String upper(String value) {

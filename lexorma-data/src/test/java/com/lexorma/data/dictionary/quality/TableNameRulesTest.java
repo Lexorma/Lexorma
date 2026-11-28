@@ -67,7 +67,7 @@ class TableNameRulesTest {
     @DisplayName("fingerprint : 같은 문제는 같은 값, 프로젝트·대상·규칙·핵심 값이 다르면 다른 값")
     void fingerprint() {
         String first = only(diagnose("TB_", "TB_MBR_XYZ")).finding().fingerprint();
-        assertThat(first).startsWith("v1:").hasSize(3 + 64);
+        assertThat(first).startsWith("v4:").hasSize(3 + 64);
         assertThat(only(diagnose("TB_", "TB_MBR_XYZ")).finding().fingerprint()).isEqualTo(first);
         // 승인된 다른 약어를 바꿔도 위반 약어가 같으면 같은 문제다
         assertThat(only(diagnose("TB_", "TB_INFO_XYZ")).finding().fingerprint()).isEqualTo(first);

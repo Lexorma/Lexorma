@@ -1408,5 +1408,79 @@ final class EnglishMessages {
         add("subtypeGroupId 는 section 이 INHERITANCE 일 때만 쓸 수 있습니다.", "subtypeGroupId can be used only with section INHERITANCE.");
         add("page 가 너무 큽니다.", "page is too large.");
         add("{0} 는 {1} 중 하나입니다.", "{0} must be one of {1}.");
+
+        // ---------------------------------------------------------------- AI-7 품질 진단 Tool
+        add("품질 진단 범위는 Tool Calling 을 지원하는 AI 모델에서만 쓸 수 있습니다. 메타데이터 범위로 질문하거나 다른 모델을 쓰세요.", "The quality inspection scope needs an AI model that supports tool calling. Ask in the metadata scope or use another model.");
+        add("runId 와 runRelation 은 함께 지정해야 합니다.", "runId and runRelation must be given together.");
+        add("RESOLVED_IN 은 해결된 결과만 대상이라 status 를 생략하거나 RESOLVED 로 지정해야 합니다.", "RESOLVED_IN covers resolved findings only: omit status or use RESOLVED.");
+        add("runId 와 ruleCode 는 함께 지정할 수 없습니다.", "runId and ruleCode cannot be given together.");
+        add("ruleCode 가 비어 있습니다.", "ruleCode is empty.");
+        add("endReason·lastChange RESOLVED 는 해결된 결과에만 있어 status 를 생략하거나 RESOLVED·ALL 로 지정해야 합니다.",
+                "endReason and lastChange RESOLVED exist only on resolved findings: omit status or use RESOLVED or ALL.");
+        add("page 는 0 이상 {0} 이하여야 합니다.", "page must be between 0 and {0}.");
+        add("알 수 없는 규칙 코드입니다 : {0}. getQualityInspectionOverview 의 rules 에 있는 코드를 쓰세요.", "Unknown rule code: {0}. Use a code from rules of getQualityInspectionOverview.");
+        add("findingId 가 필요합니다.", "findingId is required.");
+
+        // ---------------------------------------------------------------- AI-7 품질 진단 규칙 안내 (StandardizationRuleGuide)
+        add("표준 용어 미연결", "No standard term");
+        add("컬럼이 표준 용어를 참조하지 않습니다.", "The column does not reference a standard term.");
+        add("컬럼의 뜻에 맞는 표준 용어를 찾아 연결하고, 맞는 용어가 없으면 새 용어 등록을 검토합니다.", "Find and link a standard term that matches the column's meaning; if none fits, consider registering a new term.");
+        add("컬럼명 불일치", "Column name mismatch");
+        add("컬럼명이 연결된 표준 용어의 영문 약어와 다릅니다.", "The column name differs from the abbreviation of its linked standard term.");
+        add("컬럼명을 연결된 표준 용어의 영문 약어로 바꾸거나, 컬럼의 뜻에 맞는 다른 표준 용어를 연결합니다.", "Rename the column to the abbreviation of its linked standard term, or link another standard term that matches its meaning.");
+        add("도메인 정의 불일치", "Domain definition mismatch");
+        add("컬럼의 타입·길이·정밀도가 표준 도메인 정의와 다릅니다.", "The column type, length or precision differs from the standard domain definition.");
+        add("컬럼의 타입·길이·정밀도를 표준 도메인 정의에 맞추거나, 용어의 도메인이 맞는지 확인합니다.", "Align the column type, length and precision with the standard domain definition, or check that the term's domain is right.");
+        add("테이블 접두어 누락", "Missing table prefix");
+        add("테이블명이 프로젝트 접두어로 시작하지 않습니다.", "The table name does not start with the project prefix.");
+        add("테이블명을 프로젝트 접두어로 시작하도록 바꿉니다. 접두어 설정이 맞는지도 확인합니다.", "Rename the table so that it starts with the project prefix. Also check that the prefix setting is right.");
+        add("비표준 단어 약어", "Non-standard word abbreviation");
+        add("테이블명에 승인된 표준 단어 약어가 아닌 약어가 있습니다.", "The table name contains abbreviations that are not approved standard word abbreviations.");
+        add("테이블명의 약어를 승인된 표준 단어 약어로 바꾸거나, 필요한 표준 단어의 등록·승인을 검토합니다.", "Replace the abbreviations in the table name with approved standard word abbreviations, or consider registering and approving the needed standard words.");
+        add("테이블 코멘트 누락", "Missing table comment");
+        add("테이블 코멘트가 비어 있습니다.", "The table comment is empty.");
+        add("테이블 코멘트를 입력합니다 (DDL 의 테이블 COMMENT 가 됩니다).", "Enter the table comment (it becomes the table COMMENT in the DDL).");
+        add("컬럼 코멘트 누락", "Missing column comment");
+        add("컬럼 코멘트(컬럼 설명)가 비어 있습니다.", "The column comment (column description) is empty.");
+        add("컬럼 설명을 입력합니다 (DDL 의 컬럼 COMMENT 가 됩니다).", "Enter the column description (it becomes the column COMMENT in the DDL).");
+        add("테이블 업무 설명 누락", "Missing table business description");
+        add("테이블 업무 설명이 비어 있습니다.", "The table business description is empty.");
+        add("테이블 업무 설명을 직접 입력하거나 AI 설명 제안을 검토해 승인합니다.", "Enter the table business description, or review and approve an AI description proposal.");
+        add("컬럼 업무 설명 누락", "Missing column business description");
+        add("컬럼 업무 설명이 비어 있습니다.", "The column business description is empty.");
+        add("컬럼 업무 설명을 직접 입력하거나 AI 설명 제안을 검토해 승인합니다.", "Enter the column business description, or review and approve an AI description proposal.");
+        add("약어·도메인 중복", "Same abbreviation and domain");
+        add("영문 약어와 도메인이 같은 표준 용어가 여럿 있습니다.", "Several standard terms have the same abbreviation and domain.");
+        add("같은 뜻이면 하나로 정리하고, 다른 뜻이면 약어나 도메인을 구분합니다. 자동으로 합치지 않습니다.", "If they mean the same, consolidate them into one; if not, distinguish the abbreviation or domain. Nothing is merged automatically.");
+        add("용어명 중복", "Duplicate term name");
+        add("공백·_·대소문자를 무시한 용어명이 같은 표준 용어가 여럿 있습니다.", "Several standard terms have the same name, ignoring spaces, _ and case.");
+        add("같은 용어가 중복 등록되었는지 확인해 정리하거나, 뜻이 다르면 용어명을 구분합니다.", "Check whether the same term was registered twice and clean it up, or distinguish the term names if the meanings differ.");
+        add("같은 약어 다른 도메인", "Same abbreviation, other domain");
+        add("영문 약어는 같고 도메인이 다른 표준 용어가 있습니다.", "There are standard terms with the same abbreviation but different domains.");
+        add("컬럼명·엑셀 업로드에서 용어가 모호해질 수 있습니다. 약어를 구분할지, 도메인이 맞는지 검토합니다.", "Column names and Excel uploads can become ambiguous. Consider distinguishing the abbreviations or check whether the domains are right.");
+        add("같은 단어 구성", "Same words");
+        add("구성 표준 단어가 같은 표준 용어가 여럿 있습니다(순서 무시).", "Several standard terms consist of the same standard words (order ignored).");
+        add("같은 뜻의 용어가 순서만 다르게 등록되었는지 확인합니다. 의도한 구분이면 그대로 두어도 됩니다.", "Check whether terms with the same meaning were registered with only a different word order. If the distinction is intended, it can stay.");
+        add("이음동의어 유사", "Similar by synonym");
+        add("이음동의어로 같은 뜻이 되는 표준 용어가 있습니다.", "There are standard terms that mean the same through synonyms.");
+        add("이음동의어 관계를 확인해 대표 용어로 정리할지 검토합니다.", "Check the synonym relation and consider consolidating into a representative term.");
+        add("금칙어 사용", "Restricted word used");
+        add("다른 표준 단어의 금칙어를 쓰는 표준 용어입니다.", "This standard term uses a forbidden word of another standard word.");
+        add("금칙어 대신 그 금칙어를 가진 표준 단어를 쓰도록 용어를 고칩니다.", "Change the term to use the standard word that owns the forbidden word instead of the forbidden word.");
+        add("식별자 길이 초과", "Identifier too long");
+        add("이름이 프로젝트 DBMS 의 식별자 길이 기준을 넘습니다.", "The name exceeds the identifier length limit of the project DBMS.");
+        add("이름을 프로젝트 DBMS 의 길이 기준 안으로 줄입니다.", "Shorten the name to the length limit of the project DBMS.");
+        add("DBMS 허용 문자 위반", "Characters not allowed by the DBMS");
+        add("프로젝트 DBMS 가 따옴표 없는 식별자로 받지 않는 문자가 있습니다.", "The name contains characters the project DBMS does not accept in unquoted identifiers.");
+        add("따옴표 없이 쓸 수 있는 문자만 쓰도록 이름을 바꿉니다.", "Rename it so that it uses only characters allowed without quotes.");
+        add("권장 형식 아님", "Not the recommended format");
+        add("DBMS 는 받지만 Lexorma 권장 형식과 다른 이름입니다.", "The DBMS accepts the name, but it differs from the Lexorma recommended format.");
+        add("Lexorma 권장 형식(영문 대문자·숫자·_)에 맞추는 것을 검토합니다.", "Consider aligning it with the Lexorma recommended format (upper-case letters, digits and _).");
+        add("제약조건명 잘림", "Constraint name truncated");
+        add("DDL 이 만드는 제약조건명이 길이 기준을 넘어 잘립니다.", "A constraint name generated by the DDL exceeds the length limit and is truncated.");
+        add("테이블·컬럼 이름을 줄이거나 제약조건 이름을 직접 정해 잘리지 않게 합니다.", "Shorten the table or column names, or name the constraint yourself so that it is not truncated.");
+        add("제약조건명 충돌", "Constraint name collision");
+        add("DDL 의 최종 제약조건·인덱스 이름이 같은 이름 공간에서 겹칩니다.", "Final constraint or index names in the DDL collide in the same namespace.");
+        add("겹치는 제약조건·인덱스 중 하나의 이름을 바꿉니다.", "Rename one of the colliding constraints or indexes.");
     }
 }

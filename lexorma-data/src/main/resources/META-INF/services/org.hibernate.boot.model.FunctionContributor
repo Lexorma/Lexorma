@@ -1,2 +1,3 @@
 com.lexorma.data.column.repository.ColumnNameKeySql
 com.lexorma.data.mapping.repository.StandardNameSql
+com.lexorma.data.dictionary.quality.CompletenessSql

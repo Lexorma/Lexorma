@@ -10,7 +10,6 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.column.domain.entity.ColumnInfo;
 import com.lexorma.data.column.repository.ColumnInfoRepository;
 import com.lexorma.data.dictionary.domain.dto.StandardizationQualityDto;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto;
 import com.lexorma.data.dictionary.domain.entity.StandardDomain;
 import com.lexorma.data.dictionary.domain.entity.StandardTerm;
 import com.lexorma.data.dictionary.domain.entity.StandardTermWordMapping;
@@ -112,13 +111,10 @@ class StandardizationQualityPerformanceTest {
                 (System.nanoTime() - started) / 1_000_000));
 
         var page = PageRequest.of(0, 20);
-        report.add(repeat(stats, label, "기존 컬럼 요약 /summary", () -> quality.selectSummary(account)));
-        report.add(repeat(stats, label, "기존 컬럼 목록 /data", () -> quality.selectIssues(account, new StandardizationQualityDto.Search(null, null, null, null, null), page)));
-        report.add(repeat(stats, label, "모델 요약 /model/summary", () -> quality.selectModelSummary(account)));
-        report.add(repeat(stats, label, "모델 목록 /model/data", () -> quality.selectModelIssues(account,
-                new StandardizationQualityDto.ModelSearch(null, null, null, null, null, null, null), page)));
-        report.add(repeat(stats, label, "용어 요약 /terms/summary", () -> termQuality.selectSummary(account)));
-        report.add(repeat(stats, label, "용어 목록 /terms/data", () -> termQuality.selectGroups(account, new TermQualityDto.Search(null, null, null, null), page)));
+        report.add(repeat(stats, label, "대시보드 컬럼 요약 (selectSummary)", () -> quality.selectSummary(account)));
+        // AI-6 3차 : 실시간 목록·요약 API 를 지웠다 — 같은 판정을 저장 검사 묶음(inspect)으로 잰다
+        report.add(repeat(stats, label, "모델 판정 묶음 (inspect, 완전성 포함)", () -> quality.inspect(account.getProjectId())));
+        report.add(repeat(stats, label, "용어 판정 묶음 (inspect)", () -> termQuality.inspect(account.getProjectId())));
         report.add(repeat(stats, label, "개선 후보 /columns/{id}", () -> suggestions.suggest(account, unlinkedColumnId).candidates()));
         SecurityTestSupport.clear();
     }
@@ -226,9 +222,7 @@ class StandardizationQualityPerformanceTest {
 
     private static String summary(Object value) {
         if (value instanceof StandardizationQualityDto.Summary s) return "문제 컬럼 " + s.issueColumns() + "/" + s.totalColumns();
-        if (value instanceof StandardizationQualityDto.ModelSummary s) return "문제 컬럼 " + s.columns().issueColumns() + " · 문제 테이블 " + s.issueTables() + "/" + s.totalTables()
-                + " · 오류 " + s.errors() + " 주의 " + s.warnings() + " 참고 " + s.infos();
-        if (value instanceof TermQualityDto.Summary s) return "그룹 " + s.groups() + " · 진단된 용어 " + s.issueTerms() + "/" + s.totalTerms();
+        if (value instanceof List<?> list) return "판정 결과 " + list.size() + "건";
         return value.getClass().getSimpleName();
     }
 }

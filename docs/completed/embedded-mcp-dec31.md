@@ -1,5 +1,7 @@
 # DEC-31 선택형 내장 MCP (Streamable HTTP, 읽기 전용)
 
+
+> **AI-7 (2026-11-27 완료, [ai-quality-inspection-integration.md](ai-quality-inspection-integration.md) 22~25장)** : MCP `tools/list` 는 이제 16개 — 기존 13개 + 저장된 품질 진단 조회 `getQualityInspectionOverview(runId?, ruleCode?)`·`searchQualityFindings`·`getQualityFindingDetail` (읽기 전용, 같은 `MetadataToolset.run` 경계, 토큰 프로젝트 범위, 검사 실행·예외 처리 없음). `searchQualityFindings` 응답은 실제 적용 필터(`filters`, 기본값으로 채운 필드 `defaulted`)를 돌려주고, 0건이면 `zeroMeans`(0건 ≠ 문제 없음)와 `outsideDefaultFilters`(기본값만 넓힌 같은 조건의 존재 여부 EXISTS·NOT_EXISTS, 기본값이 없으면 NOT_CHECKED — 건수·내용 없음, 근거 아님)를 함께 준다 (25장). 이 문서의 '10개' 등 당시 숫자는 그때 기준이다.
 > **8차 (2026-11-17)** : 코드는 `lexorma-ai` 모듈로 옮겼다 — `lexorma-data` `mcp/…` → `com.lexorma.ai.mcp.…`, 프로젝트 삭제 정리는 `ai/hook/AiProjectDataCleanup`. `/mcp`·`/api/mcp`·도구 10개·토큰·설정은 그대로 ([ai-module-extraction.md](ai-module-extraction.md)).
 
 > 2026-11-16 구현 (5차 통합 구현). 정책 : [pending-work.md 7.2](../pending-work.md) DEC-31. 마이그레이션 `V6__embedded_mcp.sql` (PostgreSQL·H2 동일).

@@ -494,3 +494,116 @@
         margin-top: 56px;
     }
 }
+
+/* 기능 범위 (AI-7 3차) : 입력란 바로 위의 작은 두 칸 선택. 응답을 기다리는 동안에는 바꿀 수 없다 */
+.ai-assistant-scope {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-top: 1px solid var(--gh-border);
+}
+
+.ai-assistant-scope + .ai-assistant-input {
+    padding-top: 6px;
+    border-top: 0;
+}
+
+.ai-assistant-scope label {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border: 1px solid var(--gh-border);
+    border-radius: 999px;
+    color: var(--gh-fg-muted);
+    font-size: 12px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.ai-assistant-scope label.is-selected {
+    border-color: var(--gh-accent);
+    background-color: var(--gh-accent-subtle);
+    color: var(--gh-accent);
+    font-weight: 600;
+}
+
+/* 원래 라디오는 화면에서 숨기되 키보드·화면 낭독기로는 그대로 쓴다 */
+.ai-assistant-scope input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.ai-assistant-scope label:has(input:focus-visible) {
+    outline: 2px solid var(--gh-accent);
+    outline-offset: 1px;
+}
+
+.ai-assistant-scope label:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.ai-assistant-examples {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin: 0 0 12px;
+}
+
+.ai-assistant-examples-label {
+    color: var(--gh-fg-subtle);
+    font-size: 11px;
+}
+
+.ai-assistant-example {
+    max-width: 100%;
+    padding: 3px 10px;
+    border: 1px solid var(--gh-border);
+    border-radius: 10px;
+    background-color: var(--gh-canvas);
+    color: var(--gh-fg);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ai-assistant-example:hover {
+    border-color: var(--gh-accent);
+    background-color: var(--gh-accent-subtle);
+}
+
+/* 질문을 보낸 때의 범위 (답변의 생성 범위) */
+.ai-assistant-turn-scope {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--gh-fg-muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.ai-assistant-turn-scope.is-quality {
+    color: var(--gh-accent);
+}
+
+a.ai-assistant-evidence-name {
+    color: var(--gh-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-assistant-scope label,
+    .ai-assistant-example {
+        transition: none;
+    }
+}

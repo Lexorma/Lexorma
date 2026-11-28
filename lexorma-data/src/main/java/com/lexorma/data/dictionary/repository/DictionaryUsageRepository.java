@@ -238,6 +238,29 @@ public class DictionaryUsageRepository {
                 .fetch();
     }
 
+    /** 완전성 판정 (AI-6 3차) : 프로젝트 테이블 전체 — 모델 진단과 같은 범위(프로젝트의 물리 테이블, VIEW 제외, 승인 상태 무관). 한 번의 조회 */
+    public List<StandardizationQualityDto.CompletenessTable> findCompletenessTables(Long projectId) {
+        return query.select(Projections.constructor(StandardizationQualityDto.CompletenessTable.class,
+                        table.id, schema.schemaName, table.tableName, table.tableKorName, table.bizDescription))
+                .from(table)
+                .join(table.schema, schema)
+                .where(table.projectId.eq(projectId))
+                .orderBy(table.tableName.asc(), table.id.asc())
+                .fetch();
+    }
+
+    /** 완전성 판정 (AI-6 3차) : 프로젝트 컬럼 전체 — 모델 진단의 컬럼 진단과 같은 범위. 한 번의 조회 (컬럼마다 조회하지 않는다) */
+    public List<StandardizationQualityDto.CompletenessColumn> findCompletenessColumns(Long projectId) {
+        return query.select(Projections.constructor(StandardizationQualityDto.CompletenessColumn.class,
+                        column.id, table.id, schema.schemaName, table.tableName, column.columnName, column.columnDesc, column.bizDescription))
+                .from(column)
+                .join(column.tableInfo, table)
+                .join(table.schema, schema)
+                .where(column.projectId.eq(projectId), table.projectId.eq(projectId))
+                .orderBy(table.tableName.asc(), column.sortOrder.asc().nullsLast(), column.id.asc())
+                .fetch();
+    }
+
     /** 테이블명 진단 : 프로젝트의 표준 단어 약어·승인 여부 전체 (테이블마다 조회하지 않는다) */
     public List<StandardizationQualityDto.WordAbbreviation> findWordAbbreviations(Long projectId) {
         return query.select(Projections.constructor(StandardizationQualityDto.WordAbbreviation.class,

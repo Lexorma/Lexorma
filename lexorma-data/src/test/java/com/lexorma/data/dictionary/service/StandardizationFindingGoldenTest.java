@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * M-5 4차 : 공통 판정 함수로 바꾼 뒤에도 같은 입력의 진단 결과(규칙·대상·현재/권장 값·근거·문구·fingerprint)가 그대로인지 확인한다.
- * 기대값 {@code quality-golden/findings-v1.txt} 는 공통화 전 코드로 만든 결과다 — 판정을 일부러 바꾸는 작업이 아니면 이 파일을 고치지 않는다.
+ * 기대값 {@code quality-golden/findings-v1.txt} 는 공통화 전 코드로 만든 결과다 (AI-6 2차에서 용어 그룹 규칙 7건의 fingerprint 만 v2 로 바뀌었다 — AI6-D11) — 판정을 일부러 바꾸는 작업이 아니면 이 파일을 고치지 않는다.
  * 실제 결과는 {@code build/quality-golden/findings-v1.txt} 에 남겨 차이를 비교할 수 있다.
  */
 class StandardizationFindingGoldenTest {

@@ -29,6 +29,13 @@ public class ProjectDataCleanup {
     private static final String WORDS = "(select STD_WORD_SN from TB_STD_WORD where PRJ_SN = :projectId)";
 
     private static final List<String> DELETES = List.of(
+            // 저장 품질 검사 (AI-6 2차, V4) : 결과 이력 → 결과 → 실행 건수·규칙 → 실행 (복합 FK 순서), 규칙 설정은 FK 가 없다
+            "delete from TB_INSP_RSLT_HSTRY where PRJ_SN = :projectId",
+            "delete from TB_INSP_RSLT where PRJ_SN = :projectId",
+            "delete from TB_INSP_EXCN_RSLT where INSP_EXCN_SN in (select INSP_EXCN_SN from TB_INSP_EXCN where PRJ_SN = :projectId)",
+            "delete from TB_INSP_EXCN_RULE where INSP_EXCN_SN in (select INSP_EXCN_SN from TB_INSP_EXCN where PRJ_SN = :projectId)",
+            "delete from TB_INSP_EXCN where PRJ_SN = :projectId",
+            "delete from TB_INSP_RULE_STNG where PRJ_SN = :projectId",
             // 논리 ↔ 물리 매핑
             // 원본 매핑 (M-4c) : 모델 스키마·테이블로 가는 FK 가 있어 먼저 지운다
             // AI 설명 제안·평가·프로젝트 AI 설정·내장 MCP 의 프로젝트 데이터는 lexorma-ai 의 AiProjectDataCleanup 이 지운다 (8차 모듈 분리)

@@ -11,9 +11,7 @@ import com.lexorma.core.support.SecurityTestSupport;
 import com.lexorma.data.dictionary.domain.dto.StandardDomainDto;
 import com.lexorma.data.dictionary.domain.dto.StandardTermDto;
 import com.lexorma.data.dictionary.domain.dto.StandardWordDto;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Group;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Member;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Search;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
 import com.lexorma.data.dictionary.service.DataDictionaryService;
 import com.lexorma.data.dictionary.service.TermQualityService;
@@ -28,7 +26,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -202,20 +199,16 @@ class StandardTermDuplicateIntegrationTest {
         insertRawTerm(b, "회원_번호", "MBR_NO", codeB);                                // 다른 프로젝트
         String before = snapshot(a);
 
-        List<Group> groups = groups(a, StandardizationRule.TERM_ABBR_DUPLICATE);
+        List<InspectionItem> groups = groups(a, StandardizationRule.TERM_ABBR_DUPLICATE);
 
         assertThat(snapshot(a)).as("진단은 아무것도 바꾸지 않는다").isEqualTo(before);
         assertThat(groups).singleElement().satisfies(group -> {
-            assertThat(group.severity()).isEqualTo(StandardizationRule.Severity.ERROR);
-            assertThat(group.members()).extracting(Member::termId).containsExactly(t1, t2);
-            assertThat(group.members()).extracting(Member::abbreviation).containsExactly("MBR_NO", "mbr_no");
-            assertThat(group.members()).extracting(Member::isApproval).containsExactly(true, false);
-            assertThat(group.members()).extracting(Member::domainId).containsOnly(code);
-            assertThat(group.members()).allSatisfy(member -> {
-                assertThat(member.registeredAt()).isNotNull();
-                assertThat(member.modifiedAt()).isNotNull();
-            });
-            assertThat(group.evidence()).containsEntry("abbreviation", "MBR_NO").containsEntry("domainName", "CODE");
+            assertThat(group.finding().rule().severity()).isEqualTo(StandardizationRule.Severity.ERROR);
+            assertThat(group.finding().targetIds()).containsExactly(t1, t2);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> members = (List<Map<String, Object>>) group.details().get("members");
+            assertThat(members).extracting(m -> m.get("abbreviation")).containsExactly("MBR_NO", "mbr_no");
+            assertThat(group.finding().evidence()).containsEntry("abbreviation", "MBR_NO").containsEntry("domainName", "CODE");
         });
         assertThat(groups(b, StandardizationRule.TERM_ABBR_DUPLICATE)).isEmpty();
         assertThat(groups(a, StandardizationRule.TERM_ABBR_SHARED)).as("같은 약어·다른 도메인은 기존 주의 규칙 그대로").hasSize(1);
@@ -383,9 +376,10 @@ class StandardTermDuplicateIntegrationTest {
                 .commonStandardTermAbbreviation(abbreviation).commonStandardDomainName(domainName).synonyms("").build();
     }
 
-    private List<Group> groups(Context context, StandardizationRule rule) {
+    /** 용어 그룹 판정 결과 (저장 검사의 용어 묶음 — AI-6 3차에 실시간 목록 API 대신) */
+    private List<InspectionItem> groups(Context context, StandardizationRule rule) {
         login(context);
-        return termQuality.selectGroups(context.user, new Search(rule, null, null, null), PageRequest.of(0, 50)).getContent();
+        return termQuality.inspect(context.projectId).stream().filter(item -> item.finding().rule() == rule).toList();
     }
 
     private List<Long> terms(Context context) {

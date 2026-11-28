@@ -1,31 +1,20 @@
 package com.lexorma.data.dictionary.service;
 
 import com.lexorma.common.i18n.Messages;
-import com.lexorma.core.security.domain.dto.AccountDto;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Group;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Member;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Search;
-import com.lexorma.data.dictionary.domain.dto.TermQualityDto.Summary;
 import com.lexorma.data.dictionary.domain.dto.TermQualityDto.TermRow;
+import com.lexorma.data.dictionary.quality.InspectionItem;
 import com.lexorma.data.dictionary.quality.StandardizationRule;
-import com.lexorma.data.dictionary.quality.StandardizationRule.Severity;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules;
 import com.lexorma.data.dictionary.quality.TermDuplicateRules.TermGroup;
 import com.lexorma.data.dictionary.repository.DictionaryUsageRepository;
-import com.lexorma.data.dictionary.repository.StandardTermRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
-import java.util.EnumMap;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -38,66 +27,7 @@ import java.util.Objects;
 @Transactional(readOnly = true)
 public class TermQualityService {
 
-    private static final Map<String, Comparator<Group>> SORTS = Map.of(
-            "type", Comparator.comparing(Group::type),
-            "severity", Comparator.comparing(Group::severity),
-            "groupKey", Comparator.comparing(Group::groupKey, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)),
-            "memberCount", Comparator.comparingInt(Group::memberCount));
-
-    /** 정렬할 수 있는 화면 필드 (PageableUtil 허용 목록 — 이 맵의 키, 공통 페이징 안정성 개선) */
-    public static final java.util.Set<String> SORT_FIELDS = SORTS.keySet();
-
-    /** 기본 순서 : 규칙 순 → 묶은 값 → 첫 용어 ID */
-    private static final Comparator<Group> DEFAULT_ORDER = Comparator.comparing(Group::type)
-            .thenComparing(Group::groupKey, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
-            .thenComparing(group -> group.members().get(0).termId());
-
     private final DictionaryUsageRepository usageRepository;
-    private final StandardTermRepository termRepository;
-
-    public Summary selectSummary(AccountDto accountDto) {
-        Diagnosis diagnosis = diagnose(accountDto.getProjectId());
-        Map<StandardizationRule, Long> groups = new EnumMap<>(StandardizationRule.class);
-        for (StandardizationRule rule : StandardizationRule.values()) {
-            if (rule.targetType() == StandardizationRule.TargetType.TERM) {
-                groups.put(rule, diagnosis.groups().stream().filter(group -> group.finding().rule() == rule).count());
-            }
-        }
-        return new Summary(diagnosis.terms().size(),
-                diagnosis.groups().stream().flatMap(group -> group.termIds().stream()).distinct().count(),
-                groups, severity(diagnosis, Severity.ERROR), severity(diagnosis, Severity.WARNING), severity(diagnosis, Severity.INFO));
-    }
-
-    public Page<Group> selectGroups(AccountDto accountDto, Search search, Pageable pageable) {
-        Long projectId = accountDto.getProjectId();
-        Diagnosis diagnosis = diagnose(projectId);
-        String keyword = search.searchQuery() == null ? "" : search.searchQuery().trim().toLowerCase(Locale.ROOT);
-        boolean byName = "termName".equals(search.searchColumn());
-        boolean byAbbreviation = "abbreviation".equals(search.searchColumn());
-
-        List<Group> groups = diagnosis.groups().stream()
-                .filter(group -> search.type() == null || group.finding().rule() == search.type())
-                .filter(group -> search.severity() == null || group.finding().rule().severity() == search.severity())
-                .filter(group -> keyword.isEmpty() || !(byName || byAbbreviation) || group.termIds().stream()
-                        .map(diagnosis.terms()::get)
-                        .anyMatch(term -> lower(byName ? term.termName() : term.abbreviation()).contains(keyword)))
-                .map(group -> toGroup(group, diagnosis.terms(), Map.of(), Map.of()))
-                .sorted(order(pageable.getSort()))
-                .toList();
-        int from = (int) Math.min(pageable.getOffset(), groups.size());
-        List<Group> page = groups.subList(from, Math.min(from + pageable.getPageSize(), groups.size()));
-
-        // 사용 컬럼 수 : 이 페이지의 용어만 한 번에 센다 (그룹마다 조회하지 않는다)
-        List<Long> pageTermIds = page.stream().flatMap(group -> group.members().stream()).map(Member::termId).distinct().toList();
-        Map<Long, Long> counts = usageRepository.countColumnsByTerm(projectId, pageTermIds);
-        // 등록·수정 일시 : 같은 페이지 용어만 한 번에 (M-5 5차)
-        Map<Long, Object[]> audits = new HashMap<>();
-        if (!pageTermIds.isEmpty()) termRepository.findAuditByIds(projectId, pageTermIds).forEach(row -> audits.put((Long) row[0], row));
-        Map<String, TermGroup> byId = new HashMap<>();
-        diagnosis.groups().forEach(group -> byId.put(group.finding().fingerprint(), group));
-        List<Group> content = page.stream().map(group -> toGroup(byId.get(group.id()), diagnosis.terms(), counts, audits)).toList();
-        return new PageImpl<>(content, pageable, groups.size());
-    }
 
     // ------------------------------------------------------------------ 진단
 
@@ -118,42 +48,33 @@ public class TermQualityService {
         return new Diagnosis(byId, groups);
     }
 
-    private static long severity(Diagnosis diagnosis, Severity severity) {
-        return diagnosis.groups().stream().filter(group -> group.finding().rule().severity() == severity).count();
-    }
-
-    private static Comparator<Group> order(Sort sort) {
-        Comparator<Group> order = (a, b) -> 0;
-        for (Sort.Order requested : sort) {
-            Comparator<Group> comparator = SORTS.get(requested.getProperty());
-            if (comparator != null) {
-                order = order.thenComparing(requested.isAscending() ? comparator : comparator.reversed());
+    /**
+     * 저장 검사(AI-6) : 용어 6규칙의 판정 결과를 그대로 넘긴다 — 화면 진단과 같은 계산({@link #diagnose})이다. 대표 대상은 가장 작은 구성원,
+     * 구성원 목록(ID·용어명)은 근거에 둔다. 호출한 트랜잭션(검사 스냅숏) 안에서 읽는다.
+     */
+    public List<InspectionItem> inspect(long projectId) {
+        Diagnosis diagnosis = diagnose(projectId);
+        List<InspectionItem> items = new ArrayList<>(diagnosis.groups().size());
+        for (TermGroup group : diagnosis.groups()) {
+            List<Map<String, Object>> members = new ArrayList<>(group.termIds().size());
+            for (Long termId : group.termIds()) {
+                TermRow term = diagnosis.terms().get(termId);
+                Map<String, Object> member = new LinkedHashMap<>();
+                member.put("termId", termId);
+                member.put("termName", term == null ? null : term.termName());
+                member.put("abbreviation", term == null ? null : term.abbreviation());
+                if (group.notes().containsKey(termId)) member.put("note", group.notes().get(termId));
+                members.add(member);
             }
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("groupKey", group.groupKey());
+            details.put("members", members);
+            items.add(new InspectionItem(group.finding(), InspectionItem.ObjectType.TERM, group.termIds().get(0), null, group.groupKey(), details));
         }
-        return order.thenComparing(DEFAULT_ORDER);
-    }
-
-    private static String lower(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT);
+        return items;
     }
 
     // ------------------------------------------------------------------ 표시
-
-    private static Group toGroup(TermGroup group, Map<Long, TermRow> terms, Map<Long, Long> counts, Map<Long, Object[]> audits) {
-        StandardizationRule rule = group.finding().rule();
-        Map<String, String> evidence = group.finding().evidence();
-        boolean wordSynonym = rule == StandardizationRule.TERM_SYNONYM && "WORD".equals(evidence.get("kind"));
-        List<Member> members = group.termIds().stream().map(id -> {
-            TermRow term = terms.get(id);
-            String note = group.notes().get(id);
-            Object[] audit = audits.get(id);
-            return new Member(id, term.termName(), term.abbreviation(), term.domainName(), term.isApproval(),
-                    counts.isEmpty() ? null : counts.getOrDefault(id, 0L), note == null ? null : note(rule, wordSynonym, note),
-                    term.domainId(), audit == null ? null : (java.time.LocalDateTime) audit[1], audit == null ? null : (java.time.LocalDateTime) audit[2]);
-        }).toList();
-        return new Group(group.finding().fingerprint(), rule, rule.severity(), group.groupKey(), members.size(), members,
-                message(rule, wordSynonym, members.size(), evidence), evidence);
-    }
 
     private static String note(StandardizationRule rule, boolean wordSynonym, String raw) {
         return switch (rule) {

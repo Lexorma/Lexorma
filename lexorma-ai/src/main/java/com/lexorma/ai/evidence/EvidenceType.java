@@ -6,8 +6,12 @@ package com.lexorma.ai.evidence;
  * LOGICAL_* · SUBJECT_AREA · SUBTYPE_GROUP (D-35 D35-3b) : 논리 모델 Tool 결과의 대상. LOGICAL_ATTRIBUTE·LOGICAL_IDENTIFIER 는 원본 행의 ID 다 —
  * 서브타입에서 조회한 상속 속성·상속 식별자도 정의한 엔터티의 행을 가리킨다 (서브타입에 직접 정의된 것으로 기록하지 않는다).
  * RELATION 의 kind LOGICAL(물리 모델의 문서상 관계)과 LOGICAL_RELATIONSHIP(논리 모델의 엔터티 관계)는 다르다.
+ * QUALITY_FINDING · QUALITY_RUN (AI-7, QUALITY 범위·MCP) : 저장된 품질 진단 결과 한 건 · 검사 실행 한 건. 버전은 그 행의 MDFCN_DT — 재검사·해결·재발·예외 처리(결과),
+ * 실행 상태·규칙별 결과·집계(실행)가 바뀌면 바뀐다. 조회 시점 값(지금 규칙 사용 여부·대상 존재·변경 감지·현재 모델)은 이 버전이 보장하지 않는다.
+ * 진단 대상(테이블·컬럼·용어)은 이 유형이 아니라 다른 Tool 로 조회해야 근거가 된다.
  */
 public enum EvidenceType {
     SCHEMA, TABLE, COLUMN, RELATION, TERM, WORD, DOMAIN, HISTORY,
-    LOGICAL_MODEL, SUBJECT_AREA, LOGICAL_ENTITY, LOGICAL_ATTRIBUTE, LOGICAL_IDENTIFIER, LOGICAL_RELATIONSHIP, SUBTYPE_GROUP
+    LOGICAL_MODEL, SUBJECT_AREA, LOGICAL_ENTITY, LOGICAL_ATTRIBUTE, LOGICAL_IDENTIFIER, LOGICAL_RELATIONSHIP, SUBTYPE_GROUP,
+    QUALITY_FINDING, QUALITY_RUN
 }

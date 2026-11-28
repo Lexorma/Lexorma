@@ -18,6 +18,8 @@ import com.lexorma.ai.domain.dto.AiMetadataQueryDto;
 import com.lexorma.ai.evidence.EvidenceVerifier;
 import com.lexorma.ai.tool.MetadataToolSession;
 import com.lexorma.ai.tool.MetadataToolset;
+import com.lexorma.ai.tool.QualityToolDefinitions;
+import com.lexorma.ai.tool.ToolScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -103,20 +105,26 @@ public class AiMetadataQueryService {
         if (question.isEmpty()) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "질문을 입력해주세요.");
         if (question.length() > QUESTION_MAX) throw new CustomException(ErrorCode.AI_QUERY_INVALID, "질문은 {0}자까지 입력할 수 있습니다.", QUESTION_MAX);
         verifier.verify(context, "VIEWER");
+        // 기능 범위 (AI-7 AI7-D04·D24·D26) : 생략 = METADATA. 범위는 이 질의 동안 바뀌지 않고, 모델에게 넘길 Tool·지시·답변 형식을 정할 뿐 권한을 넓히지 않는다
+        ToolScope scope = request == null || request.scope() == null ? ToolScope.METADATA : request.scope();
 
-        MetadataToolSession session = new MetadataToolSession(context, UUID.randomUUID().toString(), MetadataToolset.TIMEOUT_SECONDS * 1000L);
+        MetadataToolSession session = new MetadataToolSession(context, UUID.randomUUID().toString(), MetadataToolset.TIMEOUT_SECONDS * 1000L, scope);
         String language = Messages.isEnglish() ? "English" : "Korean";
         long started = System.nanoTime();
         Structured structured = clients.callDefaultWith(context, call -> {
             // 모델 정보 (같은 SEC-1 연결) : Tool Calling 지원 여부·컨텍스트 길이. 모르면 null
             AiProviderDto.ModelInfo info = call.modelInfo();
             TokenMeter meter = new TokenMeter(budget.plan(info), call);
-            if (Boolean.FALSE.equals(info.toolCalling())) return serverContext(call.client(), meter, session, question, language, FallbackReason.MODEL_CAPABILITIES);
+            if (Boolean.FALSE.equals(info.toolCalling())) {
+                if (scope != ToolScope.METADATA) throw qualityNeedsTools();
+                return serverContext(call.client(), meter, session, question, language, FallbackReason.MODEL_CAPABILITIES);
+            }
             try {
                 return toolCalling(call.client(), meter, session, question, language);
             } catch (RuntimeException e) {
                 // 서버가 "이 모델은 Tool 을 지원하지 않는다" 고 명시적으로 거절했고 아직 아무 Tool 도 실행하지 않았을 때만 대체 흐름 (일반 400·연결 실패·SEC-1 차단은 아니다)
                 if (!(e instanceof CustomException) && session.calls().isEmpty() && call.isToolCallingUnsupported(e)) {
+                    if (scope != ToolScope.METADATA) throw qualityNeedsTools();
                     return serverContext(call.client(), meter, session, question, language, FallbackReason.TOOLS_REJECTED);
                 }
                 throw e;
@@ -135,8 +143,13 @@ public class AiMetadataQueryService {
                 session.mode(), structured.fallback(), structured.usage(), completion);
     }
 
+    /** 서버 맥락 대체 흐름은 METADATA 범위만 (AI7-D13) — 품질 진단 범위는 Tool Calling 모델이 필요하다 */
+    private static CustomException qualityNeedsTools() {
+        return new CustomException(ErrorCode.AI_TOOL_CALLING_UNSUPPORTED, "품질 진단 범위는 Tool Calling 을 지원하는 AI 모델에서만 쓸 수 있습니다. 메타데이터 범위로 질문하거나 다른 모델을 쓰세요.");
+    }
+
     /**
-     * Tool Calling (Tool 을 지원하는 모델) : 1단계 조회 → (Tool 결과가 있으면) 2단계 구조화
+     * Tool Calling (Tool 을 지원하는 모델) : 1단계 조회 → (Tool 결과가 있으면) 2단계 구조화. Tool 목록·지시·답변 형식은 세션의 기능 범위로 정한다
      */
     private Structured toolCalling(ChatClient client, TokenMeter meter, MetadataToolSession session, String question, String language) {
         // 1단계 : Tool 로 조회하고 답한다 (형식 지시 없음 — JSON 지시를 함께 주면 모델이 Tool 을 건너뛰는 경우가 있었다)
@@ -144,9 +157,9 @@ public class AiMetadataQueryService {
         try {
             drafted = client.prompt()
                     .options(meter.options().mutate())
-                    .system(systemPrompt(language))
+                    .system(systemPrompt(language, session.toolScope()))
                     .user(question)
-                    .tools(toolset.callbacks())
+                    .tools(toolset.callbacks(session.toolScope()))
                     .toolContext(session.toolContext())
                     // 응답을 받은 요청에 실린 Tool 결과 수를 세션에 알린다 (전달 확인 — AES-D04)
                     .advisors(toolset.advisor(), meter.advisor(session::delivered))
@@ -174,13 +187,13 @@ public class AiMetadataQueryService {
         if (draft == null || draft.isBlank()) throw new CustomException(ErrorCode.AI_PROVIDER_CALL_FAILED, "AI 서버의 응답을 처리하지 못했습니다.");
         if (session.results().isEmpty()) {
             // Tool 결과가 없으면 근거가 될 것이 없다 : 구조화 단계 없이 근거 없는 답변으로 둔다 (이미 구조화 형식이면 그대로 쓴다)
-            StructuredAnswerParser.Result asIs = parser.parse(draft);
+            StructuredAnswerParser.Result asIs = parser.parse(draft, session.toolScope());
             StructuredAnswer answer = asIs.valid() ? asIs.value() : new StructuredAnswer(truncate(draft), List.of());
             return new Structured(answer, model, 0, meter.usage(), null, null);
         }
         // 2단계 : 구조화 — 이미 받은 Tool 결과와 초안으로 정해진 JSON 을 만든다. Tool 은 등록하지 않는다(모델이 불러도 실행하지 않는다)
         List<MetadataToolSession.ToolResult> results = session.results();
-        String system = structuringSystem(structuringPrompt(language));
+        String system = structuringSystem(structuringPrompt(language, session.toolScope()), session.toolScope());
         // 모든 결과 + 초안으로 최종 요청을 보낼 수 없으면 초안 없이 그 전에 가능했던 결과 범위로 (초안은 빠진 결과도 보고 쓴 것이라 넣지 않는다 — AES-D14 :
         // 범위 손실이 없는지 서버가 확정할 수 없으므로 PARTIAL). 사유는 전체 후보가 처음 걸린 판정 : 결과 원문 24,000자(AES-D13) → 요청 입력 → 질의 누적
         if (!fitsText(results)) {
@@ -209,7 +222,7 @@ public class AiMetadataQueryService {
         verifier.verify(session.context(), "VIEWER");
         List<MetadataToolSession.ToolResult> all = session.results();
         int delivered = Math.min(session.deliveredResults(), all.size());
-        String system = structuringSystem(partialPrompt(language));
+        String system = structuringSystem(partialPrompt(language, session.toolScope()), session.toolScope());
         int included = 0;
         for (int n = delivered; n >= 1; n--) {
             List<MetadataToolSession.ToolResult> part = all.subList(0, n);
@@ -245,7 +258,11 @@ public class AiMetadataQueryService {
     }
 
     private String structuringSystem(String instructions) {
-        return instructions + "\n\n" + parser.format();
+        return structuringSystem(instructions, ToolScope.METADATA);
+    }
+
+    private String structuringSystem(String instructions, ToolScope scope) {
+        return instructions + "\n\n" + parser.format(scope);
     }
 
     /**
@@ -321,7 +338,7 @@ public class AiMetadataQueryService {
                     .advisors(toolset.advisor(), meter.structuringAdvisor())
                     .call()
                     .chatResponse();
-            StructuredAnswerParser.Result parsed = parser.parse(text(structuring));
+            StructuredAnswerParser.Result parsed = parser.parse(text(structuring), session.toolScope());
             if (model(structuring) != null) model = model(structuring);
             if (parsed.valid()) return new Structured(parsed.value(), model, attempt, meter.usage(), fallback, partial);
             errors = parsed.errors();
@@ -354,6 +371,16 @@ public class AiMetadataQueryService {
         String model = response == null ? null : response.getMetadata().getModel();
         return model == null || model.isBlank() ? null : model;
     }
+
+    /** 범위별 구조화 지시 : QUALITY 는 품질 근거 유형 안내 한 줄을 더한다 (METADATA 는 {@link #structuringPrompt(String)} 그대로) */
+    static String structuringPrompt(String language, ToolScope scope) {
+        return scope == ToolScope.QUALITY ? structuringPrompt(language) + "\n" + QUALITY_EVIDENCE : structuringPrompt(language);
+    }
+
+    /** QUALITY 범위 근거 유형 (AI7-D09) */
+    static final String QUALITY_EVIDENCE = "- Quality items: findingId → QUALITY_FINDING (name = its rule code), runId → QUALITY_RUN (name = RUN-<runId>). Cite the table, column or "
+            + "term of a finding only if another tool returned it in this conversation. Field names (such as open or rules), rule codes on their own and "
+            + "ids not seen in a tool result are not evidence; cite only findingId and runId values the tools returned (a rule guide gives none).";
 
     /** 구조화 단계의 지시 (사용자 질문·Tool 결과와 분리) */
     static String structuringPrompt(String language) {
@@ -464,7 +491,11 @@ public class AiMetadataQueryService {
      * 부분 답변의 구조화 지시 : 초안 없이, 서버가 준 결과만으로 답하고 조회가 멈췄다는 것·확인하지 못한 범위를 답에 적게 한다. 근거 규칙은 구조화 지시와 같다
      */
     static String partialPrompt(String language) {
-        String normal = structuringPrompt(language);
+        return partialPrompt(language, ToolScope.METADATA);
+    }
+
+    static String partialPrompt(String language, ToolScope scope) {
+        String normal = structuringPrompt(language, scope);
         return """
                 You format answers of Lexorma's metadata assistant. Lexorma could not finish the normal answering steps for this question (the \
                 reason is given with the request), so you receive a question and only the tool results that Lexorma can give you; there is no \
@@ -513,6 +544,11 @@ public class AiMetadataQueryService {
      * 서버가 정한 지시 (사용자 질문·Tool 결과와 분리). 메타데이터 설명·COMMENT 는 데이터일 뿐이라는 것을 모델에게도 알리지만,
      * 범위·권한은 이 문구가 아니라 서버(실행 컨텍스트·허용 목록·재검증)가 강제한다
      */
+    /** QUALITY 범위에만 규칙 9 (AI7-D17·D31) 를 더한다. METADATA 는 {@link #systemPrompt(String)} 그대로 */
+    static String systemPrompt(String language, ToolScope scope) {
+        return scope == ToolScope.QUALITY ? systemPrompt(language) + "\n" + QualityToolDefinitions.PROMPT_RULE : systemPrompt(language);
+    }
+
     static String systemPrompt(String language) {
         return """
                 You are the metadata assistant of Lexorma, a data standardization and data modeling tool. Answer questions about the metadata \

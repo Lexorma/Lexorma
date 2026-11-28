@@ -34,7 +34,10 @@ import java.util.stream.Collectors;
  * AI-4 Tool 등록 범위와 실행 경계. 질의마다 {@link #callbacks()} 와 {@link #advisor()} 를 ChatClient 요청에 넣는다.
  * Tool 호출 프로토콜·반복 실행은 Spring AI({@link ToolCallingAdvisor}, {@link DefaultToolCallingManager})가 하고, 여기서는 다음만 더한다.
  * <ul>
- *   <li><b>허용 목록</b> : {@link MetadataTools#callbacks()} 의 13개만 (D-35 D35-3b 논리 모델 3개 포함) ({@link #NAMES}). 목록에 없는 이름을 모델이 부르면 아무것도 실행하지 않고 거절을 돌려준다</li>
+ *   <li><b>허용 목록</b> : {@link MetadataTools#callbacks()} 의 13개 (D-35 D35-3b 논리 모델 3개 포함, {@link #NAMES}) + 품질 진단 3개 ({@link QualityToolDefinitions}).
+ *       <b>기능 범위</b>마다 모델에게 넘기는 목록을 서버가 정한다 (AI-7 AI7-D04·D29) : METADATA = 기존 13개 그대로(순서 포함), QUALITY = {@link #QUALITY_TOOLS},
+ *       MCP = 16개 ({@link #mcpCallbacks()}). 요청에 실지 않은 이름을 모델이 부르면(다른 범위의 Tool 포함) 아무것도 실행하지 않고 거절을 돌려준다
+ *       (Spring AI 는 요청의 Tool 목록에서만 찾고, 없으면 {@link Rejected} — 실제 Tool 을 이름으로 찾아 실행하는 경로가 없다)</li>
  *   <li><b>호출마다 재검증</b> : {@link ExecutionContextVerifier} 로 프로젝트 상태·요청자의 멤버십·현재 역할(VIEWER 이상)을 DB 에서 다시 본다.
  *       실패하면 질의 전체를 끝낸다 (USER·ASYNC·SCHEDULED 모두 같은 경로, 프로젝트는 실행 컨텍스트에서만 온다)</li>
  *   <li><b>읽기 전용 트랜잭션</b> : 조회를 readOnly 트랜잭션에서 한다 (Hibernate flush 없음, PostgreSQL 은 DB 가 쓰기를 거절한다)</li>
@@ -59,19 +62,49 @@ public class MetadataToolset {
             "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "findSimilarColumns", "getMetadataHistory",
             "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
 
+    /**
+     * QUALITY 범위 (AI7-D23) : 품질 진단 3개 + 진단 원인 설명·현재 모델 비교에 필요한 기존 조회 6개 (테이블 검색·상세·컬럼, 표준 용어·단어·도메인).
+     * 논리 모델·관계·스키마 목록·유사 컬럼·변경 이력은 넣지 않는다 (근거 : docs/completed/ai-quality-inspection-integration.md 22장). 순서 = 모델에게 보내는 순서
+     */
+    public static final List<String> QUALITY_TOOLS = List.of(QualityToolDefinitions.OVERVIEW, QualityToolDefinitions.SEARCH, QualityToolDefinitions.DETAIL,
+            "searchTables", "getTableDetail", "getTableColumns", "searchStandardTerms", "searchStandardWords", "searchStandardDomains");
+
     private final ExecutionContextVerifier verifier;
     private final TransactionTemplate readOnly;
+    /** METADATA 범위 = 기존 13개 (등록 순서 그대로) */
     private final List<ToolCallback> callbacks;
+    private final List<ToolCallback> quality;
+    /** MCP 와 서버 실행({@link #run})이 찾는 전체 16개 */
+    private final List<ToolCallback> all;
     private final ToolCallingAdvisor advisor;
 
-    public MetadataToolset(MetadataTools tools, ExecutionContextVerifier verifier, PlatformTransactionManager transactionManager) {
+    public MetadataToolset(MetadataTools tools, QualityMetadataTools qualityTools, ExecutionContextVerifier verifier, PlatformTransactionManager transactionManager) {
         this.verifier = verifier;
         this.readOnly = new TransactionTemplate(transactionManager);
         this.readOnly.setReadOnly(true);
         this.readOnly.setTimeout(30);
-        this.callbacks = tools.callbacks().stream().map(callback -> (ToolCallback) new Guarded(callback)).toList();
+        // 품질 Tool : 한 호출이 요약·실행·규칙 상태·집계를 여러 문장으로 읽으므로 한 스냅숏(REPEATABLE READ, 읽기 전용 — 잠금·쓰기 없음)에서 읽는다.
+        // 서로 다른 Tool 호출 사이의 같은 시점은 보장하지 않는다
+        TransactionTemplate snapshot = new TransactionTemplate(transactionManager);
+        snapshot.setReadOnly(true);
+        snapshot.setTimeout(30);
+        snapshot.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        this.callbacks = tools.callbacks().stream().map(callback -> (ToolCallback) new Guarded(callback, readOnly)).toList();
         Set<String> registered = callbacks.stream().map(c -> c.getToolDefinition().name()).collect(Collectors.toSet());
         if (!registered.equals(NAMES)) throw new IllegalStateException("AI Tool 목록이 허용 목록과 다릅니다 : " + registered);
+        List<ToolCallback> qualityCallbacks = QualityToolDefinitions.callbacks(qualityTools).stream().map(c -> (ToolCallback) new Guarded(c, snapshot)).toList();
+        if (!qualityCallbacks.stream().map(c -> c.getToolDefinition().name()).collect(Collectors.toSet()).equals(QualityToolDefinitions.NAMES)) {
+            throw new IllegalStateException("품질 진단 Tool 목록이 허용 목록과 다릅니다");
+        }
+        List<ToolCallback> every = new java.util.ArrayList<>(callbacks);
+        every.addAll(qualityCallbacks);
+        this.all = List.copyOf(every);
+        Map<String, ToolCallback> byName = all.stream().collect(Collectors.toMap(c -> c.getToolDefinition().name(), c -> c));
+        this.quality = QUALITY_TOOLS.stream().map(name -> {
+            ToolCallback callback = byName.get(name);
+            if (callback == null) throw new IllegalStateException("QUALITY 범위의 Tool 이 없습니다 : " + name);
+            return callback;
+        }).toList();
         DefaultToolCallingManager manager = DefaultToolCallingManager.builder()
                 .maxTotalToolCalls(MAX_TOOL_CALLS)
                 .maxCallsPerTool(MAX_CALLS_PER_TOOL)
@@ -83,8 +116,30 @@ public class MetadataToolset {
         this.advisor = ToolCallingAdvisor.builder().toolCallingManager(new LimitAware(manager)).build();
     }
 
+    /** METADATA 범위 (기존 13개) */
     public List<ToolCallback> callbacks() {
         return callbacks;
+    }
+
+    /** 기능 범위의 Tool 목록 (질의마다 이 목록만 모델에게 넘긴다 — 질의 동안 바뀌지 않는다) */
+    public List<ToolCallback> callbacks(ToolScope scope) {
+        return switch (scope) {
+            case METADATA -> callbacks;
+            case QUALITY -> quality;
+        };
+    }
+
+    /** MCP 에 노출하는 전체 (기존 13 + 품질 3 — MCP 의 공유 목록은 {@code McpServerService} 가 거른다) */
+    public List<ToolCallback> mcpCallbacks() {
+        return all;
+    }
+
+    /** 범위의 Tool 이름 (거절 응답에 쓸 수 있는 목록) */
+    static List<String> names(ToolScope scope) {
+        return switch (scope) {
+            case METADATA -> NAMES.stream().sorted().toList();
+            case QUALITY -> QUALITY_TOOLS;
+        };
     }
 
     public ToolCallingAdvisor advisor() {
@@ -98,7 +153,7 @@ public class MetadataToolset {
      * @return 모델에게 보낼 결과 (오류면 오류 JSON)
      */
     public String run(String name, Object input, MetadataToolSession session) {
-        ToolCallback callback = callbacks.stream().filter(c -> c.getToolDefinition().name().equals(name)).findFirst()
+        ToolCallback callback = all.stream().filter(c -> c.getToolDefinition().name().equals(name)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("허용 목록에 없는 Tool : " + name));
         if (session.calls().size() >= MAX_TOOL_CALLS) throw new CustomException(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED);
         return callback.call(JsonMapper.shared().writeValueAsString(input), new ToolContext(session.toolContext()));
@@ -107,9 +162,11 @@ public class MetadataToolset {
     /** 허용된 Tool 하나를 감싼다 : 실행 컨텍스트 재검증 → 읽기 전용 트랜잭션에서 실행 → 결과 크기 확인 → 기록 */
     private final class Guarded implements ToolCallback {
         private final ToolCallback delegate;
+        private final TransactionTemplate transaction;
 
-        Guarded(ToolCallback delegate) {
+        Guarded(ToolCallback delegate, TransactionTemplate transaction) {
             this.delegate = delegate;
+            this.transaction = transaction;
         }
 
         @Override
@@ -136,7 +193,7 @@ public class MetadataToolset {
             // 근거는 결과를 돌려줄 때만 남긴다 : 상한 초과·오류면 이 호출이 기록한 근거를 지운다 (D35-3b — 돌려주지 않은 대상을 근거로 인정하지 않는다)
             MetadataToolSession.EvidenceCheckpoint evidence = session.evidenceCheckpoint();
             try {
-                result = readOnly.execute(tx -> delegate.call(toolInput, toolContext));
+                result = transaction.execute(tx -> delegate.call(toolInput, toolContext));
                 if (result != null && result.length() > RESULT_MAX_CHARS) {
                     status = Status.FAILED;
                     result = tooLarge(name, result.length());
@@ -205,16 +262,21 @@ public class MetadataToolset {
 
         @Override
         public String call(String toolInput) {
-            return error("UNKNOWN_TOOL", "Unknown tool. Available tools: " + String.join(", ", NAMES.stream().sorted().toList()));
+            return unknown(ToolScope.METADATA);
         }
 
+        /** 이 질의 범위의 Tool 만 알려 준다 (다른 범위의 Tool 은 이 질의에서 쓸 수 없다 — AI7-D29) */
         @Override
         public String call(String toolInput, ToolContext toolContext) {
             MetadataToolSession session = MetadataToolSession.from(toolContext);
             if (session.expired()) throw new CustomException(ErrorCode.AI_TOOL_CALL_LIMIT_EXCEEDED);
             session.executed(definition.name(), Status.REJECTED, 0, null, session.evidenceCheckpoint());
-            log.info("AI Tool 거절 (허용 목록 밖) : request={} tool={}", session.requestId(), definition.name());
-            return call(toolInput);
+            log.info("AI Tool 거절 (허용 목록 밖) : request={} scope={} tool={}", session.requestId(), session.toolScope(), definition.name());
+            return unknown(session.toolScope());
+        }
+
+        private static String unknown(ToolScope scope) {
+            return error("UNKNOWN_TOOL", "Unknown tool. Available tools: " + String.join(", ", names(scope)));
         }
     }
 

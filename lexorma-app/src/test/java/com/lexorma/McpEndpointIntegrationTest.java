@@ -90,7 +90,12 @@ class McpEndpointIntegrationTest {
         @SuppressWarnings("unchecked") List<Map<String, Object>> tools = (List<Map<String, Object>>) ((Map<String, Object>) list.get("result")).get("tools");
         assertThat(tools).extracting(t -> t.get("name")).containsExactlyInAnyOrder("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations",
                 "searchStandardTerms", "searchStandardWords", "searchStandardDomains", "getProjectInfo", "getLogicalModel",
-                "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
+                "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail",
+                // AI-7 (AI7-D28) : 품질 진단 3개 — 전체 16개
+                "getQualityInspectionOverview", "searchQualityFindings", "getQualityFindingDetail");
+        // 품질 진단 도구도 같은 경계로 (이 프로젝트는 검사 이력이 없다 → 정상 응답 NOT_INSPECTED, 오류 아님)
+        String quality = text(post(token, rpc(30, "tools/call", Map.of("name", "getQualityInspectionOverview", "arguments", Map.of()))));
+        assertThat(quality).contains("\"source\":\"STORED_INSPECTION\"", "\"basisState\":\"NOT_INSPECTED\"", "\"guarantee\":\"NOT_GUARANTEED\"").doesNotContain("\"error\"");
 
         // tools/call : 이 프로젝트의 TABLE 만 (다른 프로젝트의 같은 이름은 보이지 않는다)
         String result = text(post(token, rpc(3, "tools/call", Map.of("name", "searchTables", "arguments", Map.of("keyword", "MCP_ONLY")))));

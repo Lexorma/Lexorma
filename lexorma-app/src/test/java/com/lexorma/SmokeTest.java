@@ -1494,6 +1494,26 @@ class SmokeTest {
     }
 
     @Test
+    @Order(24)
+    @DisplayName("AI-7 3차 질의 기능 범위(scope) HTTP 바인딩 : 생략·null·METADATA·QUALITY 는 본문이 묶여 서비스까지 간다(기본 Provider 미지정 409), 모르는 값·다른 자료형은 400 (서비스·Provider 전)")
+    void aiQueryScopeBinding() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        for (String body : List.of("{\"question\":\"x\"}", "{\"question\":\"x\",\"scope\":null}", "{\"question\":\"x\",\"scope\":\"METADATA\"}",
+                "{\"question\":\"x\",\"scope\":\"QUALITY\"}")) {
+            HttpResponse<String> response = postJson("/api/ai/metadata/query", body);
+            assertThat(response.statusCode()).as(body).isEqualTo(409);
+            assertThat(mapper.readTree(response.body()).path("code").asString()).as(body).isEqualTo("AI_DEFAULT_PROVIDER_NOT_CONFIGURED");
+        }
+        for (String body : List.of("{\"question\":\"x\",\"scope\":\"ALL\"}", "{\"question\":\"x\",\"scope\":\"quality\"}", "{\"question\":\"x\",\"scope\":\"\"}",
+                "{\"question\":\"x\",\"scope\":1}", "{\"question\":\"x\",\"scope\":0}", "{\"question\":\"x\",\"scope\":true}", "{\"question\":\"x\",\"scope\":[\"QUALITY\"]}",
+                "{\"question\":\"x\",\"scope\":{\"name\":\"QUALITY\"}}")) {
+            HttpResponse<String> response = postJson("/api/ai/metadata/query", body);
+            assertThat(response.statusCode()).as(body + " → " + response.body()).isEqualTo(400);
+            assertThat(response.body()).as(body).doesNotContain("AI_DEFAULT_PROVIDER_NOT_CONFIGURED");
+        }
+    }
+
+    @Test
     @Order(30)
     @DisplayName("API 호출 시 시스템 로그 저장 (민감정보 마스킹 포함)")
     void systemLogSaved() throws Exception {

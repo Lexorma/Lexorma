@@ -47,6 +47,13 @@ function filtersFrom(params: URLSearchParams): Filters {
   return { ...DEFAULT_FILTERS, rule, severity, group, exclusion };
 }
 
+/** 양의 정수 ID 만 (그 밖의 값은 무시) */
+function digits(value: string | null): number | null {
+  if (!value || !/^\d{1,15}$/.test(value)) return null;
+  const id = Number(value);
+  return id > 0 ? id : null;
+}
+
 /**
  * 품질 진단 (AI-6 3차 — 기존 '표준화 품질 진단' 메뉴·주소를 그대로 쓴다). 조회할 때마다 계산하던 화면을 대신해 <b>저장된 검사 결과</b>를 보여 준다.
  * 위 : 검사 실행·진행 상태·검사 기준 시각·마지막 실행 결과(정상·부분 실패·실패·빈 검사)·현재 결과 요약. 탭 : 진단 결과 · 실행 이력 · 규칙 설정.
@@ -54,7 +61,7 @@ function filtersFrom(params: URLSearchParams): Filters {
  * 현재 요약은 조회 시점의 저장 결과이고, 실행 이력의 건수는 그 실행이 결과를 확정한 시점의 값이다 — 둘은 다를 수 있다 (AI6-3-11).
  */
 export function QualityInspectionPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab');
   const [tab, setTab] = useState<Tab>(initialTab === 'runs' || initialTab === 'rules' ? initialTab : 'results');
   const { user, canView } = useAuth();
@@ -124,6 +131,36 @@ export function QualityInspectionPage() {
       content: ({ close }: DialogControls) => <FindingDetailView projectId={projectId} findingId={findingId} close={close} onChanged={changedAfterExclusion} onRun={openRun} />,
     });
   };
+
+  // 주소로 온 결과·실행 상세 (AI 도우미의 품질 근거 — AI-7 3차) : ?finding=<결과 ID> · ?tab=runs&run=<실행 ID>.
+  // 목록 필터와 상관없이 상세를 연다 (해결·예외·꺼진 규칙의 결과도 기본 필터에 가려지지 않는다). 연 뒤에는 주소에서 지워 새로고침으로 다시 열지 않는다.
+  // 상세는 서버가 로그인한 프로젝트 안에서만 찾는다 (다른 프로젝트·지워진 ID 는 상세가 '불러오지 못했습니다' — 프로젝트를 바꾸지 않는다)
+  const linkedFinding = digits(searchParams.get('finding'));
+  const linkedRun = digits(searchParams.get('run'));
+  const handledLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (linkedFinding == null && linkedRun == null) {
+      handledLink.current = null;
+      return;
+    }
+    // 개발 모드의 효과 두 번 실행(StrictMode)에도 한 번만 연다
+    const key = `${linkedFinding}:${linkedRun}`;
+    if (handledLink.current === key) return;
+    handledLink.current = key;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('finding');
+      next.delete('run');
+      return next;
+    }, { replace: true });
+    if (linkedFinding != null) {
+      setTab('results');
+      openFinding(linkedFinding);
+    } else if (linkedRun != null) {
+      setTab('runs');
+      openRun(linkedRun);
+    }
+  }, [linkedFinding, linkedRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickSummary = (patch: Partial<Filters>) => {
     setTab('results');

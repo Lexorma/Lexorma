@@ -94,6 +94,24 @@ public class InspectionQueryService {
         return new PageImpl<>(content, pageable, total);
     }
 
+    /**
+     * 결과 목록 + (0 건일 때만) 완화한 조건의 존재 여부 (AI-7 FINAL-CLOSE, AI7-D44·D45). relaxed 는 부르는 쪽이 기본값만 넓힌 조건이며 null 이면 확인하지 않는다.
+     * 같은 꺼진 규칙 집합·같은 호출(트랜잭션)에서 읽는다 — 결과가 있으면 추가 조회가 없고, 0 건이면 EXISTS 1 문장만 더한다. 건수·결과는 돌려주지 않는다
+     *
+     * @param outsideExists 확인했으면 true/false, 확인하지 않았으면 null
+     */
+    public record FindingsWithOutside(Page<InspectionDto.Finding> page, Boolean outsideExists) {
+    }
+
+    public FindingsWithOutside findings(long projectId, InspectionDto.Search search, Pageable pageable, InspectionDto.Search relaxed) {
+        Set<StandardizationRule> disabled = repository.disabledRules(projectId);
+        long total = queries.count(projectId, search, disabled);
+        List<InspectionDto.Finding> content = total == 0 ? List.of()
+                : queries.page(projectId, search, disabled, pageable.getSort(), pageable.getOffset(), pageable.getPageSize());
+        Boolean outside = total == 0 && relaxed != null ? queries.exists(projectId, relaxed, disabled) : null;
+        return new FindingsWithOutside(new PageImpl<>(content, pageable, total), outside);
+    }
+
     public InspectionDto.FindingDetail finding(long projectId, long findingId) {
         InspectionQueryRepository.FindingRow row = queries.find(projectId, findingId, repository.disabledRules(projectId))
                 .orElseThrow(() -> new CustomException(ErrorCode.INSPECTION_RESULT_NOT_FOUND));
@@ -114,6 +132,31 @@ public class InspectionQueryService {
         boolean ascending = pageable.getSort().stream().anyMatch(Sort.Order::isAscending);
         List<InspectionDto.Run> content = repository.runs(projectId, (int) pageable.getOffset(), pageable.getPageSize(), ascending).stream().map(this::run).toList();
         return new PageImpl<>(content, pageable, total);
+    }
+
+    /** 마지막 확정(COMPLETED) 실행 — 지금 저장 결과가 기준으로 삼는 실행 */
+    public java.util.Optional<InspectionDto.Run> lastCompletedRun(long projectId) {
+        return repository.lastRun(projectId, EnumSet.of(RunStatus.COMPLETED)).map(this::run);
+    }
+
+    /** 이 프로젝트의 실행 수 (상태 무관) */
+    public long runCount(long projectId) {
+        return repository.countRuns(projectId);
+    }
+
+    /** AI 근거 검증용 (AI-7) : ID 로 결과 스냅숏 — 프로젝트 범위 판정은 부르는 쪽(근거 검증)이 한다 */
+    public List<InspectionQueryRepository.FindingSnapshot> findingSnapshots(java.util.Collection<Long> ids) {
+        return queries.findingSnapshots(ids);
+    }
+
+    /** AI 근거 검증용 (AI-7) : ID 로 실행 스냅숏 */
+    public List<InspectionQueryRepository.RunSnapshot> runSnapshots(java.util.Collection<Long> ids) {
+        return queries.runSnapshots(ids);
+    }
+
+    /** 검사 이후 변경 감지 건수 (AI-7, {@link InspectionQueryRepository#changeCounts}) */
+    public InspectionQueryRepository.ChangeCounts changeCounts(long projectId, java.time.LocalDateTime from, java.time.LocalDateTime basisAt, int cap) {
+        return queries.changeCounts(projectId, from, basisAt, cap);
     }
 
     public InspectionDto.Run run(long projectId, long runId) {

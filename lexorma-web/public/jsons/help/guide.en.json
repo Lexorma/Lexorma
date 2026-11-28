@@ -185,7 +185,9 @@
           "Results tab: by default it lists open, non-excepted results of enabled rules. Narrow it by category (model, term, identifier), rule, severity, status, exception, rule state and last change, and open a result to see its evidence and history.",
           "Exceptions: an exception does not resolve the problem; it keeps the result out of the default list and summary. A reason is required, and if another user changed it first, your reason is kept and the latest state is shown.",
           "Run history tab: each run is shown as completed, partially failed, failed, empty or interrupted. A run's counts are the values when it confirmed its results, so they can differ from the current summary.",
-          "Rule settings tab: project managers and ADMIN turn each rule on or off. Results of disabled rules are not deleted, only left out of the default list and summary. Changing a setting does not run a check."
+          "Rule settings tab: project managers and ADMIN turn each rule on or off. Results of disabled rules are not deleted, only left out of the default list and summary. Changing a setting does not run a check.",
+          "In the AI assistant's [Quality Inspection] scope you can ask about the stored results and rule guides. Quality evidence in an answer opens the finding or run details on this page. The AI never runs checks or changes exceptions or rule settings, and answers reflect the stored results, which may differ from the current model.",
+          "How accurately the AI explains quality results varies by model (for example, it may answer 'none' without looking anything up). A search with 0 results only means no stored result matches those conditions, not that the project has no problems. Check important decisions against the results on this page."
         ]
       }
     ],
@@ -474,7 +476,8 @@
         "heading": "What it does",
         "items": [
           "Registers AI servers (Ollama) and sets the system default provider. Project managers can set a per-project provider in [Projects].",
-          "If a project's provider cannot be used, that project's AI features stop and do not switch to the system default."
+          "If a project's provider cannot be used, that project's AI features stop and do not switch to the system default.",
+          "How accurate AI answers are depends on the model's tool calling and structured output. With a small model context (e.g. 6,144 tokens), lookups with many results can exceed the input budget and stop or give a partial answer. Lexorma never changes the model or raises its context."
         ]
       }
     ],
@@ -511,7 +514,8 @@
         "heading": "What it does",
         "items": [
           "Lets external MCP clients read this project's metadata, read-only. Both the server setting and the project setting must be on.",
-          "No SQL execution, source database access, model changes or source VIEW definitions."
+          "No SQL execution, source database access, model changes or source VIEW definitions.",
+          "Stored quality check results (overview, finding search, finding details, rule guides) can also be read, read-only. Running checks, exceptions and rule setting changes are not available."
         ]
       },
       {

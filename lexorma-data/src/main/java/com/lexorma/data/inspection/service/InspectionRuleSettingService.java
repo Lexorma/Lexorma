@@ -78,8 +78,12 @@ public class InspectionRuleSettingService {
         return new InspectionDto.RuleSettings(rules(projectId), true);
     }
 
-    /** 규칙 카탈로그 + 사용 여부 + 규칙별 마지막 확정 판정 · 재검사 필요 (마지막 확정 실행이 이 켜진 규칙을 판정하지 않았다) */
-    List<InspectionDto.RuleSetting> rules(long projectId) {
+    /**
+     * 규칙 카탈로그 + 사용 여부 + 규칙별 마지막 확정 판정 · 재검사 필요 (마지막 확정 실행이 이 켜진 규칙을 판정하지 않았다).
+     * 권한을 보지 않는다 — 화면은 {@link #settings}, AI-7 Tool 은 검증된 실행 컨텍스트의 프로젝트로만 부른다
+     */
+    @Transactional(readOnly = true)
+    public List<InspectionDto.RuleSetting> rules(long projectId) {
         Set<StandardizationRule> disabled = repository.disabledRules(projectId);
         Map<StandardizationRule, Object[]> last = queries.lastInspected(projectId);
         Long lastRun = repository.lastRun(projectId, EnumSet.of(RunStatus.COMPLETED)).map(InspectionRepository.RunRow::id).orElse(null);

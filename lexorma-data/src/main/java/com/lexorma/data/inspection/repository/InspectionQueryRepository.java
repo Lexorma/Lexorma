@@ -120,6 +120,15 @@ public class InspectionQueryRepository {
             sql.append(" and TBL_SN = ?");
             args.add(search.tableId());
         }
+        if (search.firstSeenRunId() != null) {
+            sql.append(" and FRST_INSP_EXCN_SN = ?");
+            args.add(search.firstSeenRunId());
+        }
+        if (search.resolvedInRunId() != null) {
+            // 해결 처리한 실행 = 해결 행의 최종 실행 (해결된 결과는 다시 찾을 때까지 최종 실행이 바뀌지 않는다). 재발하면 OPEN 이 되어 빠진다
+            sql.append(" and STTS_CD = 'RESOLVED' and LAST_INSP_EXCN_SN = ?");
+            args.add(search.resolvedInRunId());
+        }
         if (search.searchQuery() != null && !search.searchQuery().isBlank()) {
             sql.append(" and lower(TRGT_CN) like ? escape '\\'");
             args.add("%" + search.searchQuery().trim().toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
@@ -150,6 +159,12 @@ public class InspectionQueryRepository {
     public long count(long projectId, InspectionDto.Search search, Set<StandardizationRule> disabled) {
         Where where = where(projectId, search, disabled);
         return jdbc.queryForObject("select count(*) from TB_INSP_RSLT" + where.sql(), Long.class, where.args().toArray());
+    }
+
+    /** 같은 조건(같은 where)에 맞는 결과가 하나라도 있는지 — 건수를 세지 않는다 (AI-7 FINAL-CLOSE, AI7-D44) */
+    public boolean exists(long projectId, InspectionDto.Search search, Set<StandardizationRule> disabled) {
+        Where where = where(projectId, search, disabled);
+        return Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from TB_INSP_RSLT" + where.sql() + ")", Boolean.class, where.args().toArray()));
     }
 
     public List<InspectionDto.Finding> page(long projectId, InspectionDto.Search search, Set<StandardizationRule> disabled, Sort sort, long offset, int limit) {
@@ -187,6 +202,54 @@ public class InspectionQueryRepository {
                             rs.getBoolean(4), rs.getString(5), (Long) rs.getObject(6, Long.class), reason == null ? null : EndReason.valueOf(reason),
                             time(rs, 8), time(rs, 9), rs.getString(10));
                 }, findingId, projectId);
+    }
+
+    /** AI 근거 검증용 결과 스냅숏 (AI-7) : 프로젝트 범위 없이 ID 로 읽고, 프로젝트는 값으로 돌려준다 (비교는 근거 검증이 한다) */
+    public record FindingSnapshot(long id, long projectId, String rule, String targetName, Long tableId, java.time.LocalDateTime modifiedAt) {
+    }
+
+    public List<FindingSnapshot> findingSnapshots(java.util.Collection<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return jdbc.query("select INSP_RSLT_SN, PRJ_SN, RULE_CD, TRGT_CN, TBL_SN, MDFCN_DT from TB_INSP_RSLT where INSP_RSLT_SN = any(?)",
+                (rs, i) -> new FindingSnapshot(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4), (Long) rs.getObject(5, Long.class), time(rs, 6)),
+                (Object) ids.toArray(Long[]::new));
+    }
+
+    /** AI 근거 검증용 실행 스냅숏 (AI-7) */
+    public record RunSnapshot(long id, long projectId, String status, java.time.LocalDateTime modifiedAt) {
+    }
+
+    public List<RunSnapshot> runSnapshots(java.util.Collection<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return jdbc.query("select INSP_EXCN_SN, PRJ_SN, EXCN_STTS_CD, MDFCN_DT from TB_INSP_EXCN where INSP_EXCN_SN = any(?)",
+                (rs, i) -> new RunSnapshot(rs.getLong(1), rs.getLong(2), rs.getString(3), time(rs, 4)), (Object) ids.toArray(Long[]::new));
+    }
+
+    /**
+     * 검사 기준 이후 변경 감지용 건수 (AI-7 AI7-D08) — 각 값은 {@code cap + 1} 까지만 센다. from = 비교 시작(실행 시작 일시), basisAt = 검사 기준 일시.
+     * 모델 = 모델 변경 이력(CHG_DT ≥ from), 표준 사전 = 단어·용어·도메인 행의 MDFCN_DT ≥ from (추가·수정만 — 삭제는 행이 없어 보이지 않는다),
+     * 프로젝트 = 프로젝트 행 MDFCN_DT ≥ from, 예외 = 예외 처리·해제 이력 REG_DT > basisAt. 새 저장 구조 없이 기존 인덱스·감사 칼럼만 쓴다
+     */
+    public record ChangeCounts(long model, long dictionary, long project, long exclusions) {
+    }
+
+    public ChangeCounts changeCounts(long projectId, java.time.LocalDateTime from, java.time.LocalDateTime basisAt, int cap) {
+        java.sql.Timestamp start = java.sql.Timestamp.valueOf(from);
+        java.sql.Timestamp basis = java.sql.Timestamp.valueOf(basisAt);
+        int limit = cap + 1;
+        long model = capped("select count(*) from (select 1 from TB_MDL_CHG_HSTRY where PRJ_SN = ? and CHG_DT >= ? limit ?) c", projectId, start, limit);
+        long dictionary = capped("select count(*) from (select 1 from TB_STD_WORD where PRJ_SN = ? and MDFCN_DT >= ? limit ?) c", projectId, start, limit)
+                + capped("select count(*) from (select 1 from TB_STD_TRM where PRJ_SN = ? and MDFCN_DT >= ? limit ?) c", projectId, start, limit)
+                + capped("select count(*) from (select 1 from TB_STD_DMN where PRJ_SN = ? and MDFCN_DT >= ? limit ?) c", projectId, start, limit);
+        long project = capped("select count(*) from (select 1 from TB_PRJ where PRJ_SN = ? and MDFCN_DT >= ? limit ?) c", projectId, start, limit);
+        long exclusions = capped("select count(*) from (select 1 from TB_INSP_RSLT_HSTRY where PRJ_SN = ? and CHG_TYPE_CD in ('EXCLUDE', 'UNEXCLUDE') and REG_DT > ? limit ?) c",
+                projectId, basis, limit);
+        return new ChangeCounts(Math.min(model, limit), Math.min(dictionary, limit), project, exclusions);
+    }
+
+    private long capped(String sql, Object... args) {
+        Long count = jdbc.queryForObject(sql, Long.class, args);
+        return count == null ? 0 : count;
     }
 
     /** 요약용 : 규칙 × 상태 × 예외 × 종료 사유별 건수 */

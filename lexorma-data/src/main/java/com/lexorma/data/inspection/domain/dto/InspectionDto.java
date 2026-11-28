@@ -70,9 +70,19 @@ public final class InspectionDto {
 
     public enum RuleScope { ACTIVE, INACTIVE, ALL }
 
-    /** group = 대상 구분(MODEL·IDENTIFIER·TERM, 규칙 묶음), lastChange = 결과의 <b>마지막</b> 변화(NEW·PERSISTING·REOPENED·RESOLVED — 특정 과거 실행의 변화가 아니다) */
+    /**
+     * group = 대상 구분(MODEL·IDENTIFIER·TERM, 규칙 묶음), lastChange = 결과의 <b>마지막</b> 변화(NEW·PERSISTING·REOPENED·RESOLVED — 특정 과거 실행의 변화가 아니다).
+     * 실행 기준 (AI-7 AI7-D07, 화면은 쓰지 않는다) : firstSeenRunId = 그 실행이 처음 찾은 결과(FRST_INSP_EXCN_SN), resolvedInRunId = 그 실행이 해결 처리했고
+     * 지금도 해결 상태인 결과(STTS_CD RESOLVED · LAST_INSP_EXCN_SN). 둘 다 <b>현재 저장 결과</b>를 거르는 것이고 과거 실행 당시 결과를 복원하지 않는다
+     */
     public record Search(StandardizationRule rule, Severity severity, String targetType, StatusFilter status, ExclusionFilter exclusion, RuleScope ruleScope,
-                         EndReason endReason, Long tableId, String searchQuery, String group, LastChange lastChange) {
+                         EndReason endReason, Long tableId, String searchQuery, String group, LastChange lastChange, Long firstSeenRunId, Long resolvedInRunId) {
+
+        /** 실행 기준 없이 (화면 목록) */
+        public Search(StandardizationRule rule, Severity severity, String targetType, StatusFilter status, ExclusionFilter exclusion, RuleScope ruleScope,
+                      EndReason endReason, Long tableId, String searchQuery, String group, LastChange lastChange) {
+            this(rule, severity, targetType, status, exclusion, ruleScope, endReason, tableId, searchQuery, group, lastChange, null, null);
+        }
     }
 
     /** actualValue·expectedValue = 근거의 현재·기대 값 (목록 표시용, 없으면 null) */

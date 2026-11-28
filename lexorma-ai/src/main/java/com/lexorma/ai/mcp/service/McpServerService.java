@@ -42,7 +42,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>인증 : Bearer 토큰 → 해시로 찾아 폐기·만료·프로젝트 MCP 사용·프로젝트 활성·<b>발급 계정이 지금도 그 프로젝트의 관리자·ADMIN(멤버)</b> 인지 요청마다 DB 로 확인한다.
  *       실패는 이유를 나누지 않고 401 하나로 (메타데이터·토큰 존재 여부를 알려 주지 않는다)</li>
- *   <li>도구 : AI-4 의 읽기 전용 메타데이터 Tool 11개(D-35 D35-3b 논리 모델 3개 포함 — 내부 AI 와 같은 구현 {@code LogicalMetadataService})를 {@link MetadataToolset#run} 으로 (실행 컨텍스트 재검증 VIEWER · 읽기 전용 트랜잭션 · 결과 크기 상한) +
+ *   <li>도구 : AI-4 의 읽기 전용 메타데이터 Tool 11개(D-35 D35-3b 논리 모델 3개 포함 — 내부 AI 와 같은 구현 {@code LogicalMetadataService})와 AI-7 품질 진단 3개
+ *       (내부 AI QUALITY 범위와 같은 {@code QualityMetadataTools})를 {@link MetadataToolset#run} 으로 (실행 컨텍스트 재검증 VIEWER · 읽기 전용 트랜잭션 · 결과 크기 상한) +
  *       MCP 전용 읽기 2개(getProjectInfo, getLogicalModel). 프로젝트는 토큰의 것만 : 도구 입력에 프로젝트를 받지 않는다. 원본 DB·원본 VIEW 정의·쓰기·SQL 실행 도구는 없다</li>
  *   <li>상한 : 토큰마다 분당 {@link #RATE_PER_MINUTE} 요청, 결과 {@link #RESULT_MAX_CHARS} 글자. 감사 : 호출마다 도구·결과·일시 (입력·응답·토큰 원문 없음)</li>
  * </ul>
@@ -56,7 +57,9 @@ public class McpServerService {
     public static final List<String> SUPPORTED_VERSIONS = List.of("2025-06-18", "2025-03-26", "2024-11-05");
     static final List<String> SHARED_TOOLS = List.of("listSchemas", "searchTables", "getTableDetail", "getTableColumns", "getTableRelations",
             "searchStandardTerms", "searchStandardWords", "searchStandardDomains",
-            "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail");
+            "getLogicalModelOverview", "searchLogicalEntities", "getLogicalEntityDetail",
+            // AI-7 (AI7-D05·D28) : 저장된 품질 진단 결과 — 내부 AI 의 기능 범위 선택과 무관하게 항상
+            "getQualityInspectionOverview", "searchQualityFindings", "getQualityFindingDetail");
     static final int RATE_PER_MINUTE = 120;
     static final int RESULT_MAX_CHARS = 24_000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -178,13 +181,13 @@ public class McpServerService {
         result.put("capabilities", Map.of("tools", Map.of("listChanged", false)));
         result.put("serverInfo", Map.of("name", "lexorma", "title", "Lexorma metadata (read-only)", "version", "1"));
         result.put("instructions", "Read-only metadata of one Lexorma project (the token's project): schemas, tables, columns, relations, standard terms/words/domains, "
-                + "logical models. No SQL execution, no source database access, no changes.");
+                + "logical models, stored quality inspection results (not live checks). No SQL execution, no source database access, no changes.");
         return result;
     }
 
     private List<Map<String, Object>> tools() {
         List<Map<String, Object>> tools = new ArrayList<>();
-        for (ToolCallback callback : toolset.callbacks()) {
+        for (ToolCallback callback : toolset.mcpCallbacks()) {
             var definition = callback.getToolDefinition();
             if (!SHARED_TOOLS.contains(definition.name())) continue;
             tools.add(tool(definition.name(), definition.description(), JSON.readValue(definition.inputSchema(), Map.class)));
